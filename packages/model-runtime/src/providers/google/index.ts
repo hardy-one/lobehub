@@ -148,7 +148,21 @@ export class LobeGoogleAI implements LobeRuntimeAI {
         thinkingLevel,
       }) as ThinkingConfig;
 
-      const contents = await buildGoogleMessages(payload.messages);
+      // Extract system message from messages array for Google
+      // Google requires system instruction to be passed via config.systemInstruction
+      // instead of as a message with role="system"
+      const systemMessage = payload.messages.find((m) => m.role === 'system');
+      const nonSystemMessages = payload.messages.filter((m) => m.role !== 'system');
+
+      // Use existing payload.system if available, otherwise extract from messages
+      const systemContent =
+        typeof payload.system === 'string'
+          ? payload.system
+          : typeof systemMessage?.content === 'string'
+            ? systemMessage.content
+            : undefined;
+
+      const contents = await buildGoogleMessages(nonSystemMessages);
 
       const controller = new AbortController();
       const originalSignal = options?.signal;
@@ -194,9 +208,8 @@ export class LobeGoogleAI implements LobeRuntimeAI {
             threshold: getThreshold(model),
           },
         ],
-        systemInstruction: modelsDisableInstuction.has(model)
-          ? undefined
-          : (payload.system as string),
+        systemInstruction:
+          modelsDisableInstuction.has(model) || !systemContent ? undefined : systemContent,
         temperature: payload.temperature,
         thinkingConfig:
           modelsDisableInstuction.has(model) || model.toLowerCase().includes('learnlm')

@@ -210,36 +210,49 @@ export const buildGoogleMessages = async (messages: OpenAIChatMessage[]): Promis
 };
 
 /**
- * Sanitize JSON Schema for Google GenAI compatibility
- * Google's API doesn't support certain JSON Schema keywords like 'const'
- * This function recursively processes the schema and converts unsupported keywords
+ * Normalize OpenAI JSON Schema to be compatible with Google Gemini API.
+ * Google Gemini does not support: const, nullable, additionalProperties
  */
-const sanitizeSchemaForGoogle = (schema: Record<string, any>): Record<string, any> => {
+const normalizeGoogleSchema = (schema: any): any => {
   if (!schema || typeof schema !== 'object') return schema;
 
-  // Handle arrays
-  if (Array.isArray(schema)) {
-    return schema.map((item) => sanitizeSchemaForGoogle(item));
+  // Remove Google unsupported fields
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { const: constValue, nullable, additionalProperties, ...rest } = schema;
+
+  // Convert const to enum (Google compatible)
+  // e.g., { const: "insert", type: "string" } -> { enum: ["insert"], type: "string" }
+  if (constValue !== undefined) {
+    rest.enum = [constValue];
   }
 
-  const result: Record<string, any> = {};
-
-  for (const [key, value] of Object.entries(schema)) {
-    // Convert 'const' to 'enum' with single value (Google doesn't support 'const')
-    if (key === 'const') {
-      result['enum'] = [value];
-      continue;
-    }
-
-    // Recursively process nested objects
-    if (value && typeof value === 'object') {
-      result[key] = sanitizeSchemaForGoogle(value);
-    } else {
-      result[key] = value;
-    }
+  // Recursively process nested properties
+  if (rest.properties) {
+    rest.properties = Object.fromEntries(
+      Object.entries(rest.properties).map(([key, value]: [string, any]) => [
+        key,
+        normalizeGoogleSchema(value),
+      ]),
+    );
   }
 
-  return result;
+  // Handle items (array elements)
+  if (rest.items) {
+    rest.items = normalizeGoogleSchema(rest.items);
+  }
+
+  // Handle oneOf, anyOf, allOf
+  if (rest.oneOf) {
+    rest.oneOf = rest.oneOf.map((item: any) => normalizeGoogleSchema(item));
+  }
+  if (rest.anyOf) {
+    rest.anyOf = rest.anyOf.map((item: any) => normalizeGoogleSchema(item));
+  }
+  if (rest.allOf) {
+    rest.allOf = rest.allOf.map((item: any) => normalizeGoogleSchema(item));
+  }
+
+  return rest;
 };
 
 /**
@@ -248,10 +261,13 @@ const sanitizeSchemaForGoogle = (schema: Record<string, any>): Record<string, an
 export const buildGoogleTool = (tool: ChatCompletionTool): FunctionDeclaration => {
   const functionDeclaration = tool.function;
   const parameters = functionDeclaration.parameters;
-  // refs: https://github.com/lobehub/lobe-chat/pull/5002
-  const rawProperties =
-    parameters?.properties && Object.keys(parameters.properties).length > 0
-      ? parameters.properties
+
+  // Normalize parameters for Google compatibility
+  const normalizedParams = parameters ? normalizeGoogleSchema(parameters) : null;
+
+  const properties =
+    normalizedParams?.properties && Object.keys(normalizedParams.properties).length > 0
+      ? normalizedParams.properties
       : { dummy: { type: 'string' } }; // dummy property to avoid empty object
 
   // Sanitize properties to remove unsupported JSON Schema keywords for Google
@@ -261,9 +277,9 @@ export const buildGoogleTool = (tool: ChatCompletionTool): FunctionDeclaration =
     description: functionDeclaration.description,
     name: functionDeclaration.name,
     parameters: {
-      description: parameters?.description,
+      description: normalizedParams?.description,
       properties: properties,
-      required: parameters?.required,
+      required: normalizedParams?.required,
       type: SchemaType.OBJECT,
     },
   };

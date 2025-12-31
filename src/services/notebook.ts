@@ -36,8 +36,8 @@ class NotebookService {
     return lambdaClient.notebook.updateDocument.mutate(params);
   };
 
-  getDocument = async (id: string) => {
-    return lambdaClient.notebook.getDocument.query({ id });
+  getDocument = async (id: string, topicId?: string) => {
+    return lambdaClient.notebook.getDocument.query({ id, topicId });
   };
 
   listDocuments = async (params: ListDocumentsParams) => {

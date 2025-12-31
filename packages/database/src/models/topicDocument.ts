@@ -104,6 +104,24 @@ export class TopicDocumentModel {
   };
 
   /**
+   * Find association between a document and a topic
+   */
+  findByDocumentAndTopic = async (
+    documentId: string,
+    topicId: string,
+  ): Promise<{ associatedAt: Date } | null> => {
+    const result = await this.db.query.topicDocuments.findFirst({
+      where: and(
+        eq(topicDocuments.documentId, documentId),
+        eq(topicDocuments.topicId, topicId),
+        eq(topicDocuments.userId, this.userId),
+      ),
+    });
+
+    return result ? { associatedAt: result.createdAt } : null;
+  };
+
+  /**
    * Remove all associations for a topic
    */
   deleteByTopicId = async (topicId: string) => {

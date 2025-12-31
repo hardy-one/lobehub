@@ -67,9 +67,36 @@ export const notebookRouter = router({
     }),
 
   getDocument: notebookProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({ id: z.string(), topicId: z.string().optional() }))
     .query(async ({ ctx, input }) => {
-      return ctx.documentModel.findById(input.id);
+      const document = await ctx.documentModel.findById(input.id);
+
+      if (!document) return null;
+
+      // If topicId is provided, include associatedAt from topic_documents table
+      if (input.topicId) {
+        const association = await ctx.topicDocumentModel.findByDocumentAndTopic(
+          input.id,
+          input.topicId,
+        );
+
+        return {
+          associatedAt: association?.associatedAt || document.createdAt,
+          content: document.content,
+          createdAt: document.createdAt,
+          description: document.description,
+          fileType: document.fileType,
+          id: document.id,
+          metadata: document.metadata,
+          title: document.title,
+          totalCharCount: document.totalCharCount,
+          totalLineCount: document.totalLineCount,
+          updatedAt: document.updatedAt,
+        } as NotebookDocument;
+      }
+
+      // Return DocumentItem as-is if no topicId
+      return document;
     }),
 
   listDocuments: notebookProcedure

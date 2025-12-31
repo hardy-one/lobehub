@@ -37,8 +37,8 @@ export interface GoogleThinkingResolverOptions {
 export interface ResolvedGoogleThinkingConfig {
   /** Whether to include thoughts in the response */
   includeThoughts: boolean | undefined;
-  /** Resolved thinking budget in tokens */
-  thinkingBudget: number | undefined;
+  /** Resolved thinking budget in tokens (removed when thinkingLevel is set for Gemini 3+) */
+  thinkingBudget?: number;
   /** Thinking level for 3.0+ models */
   thinkingLevel?: GoogleThinkingLevel;
 }

@@ -6,7 +6,7 @@ import { ChevronDown, ChevronUp, ListTodo } from 'lucide-react';
 import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { useNotebookStore } from '@/store/notebook';
+import { useDocumentStore } from '@/store/document';
 import { notebookSelectors } from '@/store/notebook/selectors';
 
 import { useDocumentEditorStore } from './store';
@@ -109,7 +109,7 @@ const TodoList = memo(() => {
   const documentId = useDocumentEditorStore((s) => s.documentId);
   const topicId = useDocumentEditorStore((s) => s.topicId);
 
-  const document = useNotebookStore(notebookSelectors.getDocumentById(topicId, documentId));
+  const document = useDocumentStore(notebookSelectors.getDocumentById(topicId, documentId));
 
   // Only show for agent/plan documents with todos in metadata
   if (!document || document.fileType !== 'agent/plan') return null;

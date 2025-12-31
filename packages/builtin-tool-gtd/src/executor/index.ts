@@ -2,7 +2,7 @@ import { formatTodoStateSummary } from '@lobechat/prompts';
 import { BaseExecutor, type BuiltinToolContext, type BuiltinToolResult } from '@lobechat/types';
 
 import { notebookService } from '@/services/notebook';
-import { useNotebookStore } from '@/store/notebook';
+import { useDocumentStore } from '@/store/document';
 
 import { GTDIdentifier } from '../manifest';
 import {
@@ -439,7 +439,7 @@ class GTDExecutor extends BaseExecutor<typeof GTDApiNameEnum> {
 
       // Create document with type 'agent/plan'
       // Field mapping: goal -> title, description -> description, context -> content
-      const document = await useNotebookStore.getState().createDocument({
+      const document = await useDocumentStore.getState().createDocument({
         content: context || '',
         description,
         title: goal,
@@ -507,7 +507,7 @@ class GTDExecutor extends BaseExecutor<typeof GTDApiNameEnum> {
 
       // Update document using store (triggers refresh)
       // Field mapping: goal -> title, description -> description, context -> content
-      const document = await useNotebookStore.getState().updateDocument(
+      const document = await useDocumentStore.getState().updateDocument(
         {
           content: context,
           description,

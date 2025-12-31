@@ -53,8 +53,39 @@ export const createNotebookSlice: StateCreator<
   createDocument: async (params) => {
     const document = await notebookService.createDocument(params);
 
-    // Refresh the documents list
-    await mutate([SWR_USE_FETCH_NOTEBOOK_DOCUMENTS, params.topicId]);
+    // Optimistically update notebookMap immediately
+    const { topicId } = params;
+    const currentDocuments = get().notebookMap[topicId] || [];
+
+    // Convert DocumentItem to NotebookDocument for local cache
+    const notebookDoc: NotebookDocument = {
+      associatedAt: document.createdAt, // Use createdAt as associatedAt for new documents
+      content: document.content,
+      createdAt: document.createdAt,
+      description: document.description,
+      fileType: document.fileType,
+      id: document.id,
+      metadata: document.metadata,
+      title: document.title,
+      totalCharCount: document.totalCharCount,
+      totalLineCount: document.totalLineCount,
+      updatedAt: document.updatedAt,
+    };
+
+    const newDocuments = [...currentDocuments, notebookDoc];
+
+    set(
+      {
+        notebookMap: { ...get().notebookMap, [topicId]: newDocuments },
+      },
+      false,
+      n('createDocument', { documentId: document.id, topicId }),
+    );
+
+    // Also trigger SWR revalidation to ensure consistency
+    mutate([SWR_USE_FETCH_NOTEBOOK_DOCUMENTS, topicId]).catch(() => {
+      // If mutate fails, we still have the optimistic update above
+    });
 
     return document;
   },
@@ -66,11 +97,31 @@ export const createNotebookSlice: StateCreator<
       useChatStore.getState().closeDocument();
     }
 
-    // Call API to delete
-    await notebookService.deleteDocument(id);
+    // Optimistically update notebookMap immediately
+    const currentDocuments = get().notebookMap[topicId] || [];
+    const newDocuments = currentDocuments.filter((doc) => doc.id !== id);
 
-    // Refresh the documents list
-    await mutate([SWR_USE_FETCH_NOTEBOOK_DOCUMENTS, topicId]);
+    set(
+      {
+        notebookMap: { ...get().notebookMap, [topicId]: newDocuments },
+      },
+      false,
+      n('deleteDocument', { documentId: id, topicId }),
+    );
+
+    // Call API to delete
+    try {
+      await notebookService.deleteDocument(id);
+    } catch (error) {
+      // If API call fails, trigger revalidation to restore state
+      await mutate([SWR_USE_FETCH_NOTEBOOK_DOCUMENTS, topicId]);
+      throw error;
+    }
+
+    // Trigger SWR revalidation to ensure consistency
+    mutate([SWR_USE_FETCH_NOTEBOOK_DOCUMENTS, topicId]).catch(() => {
+      // If mutate fails, we still have the optimistic update above
+    });
   },
 
   refreshDocuments: async (topicId) => {
@@ -80,8 +131,46 @@ export const createNotebookSlice: StateCreator<
   updateDocument: async (params, topicId) => {
     const document = await notebookService.updateDocument(params);
 
-    // Refresh the documents list
-    await mutate([SWR_USE_FETCH_NOTEBOOK_DOCUMENTS, topicId]);
+    // Optimistically update notebookMap immediately if document returned
+    if (document) {
+      const currentDocuments = get().notebookMap[topicId] || [];
+
+      // Preserve the associatedAt from existing document if present
+      const existingDoc = currentDocuments.find((doc) => doc.id === document.id);
+      const associatedAt = existingDoc?.associatedAt || document.createdAt;
+
+      // Convert DocumentItem to NotebookDocument for local cache
+      const notebookDoc: NotebookDocument = {
+        associatedAt,
+        content: document.content,
+        createdAt: document.createdAt,
+        description: document.description,
+        fileType: document.fileType,
+        id: document.id,
+        metadata: document.metadata,
+        title: document.title,
+        totalCharCount: document.totalCharCount,
+        totalLineCount: document.totalLineCount,
+        updatedAt: document.updatedAt,
+      };
+
+      const newDocuments = currentDocuments.map((doc) =>
+        doc.id === document.id ? notebookDoc : doc,
+      );
+
+      set(
+        {
+          notebookMap: { ...get().notebookMap, [topicId]: newDocuments },
+        },
+        false,
+        n('updateDocument', { documentId: document.id, topicId }),
+      );
+
+      // Also trigger SWR revalidation to ensure consistency
+      mutate([SWR_USE_FETCH_NOTEBOOK_DOCUMENTS, topicId]).catch(() => {
+        // If mutate fails, we still have the optimistic update above
+      });
+    }
 
     return document;
   },

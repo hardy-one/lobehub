@@ -7,7 +7,7 @@ import { mutate } from 'swr';
 import { createStoreUpdater } from 'zustand-utils';
 
 import { notebookService } from '@/services/notebook';
-import { useNotebookStore } from '@/store/notebook';
+import { useDocumentStore } from '@/store/document';
 import { notebookSelectors } from '@/store/notebook/selectors';
 
 import { useDocumentEditorStore, useDocumentEditorStoreApi } from './store';
@@ -27,7 +27,7 @@ const StoreUpdater = memo<StoreUpdaterProps>(({ documentId, topicId }) => {
 
   const editor = useDocumentEditorStore((s) => s.editor);
 
-  const document = useNotebookStore(notebookSelectors.getDocumentById(topicId, documentId));
+  const document = useDocumentStore(notebookSelectors.getDocumentById(topicId, documentId));
 
   const [editorInit, setEditorInit] = useState(false);
   const [contentInit, setContentInit] = useState(false);
@@ -60,13 +60,13 @@ const StoreUpdater = memo<StoreUpdaterProps>(({ documentId, topicId }) => {
           log('Document fetched successfully:', documentId);
 
           // Add the document to notebookMap (ensure it's a NotebookDocument)
-          const currentDocuments = useNotebookStore.getState().notebookMap[topicId] || [];
+          const currentDocuments = useDocumentStore.getState().notebookMap[topicId] || [];
           const docExists = currentDocuments.some((doc) => doc.id === documentId);
 
           if (!docExists && 'associatedAt' in fetchedDoc) {
-            useNotebookStore.setState({
+            useDocumentStore.setState({
               notebookMap: {
-                ...useNotebookStore.getState().notebookMap,
+                ...useDocumentStore.getState().notebookMap,
                 [topicId]: [...currentDocuments, fetchedDoc],
               },
             });

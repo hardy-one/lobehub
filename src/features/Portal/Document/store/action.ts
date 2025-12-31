@@ -5,7 +5,7 @@ import debug from 'debug';
 import { debounce } from 'es-toolkit/compat';
 import { type StateCreator } from 'zustand';
 
-import { useNotebookStore } from '@/store/notebook';
+import { useDocumentStore } from '@/store/document';
 
 import { type DocumentEditorState, initialDocumentEditorState } from './initialState';
 
@@ -83,7 +83,7 @@ export const createDocumentEditorStore: (
       try {
         const currentContent = (editor.getDocument('markdown') as unknown as string) || '';
 
-        await useNotebookStore.getState().updateDocument(
+        await useDocumentStore.getState().updateDocument(
           {
             content: currentContent,
             id: documentId,

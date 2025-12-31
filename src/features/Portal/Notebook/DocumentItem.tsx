@@ -7,7 +7,7 @@ import { type MouseEvent, memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useChatStore } from '@/store/chat';
-import { useNotebookStore } from '@/store/notebook';
+import { useDocumentStore } from '@/store/document';
 
 const styles = createStaticStyles(({ css, cssVar }) => ({
   container: css`
@@ -41,7 +41,7 @@ const DocumentItem = memo<DocumentItemProps>(({ document, topicId }) => {
   const [deleting, setDeleting] = useState(false);
 
   const openDocument = useChatStore((s) => s.openDocument);
-  const deleteDocument = useNotebookStore((s) => s.deleteDocument);
+  const deleteDocument = useDocumentStore((s) => s.deleteDocument);
 
   const handleClick = () => {
     openDocument(document.id);

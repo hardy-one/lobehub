@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { documentService } from '@/services/document';
 import { useChatStore } from '@/store/chat';
 import { chatPortalSelectors } from '@/store/chat/selectors';
-import { useNotebookStore } from '@/store/notebook';
+import { useDocumentStore } from '@/store/document';
 import { notebookSelectors } from '@/store/notebook/selectors';
 import { oneLineEllipsis } from '@/styles';
 import { standardizeIdentifier } from '@/utils/identifier';
@@ -28,7 +28,7 @@ const Header = () => {
     s.closeDocument,
   ]);
 
-  const document = useNotebookStore(notebookSelectors.getDocumentById(topicId, documentId));
+  const document = useDocumentStore(notebookSelectors.getDocumentById(topicId, documentId));
 
   const handleOpenInPageEditor = async () => {
     if (!documentId) return;

@@ -7,8 +7,32 @@ const minimaxChatModels: AIChatModelCard[] = [
       reasoning: true,
     },
     contextWindowTokens: 204_800,
-    description: '强大多语言编程实力，全面升级编程体验',
+    description:
+      'MiniMax M2.1 significantly enhances multi-language programming (Rust, Java, Golang, C++, Kotlin, Objective-C, TypeScript, JavaScript) with faster response, lower token consumption, and improved mobile development capabilities. Designed for real-world complex tasks and enterprise-grade agent workflows.',
     displayName: 'MiniMax M2.1',
+    enabled: true,
+    id: 'MiniMax-M2.1',
+    maxOutput: 131_072,
+    pricing: {
+      currency: 'CNY',
+      units: [
+        { name: 'textInput_cacheRead', rate: 0.21, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheWrite', rate: 2.625, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput', rate: 2.1, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 8.4, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2025-12-23',
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+    },
+    contextWindowTokens: 204_800,
+    description: 'Built for efficient coding and agent workflows.',
+    displayName: 'MiniMax M2',
     enabled: true,
     id: 'MiniMax-M2.1',
     maxOutput: 131_072,
@@ -74,7 +98,8 @@ const minimaxChatModels: AIChatModelCard[] = [
       reasoning: true,
     },
     contextWindowTokens: 204_800,
-    description: 'Built for efficient coding and agent workflows, with higher concurrency for commercial use.',
+    description:
+      'Built for efficient coding and agent workflows, with higher concurrency for commercial use.',
     displayName: 'MiniMax M2 Stable',
     id: 'MiniMax-M2-Stable',
     maxOutput: 131_072,
@@ -136,7 +161,8 @@ const minimaxChatModels: AIChatModelCard[] = [
 
 const minimaxImageModels: AIImageModelCard[] = [
   {
-    description: 'A new image generation model with fine detail, supporting text-to-image and image-to-image.',
+    description:
+      'A new image generation model with fine detail, supporting text-to-image and image-to-image.',
     displayName: 'Image 01',
     enabled: true,
     id: 'image-01',

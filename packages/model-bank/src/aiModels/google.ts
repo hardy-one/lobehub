@@ -248,7 +248,47 @@ const googleChatModels: AIChatModelCard[] = [
     },
     contextWindowTokens: 1_048_576 + 65_536,
     description:
-      'Gemini 2.5 Pro is Google’s most advanced reasoning model, able to reason over code, math, and STEM problems and analyze large datasets, codebases, and documents with long context.',
+      "Gemini 3 Flash Preview is Google's latest best-value model, improving on Gemini 2.5 Flash.",
+    displayName: 'Gemini 3 Flash Preview',
+    enabled: true,
+    id: 'gemini-3-flash-preview',
+    maxOutput: 65_536,
+    pricing: {
+      units: [
+        {
+          name: 'textInput',
+          rate: 0.5,
+          strategy: 'fixed',
+          unit: 'millionTokens',
+        },
+        {
+          name: 'textInput_cacheRead',
+          rate: 0.05,
+          strategy: 'fixed',
+          unit: 'millionTokens',
+        },
+        { name: 'textOutput', rate: 3, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2025-12-17',
+    settings: {
+      extendParams: ['thinkingLevel', 'urlContext'],
+      searchImpl: 'params',
+      searchProvider: 'google',
+    },
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+      search: true,
+      video: true,
+      vision: true,
+    },
+    contextWindowTokens: 1_048_576 + 65_536,
+    description:
+      "Gemini 2.5 Pro is Google's most advanced reasoning model, able to reason over code, math, and STEM problems and analyze large datasets, codebases, and documents with long context.",
     displayName: 'Gemini 2.5 Pro',
     id: 'gemini-2.5-pro',
     maxOutput: 65_536,

@@ -294,6 +294,68 @@ const siliconcloudChatModels: AIChatModelCard[] = [
     abilities: {
       functionCall: true,
       reasoning: true,
+      vision: true,
+    },
+    contextWindowTokens: 200_000,
+    description:
+      "Zhipu's latest flagship GLM-4.7 is designed for agentic coding, surpassing the prior generation with enhanced mixed reasoning, coding, and vision capabilities. Optimized for real-world development environments with advanced tool use and multi-step reasoning.",
+    displayName: 'GLM-4.7',
+    id: 'zai-org/GLM-4.7',
+    pricing: {
+      currency: 'CNY',
+      units: [
+        {
+          lookup: {
+            prices: {
+              '[0, 0.032]_[0, 0.0002]': 0.4,
+              '[0, 0.032]_[0.0002, infinity]': 0.6,
+              '[0.032, infinity]': 0.8,
+            },
+            pricingParams: ['textInput', 'textOutput'],
+          },
+          name: 'textInput_cacheRead',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+        {
+          lookup: {
+            prices: {
+              '[0, 0.032]_[0, 0.0002]': 2,
+              '[0, 0.032]_[0.0002, infinity]': 3,
+              '[0.032, infinity]': 4,
+            },
+            pricingParams: ['textInput', 'textOutput'],
+          },
+          name: 'textInput',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+        {
+          lookup: {
+            prices: {
+              '[0, 0.032]_[0, 0.0002]': 8,
+              '[0, 0.032]_[0.0002, infinity]': 14,
+              '[0.032, infinity]': 16,
+            },
+            pricingParams: ['textInput', 'textOutput'],
+          },
+          name: 'textOutput',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+      ],
+    },
+    releasedAt: '2025-12-23',
+    settings: {
+      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+      vision: true,
     },
     contextWindowTokens: 198_000,
     description:

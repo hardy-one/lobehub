@@ -9,11 +9,77 @@ const zhipuChatModels: AIChatModelCard[] = [
       functionCall: true,
       reasoning: true,
       search: true,
+      vision: true,
     },
     contextWindowTokens: 200_000,
     description:
-      'GLM-4.7 是智谱最新旗舰模型，面向 Agentic Coding 场景强化了编码能力、长程任务规划与工具协同，并在多个公开基准的当期榜单中取得开源模型中的领先表现。通用能力提升，回复更简洁自然，写作更具沉浸感。在执行复杂智能体任务，在工具调用时指令遵循更强，Artifacts 与 Agentic Coding 的前端美感和长程任务完成效率进一步提升。',
+      "Zhipu's latest flagship GLM-4.7 is designed for agentic coding, surpassing the prior generation with enhanced mixed reasoning, coding, and vision capabilities. Optimized for real-world development environments with advanced tool use and multi-step reasoning.",
     displayName: 'GLM-4.7',
+    enabled: true,
+    id: 'glm-4.7',
+    maxOutput: 128_000,
+    pricing: {
+      currency: 'CNY',
+      units: [
+        {
+          lookup: {
+            prices: {
+              '[0, 0.032]_[0, 0.0002]': 0.4,
+              '[0, 0.032]_[0.0002, infinity]': 0.6,
+              '[0.032, 0.2]': 0.8,
+            },
+            pricingParams: ['textInput', 'textOutput'],
+          },
+          name: 'textInput_cacheRead',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+        {
+          lookup: {
+            prices: {
+              '[0, 0.032]_[0, 0.0002]': 2,
+              '[0, 0.032]_[0.0002, infinity]': 3,
+              '[0.032, 0.2]': 4,
+            },
+            pricingParams: ['textInput', 'textOutput'],
+          },
+          name: 'textInput',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+        {
+          lookup: {
+            prices: {
+              '[0, 0.032]_[0, 0.0002]': 8,
+              '[0, 0.032]_[0.0002, infinity]': 14,
+              '[0.032, 0.2]': 16,
+            },
+            pricingParams: ['textInput', 'textOutput'],
+          },
+          name: 'textOutput',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+      ],
+    },
+    releasedAt: '2025-12-23',
+    settings: {
+      extendParams: ['enableReasoning'],
+      searchImpl: 'params',
+    },
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+      search: true,
+      vision: true,
+    },
+    contextWindowTokens: 200_000,
+    description:
+      "Zhipu's latest flagship GLM-4.6 (355B) surpasses the prior generation in advanced coding, long-context handling, reasoning, and agent capabilities. Its coding performance is on par with Claude Sonnet 4, making it a top-tier coding model in China.",
+    displayName: 'GLM-4.6',
     enabled: true,
     id: 'glm-4.7',
     maxOutput: 131_072,
@@ -567,7 +633,8 @@ const zhipuChatModels: AIChatModelCard[] = [
       search: true,
     },
     contextWindowTokens: 131_072,
-    description: 'Fast and low-cost: Flash-enhanced with ultra-fast reasoning and higher concurrency.',
+    description:
+      'Fast and low-cost: Flash-enhanced with ultra-fast reasoning and higher concurrency.',
     displayName: 'GLM-Z1-FlashX',
     id: 'glm-z1-flashx',
     maxOutput: 32_768,
@@ -789,7 +856,8 @@ const zhipuChatModels: AIChatModelCard[] = [
       vision: true,
     },
     contextWindowTokens: 16_000,
-    description: 'GLM-4V-Plus understands video and multiple images, suitable for multimodal tasks.',
+    description:
+      'GLM-4V-Plus understands video and multiple images, suitable for multimodal tasks.',
     displayName: 'GLM-4V-Plus-0111',
     id: 'glm-4v-plus-0111',
     pricing: {

@@ -33,6 +33,7 @@ import InternLMProvider from './internlm';
 import JinaProvider from './jina';
 import LMStudioProvider from './lmstudio';
 import LobeHubProvider from './lobehub';
+import MimoProvider from './mimo';
 import MinimaxProvider from './minimax';
 import MistralProvider from './mistral';
 import ModelScopeProvider from './modelscope';
@@ -182,6 +183,7 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
   BaichuanProvider,
   VolcengineProvider,
   MinimaxProvider,
+  MimoProvider,
   LMStudioProvider,
   InternLMProvider,
   HigressProvider,
@@ -240,6 +242,7 @@ export { default as InternLMProviderCard } from './internlm';
 export { default as JinaProviderCard } from './jina';
 export { default as LMStudioProviderCard } from './lmstudio';
 export { default as LobeHubProviderCard } from './lobehub';
+export { default as MimoProviderCard } from './mimo';
 export { default as MinimaxProviderCard } from './minimax';
 export { default as MistralProviderCard } from './mistral';
 export { default as ModelScopeProviderCard } from './modelscope';

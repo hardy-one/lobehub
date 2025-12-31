@@ -108,7 +108,9 @@ export const buildGoogleMessage = async (
           args: safeParseJSON(tool.function.arguments)!,
           name: tool.function.name,
         },
-        thoughtSignature: tool.thoughtSignature,
+        // Always use the magic signature if tool doesn't have thoughtSignature
+        // This ensures Google API requirements are met
+        thoughtSignature: tool.thoughtSignature || GEMINI_MAGIC_THOUGHT_SIGNATURE,
       })),
       role: 'model',
     };
@@ -174,33 +176,12 @@ export const buildGoogleMessages = async (messages: OpenAIChatMessage[]): Promis
     (content: Content) => content.parts && content.parts.length > 0,
   );
 
-  // Check if the last message is a tool message
-  const lastMessage = messages.at(-1);
-  const shouldAddMagicSignature = lastMessage?.role === 'tool';
-
-  if (shouldAddMagicSignature) {
-    // Find the last user message index in filtered contents
-    let lastUserIndex = -1;
-    for (let i = filteredContents.length - 1; i >= 0; i--) {
-      if (filteredContents[i].role === 'user') {
-        // Skip if it's a functionResponse (tool result)
-        const hasFunctionResponse = filteredContents[i].parts?.some((p) => p.functionResponse);
-        if (!hasFunctionResponse) {
-          lastUserIndex = i;
-          break;
-        }
-      }
-    }
-
-    // Add magic signature to all function calls after last user message that don't have thoughtSignature
-    for (let i = lastUserIndex + 1; i < filteredContents.length; i++) {
-      const content = filteredContents[i];
-      if (content.role === 'model' && content.parts) {
-        for (const part of content.parts) {
-          if (part.functionCall && !part.thoughtSignature) {
-            // Only add magic signature if thoughtSignature doesn't exist
-            part.thoughtSignature = GEMINI_MAGIC_THOUGHT_SIGNATURE;
-          }
+  // Ensure all functionCall parts carry a thoughtSignature as required by Gemini
+  for (const content of filteredContents) {
+    if (content.role === 'model' && content.parts) {
+      for (const part of content.parts) {
+        if (part.functionCall && !part.thoughtSignature) {
+          part.thoughtSignature = GEMINI_MAGIC_THOUGHT_SIGNATURE;
         }
       }
     }

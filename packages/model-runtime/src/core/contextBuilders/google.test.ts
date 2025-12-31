@@ -233,6 +233,7 @@ describe('google contextBuilders', () => {
               args: { location: 'London', unit: 'celsius' },
               name: 'get_current_weather',
             },
+            thoughtSignature: GEMINI_MAGIC_THOUGHT_SIGNATURE,
           },
         ],
         role: 'model',
@@ -465,7 +466,7 @@ describe('google contextBuilders', () => {
         ]);
       });
 
-      it('should add magic signature only after last user message in multi-turn scenario', async () => {
+      it('should add magic signature to all function calls in multi-turn scenario', async () => {
         const messages: OpenAIChatMessage[] = [
           {
             content: 'First question',
@@ -531,7 +532,7 @@ describe('google contextBuilders', () => {
                   args: { query: 'first' },
                   name: 'search',
                 },
-                // No magic signature for this one (before last user message)
+                thoughtSignature: GEMINI_MAGIC_THOUGHT_SIGNATURE,
               },
             ],
             role: 'model',
@@ -558,7 +559,6 @@ describe('google contextBuilders', () => {
                   args: { query: 'second' },
                   name: 'search',
                 },
-                // Magic signature added (after last user message)
                 thoughtSignature: GEMINI_MAGIC_THOUGHT_SIGNATURE,
               },
             ],
@@ -578,7 +578,7 @@ describe('google contextBuilders', () => {
         ]);
       });
 
-      it('should NOT add magic signature when last message is user text message', async () => {
+      it('should add magic signature even when last message is user text message', async () => {
         const messages: OpenAIChatMessage[] = [
           {
             content: '<plugins>Web Browsing plugin available</plugins>',
@@ -637,7 +637,7 @@ describe('google contextBuilders', () => {
                   args: { query: '杭州天气', searchEngines: ['google'] },
                   name: 'lobe-web-browsing____search____builtin',
                 },
-                // No thoughtSignature should be added when last message is user text
+                thoughtSignature: GEMINI_MAGIC_THOUGHT_SIGNATURE,
               },
             ],
             role: 'model',

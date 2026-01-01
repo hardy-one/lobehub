@@ -78,6 +78,8 @@ export class ToolNameResolver {
           }
         }
 
+        const manifest = manifests[identifier];
+
         let payload: ChatToolPayload = {
           apiName,
           arguments: toolCall.function.arguments,
@@ -88,16 +90,19 @@ export class ToolNameResolver {
         };
 
         // Step 2: Resolve hashed apiName if needed
-        if (apiName.startsWith(PLUGIN_SCHEMA_API_MD5_PREFIX) && manifests[identifier]) {
+        if (apiName.startsWith(PLUGIN_SCHEMA_API_MD5_PREFIX) && manifest) {
           const md5 = apiName.replace(PLUGIN_SCHEMA_API_MD5_PREFIX, '');
-          const manifest = manifests[identifier];
-
           const api = manifest?.api.find(
             (api: LobeChatPluginApi) => this.genHash(api.name) === md5,
           );
           if (api) {
             payload.apiName = api.name;
           }
+        }
+
+        // If tool name didn't include type, fall back to manifest type
+        if ((!type || type === 'default') && manifest?.type && manifest.type !== 'default') {
+          payload.type = manifest.type as any;
         }
 
         return payload;

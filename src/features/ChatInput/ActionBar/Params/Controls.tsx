@@ -76,14 +76,18 @@ interface ParamControlWrapperProps {
 const ParamControlWrapper = memo<ParamControlWrapperProps>(
   ({ Component, value, onChange, disabled, checked, onToggle, styles }) => {
     return (
-      <div className={styles.sliderWrapper}>
+      <div
+        className={styles.sliderWrapper}
+        onClick={(event) => {
+          event.stopPropagation();
+        }}
+      >
         <Checkbox
           checked={checked}
           className={styles.checkbox}
           onChange={(v) => {
             onToggle(v);
           }}
-          onClick={(e) => e.stopPropagation()}
         />
         <div style={{ flex: 1 }}>
           <Component disabled={disabled} onChange={onChange} value={value} />

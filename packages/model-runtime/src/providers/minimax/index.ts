@@ -1,5 +1,6 @@
 import { ModelProvider, minimax as minimaxChatModels } from 'model-bank';
 
+import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatibleFactory';
 import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
 import { resolveParameters } from '../../core/parameterResolver';
 import { createMiniMaxImage } from './createImage';
@@ -9,14 +10,15 @@ export const getMinimaxMaxOutputs = (modelId: string): number | undefined => {
   return model ? model.maxOutput : undefined;
 };
 
-export const LobeMinimaxAI = createOpenAICompatibleRuntime({
+export const params = {
   baseURL: 'https://api.minimaxi.com/v1',
   chatCompletion: {
-    handlePayload: (payload) => {
-      const { enabledSearch, max_tokens, messages, temperature, top_p, ...params } = payload;
+    handlePayload: (payload: any) => {
+      const { max_tokens, messages, temperature, top_p, ...params } = payload;
 
-      // Interleaved thinking
+      // Process messages to handle reasoning and tool_calls
       const processedMessages = messages.map((message: any) => {
+        // Handle reasoning field for MiniMax
         if (message.role === 'assistant' && message.reasoning) {
           // 只处理没有 signature 的历史推理内容
           if (!message.reasoning.signature && message.reasoning.content) {
@@ -40,6 +42,25 @@ export const LobeMinimaxAI = createOpenAICompatibleRuntime({
           const { reasoning, ...messageWithoutReasoning } = message;
           return messageWithoutReasoning;
         }
+
+        // Handle tool_calls to ensure function.arguments is a string
+        // MiniMax API requires arguments to be a valid JSON string
+        if (message.tool_calls && Array.isArray(message.tool_calls)) {
+          return {
+            ...message,
+            tool_calls: message.tool_calls.map((toolCall: any) => ({
+              ...toolCall,
+              function: {
+                ...toolCall.function,
+                arguments:
+                  typeof toolCall.function?.arguments === 'string'
+                    ? toolCall.function.arguments
+                    : JSON.stringify(toolCall.function?.arguments || {}),
+              },
+            })),
+          };
+        }
+
         return message;
       });
 
@@ -77,4 +98,6 @@ export const LobeMinimaxAI = createOpenAICompatibleRuntime({
     chatCompletion: () => process.env.DEBUG_MINIMAX_CHAT_COMPLETION === '1',
   },
   provider: ModelProvider.Minimax,
-});
+} satisfies OpenAICompatibleFactoryOptions;
+
+export const LobeMinimaxAI = createOpenAICompatibleRuntime(params);

@@ -5,6 +5,7 @@ import { type ChatToolPayload, type RuntimeStepContext } from '@lobechat/types';
 import { PluginErrorType } from '@lobehub/chat-plugin-sdk';
 import debug from 'debug';
 import { t } from 'i18next';
+import { Md5 } from 'ts-md5';
 import { type StateCreator } from 'zustand/vanilla';
 
 import { type MCPToolCallResult } from '@/libs/mcp';
@@ -346,10 +347,11 @@ export const pluginTypes: StateCreator<
       const exportState = data.state as ExportFileState;
       if (exportState.downloadUrl && exportState.filename) {
         try {
-          // Generate a hash from the URL path (without query params) for deduplication
+          // Generate a stable hash from the URL path (without query params) for deduplication
+          // Format: ci-export-<32-char-md5> = 42 chars total (within varchar(64) limit)
           // Extract the path before query params: .../code-interpreter-exports/tpc_xxx/filename.ext
           const urlPath = exportState.downloadUrl.split('?')[0];
-          const hash = `ci-export-${btoa(urlPath).slice(0, 32)}`;
+          const hash = `ci-export-${Md5.hashStr(urlPath).toString()}`;
 
           // Use mimeType from state if available, otherwise infer from filename
           const mimeType = exportState.mimeType || getMimeTypeFromFilename(exportState.filename);

@@ -53,7 +53,8 @@ export const fileRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { isExist } = await ctx.fileModel.checkHash(input.hash!);
+      const checkResult = await ctx.fileModel.checkHash(input.hash!);
+      const { isExist } = checkResult;
 
       // Resolve parentId if it's a slug
       let resolvedParentId = input.parentId;
@@ -69,18 +70,31 @@ export const fileRouter = router({
       const s3Key = ctx.fileService.getKeyFromFullUrl(input.url);
 
       let actualSize = input.size;
-      try {
-        const { contentLength } = await ctx.fileService.getFileMetadata(s3Key);
-        if (contentLength >= 1) {
-          actualSize = contentLength;
+      // Only verify file metadata for new files
+      // For existing files, trust the database record
+      if (!isExist) {
+        try {
+          const { contentLength } = await ctx.fileService.getFileMetadata(s3Key);
+          if (contentLength >= 1) {
+            actualSize = contentLength;
+          }
+        } catch {
+          // If metadata fetch fails, use original size from input
         }
-      } catch {
-        // If metadata fetch fails, use original size from input
+      } else if (checkResult.size) {
+        // For existing files, use size from database
+        actualSize = checkResult.size;
       }
 
       if (actualSize < 1) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'File size must be at least 1 byte' });
       }
+
+      // For existing files, convert database URL to S3 key if needed
+      // For new files, use the extracted key from input URL
+      const finalUrl = isExist
+        ? ctx.fileService.getKeyFromFullUrl(checkResult.url || input.url)
+        : s3Key;
 
       const { id } = await ctx.fileModel.create(
         {
@@ -91,7 +105,7 @@ export const fileRouter = router({
           name: input.name,
           parentId: resolvedParentId,
           size: actualSize,
-          url: s3Key, // Store S3 key, not full URL
+          url: finalUrl, // Store S3 key, not full URL
         },
         // if the file is not exist in global file, create a new one
         !isExist,

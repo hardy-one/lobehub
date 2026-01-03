@@ -220,6 +220,32 @@ describe('ToolNameResolver', () => {
       expect(result[0].type).toBe('default');
     });
 
+    it('should fallback to manifest type when suffix is missing', () => {
+      const toolCalls = [
+        {
+          function: {
+            arguments: '{"command":"ls"}',
+            name: 'lobe-cloud-sandbox____runCommand',
+          },
+          id: 'call_1',
+          type: 'function',
+        },
+      ];
+
+      const manifests = {
+        'lobe-cloud-sandbox': {
+          api: [{ description: 'Run command', name: 'runCommand', parameters: {} }],
+          identifier: 'lobe-cloud-sandbox',
+          meta: {},
+          type: 'builtin' as const,
+        },
+      };
+
+      const result = resolver.resolve(toolCalls, manifests);
+
+      expect(result[0].type).toBe('builtin');
+    });
+
     it('should handle empty tool calls array', () => {
       const result = resolver.resolve([], {});
       expect(result).toEqual([]);

@@ -78,13 +78,21 @@ export class ToolNameResolver {
           }
         }
 
+        const manifestType = manifests[identifier]?.type;
+        const resolvedType =
+          type && type !== 'default'
+            ? type
+            : manifestType && manifestType !== 'default'
+              ? manifestType
+              : type;
+
         let payload: ChatToolPayload = {
           apiName,
           arguments: toolCall.function.arguments,
           id: toolCall.id,
           identifier,
           thoughtSignature: toolCall.thoughtSignature,
-          type: (type ?? 'default') as any,
+          type: (resolvedType ?? 'default') as any,
         };
 
         // Step 2: Resolve hashed apiName if needed

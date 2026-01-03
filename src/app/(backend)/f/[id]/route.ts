@@ -69,7 +69,8 @@ export const GET = async (_req: Request, segmentData: { params: Params }) => {
     const fileService = new FileService(db, file.userId);
 
     // Web: Generate S3 presigned URL (5 minutes expiry)
-    const redirectUrl = await fileService.createPreSignedUrlForPreview(file.url, 300);
+    // Use getFullFileUrl which correctly handles both legacy key format and full URL format
+    const redirectUrl = await fileService.getFullFileUrl(file.url, 300);
     log('Web S3 presigned URL generated (expires in 5 min)');
 
     // Cache the presigned URL in Redis

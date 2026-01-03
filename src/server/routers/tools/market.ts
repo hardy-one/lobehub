@@ -334,6 +334,7 @@ export const marketRouter = router({
       try {
         const documentModel = new DocumentModel(ctx.serverDB, ctx.userId);
         const fileModel = new FileModel(ctx.serverDB, ctx.userId);
+        const fileService = new FileService(ctx.serverDB, ctx.userId);
 
         // Verify the file exists
         const file = await fileModel.findById(fileId);
@@ -344,13 +345,16 @@ export const marketRouter = router({
           } as SaveExportedFileContentResult;
         }
 
+        // Extract S3 key from pre-signed URL if needed
+        const s3Key = fileService.getKeyFromFullUrl(url);
+
         // Create document record with the file content
         const document = await documentModel.create({
           content,
           fileId,
           fileType,
           filename,
-          source: url,
+          source: s3Key, // Store S3 key, not pre-signed URL
           sourceType: 'file',
           title: filename,
           totalCharCount: content.length,

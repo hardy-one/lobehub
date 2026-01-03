@@ -64,9 +64,13 @@ export const fileRouter = router({
         }
       }
 
+      // Extract S3 key from full URL if needed
+      // This handles both: direct keys and full pre-signed URLs
+      const s3Key = ctx.fileService.getKeyFromFullUrl(input.url);
+
       let actualSize = input.size;
       try {
-        const { contentLength } = await ctx.fileService.getFileMetadata(input.url);
+        const { contentLength } = await ctx.fileService.getFileMetadata(s3Key);
         if (contentLength >= 1) {
           actualSize = contentLength;
         }
@@ -87,7 +91,7 @@ export const fileRouter = router({
           name: input.name,
           parentId: resolvedParentId,
           size: actualSize,
-          url: input.url,
+          url: s3Key, // Store S3 key, not full URL
         },
         // if the file is not exist in global file, create a new one
         !isExist,

@@ -48,7 +48,7 @@ describe('LobeDeepSeekAI - custom features', () => {
       ]);
     });
 
-    it('should not modify messages without reasoning field', () => {
+    it('should not modify messages without reasoning field for deepseek-chat', () => {
       const payload = {
         messages: [
           { role: 'user', content: 'Hello' },
@@ -60,6 +60,111 @@ describe('LobeDeepSeekAI - custom features', () => {
       const result = params.chatCompletion!.handlePayload!(payload as any);
 
       expect(result.messages).toEqual(payload.messages);
+    });
+
+    it('should add empty reasoning_content to all assistant messages for reasoning models', () => {
+      const payload = {
+        messages: [
+          { role: 'user', content: 'Hello' },
+          { role: 'assistant', content: 'Hi there' },
+          { role: 'user', content: 'How are you?' },
+          { role: 'assistant', content: 'I am fine' },
+        ],
+        model: 'deepseek-reasoner',
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.messages).toEqual([
+        { role: 'user', content: 'Hello' },
+        { role: 'assistant', content: 'Hi there', reasoning_content: '' },
+        { role: 'user', content: 'How are you?' },
+        { role: 'assistant', content: 'I am fine', reasoning_content: '' },
+      ]);
+    });
+
+    it('should add empty reasoning_content to assistant messages with tool calls', () => {
+      const payload = {
+        messages: [
+          { role: 'user', content: 'What is the weather?' },
+          {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              {
+                id: 'call_123',
+                type: 'function',
+                function: {
+                  name: 'get_weather',
+                  arguments: '{"location": "Beijing"}',
+                },
+              },
+            ],
+          },
+          {
+            role: 'tool',
+            tool_call_id: 'call_123',
+            content: 'The weather is sunny',
+          },
+          {
+            role: 'assistant',
+            content: 'The weather in Beijing is sunny',
+          },
+        ],
+        model: 'deepseek-reasoner',
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.messages[1]).toMatchObject({
+        role: 'assistant',
+        reasoning_content: '',
+      });
+      expect(result.messages[3]).toMatchObject({
+        role: 'assistant',
+        content: 'The weather in Beijing is sunny',
+        reasoning_content: '',
+      });
+    });
+
+    it('should preserve existing reasoning_content field', () => {
+      const payload = {
+        messages: [
+          { role: 'user', content: 'Hello' },
+          {
+            role: 'assistant',
+            content: 'Hi there',
+            reasoning_content: 'Let me think about this...',
+          },
+        ],
+        model: 'deepseek-reasoner',
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.messages[1]).toEqual({
+        role: 'assistant',
+        content: 'Hi there',
+        reasoning_content: 'Let me think about this...',
+      });
+    });
+
+    it('should handle deepseek-r1 model as reasoning model', () => {
+      const payload = {
+        messages: [
+          { role: 'user', content: 'Hello' },
+          { role: 'assistant', content: 'Hi there' },
+        ],
+        model: 'deepseek-r1',
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.messages[1]).toMatchObject({
+        role: 'assistant',
+        content: 'Hi there',
+        reasoning_content: '',
+      });
     });
 
     it('should handle empty reasoning content', () => {
@@ -76,9 +181,12 @@ describe('LobeDeepSeekAI - custom features', () => {
 
       const result = params.chatCompletion!.handlePayload!(payload as any);
 
+      // For reasoning models, even when reasoning object has no content,
+      // should add empty reasoning_content field
       expect(result.messages[0]).toEqual({
         role: 'assistant',
         content: 'Response',
+        reasoning_content: '',
       });
     });
 

@@ -14,6 +14,9 @@ export const params = {
   baseURL: 'https://api.deepseek.com/v1',
   chatCompletion: {
     handlePayload: (payload) => {
+      // Check if this is a reasoning model (deepseek-reasoner, deepseek-r1, etc.)
+      const isReasoningModel = /reasoner|r1/i.test(payload.model || '');
+
       // Transform reasoning object to reasoning_content string for multi-turn conversations
       const messages = payload.messages.map((message: any) => {
         // Only transform if message has reasoning.content
@@ -24,9 +27,24 @@ export const params = {
             reasoning_content: reasoning.content,
           };
         }
-        // If message has reasoning but no content, remove reasoning field entirely
-        delete message.reasoning;
-        return message;
+
+        // Remove reasoning field if present (without content)
+        const messageWithoutReasoning =
+          'reasoning' in message
+            ? Object.fromEntries(Object.entries(message).filter(([key]) => key !== 'reasoning'))
+            : message;
+
+        // For reasoning models, ensure all assistant messages have reasoning_content field
+        // to comply with DeepSeek API requirement for multi-turn conversations with tool calls
+        // Ref: https://api-docs.deepseek.com/guides/thinking_mode#tool-calls
+        if (isReasoningModel && message.role === 'assistant' && !('reasoning_content' in message)) {
+          return {
+            ...messageWithoutReasoning,
+            reasoning_content: '',
+          };
+        }
+
+        return messageWithoutReasoning;
       });
 
       return {

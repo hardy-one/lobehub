@@ -24,6 +24,22 @@ import { dbMessageSelectors } from '../../message/selectors';
 
 const log = debug('lobe-store:plugin-types');
 
+const normalizeToolArguments = (raw: unknown): Record<string, any> | undefined => {
+  if (!raw) return undefined;
+  if (typeof raw === 'string') return safeParseJSON(raw);
+  if (typeof raw === 'object') return raw as Record<string, any>;
+  return undefined;
+};
+
+const buildInvalidArgsUpdate = (raw: unknown) => ({
+  content: 'Invalid tool arguments.',
+  pluginError: {
+    body: { arguments: raw },
+    message: 'Invalid tool arguments.',
+    type: PluginErrorType.PluginApiParamsError as any,
+  },
+});
+
 /**
  * Get MIME type from filename extension
  */
@@ -142,17 +158,27 @@ export const pluginTypes: StateCreator<
       return await get().invokeCloudCodeInterpreterTool(id, payload);
     }
 
-    const params = safeParseJSON(payload.arguments);
-    if (!params) return { error: 'Invalid arguments', success: false };
+    const operationId = get().messageOperationMap[id];
+    const context = operationId ? { operationId } : undefined;
+
+    const params = normalizeToolArguments(payload.arguments);
+    if (!params) {
+      log(
+        '[invokeBuiltinTool] Invalid arguments: %s/%s, messageId=%s',
+        payload.identifier,
+        payload.apiName,
+        id,
+      );
+      await get().optimisticUpdateToolMessage(id, buildInvalidArgsUpdate(payload.arguments), context);
+      return { error: 'Invalid arguments', success: false };
+    }
 
     // Check if there's a registered executor in Tool Store (new architecture)
     if (hasExecutor(payload.identifier, payload.apiName)) {
       const { optimisticUpdateToolMessage, registerAfterCompletionCallback } = get();
 
       // Get operation context
-      const operationId = get().messageOperationMap[id];
       const operation = operationId ? get().operations[operationId] : undefined;
-      const context = operationId ? { operationId } : undefined;
 
       // Get agent ID, group ID, and topic ID from operation context
       const agentId = operation?.context?.agentId;
@@ -254,9 +280,11 @@ export const pluginTypes: StateCreator<
       return;
     }
 
-    const content = safeParseJSON(payload.arguments);
-
-    if (!content) return;
+    const content = normalizeToolArguments(payload.arguments);
+    if (!content) {
+      await get().optimisticUpdateToolMessage(id, buildInvalidArgsUpdate(payload.arguments), context);
+      return;
+    }
 
     return await action(id, content);
   },

@@ -11,6 +11,9 @@ export interface TodoListRenderState {
   todos?: TodoListType;
 }
 
+// Maximum height for the todo list container (approximately 8-9 items visible)
+const MAX_LIST_HEIGHT = 360;
+
 // Styles matching TodoItemRow in SortableTodoList
 const styles = createStaticStyles(({ css, cssVar }) => ({
   itemRow: css`
@@ -22,6 +25,10 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
     &:last-child {
       border-block-end: none;
     }
+  `,
+  scrollContainer: css`
+    overflow: hidden auto;
+    max-height: ${MAX_LIST_HEIGHT}px;
   `,
   textChecked: css`
     color: ${cssVar.colorTextQuaternary};
@@ -71,7 +78,7 @@ const TodoListUI = memo<TodoListUIProps>(({ items }) => {
 
   return (
     // Outer container with background - matches AddTodoIntervention
-    <Block variant={'outlined'} width="100%">
+    <Block className={styles.scrollContainer} variant={'outlined'} width="100%">
       {items.map((item, index) => (
         <ReadOnlyTodoItem completed={item.completed} key={index} text={item.text} />
       ))}

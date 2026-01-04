@@ -2,9 +2,20 @@
 
 import { BuiltinInterventionProps } from '@lobechat/types';
 import { Block } from '@lobehub/ui';
+import { createStaticStyles } from 'antd-style';
 import isEqual from 'fast-deep-equal';
 import { memo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+
+// Maximum height for the todo list container (approximately 8-9 items visible)
+const MAX_LIST_HEIGHT = 360;
+
+const styles = createStaticStyles(({ css }) => ({
+  scrollContainer: css`
+    overflow: hidden auto;
+    max-height: ${MAX_LIST_HEIGHT}px;
+  `,
+}));
 
 import type { CreateTodosParams, TodoItem } from '../../types';
 import { SortableTodoList } from '../components';
@@ -29,7 +40,7 @@ const AddTodoIntervention = memo<BuiltinInterventionProps<CreateTodosParams>>(
     );
 
     return (
-      <Block variant={'outlined'}>
+      <Block className={styles.scrollContainer} variant={'outlined'}>
         <SortableTodoList
           defaultItems={defaultItems}
           onSave={handleSave}

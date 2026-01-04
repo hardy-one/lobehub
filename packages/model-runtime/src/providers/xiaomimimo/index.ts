@@ -22,7 +22,7 @@ export const params = {
       return {
         ...rest,
         max_completion_tokens: max_tokens,
-        stream: stream ?? true,
+        stream: false, // 使用非流模式
         ...(typeof temperature === 'number'
           ? { temperature: clamp(temperature, 0, 1.5) }
           : undefined),

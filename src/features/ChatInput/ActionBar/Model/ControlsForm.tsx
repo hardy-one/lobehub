@@ -81,11 +81,20 @@ const ControlsForm = memo(() => {
       children: <Switch />,
       desc: (
         <span style={isNarrow ? descNarrow : descWide}>
-          <Trans i18nKey={'extendParams.enableReasoning.desc'} ns={'chat'}>
+          <Trans
+            i18nKey={
+              provider === 'xiaomimimo'
+                ? 'extendParams.enableReasoning.desc.xiaomimimo'
+                : 'extendParams.enableReasoning.desc'
+            }
+            ns={'chat'}
+          >
             基于 Claude Thinking 机制限制（
             <Link
               href={
-                'https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking?utm_source=lobechat#why-thinking-blocks-must-be-preserved'
+                provider === 'xiaomimimo'
+                  ? 'https://platform.xiaomimimo.com/docs?utm_source=lobechat'
+                  : 'https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking?utm_source=lobechat#why-thinking-blocks-must-be-preserved'
               }
               rel={'nofollow'}
             >

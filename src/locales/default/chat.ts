@@ -71,6 +71,8 @@ export default {
   'extendParams.disableContextCaching.title': 'Enable Context Caching',
   'extendParams.enableReasoning.desc':
     'Based on the Claude Thinking mechanism limit, enabling this will automatically disable the limit on the number of historical messages. <1>Learn more</1>',
+  'extendParams.enableReasoning.desc.xiaomimimo':
+    'Enable deep thinking for the MiMo model. Note: When using tool calls, thinking will be automatically disabled to ensure stable output. <1>Learn more</1>',
   'extendParams.enableReasoning.title': 'Enable Deep Thinking',
   'extendParams.imageAspectRatio.title': 'Image Aspect Ratio',
   'extendParams.imageResolution.title': 'Image Resolution',

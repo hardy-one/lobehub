@@ -16,13 +16,18 @@ export const params = {
   baseURL: 'https://api.xiaomimimo.com/v1',
   chatCompletion: {
     handlePayload: (payload) => {
-      const { thinking, temperature, top_p, max_tokens, stream, ...rest } = payload as any;
-      const thinkingType = thinking?.type;
+      const { thinking, temperature, top_p, max_tokens, stream, tools, ...rest } = payload as any;
+      const hasTools = tools && tools.length > 0;
+
+      // When tools are present, automatically disable thinking to avoid unstable output
+      // See: https://platform.xiaomimimo.com/docs for model recommendations
+      const thinkingType = hasTools ? 'disabled' : thinking?.type;
 
       return {
         ...rest,
         max_completion_tokens: max_tokens,
         stream: stream ?? true,
+        tools,
         ...(typeof temperature === 'number'
           ? { temperature: clamp(temperature, 0, 1.5) }
           : undefined),

@@ -207,6 +207,83 @@ class GTDExecutor extends BaseExecutor<typeof GTDApiNameEnum> {
   };
 
   /**
+   * Mark todo items as done by their indices
+   */
+  completeTodos = async (
+    params: CompleteTodosParams,
+    ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> => {
+    const { indices } = params;
+
+    if (!indices || indices.length === 0) {
+      return {
+        content: 'No indices provided to complete.',
+        success: false,
+      };
+    }
+
+    const existingTodos = getTodosFromContext(ctx);
+
+    if (existingTodos.length === 0) {
+      const now = new Date().toISOString();
+      return {
+        content: 'No todos to complete. The list is empty.\n\n' + formatTodoStateSummary([], now),
+        state: {
+          completedIndices: [],
+          todos: { items: [], updatedAt: now },
+        },
+        success: true,
+      };
+    }
+
+    // Validate indices
+    const validIndices = indices.filter((i: number) => i >= 0 && i < existingTodos.length);
+    const invalidIndices = indices.filter((i: number) => i < 0 || i >= existingTodos.length);
+
+    if (validIndices.length === 0) {
+      return {
+        content: `Invalid indices: ${indices.join(', ')}. Valid range is 0-${existingTodos.length - 1}.`,
+        success: false,
+      };
+    }
+
+    // Mark items as completed
+    const updatedTodos = existingTodos.map((todo, index) => {
+      if (validIndices.includes(index)) {
+        return { ...todo, completed: true };
+      }
+      return todo;
+    });
+
+    const completedItems = validIndices.map((i: number) => existingTodos[i].text);
+    const now = new Date().toISOString();
+
+    // Format response: action summary + todo state
+    let actionSummary = `✔️ Completed ${validIndices.length} item${validIndices.length > 1 ? 's' : ''}:\n`;
+    actionSummary += completedItems.map((text: string) => `- ${text}`).join('\n');
+
+    if (invalidIndices.length > 0) {
+      actionSummary += `\n\nNote: Ignored invalid indices: ${invalidIndices.join(', ')}`;
+    }
+
+    const todoState = { items: updatedTodos, updatedAt: now };
+
+    // Sync todos to Plan document if topic exists
+    if (ctx.topicId) {
+      await syncTodosToPlan(ctx.topicId, todoState);
+    }
+
+    return {
+      content: actionSummary + '\n\n' + formatTodoStateSummary(updatedTodos, now),
+      state: {
+        completedIndices: validIndices,
+        todos: todoState,
+      },
+      success: true,
+    };
+  };
+
+  /**
    * Remove todo items by indices
    */
   removeTodos = async (

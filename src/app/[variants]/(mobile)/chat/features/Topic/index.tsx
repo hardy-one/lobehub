@@ -1,6 +1,7 @@
 import { Flexbox } from '@lobehub/ui';
 
 import TopicSearchBar from '@/app/[variants]/(main)/agent/_layout/Sidebar/Topic/TopicSearchBar';
+import TopicList from '@/app/[variants]/(main)/agent/_layout/Sidebar/Topic/List';
 
 import TopicModal from './features/TopicModal';
 
@@ -11,10 +12,10 @@ const Topic = () => {
         <TopicSearchBar />
         <Flexbox
           height={'100%'}
-          style={{ marginInline: -8, overflow: 'hidden', position: 'relative' }}
+          style={{ marginInline: -8, overflowX: 'hidden', overflowY: 'auto', position: 'relative' }}
           width={'calc(100% + 16px)'}
         >
-          <Topic />
+          <TopicList />
         </Flexbox>
       </Flexbox>
     </TopicModal>

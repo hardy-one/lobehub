@@ -4,6 +4,10 @@ import { type ReactNode, memo, useState } from 'react';
 
 export interface CheckboxItemProps {
   checked?: boolean;
+  /**
+   * Whether the checkbox is disabled (cannot be toggled)
+   */
+  disabled?: boolean;
   hasPadding?: boolean;
   id: string;
   label?: ReactNode;
@@ -11,10 +15,11 @@ export interface CheckboxItemProps {
 }
 
 const CheckboxItem = memo<CheckboxItemProps>(
-  ({ id, onUpdate, label, checked, hasPadding = true }) => {
+  ({ id, onUpdate, label, checked, disabled, hasPadding = true }) => {
     const [loading, setLoading] = useState(false);
 
     const updateState = async () => {
+      if (disabled) return;
       setLoading(true);
       await onUpdate(id, !checked);
       setLoading(false);
@@ -28,15 +33,17 @@ const CheckboxItem = memo<CheckboxItemProps>(
         justify={'space-between'}
         onClick={async (e) => {
           e.stopPropagation();
-          updateState();
+          if (!disabled) updateState();
         }}
-        style={
-          hasPadding
+        style={{
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          opacity: disabled ? 0.6 : 1,
+          ...(hasPadding
             ? {
                 paddingLeft: 8,
               }
-            : void 0
-        }
+            : {}),
+        }}
       >
         {label || id}
         {loading ? (
@@ -46,9 +53,10 @@ const CheckboxItem = memo<CheckboxItemProps>(
         ) : (
           <Checkbox
             checked={checked}
+            disabled={disabled}
             onClick={async (e) => {
               e.stopPropagation();
-              await updateState();
+              if (!disabled) await updateState();
             }}
           />
         )}

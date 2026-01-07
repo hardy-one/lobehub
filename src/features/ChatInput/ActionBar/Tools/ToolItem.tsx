@@ -7,12 +7,13 @@ import { customPluginSelectors } from '@/store/tool/selectors';
 
 import CheckboxItem, { type CheckboxItemProps } from '../components/CheckboxWithLoading';
 
-const ToolItem = memo<CheckboxItemProps>(({ id, onUpdate, label, checked }) => {
+const ToolItem = memo<CheckboxItemProps>(({ id, onUpdate, label, checked, disabled }) => {
   const isCustom = useToolStore((s) => customPluginSelectors.isCustomPlugin(id)(s));
 
   return (
     <CheckboxItem
       checked={checked}
+      disabled={disabled}
       hasPadding={false}
       id={id}
       label={

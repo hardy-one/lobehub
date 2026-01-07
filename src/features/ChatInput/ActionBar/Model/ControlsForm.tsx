@@ -31,9 +31,11 @@ const ControlsForm = memo(() => {
   const { t } = useTranslation('chat');
   const agentId = useAgentId();
   const { updateAgentChatConfig } = useUpdateAgentConfig();
-  const [model, provider] = useAgentStore((s) => [
+  const [model, provider, plugins, isSearchEnabled] = useAgentStore((s) => [
     agentByIdSelectors.getAgentModelById(agentId)(s),
     agentByIdSelectors.getAgentModelProviderById(agentId)(s),
+    agentByIdSelectors.getAgentPluginsById(agentId)(s),
+    chatConfigByIdSelectors.isEnableSearchById(agentId)(s),
   ]);
   const [form] = Form.useForm();
   const enableReasoning = AntdForm.useWatch(['enableReasoning'], form);
@@ -44,6 +46,11 @@ const ControlsForm = memo(() => {
   );
 
   const modelExtendParams = useAiInfraStore(aiModelSelectors.modelExtendParams(model, provider));
+
+  // For xiaomimimo provider, disable thinking when tools or search are enabled
+  const hasEnabledTools = (plugins && plugins.length > 0) || isSearchEnabled;
+  const isXiaomiMiMo = provider === 'xiaomimimo';
+  const shouldDisableReasoning = isXiaomiMiMo && hasEnabledTools;
 
   const screens = Grid.useBreakpoint();
   const isNarrow = !screens.sm;
@@ -78,14 +85,30 @@ const ControlsForm = memo(() => {
       name: 'disableContextCaching',
     },
     {
-      children: <Switch />,
+      children: (
+        <Switch
+          checked={shouldDisableReasoning ? false : undefined}
+          disabled={shouldDisableReasoning}
+        />
+      ),
       desc: (
         <span style={isNarrow ? descNarrow : descWide}>
-          <Trans i18nKey={'extendParams.enableReasoning.desc'} ns={'chat'}>
+          <Trans
+            i18nKey={
+              shouldDisableReasoning
+                ? 'extendParams.enableReasoning.desc.xiaomimimo.disabled'
+                : provider === 'xiaomimimo'
+                  ? 'extendParams.enableReasoning.desc.xiaomimimo'
+                  : 'extendParams.enableReasoning.desc'
+            }
+            ns={'chat'}
+          >
             基于 Claude Thinking 机制限制（
             <Link
               href={
-                'https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking?utm_source=lobechat#why-thinking-blocks-must-be-preserved'
+                provider === 'xiaomimimo'
+                  ? 'https://platform.xiaomimimo.com/docs?utm_source=lobechat'
+                  : 'https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking?utm_source=lobechat#why-thinking-blocks-must-be-preserved'
               }
               rel={'nofollow'}
             >

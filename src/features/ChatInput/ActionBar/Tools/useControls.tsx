@@ -1,3 +1,4 @@
+import { STANDARD_INBOX_TOOLS } from '@lobechat/builtin-agents';
 import {
   KLAVIS_SERVER_TYPES,
   type KlavisServerType,
@@ -15,7 +16,7 @@ import PluginAvatar from '@/components/Plugins/PluginAvatar';
 import { useCheckPluginsIsInstalled } from '@/hooks/useCheckPluginsIsInstalled';
 import { useFetchInstalledPlugins } from '@/hooks/useFetchInstalledPlugins';
 import { useAgentStore } from '@/store/agent';
-import { agentByIdSelectors } from '@/store/agent/selectors';
+import { agentByIdSelectors, builtinAgentSelectors } from '@/store/agent/selectors';
 import { serverConfigSelectors, useServerConfigStore } from '@/store/serverConfig';
 import { useToolStore } from '@/store/tool';
 import {
@@ -29,6 +30,9 @@ import { useAgentId } from '../../hooks/useAgentId';
 import KlavisServerItem from './KlavisServerItem';
 import LobehubSkillServerItem from './LobehubSkillServerItem';
 import ToolItem from './ToolItem';
+
+// Set of standard inbox tools for quick lookup
+const STANDARD_INBOX_TOOLS_SET: Set<string> = new Set(STANDARD_INBOX_TOOLS);
 
 /**
  * Klavis 服务器图标组件
@@ -81,6 +85,11 @@ export const useControls = ({ setUpdating }: { setUpdating: (updating: boolean) 
   // Klavis 相关状态
   const allKlavisServers = useToolStore(klavisStoreSelectors.getServers, isEqual);
   const isKlavisEnabledInEnv = useServerConfigStore(serverConfigSelectors.enableKlavis);
+  // Standard inbox tools configuration - only applies to inbox agent
+  const enableStandardInboxTools = useServerConfigStore(
+    serverConfigSelectors.enableStandardInboxTools,
+  );
+  const isInboxAgent = useAgentStore(builtinAgentSelectors.isInboxAgent);
 
   // LobeHub Skill 相关状态
   const allLobehubSkillServers = useToolStore(lobehubSkillStoreSelectors.getServers, isEqual);
@@ -159,31 +168,48 @@ export const useControls = ({ setUpdating }: { setUpdating: (updating: boolean) 
   // 合并 builtin 工具、Klavis 服务器和 LobeHub Skill Provider
   const builtinItems = useMemo(
     () => [
-      // 原有的 builtin 工具
-      ...filteredBuiltinList.map((item) => ({
-        icon: (
-          <Avatar avatar={item.meta.avatar} shape={'square'} size={20} style={{ flex: 'none' }} />
-        ),
-        key: item.identifier,
-        label: (
-          <ToolItem
-            checked={checked.includes(item.identifier)}
-            id={item.identifier}
-            label={item.meta?.title}
-            onUpdate={async () => {
-              setUpdating(true);
-              await togglePlugin(item.identifier);
-              setUpdating(false);
-            }}
-          />
-        ),
-      })),
+      // 原有的 builtin 工具（合并标准收件箱工具逻辑）
+      ...filteredBuiltinList.map((item) => {
+        // Check if this is a standard inbox tool that should be forced-enabled
+        // Only applies to inbox agent when enableStandardInboxTools is true
+        const isStandardTool = STANDARD_INBOX_TOOLS_SET.has(item.identifier);
+        const isForceEnabled = isInboxAgent && enableStandardInboxTools && isStandardTool;
+
+        return {
+          icon: (
+            <Avatar avatar={item.meta.avatar} shape={'square'} size={20} style={{ flex: 'none' }} />
+          ),
+          key: item.identifier,
+          label: (
+            <ToolItem
+              checked={isForceEnabled || checked.includes(item.identifier)}
+              disabled={isForceEnabled}
+              id={item.identifier}
+              label={item.meta?.title}
+              onUpdate={async () => {
+                setUpdating(true);
+                await togglePlugin(item.identifier);
+                setUpdating(false);
+              }}
+            />
+          ),
+        };
+      }),
       // LobeHub Skill Providers
       ...lobehubSkillItems,
       // Klavis 服务器
       ...klavisServerItems,
     ],
-    [filteredBuiltinList, klavisServerItems, lobehubSkillItems, checked, togglePlugin, setUpdating],
+    [
+      filteredBuiltinList,
+      klavisServerItems,
+      lobehubSkillItems,
+      checked,
+      togglePlugin,
+      setUpdating,
+      enableStandardInboxTools,
+      isInboxAgent,
+    ],
   );
 
   // 市场 tab 的 items
@@ -236,25 +262,37 @@ export const useControls = ({ setUpdating }: { setUpdating: (updating: boolean) 
 
     // 已安装的 builtin 工具
     const enabledBuiltinItems = filteredBuiltinList
-      .filter((item) => checked.includes(item.identifier))
-      .map((item) => ({
-        icon: (
-          <Avatar avatar={item.meta.avatar} shape={'square'} size={20} style={{ flex: 'none' }} />
-        ),
-        key: item.identifier,
-        label: (
-          <ToolItem
-            checked={true}
-            id={item.identifier}
-            label={item.meta?.title}
-            onUpdate={async () => {
-              setUpdating(true);
-              await togglePlugin(item.identifier);
-              setUpdating(false);
-            }}
-          />
-        ),
-      }));
+      .filter((item) => {
+        // Check if tool is enabled (either in checked list or force-enabled)
+        const isStandardTool = STANDARD_INBOX_TOOLS_SET.has(item.identifier);
+        const isForceEnabled = isInboxAgent && enableStandardInboxTools && isStandardTool;
+        return isForceEnabled || checked.includes(item.identifier);
+      })
+      .map((item) => {
+        // Determine if this tool is force-enabled
+        const isStandardTool = STANDARD_INBOX_TOOLS_SET.has(item.identifier);
+        const isForceEnabled = isInboxAgent && enableStandardInboxTools && isStandardTool;
+
+        return {
+          icon: (
+            <Avatar avatar={item.meta.avatar} shape={'square'} size={20} style={{ flex: 'none' }} />
+          ),
+          key: item.identifier,
+          label: (
+            <ToolItem
+              checked={true}
+              disabled={isForceEnabled}
+              id={item.identifier}
+              label={item.meta?.title}
+              onUpdate={async () => {
+                setUpdating(true);
+                await togglePlugin(item.identifier);
+                setUpdating(false);
+              }}
+            />
+          ),
+        };
+      });
 
     // 已连接的 Klavis 服务器（放在 builtin 里面）
     const connectedKlavisItems = klavisServerItems.filter((item) =>
@@ -325,6 +363,8 @@ export const useControls = ({ setUpdating }: { setUpdating: (updating: boolean) 
     togglePlugin,
     setUpdating,
     t,
+    enableStandardInboxTools,
+    isInboxAgent,
   ]);
 
   return { installedPluginItems, marketItems };

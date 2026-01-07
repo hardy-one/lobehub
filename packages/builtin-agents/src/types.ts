@@ -48,6 +48,13 @@ export interface RuntimeContext {
   /** Document content for PageAgent */
   documentContent?: string;
 
+  /**
+   * Whether standard tools (GTD, Notebook, etc.) should be enabled for inbox agent.
+   * Controlled by ENABLE_STANDARD_INBOX_TOOLS environment variable.
+   * Default: true (enabled)
+   */
+  enableStandardInboxTools?: boolean;
+
   /** Context for GroupSupervisor */
   groupSupervisorContext?: GroupSupervisorContext;
 

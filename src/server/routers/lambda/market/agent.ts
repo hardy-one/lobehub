@@ -94,25 +94,82 @@ const fetchMarketUserInfo = async (
 const agentProcedure = authedProcedure
   .use(serverDatabase)
   .use(marketUserInfo)
-  .use(marketSDK)
   .use(async ({ ctx, next }) => {
     // Import UserModel dynamically to avoid circular dependencies
     const { UserModel } = await import('@/database/models/user');
+    const { MarketSDK } = await import('@lobehub/market-sdk');
+    const { serialize } = await import('cookie');
     const userModel = new UserModel(ctx.serverDB, ctx.userId);
 
-    // Get user's market accessToken from database (stored by MarketAuthProvider after OIDC login)
-    let marketOidcAccessToken: string | undefined;
-    try {
-      const userState = await userModel.getUserState(async () => ({}));
-      marketOidcAccessToken = userState.settings?.market?.accessToken;
-      log('marketOidcAccessToken from DB exists=%s', !!marketOidcAccessToken);
-    } catch (error) {
-      log('Failed to get marketOidcAccessToken from DB: %O', error);
+    // Use cookie token if available, otherwise fetch from database
+    let accessToken = ctx.marketAccessToken;
+    let tokenSource = 'cookie';
+
+    // If cookie doesn't exist, try to get OIDC token from database
+    if (!accessToken) {
+      try {
+        const userState = await userModel.getUserState(async () => ({}));
+        const marketOidcAccessToken = userState.settings?.market?.accessToken;
+        const tokenExpiration = userState.settings?.market?.expiresAt;
+
+        if (marketOidcAccessToken && tokenExpiration) {
+          const expirationTime = new Date(tokenExpiration);
+          const now = new Date();
+
+          // Only use and set cookie if token hasn't expired
+          if (expirationTime > now) {
+            accessToken = marketOidcAccessToken;
+            tokenSource = 'database';
+
+            // Set cookie for future requests
+            const tokenCookie = serialize('mp_token', marketOidcAccessToken, {
+              expires: expirationTime,
+              httpOnly: true,
+              path: '/',
+              sameSite: 'lax',
+              secure: process.env.NODE_ENV === 'production',
+            });
+
+            const statusCookie = serialize('mp_token_status', 'active', {
+              expires: expirationTime,
+              httpOnly: false,
+              path: '/',
+              sameSite: 'lax',
+              secure: process.env.NODE_ENV === 'production',
+            });
+
+            ctx.resHeaders?.append('Set-Cookie', tokenCookie);
+            ctx.resHeaders?.append('Set-Cookie', statusCookie);
+            log('Set mp_token cookie from database OIDC token, expires at %s', expirationTime.toISOString());
+          } else {
+            log('OIDC token in database has expired at %s', expirationTime.toISOString());
+          }
+        } else {
+          log('No OIDC token found in database');
+        }
+      } catch (error) {
+        log('Failed to get marketOidcAccessToken from DB: %O', error);
+      }
     }
+
+    // Generate trusted client token
+    const { generateTrustedClientToken } = await import('@/libs/trusted-client');
+    const trustedClientToken = ctx.marketUserInfo
+      ? generateTrustedClientToken(ctx.marketUserInfo)
+      : undefined;
+
+    // Initialize MarketSDK with token and trustedClientToken
+    const market = new MarketSDK({
+      accessToken,
+      baseURL: process.env.NEXT_PUBLIC_MARKET_BASE_URL,
+      trustedClientToken,
+    });
+
+    log('Using MarketSDK with accessToken from %s, trustedClientToken=%s', tokenSource, !!trustedClientToken);
 
     return next({
       ctx: {
-        marketOidcAccessToken,
+        marketSDK: market,
       },
     });
   });

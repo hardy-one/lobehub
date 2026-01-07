@@ -12,7 +12,7 @@ export * from './types';
 export { AGENT_BUILDER } from './agents/agent-builder';
 export { GROUP_AGENT_BUILDER } from './agents/group-agent-builder';
 export { GROUP_SUPERVISOR } from './agents/group-supervisor';
-export { INBOX } from './agents/inbox';
+export { INBOX, STANDARD_INBOX_TOOLS } from './agents/inbox';
 export { PAGE_AGENT } from './agents/page-agent';
 
 /**

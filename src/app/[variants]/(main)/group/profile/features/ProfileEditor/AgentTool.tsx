@@ -148,22 +148,24 @@ const AgentTool = memo(() => {
   const builtinItems = useMemo(
     () => [
       // 原有的 builtin 工具
-      ...filteredBuiltinList.map((item) => ({
-        icon: <Avatar avatar={item.meta.avatar} size={20} style={{ flex: 'none' }} />,
-        key: item.identifier,
-        label: (
-          <ToolItem
-            checked={plugins.includes(item.identifier)}
-            id={item.identifier}
-            label={item.meta?.title}
-            onUpdate={async () => {
-              setUpdating(true);
-              await toggleAgentPlugin(item.identifier);
-              setUpdating(false);
-            }}
-          />
-        ),
-      })),
+      ...filteredBuiltinList.map((item) => {
+        return {
+          icon: <Avatar avatar={item.meta.avatar} size={20} style={{ flex: 'none' }} />,
+          key: item.identifier,
+          label: (
+            <ToolItem
+              checked={plugins.includes(item.identifier)}
+              id={item.identifier}
+              label={item.meta?.title}
+              onUpdate={async () => {
+                setUpdating(true);
+                await toggleAgentPlugin(item.identifier);
+                setUpdating(false);
+              }}
+            />
+          ),
+        };
+      }),
       // Klavis 服务器
       ...klavisServerItems,
     ],

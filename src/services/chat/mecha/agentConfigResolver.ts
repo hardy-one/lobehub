@@ -49,7 +49,7 @@ export interface AgentConfigResolverContext {
   agentId: string;
 
   // Builtin agent specific context
-/** Document content for page-agent */
+  /** Document content for page-agent */
   documentContent?: string;
 
   /** Current model being used (for template variables) */
@@ -187,8 +187,15 @@ export const resolveAgentConfig = (ctx: AgentConfigResolverContext): ResolvedAge
   }
 
   // Builtin agent - merge runtime config
+  // Get enableStandardInboxTools from serverConfig
+  const enableStandardInboxTools =
+    typeof window !== 'undefined'
+      ? window.global_serverConfigStore?.getState()?.serverConfig?.enableStandardInboxTools ?? true
+      : true;
+
   const runtimeConfig = getAgentRuntimeConfig(slug, {
     documentContent,
+    enableStandardInboxTools,
     groupSupervisorContext,
     model,
     plugins,

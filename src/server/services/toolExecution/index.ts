@@ -35,13 +35,22 @@ export class ToolExecutionService {
   ): Promise<ToolExecutionResultResponse> {
     const { identifier, apiName, type } = payload;
 
-    log('Executing tool: %s:%s (type: %s)', identifier, apiName, type);
+    const manifestType = context.toolManifestMap[identifier]?.type as string | undefined;
+    const typeStr = type as string | undefined;
+    const normalizedType =
+      (!typeStr || typeStr === 'default') && manifestType ? manifestType : typeStr;
+
+    log(
+      'Executing tool: %s:%s (type: %s)',
+      identifier,
+      apiName,
+      normalizedType || typeStr,
+    );
 
     const startTime = Date.now();
     try {
-      const typeStr = type as string;
       let data: ToolExecutionResult;
-      switch (typeStr) {
+      switch (normalizedType) {
         case 'builtin': {
           data = await this.builtinToolsExecutor.execute(payload, context);
           break;

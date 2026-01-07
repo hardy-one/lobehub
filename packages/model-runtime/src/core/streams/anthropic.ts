@@ -47,7 +47,8 @@ export const transformAnthropicStream = (
         }
 
         case 'text': {
-          return { data: chunk.content_block.text, id: context.id, type: 'data' };
+          const text = typeof chunk.content_block.text === 'string' ? chunk.content_block.text : '';
+          return { data: text, id: context.id, type: 'data' };
         }
 
         case 'server_tool_use':

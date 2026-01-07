@@ -389,6 +389,39 @@ describe('convertUsage', () => {
 
     expect(result.cost).toBeCloseTo(2, 10);
   });
+
+  it('should preserve inputCacheMissTokens when all tokens are cached (MiniMax-M2 scenario)', () => {
+    // Arrange - Simulating MiniMax-M2.1 where all prompt tokens are cached
+    const minimaxUsage = {
+      prompt_tokens: 4629,
+      prompt_tokens_details: {
+        cached_tokens: 4629, // All tokens cached
+      },
+      completion_tokens: 144,
+      completion_tokens_details: {
+        reasoning_tokens: 74,
+      },
+      total_tokens: 4773,
+    } as OpenAI.Completions.CompletionUsage;
+
+    // Act
+    const result = convertOpenAIUsage(minimaxUsage);
+
+    // Assert - inputCacheMissTokens should be 0 but still present
+    expect(result).toMatchObject({
+      inputTextTokens: 4629,
+      inputCachedTokens: 4629,
+      inputCacheMissTokens: 0, // Should be 0, not undefined/filtered out
+      totalInputTokens: 4629,
+      outputReasoningTokens: 74,
+      totalOutputTokens: 144,
+      outputTextTokens: 70, // 144 - 74
+      totalTokens: 4773,
+    });
+    // Ensure inputCacheMissTokens key exists even when value is 0
+    expect(result).toHaveProperty('inputCacheMissTokens');
+    expect(result.inputCacheMissTokens).toBe(0);
+  });
 });
 
 describe('convertOpenAIImageUsage', () => {

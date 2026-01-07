@@ -437,9 +437,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
     },
     contextWindowTokens: 163_840,
     description:
-      'DeepSeek-V3.2-Exp is an experimental V3.2 release bridging to the next architecture. It adds DeepSeek Sparse Attention (DSA) on top of V3.1-Terminus to improve long-context training and inference efficiency, with optimizations for tool use, long-document understanding, and multi-step reasoning. It is ideal for exploring higher reasoning efficiency with large context budgets.',
-    displayName: 'DeepSeek V3.2 Exp',
-    id: 'deepseek-ai/DeepSeek-V3.2-Exp',
+      'DeepSeek-V3.2 is a model that harmonizes high computational efficiency with superior reasoning and agent performance. Its approach is built upon three key technical breakthroughs: DeepSeek Sparse Attention (DSA), an efficient attention mechanism that substantially reduces computational complexity while preserving model performance, specifically optimized for long-context scenarios; a Scalable Reinforcement Learning Framework, which enables performance comparable to GPT-5 and reasoning proficiency on par with Gemini-3.0-Pro in its high-compute variant; and a Large-Scale Agentic Task Synthesis Pipeline to integrate reasoning into tool-use scenarios, improving compliance and generalization in complex interactive environments. The model has achieved gold-medal performance in the 2025 International Mathematical Olympiad (IMO) and International Olympiad in Informatics (IOI).',
+    displayName: 'DeepSeek V3.2',
+    id: 'deepseek-ai/DeepSeek-V3.2',
     pricing: {
       currency: 'CNY',
       units: [
@@ -460,9 +460,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
     },
     contextWindowTokens: 163_840,
     description:
-      'DeepSeek-V3.2-Exp is an experimental V3.2 release bridging to the next architecture. It adds DeepSeek Sparse Attention (DSA) on top of V3.1-Terminus to improve long-context training and inference efficiency, with optimizations for tool use, long-document understanding, and multi-step reasoning. It is ideal for exploring higher reasoning efficiency with large context budgets.',
-    displayName: 'DeepSeek V3.2 Exp (Pro)',
-    id: 'Pro/deepseek-ai/DeepSeek-V3.2-Exp',
+      'DeepSeek-V3.2 is a model that harmonizes high computational efficiency with superior reasoning and agent performance. Its approach is built upon three key technical breakthroughs: DeepSeek Sparse Attention (DSA), an efficient attention mechanism that substantially reduces computational complexity while preserving model performance, specifically optimized for long-context scenarios; a Scalable Reinforcement Learning Framework, which enables performance comparable to GPT-5 and reasoning proficiency on par with Gemini-3.0-Pro in its high-compute variant; and a Large-Scale Agentic Task Synthesis Pipeline to integrate reasoning into tool-use scenarios, improving compliance and generalization in complex interactive environments. The model has achieved gold-medal performance in the 2025 International Mathematical Olympiad (IMO) and International Olympiad in Informatics (IOI).',
+    displayName: 'DeepSeek V3.2 (Pro)',
+    id: 'Pro/deepseek-ai/DeepSeek-V3.2',
     pricing: {
       currency: 'CNY',
       units: [

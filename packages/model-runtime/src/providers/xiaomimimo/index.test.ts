@@ -122,6 +122,61 @@ describe('LobeXiaomiMiMoAI - custom features', () => {
       const resultOther = params.chatCompletion!.handlePayload!(payloadOther as any);
       expect(resultOther.thinking).toBeUndefined();
     });
+
+    it('should automatically disable thinking when tools are present', () => {
+      const tools = [
+        {
+          type: 'function',
+          function: {
+            name: 'test_function',
+            description: 'A test function',
+            parameters: { type: 'object', properties: {} },
+          },
+        },
+      ];
+
+      // When tools are present and thinking is enabled, thinking should be disabled
+      const payloadWithToolsAndThinking = {
+        thinking: { type: 'enabled' },
+        model: 'mimo-v2-flash',
+        tools,
+      };
+      const resultWithToolsAndThinking = params.chatCompletion!.handlePayload!(
+        payloadWithToolsAndThinking as any,
+      );
+      expect(resultWithToolsAndThinking.thinking).toEqual({ type: 'disabled' });
+      expect(resultWithToolsAndThinking.tools).toEqual(tools);
+
+      // When tools are present without explicit thinking, thinking should still be disabled
+      const payloadWithToolsOnly = {
+        model: 'mimo-v2-flash',
+        tools,
+      };
+      const resultWithToolsOnly = params.chatCompletion!.handlePayload!(
+        payloadWithToolsOnly as any,
+      );
+      expect(resultWithToolsOnly.thinking).toEqual({ type: 'disabled' });
+      expect(resultWithToolsOnly.tools).toEqual(tools);
+
+      // When tools is empty array, thinking should not be affected
+      const payloadWithEmptyTools = {
+        thinking: { type: 'enabled' },
+        model: 'mimo-v2-flash',
+        tools: [],
+      };
+      const resultWithEmptyTools = params.chatCompletion!.handlePayload!(
+        payloadWithEmptyTools as any,
+      );
+      expect(resultWithEmptyTools.thinking).toEqual({ type: 'enabled' });
+
+      // When no tools, thinking should work normally
+      const payloadWithoutTools = {
+        thinking: { type: 'enabled' },
+        model: 'mimo-v2-flash',
+      };
+      const resultWithoutTools = params.chatCompletion!.handlePayload!(payloadWithoutTools as any);
+      expect(resultWithoutTools.thinking).toEqual({ type: 'enabled' });
+    });
   });
 
   describe('models', () => {

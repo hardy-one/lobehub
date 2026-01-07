@@ -68,6 +68,36 @@ describe('LobeSiliconCloudAI - custom features', () => {
       expect(calledPayload.thinking_budget).toBe(1000);
     });
 
+    it('should handle thinking with enable_thinking for GLM-4.6 models', async () => {
+      await instance.chat({
+        messages: [{ content: 'Hello', role: 'user' }],
+        model: 'THUDM/GLM-4.6',
+        thinking: {
+          type: 'enabled',
+          budget_tokens: 2000,
+        },
+      });
+
+      const calledPayload = (instance['client'].chat.completions.create as any).mock.calls[0][0];
+      expect(calledPayload.enable_thinking).toBe(true);
+      expect(calledPayload.thinking_budget).toBe(2000);
+    });
+
+    it('should handle thinking with enable_thinking for GLM-4.7 models', async () => {
+      await instance.chat({
+        messages: [{ content: 'Hello', role: 'user' }],
+        model: 'THUDM/GLM-4.7',
+        thinking: {
+          type: 'enabled',
+          budget_tokens: 3000,
+        },
+      });
+
+      const calledPayload = (instance['client'].chat.completions.create as any).mock.calls[0][0];
+      expect(calledPayload.enable_thinking).toBe(true);
+      expect(calledPayload.thinking_budget).toBe(3000);
+    });
+
     it('should handle thinking with thinking_budget for Qwen3 models', async () => {
       await instance.chat({
         messages: [{ content: 'Hello', role: 'user' }],
@@ -96,6 +126,36 @@ describe('LobeSiliconCloudAI - custom features', () => {
       const calledPayload = (instance['client'].chat.completions.create as any).mock.calls[0][0];
       expect(calledPayload.enable_thinking).toBe(true);
       expect(calledPayload.thinking_budget).toBe(3000);
+    });
+
+    it('should handle thinking with enable_thinking for deepseek-ai/DeepSeek-V3.2', async () => {
+      await instance.chat({
+        messages: [{ content: 'Hello', role: 'user' }],
+        model: 'deepseek-ai/DeepSeek-V3.2',
+        thinking: {
+          type: 'enabled',
+          budget_tokens: 4000,
+        },
+      });
+
+      const calledPayload = (instance['client'].chat.completions.create as any).mock.calls[0][0];
+      expect(calledPayload.enable_thinking).toBe(true);
+      expect(calledPayload.thinking_budget).toBe(4000);
+    });
+
+    it('should handle thinking with enable_thinking for pro/deepseek-ai/DeepSeek-V3.2', async () => {
+      await instance.chat({
+        messages: [{ content: 'Hello', role: 'user' }],
+        model: 'pro/deepseek-ai/DeepSeek-V3.2',
+        thinking: {
+          type: 'enabled',
+          budget_tokens: 5000,
+        },
+      });
+
+      const calledPayload = (instance['client'].chat.completions.create as any).mock.calls[0][0];
+      expect(calledPayload.enable_thinking).toBe(true);
+      expect(calledPayload.thinking_budget).toBe(5000);
     });
 
     it('should limit thinking_budget to 32768', async () => {
@@ -130,6 +190,21 @@ describe('LobeSiliconCloudAI - custom features', () => {
       await instance.chat({
         messages: [{ content: 'Hello', role: 'user' }],
         model: 'Qwen/Qwen2.5-7B-Instruct',
+        thinking: {
+          type: 'enabled',
+          budget_tokens: 1000,
+        },
+      });
+
+      const calledPayload = (instance['client'].chat.completions.create as any).mock.calls[0][0];
+      expect(calledPayload.enable_thinking).toBeUndefined();
+      expect(calledPayload.thinking_budget).toBe(1000);
+    });
+
+    it('should not add enable_thinking for GLM Air models', async () => {
+      await instance.chat({
+        messages: [{ content: 'Hello', role: 'user' }],
+        model: 'THUDM/GLM-4.5-Air',
         thinking: {
           type: 'enabled',
           budget_tokens: 1000,

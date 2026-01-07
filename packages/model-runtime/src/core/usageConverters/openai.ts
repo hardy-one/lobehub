@@ -20,8 +20,11 @@ export const convertOpenAIUsage = (
   const cachedTokens =
     (usage as any).prompt_cache_hit_tokens || usage.prompt_tokens_details?.cached_tokens;
 
+  // Only compute inputCacheMissTokens when we have cached tokens info
+  // to avoid breaking existing behavior for providers without cache support
   const inputCacheMissTokens =
-    (usage as any).prompt_cache_miss_tokens || totalInputTokens - cachedTokens;
+    (usage as any).prompt_cache_miss_tokens ||
+    (typeof cachedTokens === 'number' ? totalInputTokens - cachedTokens : undefined);
 
   const totalOutputTokens = usage.completion_tokens;
   const outputReasoning = usage.completion_tokens_details?.reasoning_tokens || 0;
@@ -58,7 +61,9 @@ export const convertOpenAIUsage = (
   const finalData = {};
 
   Object.entries(data).forEach(([key, value]) => {
-    if (!!value) {
+    // Preserve inputCacheMissTokens when explicitly set (including 0 for all-cached scenarios)
+    // but filter it out when undefined (providers without cache support)
+    if (!!value || (key === 'inputCacheMissTokens' && value !== undefined)) {
       // @ts-ignore
       finalData[key] = value;
     }

@@ -10,6 +10,7 @@ export const serverConfigSelectors = {
   enableMagicLink: (s: ServerConfigStore) => s.serverConfig.enableMagicLink || false,
   enableMarketTrustedClient: (s: ServerConfigStore) =>
     s.serverConfig.enableMarketTrustedClient || false,
+  enableStandardInboxTools: (s: ServerConfigStore) => s.serverConfig.enableStandardInboxTools ?? true,
   enableUploadFileToServer: (s: ServerConfigStore) => s.serverConfig.enableUploadFileToServer,
   enabledAccessCode: (s: ServerConfigStore) => !!s.serverConfig?.enabledAccessCode,
   enabledTelemetryChat: (s: ServerConfigStore) => s.serverConfig.telemetry.langfuse || false,

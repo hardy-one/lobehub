@@ -54,6 +54,12 @@ export interface GlobalServerConfig {
   enableLobehubSkill?: boolean;
   enableMagicLink?: boolean;
   enableMarketTrustedClient?: boolean;
+  /**
+   * Enable standard tools (GTD, Notebook, etc.) for inbox agent.
+   * Controlled by ENABLE_STANDARD_INBOX_TOOLS environment variable.
+   * Default: true (enabled)
+   */
+  enableStandardInboxTools?: boolean;
   enableUploadFileToServer?: boolean;
   enabledAccessCode?: boolean;
   /**

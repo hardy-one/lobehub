@@ -137,6 +137,8 @@ export class DocumentService {
 
   /**
    * Get document by ID
+   * The ID should always be the full database ID (e.g., "docs_abc123")
+   * URL normalization is handled by standardizeIdentifier in the frontend
    */
   async getDocumentById(id: string) {
     return this.documentModel.findById(id);

@@ -9,6 +9,7 @@
 import { BaseExecutor, type BuiltinToolContext, type BuiltinToolResult } from '@lobechat/types';
 
 import { notebookService } from '@/services/notebook';
+import { getDocumentStoreState } from '@/store/document';
 
 import {
   type CreateDocumentArgs,
@@ -50,6 +51,9 @@ class NotebookExecutor extends BaseExecutor<typeof NotebookApiName> {
         type: params.type,
       });
 
+      // Refresh the documents list in sidebar
+      await getDocumentStoreState().refreshDocuments(ctx.topicId);
+
       return {
         content: `📝 Document "${document.title}" created successfully`,
         state: { document },
@@ -81,6 +85,11 @@ class NotebookExecutor extends BaseExecutor<typeof NotebookApiName> {
       }
 
       const document = await notebookService.updateDocument(params);
+
+      // Refresh the documents list in sidebar if topicId is available
+      if (ctx.topicId) {
+        await getDocumentStoreState().refreshDocuments(ctx.topicId);
+      }
 
       return {
         content: `✏️ Document updated successfully`,
@@ -152,6 +161,11 @@ class NotebookExecutor extends BaseExecutor<typeof NotebookApiName> {
       }
 
       await notebookService.deleteDocument(params.id);
+
+      // Refresh the documents list in sidebar if topicId is available
+      if (ctx.topicId) {
+        await getDocumentStoreState().refreshDocuments(ctx.topicId);
+      }
 
       return {
         content: `🗑️ Document deleted successfully`,

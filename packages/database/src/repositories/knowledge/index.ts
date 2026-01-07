@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 
 import { DocumentModel } from '../../models/document';
 import { FileModel } from '../../models/file';
-import { documents, files, knowledgeBaseFiles } from '../../schemas';
+import { documents, files, knowledgeBaseFiles, topicDocuments } from '../../schemas';
 import { LobeChatDatabase } from '../../type';
 
 export interface KnowledgeItem {
@@ -202,7 +202,11 @@ export class KnowledgeRepo {
       FROM ${documents}
       WHERE user_id = ${this.userId}
         AND source_type != ${'file'}
-        AND knowledge_base_id IS NULL
+        AND (metadata->>'knowledgeBaseId') IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM ${topicDocuments}
+          WHERE ${topicDocuments.documentId} = documents.id
+        )
     `;
 
     const combinedQuery = sql`
@@ -632,6 +636,9 @@ export class KnowledgeRepo {
       }
       case FilesTabs.Images: {
         return 'image';
+      }
+      case FilesTabs.Pages: {
+        return 'custom/document';
       }
       case FilesTabs.Videos: {
         return 'video';

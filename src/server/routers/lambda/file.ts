@@ -54,7 +54,8 @@ export const fileRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { isExist } = await ctx.fileModel.checkHash(input.hash!);
+      const checkResult = await ctx.fileModel.checkHash(input.hash!);
+      const { isExist } = checkResult;
 
       // Resolve parentId if it's a slug
       let resolvedParentId = input.parentId;
@@ -65,14 +66,25 @@ export const fileRouter = router({
         }
       }
 
+      // Extract S3 key from input URL
+      // This handles both: direct keys and full pre-signed URLs
+      const s3Key = ctx.fileService.getKeyFromFullUrl(input.url);
+
       let actualSize = input.size;
-      try {
-        const { contentLength } = await ctx.fileService.getFileMetadata(input.url);
-        if (contentLength >= 1) {
-          actualSize = contentLength;
+      // Only verify file metadata for new files
+      // For existing files, trust the database record
+      if (!isExist) {
+        try {
+          const { contentLength } = await ctx.fileService.getFileMetadata(s3Key);
+          if (contentLength >= 1) {
+            actualSize = contentLength;
+          }
+        } catch {
+          // If metadata fetch fails, use original size from input
         }
-      } catch {
-        // If metadata fetch fails, use original size from input
+      } else if (checkResult.size) {
+        // For existing files, use size from database
+        actualSize = checkResult.size;
       }
 
       await businessFileUploadCheck({
@@ -87,6 +99,10 @@ export const fileRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'File size cannot be negative' });
       }
 
+      // Always use the S3 key from the current upload (input.url)
+      // Even if the file hash exists, each upload should have its own storage location
+      const finalUrl = s3Key;
+
       const { id } = await ctx.fileModel.create(
         {
           fileHash: input.hash,
@@ -96,7 +112,7 @@ export const fileRouter = router({
           name: input.name,
           parentId: resolvedParentId,
           size: actualSize,
-          url: input.url,
+          url: finalUrl, // Store S3 key, not full URL
         },
         // if the file is not exist in global file, create a new one
         !isExist,
@@ -140,7 +156,34 @@ export const fileRouter = router({
       }),
     )
     .query(async ({ ctx, input }): Promise<FileListItem | undefined> => {
-      const item = await ctx.fileModel.findById(input.id);
+      // Try to find in files table first
+      let item = await ctx.fileModel.findById(input.id);
+
+      // If not found in files table, try documents table
+      if (!item) {
+        const document = await ctx.documentModel.findById(input.id);
+        if (document) {
+          // Convert document to file-like structure with all required fields
+          item = {
+            accessedAt: document.createdAt,
+            chunkTaskId: null,
+            clientId: document.clientId || null,
+            createdAt: document.createdAt,
+            embeddingTaskId: null,
+            fileHash: null,
+            fileType: document.fileType,
+            id: document.id,
+            metadata: document.metadata,
+            name: document.title || document.filename || 'Untitled',
+            parentId: document.parentId || null,
+            size: document.totalCharCount || 0,
+            source: null, // Documents don't have a FileSource
+            updatedAt: document.updatedAt,
+            url: document.source || '',
+            userId: document.userId,
+          };
+        }
+      }
 
       if (!item) throw new TRPCError({ code: 'NOT_FOUND', message: 'File not found' });
 

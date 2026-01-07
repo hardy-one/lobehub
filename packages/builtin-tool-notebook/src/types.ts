@@ -14,6 +14,7 @@ export interface NotebookDocument {
   content: string;
   createdAt: string;
   description: string;
+  fileType?: string;
   id: string;
   sourceType: DocumentSourceType;
   title: string;

@@ -658,6 +658,7 @@ export default {
   'tools.plugins.groupName': 'Skills',
   'tools.plugins.noEnabled': 'No skills enabled',
   'tools.plugins.store': 'Skill Store',
+  'tools.standardToolForceEnabled': 'This is a standard tool and cannot be disabled',
   'tools.tabs.all': 'All',
   'tools.tabs.installed': 'Enabled',
   'tools.title': 'Extension Tools',

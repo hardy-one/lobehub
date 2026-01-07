@@ -581,6 +581,7 @@
   "tools.plugins.groupName": "三方技能",
   "tools.plugins.noEnabled": "暂无启用技能",
   "tools.plugins.store": "技能商店",
+  "tools.standardToolForceEnabled": "这是标准工具，无法禁用",
   "tools.tabs.all": "全部",
   "tools.tabs.installed": "已启用",
   "tools.title": "扩展技能"

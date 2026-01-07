@@ -39,6 +39,7 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
     color: ${cssVar.colorTextSecondary};
   `,
   expanded: css`
+    overflow-y: auto;
     max-height: 300px;
     opacity: 1;
   `,

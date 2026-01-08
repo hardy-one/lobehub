@@ -239,6 +239,41 @@ describe('google contextBuilders', () => {
       });
     });
 
+    it('should correctly convert assistant message with both text and tool_calls', async () => {
+      const message = {
+        content: 'I will check the weather for you.',
+        role: 'assistant',
+        tool_calls: [
+          {
+            function: {
+              arguments: JSON.stringify({ location: 'London', unit: 'celsius' }),
+              name: 'get_current_weather',
+            },
+            id: 'call_1',
+            type: 'function',
+          },
+        ],
+      } as OpenAIChatMessage;
+
+      const converted = await buildGoogleMessage(message);
+
+      expect(converted).toEqual({
+        parts: [
+          {
+            text: 'I will check the weather for you.',
+            thoughtSignature: GEMINI_MAGIC_THOUGHT_SIGNATURE,
+          },
+          {
+            functionCall: {
+              args: { location: 'London', unit: 'celsius' },
+              name: 'get_current_weather',
+            },
+          },
+        ],
+        role: 'model',
+      });
+    });
+
     it('should correctly convert function call message with thoughtSignature', async () => {
       const message = {
         role: 'assistant',

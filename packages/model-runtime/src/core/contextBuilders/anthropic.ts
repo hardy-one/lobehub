@@ -5,6 +5,39 @@ import OpenAI from 'openai';
 import { OpenAIChatMessage, UserMessageContentPart } from '../../types';
 import { parseDataUri } from '../../utils/uriParser';
 
+/**
+ * Ensure assistant messages comply with Claude API's extended thinking requirements.
+ *
+ * This function checks if extended thinking is enabled and ensures proper message format.
+ * - If extended thinking is enabled and message has content, ensure it starts with thinking block
+ * - Preserve existing thinking blocks returned by the API
+ * - Don't modify messages if extended thinking is not enabled
+ */
+const ensureThinkingBlockFirst = (
+  content: Anthropic.Messages.ContentBlockParam[],
+  extendedThinkingEnabled: boolean,
+): Anthropic.Messages.ContentBlockParam[] => {
+  if (content.length === 0) return content;
+
+  const firstBlock = content[0];
+
+  // If already starts with thinking or redacted_thinking, preserve as-is
+  if (
+    firstBlock &&
+    (firstBlock.type === 'thinking' || firstBlock.type === 'redacted_thinking')
+  ) {
+    return content;
+  }
+
+  // Only add thinking block if extended thinking is enabled
+  if (extendedThinkingEnabled) {
+    return [{ thinking: '', signature: '', type: 'thinking' }, ...content];
+  }
+
+  // For regular usage without extended thinking, no modification needed
+  return content;
+};
+
 export const buildAnthropicBlock = async (
   content: UserMessageContentPart,
 ): Promise<Anthropic.ContentBlock | Anthropic.ImageBlockParam | undefined> => {
@@ -62,6 +95,7 @@ const buildArrayContent = async (content: UserMessageContentPart[]) => {
 
 export const buildAnthropicMessage = async (
   message: OpenAIChatMessage,
+  options: { extendedThinkingEnabled?: boolean } = {},
 ): Promise<Anthropic.Messages.MessageParam | undefined> => {
   const content = message.content as string | UserMessageContentPart[];
 
@@ -102,17 +136,23 @@ export const buildAnthropicMessage = async (
 
         const messageContent = await buildArrayContent(rawContent);
 
+        // Build tool_use blocks
+        const toolUseBlocks = message.tool_calls.map((tool) => ({
+          id: tool.id,
+          input: JSON.parse(tool.function.arguments),
+          name: tool.function.name,
+          type: 'tool_use',
+        })) as any;
+
+        // Combine content and tool_use blocks
+        const combinedContent = [...messageContent, ...toolUseBlocks];
+        const contentWithThinking = ensureThinkingBlockFirst(
+          combinedContent,
+          options.extendedThinkingEnabled ?? false,
+        );
+
         return {
-          content: [
-            // avoid empty text content block
-            ...messageContent,
-            ...(message.tool_calls.map((tool) => ({
-              id: tool.id,
-              input: JSON.parse(tool.function.arguments),
-              name: tool.function.name,
-              type: 'tool_use',
-            })) as any),
-          ].filter(Boolean),
+          content: contentWithThinking.filter(Boolean),
           role: 'assistant',
         };
       }
@@ -120,14 +160,32 @@ export const buildAnthropicMessage = async (
       // or it's a plain assistant message
       // Handle array content (e.g., content with thinking blocks)
       if (Array.isArray(content)) {
-        const messageContent = await buildArrayContent(content);
+        let messageContent = await buildArrayContent(content);
         if (messageContent.length === 0) return undefined;
+        // Ensure thinking block if extended thinking is enabled
+        messageContent = ensureThinkingBlockFirst(
+          messageContent,
+          options.extendedThinkingEnabled ?? false,
+        );
         return { content: messageContent, role: 'assistant' };
       }
 
       // Anthropic API requires non-empty content, filter out empty/whitespace-only content
       const textContent = content?.trim();
       if (!textContent) return undefined;
+
+      // If extended thinking is enabled, convert plain text to array with thinking block
+      if (options.extendedThinkingEnabled) {
+        return {
+          content: [
+            { thinking: '', signature: '', type: 'thinking' },
+            { text: textContent, type: 'text' },
+          ],
+          role: 'assistant',
+        };
+      }
+
+      // Plain text messages don't require thinking block
       return { content: textContent, role: 'assistant' };
     }
 
@@ -139,7 +197,7 @@ export const buildAnthropicMessage = async (
 
 export const buildAnthropicMessages = async (
   oaiMessages: OpenAIChatMessage[],
-  options: { enabledContextCaching?: boolean } = {},
+  options: { enabledContextCaching?: boolean; extendedThinkingEnabled?: boolean } = {},
 ): Promise<Anthropic.Messages.MessageParam[]> => {
   const messages: Anthropic.Messages.MessageParam[] = [];
   let pendingToolResults: Anthropic.ToolResultBlockParam[] = [];
@@ -185,7 +243,7 @@ export const buildAnthropicMessages = async (
         });
       }
     } else {
-      const anthropicMessage = await buildAnthropicMessage(message);
+      const anthropicMessage = await buildAnthropicMessage(message, options);
       // Filter out undefined messages (e.g., empty assistant messages)
       if (anthropicMessage) {
         messages.push(anthropicMessage);
@@ -246,7 +304,7 @@ export const buildSearchTool = (): Anthropic.WebSearchTool20250305 => {
     ...(maxUses &&
       Number.isInteger(Number(maxUses)) &&
       Number(maxUses) > 0 && {
-        max_uses: Number(maxUses),
-      }),
+      max_uses: Number(maxUses),
+    }),
   };
 };

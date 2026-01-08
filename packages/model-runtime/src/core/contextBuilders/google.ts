@@ -102,14 +102,25 @@ export const buildGoogleMessage = async (
 
   // Handle assistant messages with tool_calls
   if (!!message.tool_calls) {
+    const parts: Part[] = message.tool_calls.map<Part>((tool) => ({
+      functionCall: {
+        args: safeParseJSON(tool.function.arguments)!,
+        name: tool.function.name,
+      },
+      thoughtSignature: tool.thoughtSignature,
+    }));
+
+    // If the message also has text content, add it before the function calls
+    // Google API supports both text and function calls in the same message
+    if (message.content && typeof message.content === 'string' && message.content.trim()) {
+      parts.unshift({
+        text: message.content,
+        thoughtSignature: GEMINI_MAGIC_THOUGHT_SIGNATURE,
+      });
+    }
+
     return {
-      parts: message.tool_calls.map<Part>((tool) => ({
-        functionCall: {
-          args: safeParseJSON(tool.function.arguments)!,
-          name: tool.function.name,
-        },
-        thoughtSignature: tool.thoughtSignature,
-      })),
+      parts,
       role: 'model',
     };
   }

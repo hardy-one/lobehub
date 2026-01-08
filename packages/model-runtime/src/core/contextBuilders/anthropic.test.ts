@@ -243,6 +243,135 @@ describe('anthropicHelpers', () => {
       const result = await buildAnthropicMessage(message);
       expect(result).toBeUndefined();
     });
+
+    it('should auto-prepend thinking block to assistant message with text content', async () => {
+      const message: OpenAIChatMessage = {
+        content: 'Hello, how can I help you?',
+        role: 'assistant',
+      };
+      const result = await buildAnthropicMessage(message);
+      expect(result).toEqual({
+        content: 'Hello, how can I help you?',
+        role: 'assistant',
+      });
+    });
+
+    it('should auto-prepend thinking block when extended thinking is enabled', async () => {
+      const messages: OpenAIChatMessage[] = [
+        { content: 'Hello', role: 'user' },
+        { content: 'Hi there!', role: 'assistant' },
+      ];
+
+      // Without extended thinking - no thinking block (plain text)
+      const result1 = await buildAnthropicMessages(messages);
+      expect(result1[1].content).toBe('Hi there!');
+
+      // With extended thinking enabled - should add thinking block (converts to array)
+      const result2 = await buildAnthropicMessages(messages, {
+        extendedThinkingEnabled: true,
+      });
+      expect(result2[1].content).toEqual([
+        { thinking: '', signature: '', type: 'thinking' },
+        { text: 'Hi there!', type: 'text' },
+      ]);
+    });
+
+    it('should not add thinking block when extended thinking is disabled', async () => {
+      const messages: OpenAIChatMessage[] = [
+        { content: 'Hello', role: 'user' },
+        {
+          content: 'Response',
+          role: 'assistant',
+          tool_calls: [
+            {
+              id: 'call1',
+              type: 'function',
+              function: {
+                name: 'search',
+                arguments: '{"query":"test"}',
+              },
+            },
+          ],
+        },
+      ];
+
+      // Without extended thinking - no thinking block even with tools
+      const result = await buildAnthropicMessages(messages, {
+        extendedThinkingEnabled: false,
+      });
+
+      expect(result[1].content).toEqual([
+        { text: 'Response', type: 'text' },
+        {
+          id: 'call1',
+          input: { query: 'test' },
+          name: 'search',
+          type: 'tool_use',
+        },
+      ]);
+    });
+
+    it('should auto-prepend thinking block to assistant message with array content', async () => {
+      const message: OpenAIChatMessage = {
+        content: [
+          { type: 'text', text: 'Here is my response.' },
+        ],
+        role: 'assistant',
+      };
+      const result = await buildAnthropicMessage(message);
+      expect(result).toEqual({
+        content: [
+          { type: 'text', text: 'Here is my response.' },
+        ],
+        role: 'assistant',
+      });
+    });
+
+    it('should not duplicate thinking block if already present', async () => {
+      const message: OpenAIChatMessage = {
+        content: [
+          { thinking: 'Let me think...', signature: 'sig123', type: 'thinking' },
+          { type: 'text', text: 'Here is my response.' },
+        ],
+        role: 'assistant',
+      };
+      const result = await buildAnthropicMessage(message);
+      expect(result).toEqual({
+        content: [
+          { thinking: 'Let me think...', signature: 'sig123', type: 'thinking' },
+          { type: 'text', text: 'Here is my response.' },
+        ],
+        role: 'assistant',
+      });
+    });
+
+    it('should auto-prepend thinking block to assistant message with tool calls and text', async () => {
+      const message: OpenAIChatMessage = {
+        content: 'I will search for information.',
+        role: 'assistant',
+        tool_calls: [
+          {
+            id: 'call1',
+            type: 'function',
+            function: {
+              name: 'search',
+              arguments: '{"query":"test"}',
+            },
+          },
+        ],
+      };
+      const result = await buildAnthropicMessage(message);
+      expect(result!.role).toBe('assistant');
+      expect(result!.content).toEqual([
+        { text: 'I will search for information.', type: 'text' },
+        {
+          id: 'call1',
+          input: { query: 'test' },
+          name: 'search',
+          type: 'tool_use',
+        },
+      ]);
+    });
   });
 
   describe('buildAnthropicMessages', () => {

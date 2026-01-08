@@ -68,7 +68,11 @@ export const fileRouter = router({
 
       // Extract S3 key from input URL
       // This handles both: direct keys and full pre-signed URLs
-      const s3Key = ctx.fileService.getKeyFromFullUrl(input.url);
+      const s3Key = await ctx.fileService.getKeyFromFullUrl(input.url);
+
+      if (!s3Key) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid file URL' });
+      }
 
       let actualSize = input.size;
       // Only verify file metadata for new files

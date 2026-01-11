@@ -72,7 +72,16 @@ export interface EditorState {
    * Editor state from useEditorState hook
    */
   editorState: LobehubEditorState | undefined;
+  /**
+   * Map of notebook documents by topic ID
+   */
+  notebookMap: Record<string, NotebookDocument[]>;
 }
+
+/**
+ * Notebook document type
+ */
+export type NotebookDocument = import('@lobechat/types').NotebookDocument;
 
 /**
  * Create initial state for a new document's editor content
@@ -96,4 +105,5 @@ export const initialEditorState: EditorState = {
   documents: {},
   editor: undefined,
   editorState: undefined,
+  notebookMap: {},
 };

@@ -15,18 +15,30 @@ export const params = {
   chatCompletion: {
     handlePayload: (payload) => {
       // Transform reasoning object to reasoning_content string for multi-turn conversations
+      // DeepSeek Reasoner API requires all assistant messages to have reasoning_content field
       const messages = payload.messages.map((message: any) => {
-        // Only transform if message has reasoning.content
-        if (message.reasoning?.content) {
+        // If message is assistant role with reasoning.content, convert it
+        if (message.role === 'assistant' && message.reasoning?.content) {
           const { reasoning, ...rest } = message;
           return {
             ...rest,
             reasoning_content: reasoning.content,
           };
         }
-        // If message has reasoning but no content, remove reasoning field entirely
-        delete message.reasoning;
-        return message;
+
+        // For assistant messages, ensure reasoning_content exists (required by DeepSeek Reasoner API)
+        if (message.role === 'assistant') {
+          const { reasoning, ...rest } = message;
+          return {
+            ...rest,
+            reasoning_content: '',
+          };
+        }
+
+        // For non-assistant messages, just remove reasoning field if present
+        const msg = { ...message };
+        delete msg.reasoning;
+        return msg;
       });
 
       return {

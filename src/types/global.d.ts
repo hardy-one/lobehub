@@ -15,9 +15,6 @@ declare module 'styled-components' {
 
 declare global {
   interface Window {
-    lobeEnv?: {
-      darwinMajorVersion?: number;
-    };
     __lobeLastInteraction?: {
       actionable?: {
         className?: string;
@@ -29,6 +26,7 @@ declare global {
         tag: string;
         type?: string;
       };
+      path?: string;
       pathInfo?: Array<{
         className?: string;
         dataAttrs?: Record<string, string | true>;
@@ -39,7 +37,6 @@ declare global {
         tag: string;
         type?: string;
       }>;
-      path?: string;
       target?: {
         className?: string;
         dataAttrs?: Record<string, string | true>;
@@ -52,6 +49,9 @@ declare global {
       type: string;
       x?: number;
       y?: number;
+    };
+    lobeEnv?: {
+      darwinMajorVersion?: number;
     };
   }
 }

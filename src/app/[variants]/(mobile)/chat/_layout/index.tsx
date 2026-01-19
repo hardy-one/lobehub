@@ -72,8 +72,8 @@ const Layout: FC = () => {
 
       window.__lobeLastInteraction = {
         actionable: actionable ? getNodeInfo(actionable) : undefined,
-        pathInfo,
         path: path || undefined,
+        pathInfo,
         target: getTargetInfo(event.target),
         time: Date.now(),
         type: event.type,

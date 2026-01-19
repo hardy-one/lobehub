@@ -1,7 +1,7 @@
 'use client';
 
 import { Modal } from '@lobehub/ui';
-import { type PropsWithChildren, memo, useEffect } from 'react';
+import { type PropsWithChildren, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useFetchTopics } from '@/hooks/useFetchTopics';

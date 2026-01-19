@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 
 import { INBOX_SESSION_ID } from '@/const/session';

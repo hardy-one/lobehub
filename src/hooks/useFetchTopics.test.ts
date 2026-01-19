@@ -1,4 +1,3 @@
-import { INBOX_SESSION_ID } from '@lobechat/const';
 import { renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -8,6 +7,7 @@ import { useFetchTopics } from './useFetchTopics';
 const mockUseGlobalStore = vi.hoisted(() => vi.fn());
 const mockUseChatStore = vi.hoisted(() => vi.fn());
 const mockUseAgentStore = vi.hoisted(() => vi.fn());
+const mockUseParams = vi.hoisted(() => vi.fn(() => ({})));
 
 vi.mock('@/store/chat', () => ({
   useChatStore: mockUseChatStore,
@@ -24,6 +24,7 @@ vi.mock('@/store/agent', () => ({
 vi.mock('@/store/agent/selectors', () => ({
   builtinAgentSelectors: {
     isInboxAgent: vi.fn((s) => s.isInboxAgent),
+    inboxAgentId: vi.fn((s) => s.inboxAgentId),
   },
 }));
 
@@ -31,6 +32,10 @@ vi.mock('@/store/global/selectors', () => ({
   systemStatusSelectors: {
     topicPageSize: vi.fn((s) => s.topicPageSize),
   },
+}));
+
+vi.mock('react-router-dom', () => ({
+  useParams: mockUseParams,
 }));
 
 describe('useFetchTopics', () => {
@@ -89,13 +94,14 @@ describe('useFetchTopics', () => {
 
   it('should set isInbox to false when groupId is present even if agentId is inbox', () => {
     const activeGroupId = 'group-789';
+    const inboxAgentId = 'inbox-agent-id';
 
     // Even if isInboxAgent is true, groupId takes precedence
     mockUseAgentStore.mockImplementation((selector) => selector({ isInboxAgent: true }));
 
     mockUseChatStore.mockImplementation((selector) =>
       selector({
-        activeAgentId: INBOX_SESSION_ID,
+        activeAgentId: inboxAgentId,
         activeGroupId,
         useFetchTopics: mockUseFetchTopicsFn,
       }),
@@ -104,7 +110,7 @@ describe('useFetchTopics', () => {
     renderHook(() => useFetchTopics());
 
     expect(mockUseFetchTopicsFn).toHaveBeenCalledWith(true, {
-      agentId: INBOX_SESSION_ID,
+      agentId: inboxAgentId,
       groupId: activeGroupId,
       isInbox: false,
       pageSize: 20,
@@ -112,12 +118,14 @@ describe('useFetchTopics', () => {
   });
 
   it('should pass isInbox true when agentId is inbox and no groupId', () => {
+    const inboxAgentId = 'inbox-agent-id';
+
     // Set isInboxAgent to true for this test
     mockUseAgentStore.mockImplementation((selector) => selector({ isInboxAgent: true }));
 
     mockUseChatStore.mockImplementation((selector) =>
       selector({
-        activeAgentId: INBOX_SESSION_ID,
+        activeAgentId: inboxAgentId,
         activeGroupId: undefined,
         useFetchTopics: mockUseFetchTopicsFn,
       }),
@@ -126,7 +134,7 @@ describe('useFetchTopics', () => {
     renderHook(() => useFetchTopics());
 
     expect(mockUseFetchTopicsFn).toHaveBeenCalledWith(true, {
-      agentId: INBOX_SESSION_ID,
+      agentId: inboxAgentId,
       groupId: undefined,
       isInbox: true,
       pageSize: 20,

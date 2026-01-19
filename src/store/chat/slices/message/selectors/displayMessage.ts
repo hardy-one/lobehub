@@ -1,8 +1,7 @@
 import { type AssistantContentBlock, type UIChatMessage } from '@lobechat/types';
 
-import { INBOX_SESSION_ID } from '@/const/session';
 import { useAgentStore } from '@/store/agent';
-import { agentChatConfigSelectors } from '@/store/agent/selectors';
+import { agentChatConfigSelectors, builtinAgentSelectors } from '@/store/agent/selectors';
 
 import { chatHelpers } from '../../../helpers';
 import type { ChatStoreState } from '../../../initialState';
@@ -148,7 +147,10 @@ const isCurrentDisplayChatLoaded = (s: ChatStoreState) => !!s.messagesMap[curren
  * Show inbox welcome screen
  */
 const showInboxWelcome = (s: ChatStoreState): boolean => {
-  const isInbox = s.activeAgentId === INBOX_SESSION_ID;
+  const inboxAgentId = builtinAgentSelectors.inboxAgentId(useAgentStore.getState());
+  if (!inboxAgentId) return false;
+
+  const isInbox = s.activeAgentId === inboxAgentId;
   if (!isInbox) return false;
 
   const data = activeDisplayMessages(s);
@@ -283,8 +285,11 @@ const findLastMessageId = (id: string) => (s: ChatStoreState) => {
  * Get inbox active topic display messages
  */
 const inboxActiveTopicDisplayMessages = (state: ChatStoreState) => {
+  const inboxAgentId = builtinAgentSelectors.inboxAgentId(useAgentStore.getState());
+  if (!inboxAgentId) return [];
+
   const activeTopicId = state.activeTopicId;
-  const key = messageMapKey({ agentId: INBOX_SESSION_ID, topicId: activeTopicId });
+  const key = messageMapKey({ agentId: inboxAgentId, topicId: activeTopicId });
   return state.messagesMap[key] || [];
 };
 

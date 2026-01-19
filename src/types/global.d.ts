@@ -18,5 +18,40 @@ declare global {
     lobeEnv?: {
       darwinMajorVersion?: number;
     };
+    __lobeLastInteraction?: {
+      actionable?: {
+        className?: string;
+        dataAttrs?: Record<string, string | true>;
+        href?: string;
+        id?: string;
+        name?: string;
+        role?: string;
+        tag: string;
+        type?: string;
+      };
+      pathInfo?: Array<{
+        className?: string;
+        dataAttrs?: Record<string, string | true>;
+        href?: string;
+        id?: string;
+        name?: string;
+        role?: string;
+        tag: string;
+        type?: string;
+      }>;
+      path?: string;
+      target?: {
+        className?: string;
+        dataAttrs?: Record<string, string | true>;
+        id?: string;
+        name?: string;
+        role?: string;
+        tag: string;
+      };
+      time: number;
+      type: string;
+      x?: number;
+      y?: number;
+    };
   }
 }

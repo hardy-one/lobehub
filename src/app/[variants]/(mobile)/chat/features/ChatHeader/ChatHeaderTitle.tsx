@@ -1,71 +1,75 @@
-import { ActionIcon, Flexbox } from '@lobehub/ui';
-import { ChatHeader } from '@lobehub/ui/mobile';
-import { cssVar } from 'antd-style';
-import { ChevronDown } from 'lucide-react';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useAgentStore } from '@/store/agent';
-import { agentSelectors } from '@/store/agent/selectors';
+import { agentSelectors, builtinAgentSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
 import { topicSelectors } from '@/store/chat/selectors';
-import { useGlobalStore } from '@/store/global';
-import { useSessionStore } from '@/store/session';
-import { sessionSelectors } from '@/store/session/selectors';
 
 const ChatHeaderTitle = memo(() => {
-  const { t } = useTranslation(['chat', 'topic']);
-  const toggleConfig = useGlobalStore((s) => s.toggleMobileTopic);
-  const [topicLength, topic] = useChatStore((s) => [
-    topicSelectors.currentTopicLength(s),
-    topicSelectors.currentActiveTopic(s),
+  const { t } = useTranslation(['topic', 'common']);
+  const topic = useChatStore((s) => topicSelectors.currentActiveTopic(s));
+  const [isInboxAgent, title] = useAgentStore((s) => [
+    builtinAgentSelectors.isInboxAgent(s),
+    agentSelectors.currentAgentTitle(s),
   ]);
-  const isInbox = useSessionStore(sessionSelectors.isInboxSession);
-  const title = useAgentStore(agentSelectors.currentAgentTitle);
+  const isInbox = isInboxAgent;
 
-  const displayTitle = isInbox ? 'Lobe AI' : title;
+  const displayTitle = isInbox ? 'Lobe AI' : title || t('defaultSession', { ns: 'common' });
+  const topicTitle = topic?.title || t('title', { ns: 'topic' });
+  const titlePadding = 88;
+  const topicPadding = 96;
+  const topicOffset = 9;
 
   return (
-    <ChatHeader.Title
-      desc={
-        <Flexbox align={'center'} gap={4} horizontal onClick={() => toggleConfig()}>
-          <span
-            style={{
-              maxWidth: '60vw',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {topic?.title || t('title', { ns: 'topic' })}
-          </span>
-          <ActionIcon
-            active
-            icon={ChevronDown}
-            size={{ blockSize: 14, borderRadius: '50%', size: 12 }}
-            style={{
-              background: cssVar.colorFillSecondary,
-              color: cssVar.colorTextDescription,
-            }}
-          />
-        </Flexbox>
-      }
-      title={
-        <div
-          onClick={() => toggleConfig()}
-          style={{
-            marginRight: '8px',
-            maxWidth: '64vw',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {displayTitle}
-          {topicLength > 1 ? `(${topicLength + 1})` : ''}
-        </div>
-      }
-    />
+    <div
+      style={{
+        inset: 0,
+        pointerEvents: 'none',
+        position: 'absolute',
+      }}
+    >
+      <div
+        style={{
+          boxSizing: 'border-box',
+          fontSize: 16,
+          fontWeight: 600,
+          left: 0,
+          lineHeight: 1.1,
+          overflow: 'hidden',
+          paddingInline: titlePadding,
+          position: 'absolute',
+          right: 0,
+          textAlign: 'center',
+          textOverflow: 'ellipsis',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {displayTitle}
+      </div>
+      <div
+        style={{
+          boxSizing: 'border-box',
+          color: 'var(--colorTextSecondary)',
+          fontSize: 12,
+          left: 0,
+          lineHeight: 1,
+          overflow: 'hidden',
+          paddingInline: topicPadding,
+          position: 'absolute',
+          right: 0,
+          textAlign: 'center',
+          textOverflow: 'ellipsis',
+          top: '50%',
+          transform: `translateY(${topicOffset}px)`,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {topicTitle}
+      </div>
+    </div>
   );
 });
 

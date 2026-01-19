@@ -3,9 +3,11 @@ import { cssVar } from 'antd-style';
 import { MessageSquareDashed, Star } from 'lucide-react';
 import { Suspense, memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import urlJoin from 'url-join';
 
 import { isDesktop } from '@/const/version';
 import NavItem from '@/features/NavPanel/components/NavItem';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useAgentStore } from '@/store/agent';
 import { useChatStore } from '@/store/chat';
 import { useGlobalStore } from '@/store/global';
@@ -28,12 +30,13 @@ const TopicItem = memo<TopicItemProps>(({ id, title, fav, active, threadId }) =>
   const { t } = useTranslation('topic');
   const openTopicInNewWindow = useGlobalStore((s) => s.openTopicInNewWindow);
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
+  const isMobile = useIsMobile();
 
   // Construct href for cmd+click support
   const href = useMemo(() => {
-    if (!activeAgentId || !id) return undefined;
-    return `/agent/${activeAgentId}?topic=${id}`;
-  }, [activeAgentId, id]);
+    if (isMobile || !activeAgentId || !id) return undefined;
+    return urlJoin('/chat', `?agent=${activeAgentId}&topic=${id}`);
+  }, [activeAgentId, id, isMobile]);
 
   const [editing, isLoading] = useChatStore((s) => [
     id ? s.topicRenamingId === id : false,
@@ -103,7 +106,7 @@ const TopicItem = memo<TopicItemProps>(({ id, title, fav, active, threadId }) =>
         active={active && !threadId && !isInAgentSubRoute}
         contextMenuItems={dropdownMenu}
         disabled={editing}
-        href={href}
+        href={!editing ? href : undefined}
         icon={
           <ActionIcon
             color={fav ? cssVar.colorWarning : undefined}

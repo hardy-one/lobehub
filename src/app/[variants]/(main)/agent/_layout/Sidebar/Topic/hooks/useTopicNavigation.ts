@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import urlJoin from 'url-join';
 
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useQueryRoute } from '@/hooks/useQueryRoute';
 import { usePathname } from '@/libs/router/navigation';
 import { useChatStore } from '@/store/chat';
@@ -12,10 +13,14 @@ import { useGlobalStore } from '@/store/global';
  */
 export const useTopicNavigation = () => {
   const pathname = usePathname();
+  const isMobile = useIsMobile();
   const activeAgentId = useChatStore((s) => s.activeAgentId);
   const router = useQueryRoute();
   const toggleConfig = useGlobalStore((s) => s.toggleMobileTopic);
-  const switchTopic = useChatStore((s) => s.switchTopic);
+  const [switchTopic, closeAllTopicsDrawer] = useChatStore((s) => [
+    s.switchTopic,
+    s.closeAllTopicsDrawer,
+  ]);
 
   const isInAgentSubRoute = useCallback(() => {
     if (!activeAgentId) return false;
@@ -30,8 +35,9 @@ export const useTopicNavigation = () => {
 
   const navigateToTopic = useCallback(
     (topicId?: string) => {
+      const inSubRoute = isInAgentSubRoute();
       // If in agent sub-route, navigate back to agent chat first
-      if (isInAgentSubRoute() && activeAgentId) {
+      if (inSubRoute && activeAgentId) {
         const basePath = urlJoin('/agent', activeAgentId as string);
         // Include topicId in URL when navigating from sub-route
         router.push(topicId ? `${basePath}?topic=${topicId}` : basePath);
@@ -40,9 +46,16 @@ export const useTopicNavigation = () => {
       }
 
       switchTopic(topicId);
-      toggleConfig(false);
+
+      // Only close drawers/modals on mobile
+      if (isMobile) {
+        // Close AllTopicsDrawer if open
+        closeAllTopicsDrawer();
+        // Close mobile topic modal
+        toggleConfig(false);
+      }
     },
-    [activeAgentId, router, switchTopic, toggleConfig, isInAgentSubRoute],
+    [activeAgentId, router, switchTopic, toggleConfig, isInAgentSubRoute, closeAllTopicsDrawer, isMobile],
   );
 
   return {

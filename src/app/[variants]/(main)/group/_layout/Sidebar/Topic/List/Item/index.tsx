@@ -3,9 +3,11 @@ import { cssVar } from 'antd-style';
 import { MessageSquareDashed, Star } from 'lucide-react';
 import { Suspense, memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import urlJoin from 'url-join';
 
 import { isDesktop } from '@/const/version';
 import NavItem from '@/features/NavPanel/components/NavItem';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useAgentStore } from '@/store/agent';
 import { useAgentGroupStore } from '@/store/agentGroup';
 import { useChatStore } from '@/store/chat';
@@ -29,13 +31,14 @@ const TopicItem = memo<TopicItemProps>(({ id, title, fav, active, threadId }) =>
   const openTopicInNewWindow = useGlobalStore((s) => s.openTopicInNewWindow);
   const toggleMobileTopic = useGlobalStore((s) => s.toggleMobileTopic);
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
+  const isMobile = useIsMobile();
   const [activeGroupId, switchTopic] = useAgentGroupStore((s) => [s.activeGroupId, s.switchTopic]);
 
   // Construct href for cmd+click support
   const href = useMemo(() => {
-    if (!activeGroupId || !id) return undefined;
-    return `/group/${activeGroupId}?topic=${id}`;
-  }, [activeGroupId, id]);
+    if (isMobile || !activeGroupId || !id) return undefined;
+    return urlJoin('/group', activeGroupId, `?topic=${id}`);
+  }, [activeGroupId, id, isMobile]);
 
   const [editing, isLoading] = useChatStore((s) => [
     id ? s.topicRenamingId === id : false,

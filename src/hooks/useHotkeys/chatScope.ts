@@ -13,7 +13,13 @@ import { useHotkeyById } from './useHotkeyById';
 export const useSaveTopicHotkey = () => {
   const openNewTopicOrSaveTopic = useChatStore((s) => s.openNewTopicOrSaveTopic);
   const { mutate } = useActionSWR('openNewTopicOrSaveTopic', openNewTopicOrSaveTopic);
-  return useHotkeyById(HotkeyEnum.SaveTopic, () => mutate(), { enableOnContentEditable: true });
+  return useHotkeyById(
+    HotkeyEnum.SaveTopic,
+    () => {
+      mutate();
+    },
+    { enableOnContentEditable: true },
+  );
 };
 
 export const useToggleZenModeHotkey = () => {

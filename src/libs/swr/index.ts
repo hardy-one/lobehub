@@ -59,18 +59,22 @@ export const useOnlyFetchOnceSWR: SWRHook = (key, fetch, config) =>
  * Combined with revalidateOnMount: false, this prevents auto-fetch on mount.
  */
 // @ts-ignore
-export const useActionSWR: SWRHook = (key, fetch, config) =>
-  useSWR(key, fetch, {
+export const useActionSWR: SWRHook = (key, fetch, config) => {
+  const swr = useSWR(key, fetch, {
     // Use empty object as fallback to prevent auto-fetch when cache is empty
     // Combined with revalidateOnMount: false, SWR won't call fetcher on mount
     fallbackData: {},
     refreshWhenHidden: false,
     refreshWhenOffline: false,
     revalidateOnFocus: false,
+    revalidateIfStale: false,
     revalidateOnMount: false,
     revalidateOnReconnect: false,
     ...config,
   });
+
+  return swr;
+};
 
 export interface SWRRefreshParams<T, A = (...args: any[]) => any> {
   action: A;

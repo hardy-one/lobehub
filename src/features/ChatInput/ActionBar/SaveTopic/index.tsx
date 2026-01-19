@@ -33,7 +33,9 @@ const SaveTopic = memo(() => {
       <Popconfirm
         arrow={false}
         okButtonProps={{ danger: false, type: 'primary' }}
-        onConfirm={() => mutate()}
+        onConfirm={() => {
+          mutate();
+        }}
         onOpenChange={setConfirmOpened}
         open={confirmOpened}
         placement={'top'}
@@ -60,7 +62,9 @@ const SaveTopic = memo(() => {
         aria-label={desc}
         icon={icon}
         loading={isValidating}
-        onClick={() => mutate()}
+        onClick={() => {
+          mutate();
+        }}
         size={{ blockSize: 32, size: 16, strokeWidth: 2.3 }}
         title={desc}
         tooltipProps={{

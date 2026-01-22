@@ -28,6 +28,57 @@ const TOOL_PRICING: Record<string, number> = {
   'lobe-web-browsing/search': 0.001,
 };
 
+/**
+ * Check if there are pending tool calls without corresponding responses
+ * This helps detect timing issues where tool responses haven't been collected yet
+ */
+interface PendingToolCheckResult {
+  hasPending: boolean;
+  pendingIds: string[];
+  toolCallCount: number;
+  toolResponseCount: number;
+}
+
+const checkPendingToolCalls = (messages: any[]): PendingToolCheckResult => {
+  let toolCallCount = 0;
+  const toolResponseIds = new Set<string>();
+  const pendingIds: string[] = [];
+
+  for (const message of messages) {
+    // Count tool calls from assistant messages
+    if (message.role === 'assistant' && message.tool_calls) {
+      for (const tc of message.tool_calls) {
+        if (tc.type === 'function') {
+          toolCallCount++;
+        }
+      }
+    }
+
+    // Track tool response IDs
+    if (message.role === 'tool' && message.tool_call_id) {
+      toolResponseIds.add(message.tool_call_id);
+    }
+  }
+
+  // Find pending tool calls (calls without corresponding responses)
+  for (const message of messages) {
+    if (message.role === 'assistant' && message.tool_calls) {
+      for (const tc of message.tool_calls) {
+        if (tc.type === 'function' && !toolResponseIds.has(tc.id)) {
+          pendingIds.push(tc.id);
+        }
+      }
+    }
+  }
+
+  return {
+    hasPending: pendingIds.length > 0,
+    pendingIds,
+    toolCallCount,
+    toolResponseCount: toolResponseIds.size,
+  };
+};
+
 export interface RuntimeExecutorContext {
   fileService?: any;
   messageModel: MessageModel;
@@ -123,6 +174,24 @@ export const createRuntimeExecutors = (
       let reasoningParts: ContentPart[] = [];
       let hasContentImages = false;
       let hasReasoningImages = false;
+
+      // Check if there are pending tool calls without responses
+      // This can happen when tools are executed in parallel and not all responses
+      // have been collected yet when the next LLM call is made
+      const pendingToolCheck = checkPendingToolCalls(llmPayload.messages);
+      if (pendingToolCheck.hasPending) {
+        log(
+          `${stagePrefix} Warning: Found %d pending tool calls without responses: %s`,
+          pendingToolCheck.pendingIds.length,
+          pendingToolCheck.pendingIds.join(', '),
+        );
+        // Log detailed info for debugging
+        log(
+          `${stagePrefix} Tool calls: %d, Tool responses: %d`,
+          pendingToolCheck.toolCallCount,
+          pendingToolCheck.toolResponseCount,
+        );
+      }
 
       // Initialize ModelRuntime (read user's keyVaults from database)
       const modelRuntime = await initModelRuntimeFromDB(ctx.serverDB, ctx.userId!, provider);

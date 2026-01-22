@@ -164,9 +164,71 @@ export const buildGoogleMessage = async (
 };
 
 /**
+ * Count tool calls and responses in messages
+ */
+const countToolCallsAndResponses = (
+  messages: OpenAIChatMessage[],
+): {
+  pendingToolCallIds: string[];
+  toolCallCount: number;
+  toolResponseCount: number;
+} => {
+  let toolCallCount = 0;
+  const toolResponseIds = new Set<string>();
+
+  for (const message of messages) {
+    // Count tool calls from assistant messages
+    if (message.role === 'assistant' && message.tool_calls) {
+      for (const tc of message.tool_calls) {
+        if (tc.type === 'function') {
+          toolCallCount++;
+        }
+      }
+    }
+
+    // Track tool response IDs
+    if (message.role === 'tool' && message.tool_call_id) {
+      toolResponseIds.add(message.tool_call_id);
+    }
+  }
+
+  // Find pending tool calls (calls without corresponding responses)
+  const pendingToolCallIds: string[] = [];
+  for (const message of messages) {
+    if (message.role === 'assistant' && message.tool_calls) {
+      for (const tc of message.tool_calls) {
+        if (tc.type === 'function' && !toolResponseIds.has(tc.id)) {
+          pendingToolCallIds.push(tc.id);
+        }
+      }
+    }
+  }
+
+  return {
+    pendingToolCallIds,
+    toolCallCount,
+    toolResponseCount: toolResponseIds.size,
+  };
+};
+
+/**
  * Convert messages from the OpenAI format to Google GenAI SDK format
  */
 export const buildGoogleMessages = async (messages: OpenAIChatMessage[]): Promise<Content[]> => {
+  // Check for pending tool calls that haven't received responses
+  const { toolCallCount, toolResponseCount, pendingToolCallIds } =
+    countToolCallsAndResponses(messages);
+
+  if (toolCallCount > toolResponseCount && pendingToolCallIds.length > 0) {
+    const pendingList = pendingToolCallIds.join(', ');
+    throw new Error(
+      `[Google AI] Mismatched tool calls and responses: ` +
+        `${toolCallCount} calls, ${toolResponseCount} responses. ` +
+        `Missing responses for tool calls: ${pendingList}. ` +
+        `Please ensure all tool responses are collected before calling the model.`,
+    );
+  }
+
   const toolCallNameMap = new Map<string, string>();
 
   // Build tool call id to name mapping

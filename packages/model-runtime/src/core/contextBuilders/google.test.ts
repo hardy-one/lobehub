@@ -868,6 +868,157 @@ describe('google contextBuilders', () => {
       ]);
     });
 
+    it('should aggregate parallel tool responses into a single user message', async () => {
+      const messages: OpenAIChatMessage[] = [
+        {
+          content: 'Get weather for multiple cities',
+          role: 'user',
+        },
+        {
+          content: '',
+          role: 'assistant',
+          tool_calls: [
+            {
+              function: {
+                arguments: JSON.stringify({ city: 'Paris' }),
+                name: 'get_weather',
+              },
+              id: 'call_1',
+              type: 'function',
+            },
+            {
+              function: {
+                arguments: JSON.stringify({ city: 'London' }),
+                name: 'get_weather',
+              },
+              id: 'call_2',
+              type: 'function',
+            },
+            {
+              function: {
+                arguments: JSON.stringify({ city: 'Berlin' }),
+                name: 'get_weather',
+              },
+              id: 'call_3',
+              type: 'function',
+            },
+          ],
+        },
+        // Simulate parallel tool execution - responses come in separate messages
+        {
+          content: '{"temperature":"22°C","condition":"sunny"}',
+          name: 'get_weather',
+          role: 'tool',
+          tool_call_id: 'call_1',
+        },
+        {
+          content: '{"temperature":"18°C","condition":"cloudy"}',
+          name: 'get_weather',
+          role: 'tool',
+          tool_call_id: 'call_2',
+        },
+        {
+          content: '{"temperature":"15°C","condition":"rainy"}',
+          name: 'get_weather',
+          role: 'tool',
+          tool_call_id: 'call_3',
+        },
+      ];
+
+      const contents = await buildGoogleMessages(messages);
+
+      // Should have 3 messages: user, model (with 3 tool calls), user (with 3 tool responses)
+      expect(contents).toHaveLength(3);
+
+      // Verify the tool response message contains all 3 responses in a single user message
+      const toolResponseMessage = contents[2];
+      expect(toolResponseMessage.role).toBe('user');
+      expect(toolResponseMessage.parts?.length).toBe(3);
+      expect(toolResponseMessage.parts?.map((p: any) => p.functionResponse?.name)).toEqual([
+        'get_weather',
+        'get_weather',
+        'get_weather',
+      ]);
+      expect(toolResponseMessage.parts?.map((p: any) => p.functionResponse?.response)).toEqual([
+        { result: '{"temperature":"22°C","condition":"sunny"}' },
+        { result: '{"temperature":"18°C","condition":"cloudy"}' },
+        { result: '{"temperature":"15°C","condition":"rainy"}' },
+      ]);
+    });
+
+    it('should correctly handle interleaved tool calls and responses', async () => {
+      const messages: OpenAIChatMessage[] = [
+        {
+          content: 'Search and get weather',
+          role: 'user',
+        },
+        {
+          content: '',
+          role: 'assistant',
+          tool_calls: [
+            {
+              function: {
+                arguments: JSON.stringify({ query: 'weather' }),
+                name: 'search',
+              },
+              id: 'call_1',
+              type: 'function',
+            },
+          ],
+        },
+        {
+          content: 'Search results here',
+          name: 'search',
+          role: 'tool',
+          tool_call_id: 'call_1',
+        },
+        {
+          content: '',
+          role: 'assistant',
+          tool_calls: [
+            {
+              function: {
+                arguments: JSON.stringify({ city: 'Paris' }),
+                name: 'get_weather',
+              },
+              id: 'call_2',
+              type: 'function',
+            },
+            {
+              function: {
+                arguments: JSON.stringify({ city: 'London' }),
+                name: 'get_weather',
+              },
+              id: 'call_3',
+              type: 'function',
+            },
+          ],
+        },
+        {
+          content: '{"temperature":"22°C"}',
+          name: 'get_weather',
+          role: 'tool',
+          tool_call_id: 'call_2',
+        },
+        {
+          content: '{"temperature":"18°C"}',
+          name: 'get_weather',
+          role: 'tool',
+          tool_call_id: 'call_3',
+        },
+      ];
+
+      const contents = await buildGoogleMessages(messages);
+
+      // Should have 5 messages
+      expect(contents).toHaveLength(5);
+
+      // Verify the last tool response contains both responses
+      const lastToolResponse = contents[4];
+      expect(lastToolResponse.role).toBe('user');
+      expect(lastToolResponse.parts).toHaveLength(2);
+    });
+
     it('should filter out function role messages', async () => {
       const messages: OpenAIChatMessage[] = [
         { content: 'Hello', role: 'user' },

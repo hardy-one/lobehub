@@ -110,11 +110,12 @@ export const buildGooglePart = async (
 
 /**
  * Convert OpenAI message to Google Content format
+ * Note: For parallel tool calls, all tool responses should be in the same Content message
  */
 export const buildGoogleMessage = async (
   message: OpenAIChatMessage,
   toolCallNameMap?: Map<string, string>,
-): Promise<Content> => {
+): Promise<Content | null> => {
   const content = message.content as string | UserMessageContentPart[];
 
   // Handle assistant messages with tool_calls
@@ -132,6 +133,7 @@ export const buildGoogleMessage = async (
   }
 
   // Convert tool_call result to functionResponse part
+  // Note: This will return null and the caller will aggregate all tool responses
   if (message.role === 'tool' && toolCallNameMap && message.tool_call_id) {
     const functionName = toolCallNameMap.get(message.tool_call_id);
     if (functionName) {
@@ -147,6 +149,7 @@ export const buildGoogleMessage = async (
         role: 'user',
       };
     }
+    return null; // Skip if no matching function name
   }
 
   const getParts = async () => {
@@ -213,6 +216,7 @@ const countToolCallsAndResponses = (
 
 /**
  * Convert messages from the OpenAI format to Google GenAI SDK format
+ * For parallel tool calls, all tool responses are aggregated into a single user message
  */
 export const buildGoogleMessages = async (messages: OpenAIChatMessage[]): Promise<Content[]> => {
   // Check for pending tool calls that haven't received responses
@@ -242,14 +246,50 @@ export const buildGoogleMessages = async (messages: OpenAIChatMessage[]): Promis
     }
   });
 
-  const pools = messages
-    .filter((message) => message.role !== 'function')
-    .map(async (msg) => await buildGoogleMessage(msg, toolCallNameMap));
+  const result: Content[] = [];
+  let pendingToolResponseParts: Part[] = [];
 
-  const contents = await Promise.all(pools);
+  // Process messages, aggregating tool responses into a single user message
+  for (const msg of messages) {
 
-  // Filter out empty messages: contents.parts must not be empty.
-  const filteredContents = contents.filter(
+    // Handle tool role: aggregate all tool responses
+    if (msg.role === 'tool') {
+      const content = await buildGoogleMessage(msg, toolCallNameMap);
+      if (content?.parts?.length) {
+        pendingToolResponseParts.push(...content.parts);
+      }
+      continue;
+    }
+
+    // If we have pending tool responses and encounter a non-tool message,
+    // flush the aggregated tool responses as a single user message
+    if (pendingToolResponseParts.length > 0) {
+      result.push({
+        parts: pendingToolResponseParts,
+        role: 'user',
+      });
+      pendingToolResponseParts = [];
+    }
+
+    // Process non-tool messages normally
+    if (msg.role !== 'function') {
+      const content = await buildGoogleMessage(msg, toolCallNameMap);
+      if (content) {
+        result.push(content);
+      }
+    }
+  }
+
+  // Flush any remaining tool responses at the end
+  if (pendingToolResponseParts.length > 0) {
+    result.push({
+      parts: pendingToolResponseParts,
+      role: 'user',
+    });
+  }
+
+  // Filter out empty messages: contents.parts must not be empty
+  const filteredContents = result.filter(
     (content: Content) => content.parts && content.parts.length > 0,
   );
 

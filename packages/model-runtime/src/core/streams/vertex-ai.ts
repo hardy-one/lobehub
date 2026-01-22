@@ -58,21 +58,27 @@ const transformVertexAIStream = (
     const part = candidate.content.parts?.[0];
 
     if (part?.functionCall) {
-      const functionCall = part.functionCall;
+      // Extract all function calls with thoughtSignature support
+      const functionCalls =
+        candidate.content.parts
+          ?.filter((p: any) => p.functionCall)
+          .map((p: any) => ({
+            ...p.functionCall,
+            thoughtSignature: p.thoughtSignature,
+          })) || [];
 
       return [
         {
-          data: [
-            {
-              function: {
-                arguments: JSON.stringify(functionCall.args),
-                name: functionCall.name,
-              },
-              id: generateToolCallId(0, functionCall.name),
-              index: 0,
-              type: 'function',
+          data: functionCalls.map((value, index: number) => ({
+            function: {
+              arguments: JSON.stringify(value.args),
+              name: value.name,
             },
-          ],
+            id: generateToolCallId(index, value.name),
+            index: index,
+            thoughtSignature: value.thoughtSignature,
+            type: 'function' as const,
+          })),
           id: context?.id,
           type: 'tool_calls',
         },

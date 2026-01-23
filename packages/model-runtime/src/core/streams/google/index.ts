@@ -28,12 +28,159 @@ const getBlockReasonMessage = (blockReason: string): string => {
   );
 };
 
+/**
+ * Parse function call from Google Part to StreamToolCallChunkData
+ * Preserves original ID format for backward compatibility
+ */
+const parseGoogleFunctionCall = (part: Part, existingCount: number): StreamToolCallChunkData => {
+  const { functionCall, thoughtSignature } = part;
+  // Preserve original ID format: {name}_{index}_{nanoid}
+  const id = generateToolCallId(existingCount, functionCall?.name || 'unknown');
+  return {
+    function: {
+      arguments: JSON.stringify(functionCall?.args ?? {}),
+      name: functionCall?.name ?? 'unknown',
+    },
+    id,
+    index: existingCount,
+    thoughtSignature,
+    type: 'function',
+  };
+};
+
+/**
+ * Process parts independently - allows multiple types in the same chunk
+ * This is the key difference from OpenAI: Gemini parts[] can contain
+ * functionCall, text, inlineData simultaneously
+ *
+ * @param parts - Array of parts from Gemini response
+ * @param context - Stream context with ID
+ * @param isMultimodal - Whether to use content_part/reasoning_part events (for Gemini 2.5+)
+ */
+const processParts = (
+  parts: Part[],
+  context: StreamContext,
+  isMultimodal: boolean = false,
+): StreamProtocolChunk[] => {
+  const events: StreamProtocolChunk[] = [];
+  const functionCalls: StreamToolCallChunkData[] = [];
+
+  for (const part of parts) {
+    // 1. Handle functionCall - collect for batch emission
+    if (part.functionCall) {
+      functionCalls.push(parseGoogleFunctionCall(part, functionCalls.length));
+    }
+
+    // 2. Handle reasoning content (thought: true)
+    if (part.text && part.thought === true) {
+      if (isMultimodal) {
+        events.push({
+          data: {
+            content: part.text,
+            inReasoning: true,
+            partType: 'text',
+            thoughtSignature: part.thoughtSignature,
+          } as StreamPartChunkData,
+          id: context.id,
+          type: 'reasoning_part',
+        });
+      } else {
+        events.push({
+          data: part.text,
+          id: context.id,
+          type: 'reasoning',
+        });
+      }
+    }
+
+    // 2b. Handle reasoning inlineData (thought: true)
+    if (
+      part.inlineData &&
+      part.inlineData.data &&
+      part.inlineData.mimeType &&
+      part.thought === true
+    ) {
+      const mimeType = part.inlineData.mimeType;
+      if (mimeType.startsWith('image/') && isMultimodal) {
+        events.push({
+          data: {
+            content: part.inlineData.data,
+            inReasoning: true,
+            mimeType,
+            partType: 'image',
+            thoughtSignature: part.thoughtSignature,
+          } as StreamPartChunkData,
+          id: context.id,
+          type: 'reasoning_part',
+        });
+      }
+    }
+
+    // 3. Handle regular text (reasoning: false/undefined)
+    if (part.text && !part.thought) {
+      if (isMultimodal) {
+        events.push({
+          data: {
+            content: part.text,
+            partType: 'text',
+            thoughtSignature: part.thoughtSignature,
+          } as StreamPartChunkData,
+          id: context.id,
+          type: 'content_part',
+        });
+      } else {
+        events.push({
+          data: part.text,
+          id: context.id,
+          type: 'text',
+        });
+      }
+    }
+
+    // 4. Handle inlineData (images) - non-reasoning only (reasoning handled above)
+    if (part.inlineData && part.inlineData.data && part.inlineData.mimeType && !part.thought) {
+      const mimeType = part.inlineData.mimeType;
+      if (mimeType.startsWith('image/')) {
+        if (isMultimodal) {
+          events.push({
+            data: {
+              content: part.inlineData.data,
+              mimeType,
+              partType: 'image',
+              thoughtSignature: part.thoughtSignature,
+            } as StreamPartChunkData,
+            id: context.id,
+            type: 'content_part',
+          });
+        } else {
+          events.push({
+            data: `data:${mimeType};base64,${part.inlineData.data}`,
+            id: context.id,
+            type: 'base64_image',
+          });
+        }
+      }
+    }
+  }
+
+  // Emit tool_calls as a single batch event
+  if (functionCalls.length > 0) {
+    events.push({
+      data: functionCalls,
+      id: context.id,
+      type: 'tool_calls',
+    });
+  }
+
+  return events;
+};
+
 const transformGoogleGenerativeAIStream = (
   chunk: GenerateContentResponse,
   context: StreamContext,
   payload?: ChatPayloadForTransformStream,
 ): StreamProtocolChunk | StreamProtocolChunk[] => {
-  // Handle injected internal error marker to pass through detailed error info
+  // Handle injected internal error marker
   if ((chunk as any)?.[LOBE_ERROR_KEY]) {
     return {
       data: (chunk as any)[LOBE_ERROR_KEY],
@@ -41,7 +188,8 @@ const transformGoogleGenerativeAIStream = (
       type: 'error',
     };
   }
-  // Handle promptFeedback with blockReason (e.g., PROHIBITED_CONTENT)
+
+  // Handle promptFeedback with blockReason
   if ('promptFeedback' in chunk && (chunk as any).promptFeedback?.blockReason) {
     const blockReason = (chunk as any).promptFeedback.blockReason;
     const humanFriendlyMessage = getBlockReasonMessage(blockReason);
@@ -49,9 +197,7 @@ const transformGoogleGenerativeAIStream = (
     return {
       data: {
         body: {
-          context: {
-            promptFeedback: (chunk as any).promptFeedback,
-          },
+          context: { promptFeedback: (chunk as any).promptFeedback },
           message: humanFriendlyMessage,
           provider: 'google',
         },
@@ -62,187 +208,66 @@ const transformGoogleGenerativeAIStream = (
     };
   }
 
-  // maybe need another structure to add support for multiple choices
   const candidate = chunk.candidates?.[0];
   const { usageMetadata } = chunk;
   const usageChunks: StreamProtocolChunk[] = [];
+
+  // Build usage chunks
   if (candidate?.finishReason && usageMetadata) {
     usageChunks.push({ data: candidate.finishReason, id: context?.id, type: 'stop' });
-
     const convertedUsage = convertGoogleAIUsage(usageMetadata, payload?.pricing);
     if (convertedUsage) {
       usageChunks.push({ data: convertedUsage, id: context?.id, type: 'usage' });
     }
   }
 
-  // Parse function calls from candidate.content.parts
-  const functionCalls =
-    candidate?.content?.parts
-      ?.filter((part: any) => part.functionCall)
-      .map((part: Part) => ({
-        ...part.functionCall,
-        thoughtSignature: part.thoughtSignature,
-      })) || [];
-
-  if (functionCalls.length > 0) {
-    return [
-      {
-        data: functionCalls.map(
-          (value, index: number): StreamToolCallChunkData => ({
-            function: {
-              arguments: JSON.stringify(value.args),
-              name: value.name,
-            },
-            id: generateToolCallId(index, value.name),
-            index: index,
-            thoughtSignature: value.thoughtSignature,
-            type: 'function',
-          }),
-        ),
-        id: context.id,
-        type: 'tool_calls',
-      },
-      ...usageChunks,
-    ];
+  // Early exit for empty candidate
+  if (!candidate) {
+    return { data: '', id: context?.id, type: 'text' };
   }
 
-  // Parse text from candidate.content.parts
-  // Filter out thought content (thought: true) only, keep thoughtSignature as it's just metadata
-  const text =
-    candidate?.content?.parts
-      ?.filter((part: any) => part.text && !part.thought)
-      .map((part: any) => part.text)
-      .join('') || '';
+  // Check model version for multimodal processing
+  // Gemini 3 image models always use multimodal processing
+  const modelVersion = (chunk as any).modelVersion || '';
+  const isGemini3ImageModel =
+    modelVersion.includes('gemini-3') || modelVersion.includes('image-preview');
 
-  if (candidate) {
-    // Check if this response contains reasoning or multimodal content
-    const parts = candidate.content?.parts || [];
-    const hasReasoningParts = parts.some((p: any) => p.thought === true);
-    const hasImageParts = parts.some((p: any) => p.inlineData);
-    const hasThoughtSignature = parts.some((p: any) => p.thoughtSignature);
-    const hasThoughtsInMetadata = (usageMetadata as any)?.thoughtsTokenCount > 0;
+  // Check for multimodal content (Gemini 2.5+ features)
+  const parts = candidate.content?.parts || [];
+  const hasReasoningParts = parts.some((p: any) => p.thought === true);
+  const hasThoughtSignature = parts.some((p: any) => p.thoughtSignature);
+  const hasThoughtsInMetadata = (usageMetadata as any)?.thoughtsTokenCount > 0;
 
-    // Check model version to determine if new format should be used
-    const modelVersion = (chunk as any).modelVersion || '';
-    const isGemini25Plus = modelVersion.includes('gemini-2.5') || modelVersion.includes('gemini-3');
-    const isGemini3Model =
-      modelVersion.includes('gemini-3') || modelVersion.includes('image-preview');
+  // For Gemini 3 image models, always use multimodal processing
+  // For other models, use multimodal only for reasoning content
+  const isMultimodal =
+    isGemini3ImageModel || hasReasoningParts || hasThoughtSignature || hasThoughtsInMetadata;
 
-    // Check if this is the old single-image scenario (single image part with finishReason)
-    // This should use the legacy base64_image event format (only for gemini-2.0 and earlier)
-    const isSingleImageWithFinish =
-      parts.length === 1 &&
-      hasImageParts &&
-      !hasReasoningParts &&
-      candidate.finishReason &&
-      !isGemini25Plus;
+  // Process parts with appropriate event types
+  if (candidate.content?.parts) {
+    const events = processParts(candidate.content.parts, context, isMultimodal);
 
-    // Check if this has grounding metadata (should use legacy text + grounding events)
+    // Check for grounding metadata
+    const hasFunctionCall = events.some((e) => e.type === 'tool_calls');
     const hasGroundingMetadata = !!candidate.groundingMetadata?.groundingChunks;
 
-    // Use content_part/reasoning_part events when:
-    // 1. There are reasoning parts in current chunk (thought: true)
-    // 2. There are multiple parts with images (multimodal content)
-    // 3. There are thoughtSignature in parts (reasoning metadata attached to content)
-    // 4. There is thoughtsTokenCount in metadata (indicates response contains reasoning)
-    // 5. This is Gemini 3 model with image generation (always use new format for consistency)
-    // BUT NOT for:
-    // - The legacy single-image scenario
-    // - Grounding metadata scenario (uses legacy text + grounding events)
-    const shouldUseMultimodalProcessing =
-      (hasReasoningParts ||
-        (hasImageParts && parts.length > 1) ||
-        hasThoughtSignature ||
-        hasThoughtsInMetadata ||
-        isGemini3Model) &&
-      !isSingleImageWithFinish &&
-      !hasGroundingMetadata;
+    if (hasGroundingMetadata && !hasFunctionCall) {
+      const text = isMultimodal
+        ? events
+            .filter((e) => e.type === 'content_part')
+            .map((e) => (e.data as StreamPartChunkData).content)
+            .join('')
+        : events
+            .filter((e) => e.type === 'text')
+            .map((e) => e.data as string)
+            .join('');
 
-    // Process multimodal parts (text and images in reasoning or content)
-    if (
-      shouldUseMultimodalProcessing &&
-      Array.isArray(candidate.content?.parts) &&
-      candidate.content.parts.length > 0
-    ) {
-      const results: StreamProtocolChunk[] = [];
-
-      for (const part of candidate.content.parts) {
-        // 1. Reasoning text part
-        if (part && part.text && part.thought === true) {
-          results.push({
-            data: {
-              content: part.text,
-              inReasoning: true,
-              partType: 'text',
-              thoughtSignature: part.thoughtSignature,
-            } as StreamPartChunkData,
-            id: context.id,
-            type: 'reasoning_part',
-          });
-        }
-
-        // 2. Reasoning image part
-        else if (part && part.inlineData && part.thought === true) {
-          results.push({
-            data: {
-              content: part.inlineData.data,
-              inReasoning: true,
-              mimeType: part.inlineData.mimeType,
-              partType: 'image',
-              thoughtSignature: part.thoughtSignature,
-            } as StreamPartChunkData,
-            id: context.id,
-            type: 'reasoning_part',
-          });
-        }
-
-        // 3. Content text part
-        else if (part && part.text && !part.thought) {
-          results.push({
-            data: {
-              content: part.text,
-              partType: 'text',
-              thoughtSignature: part.thoughtSignature,
-            } as StreamPartChunkData,
-            id: context.id,
-            type: 'content_part',
-          });
-        }
-
-        // 4. Content image part
-        else if (part && part.inlineData && !part.thought) {
-          results.push({
-            data: {
-              content: part.inlineData.data,
-              mimeType: part.inlineData.mimeType,
-              partType: 'image',
-              thoughtSignature: part.thoughtSignature,
-            } as StreamPartChunkData,
-            id: context.id,
-            type: 'content_part',
-          });
-        }
-      }
-
-      // If we found multimodal parts, return them with usage chunks
-      if (results.length > 0) {
-        if (candidate.finishReason && usageMetadata) {
-          results.push(...usageChunks);
-        }
-        return results;
-      }
-    }
-
-    // return the grounding
-    const { groundingChunks, webSearchQueries } = candidate.groundingMetadata ?? {};
-    if (groundingChunks) {
+      const { groundingChunks, webSearchQueries } = candidate.groundingMetadata ?? {};
       return [
         { data: text, id: context.id, type: 'text' },
         {
           data: {
             citations: groundingChunks?.map((chunk) => ({
-              // Google returns a uri processed by Google itself, so it cannot display the real favicon
-              // Need to use title as a replacement
               favicon: chunk.web?.title,
               title: chunk.web?.title,
               url: chunk.web?.uri,
@@ -256,63 +281,31 @@ const transformGoogleGenerativeAIStream = (
       ];
     }
 
-    // Check for image data before handling finishReason
-    if (Array.isArray(candidate.content?.parts) && candidate.content.parts.length > 0) {
-      // Filter out reasoning content and get first non-reasoning part
-      const part = candidate.content.parts.find((p: any) => !p.thought);
-
-      if (part && part.inlineData && part.inlineData.data && part.inlineData.mimeType) {
-        const imageChunk = {
-          data: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
-          id: context.id,
-          type: 'base64_image' as const,
-        };
-
-        // If also has finishReason, combine image with finish chunks
-        if (candidate.finishReason) {
-          const chunks: StreamProtocolChunk[] = [imageChunk];
-          if (chunk.usageMetadata) {
-            // usageChunks already includes the 'stop' chunk as its first entry when usage exists,
-            // so append usageChunks to avoid sending a duplicate 'stop'.
-            chunks.push(...usageChunks);
-          } else {
-            // No usage metadata, we need to send the stop chunk explicitly.
-            chunks.push({ data: candidate.finishReason, id: context?.id, type: 'stop' });
-          }
-          return chunks;
-        }
-
-        return imageChunk;
+    // Return processed events
+    if (events.length > 0) {
+      if (usageChunks.length > 0) {
+        events.push(...usageChunks);
       }
+      return events;
     }
-
-    if (candidate.finishReason) {
-      if (chunk.usageMetadata) {
-        return [
-          !!text ? { data: text, id: context?.id, type: 'text' } : undefined,
-          ...usageChunks,
-        ].filter(Boolean) as StreamProtocolChunk[];
-      }
-      // When there is finishReason but no text content, send an empty text chunk to stop the loading animation
-      return [
-        { data: '', id: context?.id, type: 'text' },
-        { data: candidate.finishReason, id: context?.id, type: 'stop' },
-      ];
-    }
-
-    if (!!text?.trim()) return { data: text, id: context?.id, type: 'text' };
   }
 
-  return {
-    data: text || '',
-    id: context?.id,
-    type: 'text',
-  };
+  // Handle finish reason without content
+  if (candidate.finishReason) {
+    // Don't emit empty text event if there's no content
+    if (usageMetadata) {
+      return usageChunks;
+    }
+    return [{ data: candidate.finishReason, id: context?.id, type: 'stop' }];
+  }
+
+  // Fallback for empty responses
+  return { data: '', id: context?.id, type: 'text' };
 };
 
 export interface GoogleAIStreamOptions {
   callbacks?: ChatStreamCallbacks;
-  enableStreaming?: boolean; // Select TPS calculation method (pass false for non-streaming)
+  enableStreaming?: boolean;
   inputStartAt?: number;
   payload?: ChatPayloadForTransformStream;
 }
@@ -329,7 +322,7 @@ export const GoogleGenerativeAIStream = (
   return rawStream
     .pipeThrough(
       createTokenSpeedCalculator(transformWithPayload, {
-        enableStreaming: enableStreaming,
+        enableStreaming,
         inputStartAt,
         streamStack,
       }),

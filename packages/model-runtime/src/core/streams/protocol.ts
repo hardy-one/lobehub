@@ -2,7 +2,7 @@ import { ChatCitationItem, ModelPerformance, ModelUsage } from '@lobechat/types'
 import type { Pricing } from 'model-bank';
 
 import { parseToolCalls } from '../../helpers';
-import { ChatStreamCallbacks } from '../../types';
+import { ChatStreamCallbacks, MessageToolCall, MessageToolCallChunk } from '../../types';
 import { AgentRuntimeErrorType } from '../../types/error';
 import { safeParseJSON } from '../../utils/safeParseJSON';
 import { nanoid } from '../../utils/uuid';
@@ -381,10 +381,26 @@ export function createCallbacksTransformer(cb: ChatStreamCallbacks | undefined) 
           }
 
           case 'tool_calls': {
-            if (!toolsCalling) toolsCalling = [];
-            toolsCalling = parseToolCalls(toolsCalling, data);
+            // Track existing IDs for detecting new tools
+            const prevIds = new Set((toolsCalling || []).map((t: MessageToolCall) => t.id));
+            const newTools: MessageToolCallChunk[] = [];
 
-            await callbacks.onToolsCalling?.({ chunk: data, toolsCalling });
+            if (!toolsCalling) toolsCalling = [];
+            const newToolsCalling = parseToolCalls(toolsCalling, data);
+
+            // Find newly added tools
+            for (const tool of newToolsCalling) {
+              if (!prevIds.has(tool.id)) {
+                newTools.push(tool as MessageToolCallChunk);
+              }
+            }
+
+            toolsCalling = newToolsCalling;
+
+            // On-demand: only trigger callback when there are new tools
+            if (newTools.length > 0) {
+              await callbacks.onToolsCalling?.({ chunk: data, toolsCalling });
+            }
           }
         }
       }

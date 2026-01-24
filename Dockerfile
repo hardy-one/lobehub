@@ -40,14 +40,10 @@ ARG NEXT_PUBLIC_ANALYTICS_UMAMI
 ARG NEXT_PUBLIC_UMAMI_SCRIPT_URL
 ARG NEXT_PUBLIC_UMAMI_WEBSITE_ID
 ARG FEATURE_FLAGS
+ARG AUTH_SECRET
 
 ENV NEXT_PUBLIC_BASE_PATH="${NEXT_PUBLIC_BASE_PATH}" \
     FEATURE_FLAGS="${FEATURE_FLAGS}"
-
-ENV APP_URL="http://app.com" \
-    DATABASE_DRIVER="node" \
-    DATABASE_URL="postgres://postgres:password@localhost:5432/postgres" \
-    KEY_VAULTS_SECRET="use-for-build"
 
 # Sentry
 ENV NEXT_PUBLIC_SENTRY_DSN="${NEXT_PUBLIC_SENTRY_DSN}" \
@@ -93,6 +89,13 @@ cd /deps
 pnpm init
 pnpm add pg drizzle-orm
 EOF
+
+# Set required build-time env vars (needed for prebuild validation)
+ENV AUTH_SECRET="${AUTH_SECRET:-use-for-build}" \
+    KEY_VAULTS_SECRET="use-for-build" \
+    APP_URL="http://app.com" \
+    DATABASE_DRIVER="node" \
+    DATABASE_URL="postgres://postgres:password@localhost:5432/postgres"
 
 COPY . .
 

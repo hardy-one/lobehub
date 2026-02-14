@@ -48,7 +48,7 @@ describe('LobeDeepSeekAI - custom features', () => {
       ]);
     });
 
-    it('should not modify messages without reasoning field', () => {
+    it('should ensure reasoning_content for all assistant messages (required by DeepSeek Reasoner API)', () => {
       const payload = {
         messages: [
           { role: 'user', content: 'Hello' },
@@ -59,10 +59,13 @@ describe('LobeDeepSeekAI - custom features', () => {
 
       const result = params.chatCompletion!.handlePayload!(payload as any);
 
-      expect(result.messages).toEqual(payload.messages);
+      expect(result.messages).toEqual([
+        { role: 'user', content: 'Hello' },
+        { role: 'assistant', content: 'Hi there', reasoning_content: '' },
+      ]);
     });
 
-    it('should handle empty reasoning content', () => {
+    it('should add reasoning_content for assistant messages even with empty reasoning object', () => {
       const payload = {
         messages: [
           {
@@ -79,6 +82,7 @@ describe('LobeDeepSeekAI - custom features', () => {
       expect(result.messages[0]).toEqual({
         role: 'assistant',
         content: 'Response',
+        reasoning_content: '',
       });
     });
 

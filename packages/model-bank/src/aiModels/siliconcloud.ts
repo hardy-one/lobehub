@@ -1,4 +1,4 @@
-import  { type AIChatModelCard, type AIImageModelCard } from '../types/aiModel';
+import { type AIChatModelCard, type AIImageModelCard } from '../types/aiModel';
 
 // https://siliconflow.cn/zh-cn/models
 const siliconcloudChatModels: AIChatModelCard[] = [
@@ -179,6 +179,66 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2025-12-22',
+    settings: {
+      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+    },
+    contextWindowTokens: 200_000,
+    description:
+      "GLM-5 is Zhipu AI's new flagship foundation model for agent engineering, achieving open-source SOTA performance in coding and agent capabilities. It matches Claude Opus 4.5 in performance.",
+    displayName: 'GLM-5 (Pro)',
+    id: 'Pro/zai-org/GLM-5',
+    pricing: {
+      currency: 'CNY',
+      units: [
+        {
+          lookup: {
+            prices: {
+              '[0, 0.032]_[0, 0.0002]': 1,
+              '[0, 0.032]_[0.0002, infinity]': 1.5,
+              '[0.032, infinity]_[0, infinity]': 1.5,
+            },
+            pricingParams: ['textInput', 'textOutput'],
+          },
+          name: 'textInput_cacheRead',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+        {
+          lookup: {
+            prices: {
+              '[0, 0.032]_[0, 0.0002]': 4,
+              '[0, 0.032]_[0.0002, infinity]': 6,
+              '[0.032, infinity]_[0, infinity]': 6,
+            },
+            pricingParams: ['textInput', 'textOutput'],
+          },
+          name: 'textInput',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+        {
+          lookup: {
+            prices: {
+              '[0, 0.032]_[0, 0.0002]': 18,
+              '[0, 0.032]_[0.0002, infinity]': 22,
+              '[0.032, infinity]_[0, infinity]': 22,
+            },
+            pricingParams: ['textInput', 'textOutput'],
+          },
+          name: 'textOutput',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+      ],
+    },
+    releasedAt: '2026-02-12',
     settings: {
       extendParams: ['enableReasoning', 'reasoningBudgetToken'],
     },
@@ -559,9 +619,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
     },
     contextWindowTokens: 163_840,
     description:
-      'DeepSeek-V3.2-Exp is an experimental V3.2 release bridging to the next architecture. It adds DeepSeek Sparse Attention (DSA) on top of V3.1-Terminus to improve long-context training and inference efficiency, with optimizations for tool use, long-document understanding, and multi-step reasoning. It is ideal for exploring higher reasoning efficiency with large context budgets.',
-    displayName: 'DeepSeek V3.2 Exp',
-    id: 'deepseek-ai/DeepSeek-V3.2-Exp',
+      'DeepSeek-V3.2 is a model that harmonizes high computational efficiency with superior reasoning and agent performance. Its approach is built upon three key technical breakthroughs: DeepSeek Sparse Attention (DSA), an efficient attention mechanism that substantially reduces computational complexity while preserving model performance, specifically optimized for long-context scenarios; a Scalable Reinforcement Learning Framework, which enables performance comparable to GPT-5 and reasoning proficiency on par with Gemini-3.0-Pro in its high-compute variant; and a Large-Scale Agentic Task Synthesis Pipeline to integrate reasoning into tool-use scenarios, improving compliance and generalization in complex interactive environments. The model has achieved gold-medal performance in the 2025 International Mathematical Olympiad (IMO) and International Olympiad in Informatics (IOI).',
+    displayName: 'DeepSeek V3.2',
+    id: 'deepseek-ai/DeepSeek-V3.2',
     pricing: {
       currency: 'CNY',
       units: [
@@ -582,9 +642,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
     },
     contextWindowTokens: 163_840,
     description:
-      'DeepSeek-V3.2-Exp is an experimental V3.2 release bridging to the next architecture. It adds DeepSeek Sparse Attention (DSA) on top of V3.1-Terminus to improve long-context training and inference efficiency, with optimizations for tool use, long-document understanding, and multi-step reasoning. It is ideal for exploring higher reasoning efficiency with large context budgets.',
-    displayName: 'DeepSeek V3.2 Exp (Pro)',
-    id: 'Pro/deepseek-ai/DeepSeek-V3.2-Exp',
+      'DeepSeek-V3.2 is a model that harmonizes high computational efficiency with superior reasoning and agent performance. Its approach is built upon three key technical breakthroughs: DeepSeek Sparse Attention (DSA), an efficient attention mechanism that substantially reduces computational complexity while preserving model performance, specifically optimized for long-context scenarios; a Scalable Reinforcement Learning Framework, which enables performance comparable to GPT-5 and reasoning proficiency on par with Gemini-3.0-Pro in its high-compute variant; and a Large-Scale Agentic Task Synthesis Pipeline to integrate reasoning into tool-use scenarios, improving compliance and generalization in complex interactive environments. The model has achieved gold-medal performance in the 2025 International Mathematical Olympiad (IMO) and International Olympiad in Informatics (IOI).',
+    displayName: 'DeepSeek V3.2 (Pro)',
+    id: 'Pro/deepseek-ai/DeepSeek-V3.2',
     pricing: {
       currency: 'CNY',
       units: [

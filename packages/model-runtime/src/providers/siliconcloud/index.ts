@@ -1,8 +1,8 @@
 import { ModelProvider } from 'model-bank';
 
-import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatibleFactory';
+import { type OpenAICompatibleFactoryOptions } from '../../core/openaiCompatibleFactory';
 import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
-import type { ChatCompletionErrorPayload } from '../../types';
+import { type ChatCompletionErrorPayload } from '../../types';
 import { AgentRuntimeErrorType } from '../../types/error';
 import { processMultiProviderModelList } from '../../utils/modelParse';
 import { createSiliconCloudImage } from './createImage';
@@ -43,27 +43,43 @@ export const params = {
       };
     },
     handlePayload: (payload) => {
-      const { max_tokens, model, thinking, ...rest } = payload;
+      const { max_tokens, model, thinking, messages, ...rest } = payload;
       const thinkingBudget =
         thinking?.budget_tokens === 0 ? 1 : thinking?.budget_tokens || undefined;
+
+      const isThinkingEnabled = thinking?.type === 'enabled';
+
+      // Process interleaved thinking - convert reasoning to reasoning_content
+      const processedMessages = messages?.map((message: any) => {
+        if (message.role === 'assistant' && message.reasoning?.content) {
+          const { reasoning, ...restMessage } = message;
+          return {
+            ...restMessage,
+            reasoning_content: reasoning.content,
+          };
+        }
+        return message;
+      });
 
       const result: any = {
         ...rest,
         max_tokens:
           max_tokens === undefined ? undefined : Math.min(Math.max(max_tokens, 1), 16_384),
         model,
+        ...(processedMessages ? { messages: processedMessages } : {}),
       };
 
       if (thinking) {
         // Only some models support specifying enable_thinking, while other slow-thinking models only support adjusting thinking budget
         const hybridThinkingModels = [
-          /GLM-4\.5(?!.*Air$)/, // GLM-4.5 and GLM-4.5V (excluding GLM-4.5 Air)
-          /Qwen3-(?:\d+B|\d+B-A\d+B)$/, // Qwen3-8B, Qwen3-14B, Qwen3-32B, Qwen3-30B-A3B, Qwen3-235B-A22B
-          /DeepSeek-V3\.1/,
+          /GLM-4\.([5-7])(?!.*Air$)/, // GLM-4.5、GLM-4.6、GLM-4.7 和对应 V 版本（不包含 Air）
+          /Qwen3-(?:\d+B|\d+B-A\d+B)$/, // Qwen3-8B、Qwen3-14B、Qwen3-32B、Qwen3-30B-A3B、Qwen3-235B-A22B
+          /DeepSeek-V3\.[12]/, // DeepSeek-V3.1、DeepSeek-V3.2
           /Hunyuan-A13B-Instruct/,
+          /moonshotai\/kimi-k2\.5/, // Kimi K2.5
         ];
         if (hybridThinkingModels.some((regexp) => regexp.test(model))) {
-          result.enable_thinking = thinking.type === 'enabled';
+          result.enable_thinking = isThinkingEnabled;
         }
         if (typeof thinkingBudget !== 'undefined') {
           result.thinking_budget = Math.min(Math.max(thinkingBudget, 1), 32_768);

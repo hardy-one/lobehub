@@ -9,6 +9,7 @@ const THINKING_MODELS = new Set([
   'deepseek-ai/deepseek-v3.1-terminus',
   'deepseek-ai/deepseek-v3.2',
   'z-ai/glm4.7',
+  'z-ai/glm5',
   'moonshotai/kimi-k2.5',
 ]);
 

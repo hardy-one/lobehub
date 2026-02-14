@@ -1,4 +1,4 @@
-import  { type AIChatModelCard } from '../types/aiModel';
+import { type AIChatModelCard } from '../types/aiModel';
 
 const nvidiaChatModels: AIChatModelCard[] = [
   {
@@ -57,6 +57,23 @@ const nvidiaChatModels: AIChatModelCard[] = [
     displayName: 'GLM-4.7',
     enabled: true,
     id: 'z-ai/glm4.7',
+    maxOutput: 131_072,
+    settings: {
+      extendParams: ['enableReasoning'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+    },
+    contextWindowTokens: 200_000,
+    description:
+      "GLM-5 is Zhipu AI's new flagship foundation model for agent engineering, achieving open-source SOTA performance in coding and agent capabilities. It matches Claude Opus 4.5 in performance.",
+    displayName: 'GLM-5',
+    enabled: true,
+    id: 'z-ai/glm5',
     maxOutput: 131_072,
     settings: {
       extendParams: ['enableReasoning'],

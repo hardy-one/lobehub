@@ -66,6 +66,141 @@ export class StreamingExecutorActionImpl {
     this.#get = get;
   }
 
+  /**
+   * Manually trigger context compression
+   * This bypasses the automatic compression threshold check by directly calling
+   * the compress_context executor
+   */
+  internal_compressContext = async (
+    agentId: string,
+    topicId: string,
+    messages: UIChatMessage[],
+  ): Promise<void> => {
+    const { activeThreadId, activeGroupId } = this.#get();
+
+    const context = {
+      agentId,
+      groupId: activeGroupId,
+      threadId: activeThreadId ?? undefined,
+      topicId,
+    };
+
+    const messageKey = messageMapKey(context);
+
+    // Get db messages for compression
+    const dbMessages = this.#get().dbMessagesMap[messageKey] || [];
+    const messageIds = dbMessages.map((m) => m.id).filter(Boolean);
+
+    if (!topicId || messageIds.length === 0) {
+      console.warn('[internal_compressContext] Cannot compress: no topicId or messages');
+      return;
+    }
+
+    // Check if already compressed
+    const existingCompression = dbMessages.find((m) => m.role === 'compressedGroup');
+    if (existingCompression) {
+      console.warn('[internal_compressContext] Already compressed');
+      return;
+    }
+
+    // Create compression operation
+    const { operationId } = this.#get().startOperation({
+      type: 'contextCompression',
+      context: { ...context, messageId: undefined },
+      label: 'Context Compression',
+    });
+
+    try {
+      // Calculate token count
+      const { calculateMessageTokens } = await import('@lobechat/agent-runtime');
+      const currentTokenCount = calculateMessageTokens(messages);
+
+      log(
+        `[internal_compressContext] Starting manual compression: topicId=%s, messages=%d, tokens=%d`,
+        topicId,
+        messageIds.length,
+        currentTokenCount,
+      );
+
+      // Directly invoke the compress_context executor
+      // We need to get the executor and call it directly
+      const executors = createAgentExecutors({
+        agentConfig: {} as ResolvedAgentConfig,
+        get: this.#get,
+        messageKey,
+        operationId,
+        parentId: messageIds.at(-1) || '',
+        skipCreateFirstMessage: true,
+      });
+
+      // Create instruction for compression
+      const compressionInstruction = {
+        type: 'compress_context',
+        payload: {
+          currentTokenCount,
+          messages,
+          existingSummary: undefined,
+        },
+      } as any;
+
+      // Create initial state for the executor
+      const agentState: AgentState = {
+        createdAt: Date.now().toString(),
+        lastModified: Date.now().toString(),
+        messages,
+        status: 'running',
+        stepCount: 0,
+        operationId,
+        toolManifestMap: {},
+        cost: {
+          calculatedAt: Date.now().toString(),
+          currency: 'USD',
+          llm: { byModel: [], currency: 'USD', total: 0 },
+          tools: { byTool: [], currency: 'USD', total: 0 },
+          total: 0,
+        },
+        usage: {
+          llm: { apiCalls: 0, processingTimeMs: 0, tokens: { input: 0, output: 0, total: 0 } },
+          tools: { byTool: [], totalCalls: 0, totalTimeMs: 0 },
+          humanInteraction: {
+            approvalRequests: 0,
+            promptRequests: 0,
+            selectRequests: 0,
+            totalWaitingTimeMs: 0,
+          },
+        },
+        tools: [],
+      };
+
+      const agentContext: AgentRuntimeContext = {
+        phase: 'user_input',
+        payload: compressionInstruction.payload,
+        session: {
+          messageCount: messages.length,
+          sessionId: operationId,
+          status: 'running',
+          stepCount: 0,
+        },
+      };
+
+      // Call the compress_context executor directly
+      if (executors.compress_context) {
+        await executors.compress_context(compressionInstruction, agentState);
+      } else {
+        throw new Error('compress_context executor not found');
+      }
+
+      log(`[internal_compressContext] Compression completed successfully`);
+      this.#get().completeOperation(operationId);
+    } catch (error) {
+      console.error('[internal_compressContext] Error:', error);
+      this.#get().failOperation(operationId, {
+        type: 'compression_error',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
   internal_createAgentState = ({
     messages,
     parentMessageId,

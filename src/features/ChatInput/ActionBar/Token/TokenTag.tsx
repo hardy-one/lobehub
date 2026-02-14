@@ -1,10 +1,10 @@
 import { ToolNameResolver } from '@lobechat/context-engine';
 import { pluginPrompts } from '@lobechat/prompts';
-import { Center, Flexbox, Tooltip } from '@lobehub/ui';
+import { Button, Center, Flexbox, Tooltip } from '@lobehub/ui';
 import { TokenTag } from '@lobehub/ui/chat';
 import { cssVar } from 'antd-style';
 import numeral from 'numeral';
-import { memo, useMemo } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { createAgentToolsEngine } from '@/helpers/toolEngineering';
@@ -14,7 +14,7 @@ import { useTokenCount } from '@/hooks/useTokenCount';
 import { useAgentStore } from '@/store/agent';
 import { agentByIdSelectors, chatConfigByIdSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
-import { dbMessageSelectors, topicSelectors } from '@/store/chat/selectors';
+import { chatSelectors, dbMessageSelectors, topicSelectors } from '@/store/chat/selectors';
 import { useToolStore } from '@/store/tool';
 import { pluginHelpers } from '@/store/tool/helpers';
 
@@ -29,11 +29,17 @@ interface TokenTagProps {
 }
 const Token = memo<TokenTagProps>(({ total: messageString }) => {
   const { t } = useTranslation(['chat', 'components']);
+  const [popoverOpen, setPopoverOpen] = useState(false);
 
-  const [input, historySummary] = useChatStore((s) => [
-    s.inputMessage,
-    topicSelectors.currentActiveTopicSummary(s)?.content || '',
-  ]);
+  const [input, historySummary, activeAgentId, activeTopicId, messages, internalCompressContext] =
+    useChatStore((s) => [
+      s.inputMessage,
+      topicSelectors.currentActiveTopicSummary(s)?.content || '',
+      s.activeAgentId,
+      s.activeTopicId,
+      chatSelectors.activeBaseChats(s),
+      s.internal_compressContext,
+    ]);
 
   const agentId = useAgentId();
   const [systemRole, model, provider] = useAgentStore((s) => {
@@ -56,6 +62,18 @@ const Token = memo<TokenTagProps>(({ total: messageString }) => {
   ]);
 
   const maxTokens = useModelContextWindowTokens(model, provider);
+
+  // Compression state
+  const isCompressionDisabled = useMemo(
+    () => !activeAgentId || !activeTopicId || messages.length === 0,
+    [activeAgentId, activeTopicId, messages.length],
+  );
+
+  const handleCompress = useCallback(async () => {
+    if (!activeAgentId || !activeTopicId) return;
+    setPopoverOpen(false);
+    await internalCompressContext(activeAgentId, activeTopicId, messages);
+  }, [activeAgentId, activeTopicId, internalCompressContext, messages]);
 
   // Tool usage token
   const canUseTool = useModelSupportToolUse(model, provider);
@@ -182,11 +200,21 @@ const Token = memo<TokenTagProps>(({ total: messageString }) => {
           },
         ]}
       />
+      <Button
+        block
+        disabled={isCompressionDisabled}
+        size="small"
+        style={{ fontSize: 13 }}
+        variant="outlined"
+        onClick={handleCompress}
+      >
+        {t('compression.trigger')}
+      </Button>
     </Flexbox>
   );
 
   return (
-    <ActionPopover content={content}>
+    <ActionPopover content={content} open={popoverOpen} onOpenChange={setPopoverOpen}>
       <TokenTag
         maxValue={maxTokens}
         mode={'used'}

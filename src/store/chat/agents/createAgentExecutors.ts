@@ -18,13 +18,18 @@ import {
   type TaskResultPayload,
   type TasksBatchResultPayload,
 } from '@lobechat/agent-runtime';
-import { calculateMessageTokens, UsageCounter } from '@lobechat/agent-runtime';
+import {
+  calculateMessageTokens,
+  splitMessagesForCompression,
+  UsageCounter,
+} from '@lobechat/agent-runtime';
 import { isDesktop } from '@lobechat/const';
 import { chainCompressContext } from '@lobechat/prompts';
 import {
   type ChatToolPayload,
   type ConversationContext,
   type CreateMessageParams,
+  type UIChatMessage,
 } from '@lobechat/types';
 import debug from 'debug';
 import pMap from 'p-map';
@@ -36,6 +41,7 @@ import { type ResolvedAgentConfig } from '@/services/chat/mecha';
 import { messageService } from '@/services/message';
 import { agentByIdSelectors } from '@/store/agent/selectors';
 import { getAgentStoreState } from '@/store/agent/store';
+import { displayMessageSelectors } from '@/store/chat/selectors';
 import { type ChatStore } from '@/store/chat/store';
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 import { sleep } from '@/utils/sleep';
@@ -46,6 +52,70 @@ const log = debug('lobe-store:agent-executors');
 const TOOL_PRICING: Record<string, number> = {
   'lobe-web-browsing/craw': 0.002,
   'lobe-web-browsing/search': 0.001,
+};
+
+const collectActiveMessageIds = (messages: UIChatMessage[]) => {
+  const ids = new Set<string>();
+
+  function collectFromAssistantGroup(message: UIChatMessage): void {
+    if (message.id) ids.add(message.id);
+    message.children?.forEach((child) => {
+      if (child.id) ids.add(child.id);
+      child.tools?.forEach((tool) => {
+        if (tool.result_msg_id) ids.add(tool.result_msg_id);
+      });
+    });
+  }
+
+  // walk is defined after this function, but that's intentional for mutual recursion
+
+  function collectFromCompare(message: UIChatMessage): void {
+    const columns = (message as any).columns as UIChatMessage[][] | undefined;
+    if (columns && columns.length > 0) {
+      const activeColumnId = (message as any).activeColumnId as string | undefined;
+      const activeColumn = activeColumnId
+        ? columns.find((column) => column.some((colMessage) => colMessage.id === activeColumnId))
+        : columns[0];
+
+      (activeColumn ?? columns[0]).forEach(walk);
+      return;
+    }
+
+    const compareChildren = (message as any).children as UIChatMessage[] | undefined;
+
+    compareChildren?.forEach(walk);
+  }
+
+  function walk(message?: UIChatMessage): void {
+    if (!message) return;
+
+    const role = message.role as string;
+    if (role === 'assistantGroup' || role === 'supervisor') {
+      collectFromAssistantGroup(message);
+      return;
+    }
+
+    if (role === 'agentCouncil') {
+      message.members?.forEach(walk);
+      return;
+    }
+
+    if (role === 'compare' || role === 'compareGroup') {
+      collectFromCompare(message);
+      return;
+    }
+
+    if (role === 'tasks') {
+      message.tasks?.forEach(walk);
+      return;
+    }
+
+    if (message.id) ids.add(message.id);
+  }
+
+  messages.forEach(walk);
+
+  return ids;
 };
 
 /**
@@ -176,7 +246,38 @@ export const createAgentExecutors = (context: {
       // - Loading state management
       // - Error handling
       // Use messages from state (already contains full conversation history)
-      const messages = llmPayload.messages.filter((message) => message.id !== assistantMessageId);
+      const dbMessagesMap = context.get().dbMessagesMap[context.messageKey] || [];
+      // Use displayMessages from messagesMap for filtering, fall back to empty if not available
+      let displayMessages: UIChatMessage[] = [];
+      try {
+        displayMessages =
+          displayMessageSelectors.getDisplayMessagesByKey(context.messageKey)(context.get()) || [];
+      } catch {
+        // messagesMap may not exist in test environment
+        displayMessages = [];
+      }
+
+      const activeMessageIds = collectActiveMessageIds(displayMessages);
+      if (activeMessageIds.size > 0) {
+        dbMessagesMap.forEach((message) => {
+          if (
+            message.role === 'tool' &&
+            message.parentId &&
+            activeMessageIds.has(message.parentId)
+          ) {
+            activeMessageIds.add(message.id);
+          }
+        });
+      }
+
+      const rawMessageIds = new Set(dbMessagesMap.map((message) => message.id));
+      const messages = llmPayload.messages.filter((message) => {
+        if (message.id === assistantMessageId) return false;
+        if (!message.id) return true;
+        if (activeMessageIds.size === 0) return true;
+        if (!rawMessageIds.has(message.id)) return true;
+        return activeMessageIds.has(message.id);
+      });
       const {
         isFunctionCall,
         content,
@@ -2248,14 +2349,24 @@ export const createAgentExecutors = (context: {
 
       // Get message IDs from dbMessagesMap (raw db messages)
       const dbMessages = context.get().dbMessagesMap[context.messageKey] || [];
-      const messageIds = dbMessages.map((m) => m.id).filter(Boolean);
+
+      // Split messages: preserve from last user message
+      const { messagesToCompress, messagesToPreserve } = splitMessagesForCompression(messages);
+      const preserveIds = new Set(messagesToPreserve.map((m) => (m as any).id));
+
+      // Only compress messages before the last user message
+      const messageIds = dbMessages
+        .filter((m) => !preserveIds.has(m.id))
+        .map((m) => m.id)
+        .filter(Boolean);
 
       if (!topicId || messageIds.length === 0) {
-        // No topicId or no messages, skip compression
+        // No topicId or no messages to compress, skip compression
         log(
-          `${stagePrefix} Skipping compression: topicId=%s, messageIds=%d`,
+          `${stagePrefix} Skipping compression: topicId=%s, messageIds=%d, preserved=%d`,
           topicId,
           messageIds.length,
+          messagesToPreserve.length,
         );
         return {
           events: [],
@@ -2279,14 +2390,16 @@ export const createAgentExecutors = (context: {
         };
       }
 
-      // Find the latest assistant message to attach the compression operation
-      const latestAssistantMessage = dbMessages.findLast((m) => m.role === 'assistant');
+      // Find the latest assistant message from messages to compress (before preserved messages)
+      const dbMessagesToCompress = dbMessages.filter((m) => !preserveIds.has(m.id));
+      const latestAssistantMessage = dbMessagesToCompress.findLast((m) => m.role === 'assistant');
       const assistantMessageId = latestAssistantMessage?.id;
 
       log(
-        `${stagePrefix} Compressing %d db messages (display: %d), assistantMsgId=%s`,
+        `${stagePrefix} Compressing %d db messages (display: %d), preserved=%d, assistantMsgId=%s`,
         messageIds.length,
-        messages.length,
+        messagesToCompress.length,
+        messagesToPreserve.length,
         assistantMessageId,
       );
 
@@ -2295,6 +2408,7 @@ export const createAgentExecutors = (context: {
         context: { ...getOperationContext(), messageId: assistantMessageId },
         metadata: {
           messageCount: messageIds.length,
+          preservedCount: messagesToPreserve.length,
           startTime: Date.now(),
         },
         parentOperationId: state.operationId,

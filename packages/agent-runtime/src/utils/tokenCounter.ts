@@ -21,6 +21,7 @@ export const DEFAULT_THRESHOLD_RATIO = 0.5;
  */
 export interface TokenCountMessage {
   content?: string | unknown;
+  id?: string;
   metadata?: {
     usage?: {
       totalOutputTokens?: number;
@@ -106,5 +107,46 @@ export function shouldCompress(
     currentTokenCount,
     needsCompression: currentTokenCount > threshold,
     threshold,
+  };
+}
+
+/**
+ * Split messages for compression: preserve from the last user message
+ * This ensures the latest user input and subsequent messages are kept intact
+ * @param messages - All messages in context
+ * @returns Messages to compress and messages to preserve
+ */
+export function splitMessagesForCompression(messages: TokenCountMessage[]): {
+  messagesToCompress: TokenCountMessage[];
+  messagesToPreserve: TokenCountMessage[];
+} {
+  // Find the index of the last user message
+  let lastUserIndex = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') {
+      lastUserIndex = i;
+      break;
+    }
+  }
+
+  // No user message, compress all
+  if (lastUserIndex === -1) {
+    return {
+      messagesToCompress: messages,
+      messagesToPreserve: [],
+    };
+  }
+
+  // User message is the first one, preserve it and compress rest
+  if (lastUserIndex === 0) {
+    return {
+      messagesToCompress: [],
+      messagesToPreserve: messages,
+    };
+  }
+
+  return {
+    messagesToCompress: messages.slice(0, lastUserIndex),
+    messagesToPreserve: messages.slice(lastUserIndex),
   };
 }

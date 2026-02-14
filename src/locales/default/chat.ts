@@ -46,6 +46,7 @@ export default {
     'Are you sure you want to uncompress? This will restore the original messages.',
   'compression.history': 'History',
   'compression.summary': 'Summary',
+  'compression.trigger': 'Compress Context',
   'confirmClearCurrentMessages':
     'You are about to clear the current session messages. Once cleared, they cannot be retrieved. Please confirm your action.',
   'confirmRemoveChatGroupItemAlert':

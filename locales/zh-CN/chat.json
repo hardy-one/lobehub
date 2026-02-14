@@ -36,6 +36,8 @@
   "compression.cancelConfirm": "确定要取消压缩吗？这将恢复原始消息。",
   "compression.history": "历史记录",
   "compression.summary": "摘要",
+  "compression.trigger": "压缩上下文",
+  "compression.triggerConfirm": "是否将对话历史压缩为摘要？",
   "confirmClearCurrentMessages": "确认清空当前会话消息吗？清空后无法恢复",
   "confirmRemoveChatGroupItemAlert": "确认删除该群组吗？群组专有助理将会被同样删除，外部助理不受影响",
   "confirmRemoveGroupItemAlert": "确认删除该分类吗？分类内的助理会移回默认列表",

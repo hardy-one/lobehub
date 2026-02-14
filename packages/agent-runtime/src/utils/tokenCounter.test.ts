@@ -7,6 +7,7 @@ import {
   estimateTokens,
   getCompressionThreshold,
   shouldCompress,
+  splitMessagesForCompression,
 } from './tokenCounter';
 
 describe('tokenCounter', () => {
@@ -203,6 +204,80 @@ describe('tokenCounter', () => {
 
       expect(result.needsCompression).toBe(false);
       expect(result.currentTokenCount).toBe(0);
+    });
+  });
+
+  describe('splitMessagesForCompression', () => {
+    it('should preserve from last user message', () => {
+      const messages = [
+        { content: 'User 1', id: '1', role: 'user' },
+        { content: 'Assistant 1', id: '2', role: 'assistant' },
+        { content: 'User 2', id: '3', role: 'user' },
+        { content: 'Assistant 2', id: '4', role: 'assistant' },
+      ];
+      const result = splitMessagesForCompression(messages);
+
+      expect(result.messagesToCompress).toHaveLength(2);
+      expect(result.messagesToCompress[0].id).toBe('1');
+      expect(result.messagesToCompress[1].id).toBe('2');
+      expect(result.messagesToPreserve).toHaveLength(2);
+      expect(result.messagesToPreserve[0].id).toBe('3');
+      expect(result.messagesToPreserve[1].id).toBe('4');
+    });
+
+    it('should preserve all when only one user message', () => {
+      const messages = [{ content: 'User 1', id: '1', role: 'user' }];
+      const result = splitMessagesForCompression(messages);
+
+      expect(result.messagesToCompress).toHaveLength(0);
+      expect(result.messagesToPreserve).toHaveLength(1);
+    });
+
+    it('should preserve user message and following assistant messages', () => {
+      const messages = [
+        { content: 'User 1', id: '1', role: 'user' },
+        { content: 'Assistant 1', id: '2', role: 'assistant' },
+        { content: 'User 2', id: '3', role: 'user' },
+        { content: 'Tool result', id: '4', role: 'tool' },
+        { content: 'Assistant 2', id: '5', role: 'assistant' },
+      ];
+      const result = splitMessagesForCompression(messages);
+
+      expect(result.messagesToCompress).toHaveLength(2);
+      expect(result.messagesToPreserve).toHaveLength(3);
+      expect(result.messagesToPreserve[0].id).toBe('3');
+      expect(result.messagesToPreserve[1].id).toBe('4');
+      expect(result.messagesToPreserve[2].id).toBe('5');
+    });
+
+    it('should compress all when no user message', () => {
+      const messages = [
+        { content: 'System prompt', id: '1', role: 'system' },
+        { content: 'Assistant 1', id: '2', role: 'assistant' },
+      ];
+      const result = splitMessagesForCompression(messages);
+
+      expect(result.messagesToCompress).toHaveLength(2);
+      expect(result.messagesToPreserve).toHaveLength(0);
+    });
+
+    it('should handle empty messages', () => {
+      const result = splitMessagesForCompression([]);
+
+      expect(result.messagesToCompress).toHaveLength(0);
+      expect(result.messagesToPreserve).toHaveLength(0);
+    });
+
+    it('should preserve first user message and following messages when user is first', () => {
+      const messages = [
+        { content: 'User 1', id: '1', role: 'user' },
+        { content: 'Assistant 1', id: '2', role: 'assistant' },
+      ];
+      const result = splitMessagesForCompression(messages);
+
+      // First user message is index 0, so preserve all
+      expect(result.messagesToCompress).toHaveLength(0);
+      expect(result.messagesToPreserve).toHaveLength(2);
     });
   });
 });

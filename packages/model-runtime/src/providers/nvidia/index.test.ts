@@ -21,8 +21,7 @@ testProvider({
 
 describe('LobeNvidiaAI - custom features', () => {
   describe('handlePayload', () => {
-    // thinking parameter conversion
-    it('should add chat_template_kwargs with thinking: true when thinking.type is enabled', () => {
+    it('should add chat_template_kwargs with thinking enabled for thinking models', () => {
       const payload = {
         model: 'deepseek-ai/deepseek-v3.1',
         messages: [{ role: 'user', content: 'test' }],
@@ -38,9 +37,9 @@ describe('LobeNvidiaAI - custom features', () => {
       });
     });
 
-    it('should add chat_template_kwargs with thinking: false when thinking.type is disabled', () => {
+    it('should add chat_template_kwargs with thinking disabled for thinking models', () => {
       const payload = {
-        model: 'deepseek-ai/deepseek-v3.1',
+        model: 'deepseek-ai/deepseek-v3.1-terminus',
         messages: [{ role: 'user', content: 'test' }],
         thinking: { type: 'disabled' as const },
       };
@@ -48,7 +47,7 @@ describe('LobeNvidiaAI - custom features', () => {
       const result = params.chatCompletion!.handlePayload!(payload as any);
 
       expect(result).toEqual({
-        model: 'deepseek-ai/deepseek-v3.1',
+        model: 'deepseek-ai/deepseek-v3.1-terminus',
         messages: [{ role: 'user', content: 'test' }],
         chat_template_kwargs: { thinking: false },
       });
@@ -83,7 +82,7 @@ describe('LobeNvidiaAI - custom features', () => {
       });
     });
 
-    it('should use enable_thinking and clear_thinking for GLM models when enabled', () => {
+    it('should add chat_template_kwargs for glm-5', () => {
       const payload = {
         model: 'z-ai/glm5',
         messages: [{ role: 'user', content: 'test' }],
@@ -92,25 +91,28 @@ describe('LobeNvidiaAI - custom features', () => {
 
       const result = params.chatCompletion!.handlePayload!(payload as any);
 
-      expect(result.chat_template_kwargs).toEqual({ enable_thinking: true, clear_thinking: false });
-    });
-
-    it('should use enable_thinking and clear_thinking for GLM models when disabled', () => {
-      const payload = {
+      expect(result).toEqual({
         model: 'z-ai/glm5',
         messages: [{ role: 'user', content: 'test' }],
-        thinking: { type: 'disabled' as const },
+        chat_template_kwargs: { thinking: true },
+      });
+    });
+
+    it('should handle payload without thinking parameter', () => {
+      const payload = {
+        model: 'deepseek-ai/deepseek-v3.1',
+        messages: [{ role: 'user', content: 'test' }],
       };
 
       const result = params.chatCompletion!.handlePayload!(payload as any);
 
-      expect(result.chat_template_kwargs).toEqual({
-        enable_thinking: false,
-        clear_thinking: false,
+      expect(result).toEqual({
+        model: 'deepseek-ai/deepseek-v3.1',
+        messages: [{ role: 'user', content: 'test' }],
       });
     });
 
-    it('should use thinking for non-GLM models', () => {
+    it('should add chat_template_kwargs for deepseek-v3.2', () => {
       const payload = {
         model: 'deepseek-ai/deepseek-v3.2',
         messages: [{ role: 'user', content: 'test' }],
@@ -119,11 +121,80 @@ describe('LobeNvidiaAI - custom features', () => {
 
       const result = params.chatCompletion!.handlePayload!(payload as any);
 
-      expect(result.chat_template_kwargs).toEqual({ thinking: true });
+      expect(result).toEqual({
+        model: 'deepseek-ai/deepseek-v3.2',
+        messages: [{ role: 'user', content: 'test' }],
+        chat_template_kwargs: { thinking: true },
+      });
     });
 
-    // reasoning -> reasoning_content conversion
-    it('should convert reasoning to reasoning_content for all NVIDIA models', () => {
+    it('should add chat_template_kwargs for glm-4.7', () => {
+      const payload = {
+        model: 'z-ai/glm4.7',
+        messages: [{ role: 'user', content: 'test' }],
+        thinking: { type: 'enabled' as const },
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result).toEqual({
+        model: 'z-ai/glm4.7',
+        messages: [{ role: 'user', content: 'test' }],
+        chat_template_kwargs: { thinking: true },
+      });
+    });
+
+    it('should add chat_template_kwargs for kimi-k2.5', () => {
+      const payload = {
+        model: 'moonshotai/kimi-k2.5',
+        messages: [{ role: 'user', content: 'test' }],
+        thinking: { type: 'enabled' as const },
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result).toEqual({
+        model: 'moonshotai/kimi-k2.5',
+        messages: [{ role: 'user', content: 'test' }],
+        chat_template_kwargs: { thinking: true },
+      });
+    });
+
+    it('should convert reasoning to reasoning_content for minimax-m2.1 (interleaved thinking)', () => {
+      const payload = {
+        model: 'minimaxai/minimax-m2.1',
+        messages: [
+          { role: 'user', content: 'test' },
+          { role: 'assistant', reasoning: { content: 'thinking process' }, content: 'response' },
+        ],
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.messages).toEqual([
+        { role: 'user', content: 'test' },
+        { role: 'assistant', content: 'response', reasoning_content: 'thinking process' },
+      ]);
+    });
+
+    it('should convert reasoning to reasoning_content for minimax-m2 (interleaved thinking)', () => {
+      const payload = {
+        model: 'minimaxai/minimax-m2',
+        messages: [
+          { role: 'user', content: 'test' },
+          { role: 'assistant', reasoning: { content: 'thinking process' }, content: 'response' },
+        ],
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.messages).toEqual([
+        { role: 'user', content: 'test' },
+        { role: 'assistant', content: 'response', reasoning_content: 'thinking process' },
+      ]);
+    });
+
+    it('should not convert reasoning for non-interleaved-thinking models', () => {
       const payload = {
         model: 'meta/llama-3.1-8b-instruct',
         messages: [
@@ -134,30 +205,11 @@ describe('LobeNvidiaAI - custom features', () => {
 
       const result = params.chatCompletion!.handlePayload!(payload as any);
 
+      // reasoning field should remain unchanged for non-interleaved-thinking models
       expect(result.messages).toEqual([
         { role: 'user', content: 'test' },
-        { role: 'assistant', content: 'response', reasoning_content: 'thinking process' },
+        { role: 'assistant', reasoning: { content: 'thinking process' }, content: 'response' },
       ]);
-    });
-
-    it('should convert reasoning to reasoning_content combined with thinking param', () => {
-      const payload = {
-        model: 'z-ai/glm5',
-        messages: [
-          { role: 'user', content: 'test' },
-          { role: 'assistant', reasoning: { content: 'thinking process' }, content: 'response' },
-        ],
-        thinking: { type: 'enabled' as const },
-      };
-
-      const result = params.chatCompletion!.handlePayload!(payload as any);
-
-      expect(result.messages).toEqual([
-        { role: 'user', content: 'test' },
-        { role: 'assistant', content: 'response', reasoning_content: 'thinking process' },
-      ]);
-      // GLM models use enable_thinking + clear_thinking
-      expect(result.chat_template_kwargs).toEqual({ enable_thinking: true, clear_thinking: false });
     });
 
     it('should preserve other payload properties', () => {

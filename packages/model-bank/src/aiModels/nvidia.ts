@@ -4,6 +4,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
   {
     abilities: {
       functionCall: true,
+      reasoning: true,
     },
     contextWindowTokens: 128_000,
     description:
@@ -17,6 +18,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
   {
     abilities: {
       functionCall: true,
+      reasoning: true,
     },
     contextWindowTokens: 204_800,
     description:

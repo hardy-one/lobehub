@@ -1,8 +1,8 @@
 import { ModelProvider } from 'model-bank';
 
-import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatibleFactory';
+import { type OpenAICompatibleFactoryOptions } from '../../core/openaiCompatibleFactory';
 import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
-import type { ChatCompletionErrorPayload } from '../../types';
+import { type ChatCompletionErrorPayload } from '../../types';
 import { AgentRuntimeErrorType } from '../../types/error';
 import { processMultiProviderModelList } from '../../utils/modelParse';
 import { createSiliconCloudImage } from './createImage';
@@ -11,113 +11,82 @@ export interface SiliconCloudModelCard {
   id: string;
 }
 
-const getByteLength = (value: string): number => {
-  return new TextEncoder().encode(value).length;
-};
-
-const defaultFetch = globalThis.fetch?.bind(globalThis);
-
-const siliconFetch: typeof fetch = async (input, init) => {
-  if (!defaultFetch) return fetch(input, init);
-
-  const response = await defaultFetch(input, init);
-
-  if (!response || response.status < 400) return response;
-
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) return response;
-
-  try {
-    const cloned = response.clone();
-    const data = await cloned.json();
-
-    if (data && typeof data === 'object' && !('error' in data)) {
-      const headers = new Headers(response.headers);
-      headers.delete('content-length');
-
-      const body = JSON.stringify({ error: data });
-      headers.set('content-length', getByteLength(body).toString());
-
-      return new Response(body, {
-        headers,
-        status: response.status,
-        statusText: response.statusText,
-      });
-    }
-  } catch {
-    // ignore JSON parse errors and fall back to original response
-  }
-
-  return response;
-};
-
 export const params = {
   baseURL: 'https://api.siliconflow.cn/v1',
   chatCompletion: {
     handleError: (error: any): Omit<ChatCompletionErrorPayload, 'provider'> | undefined => {
-      const status = error?.status || (error instanceof Response && error.status);
-
-      if (status === 401) {
-        return {
-          error: status,
-          errorType: AgentRuntimeErrorType.InvalidProviderAPIKey,
-        };
+      let errorResponse: Response | undefined;
+      if (error instanceof Response) {
+        errorResponse = error;
+      } else if ('status' in (error as any)) {
+        errorResponse = error as Response;
       }
-
-      if (status === 403) {
-        return {
-          error: status,
-          errorType: AgentRuntimeErrorType.ProviderBizError,
-          message:
-            '请检查 API Key 余额是否充足,或者是否在用未实名的 API Key 访问需要实名的模型。',
-        };
-      }
-
-      if (error?.error || error?.code || error?.message) {
-        // Prioritize nested error structure, then fall back to top-level fields
-        const errorData = error?.error?.error || error?.error || error;
-        const { code, message, data } = errorData;
-
-        if (code || message || data) {
+      if (errorResponse) {
+        if (errorResponse.status === 401) {
           return {
-            error: {
-              ...(code !== undefined ? { code } : {}),
-              ...(typeof data !== 'undefined' ? { data } : {}),
-              ...(message !== undefined ? { message } : {}),
-            },
+            error: errorResponse.status,
+            errorType: AgentRuntimeErrorType.InvalidProviderAPIKey,
+          };
+        }
+
+        if (errorResponse.status === 403) {
+          return {
+            error: errorResponse.status,
             errorType: AgentRuntimeErrorType.ProviderBizError,
+            message:
+              'Please check if the API Key balance is sufficient, or if you are using an unverified API Key to access models that require verification.',
           };
         }
       }
-
-      return { error };
+      return {
+        error,
+      };
     },
     handlePayload: (payload) => {
-      const { max_tokens, model, thinking, ...rest } = payload;
+      const { max_tokens, model, thinking, messages, ...rest } = payload;
       const thinkingBudget =
         thinking?.budget_tokens === 0 ? 1 : thinking?.budget_tokens || undefined;
+
+      const isThinkingEnabled = thinking?.type === 'enabled';
+
+      // Process interleaved thinking - convert reasoning to reasoning_content
+      const processedMessages = messages?.map((message: any) => {
+        if (message.role === 'assistant' && message.reasoning?.content) {
+          const { reasoning, ...restMessage } = message;
+          return {
+            ...restMessage,
+            reasoning_content: reasoning.content,
+          };
+        }
+        return message;
+      });
 
       const result: any = {
         ...rest,
         max_tokens:
           max_tokens === undefined ? undefined : Math.min(Math.max(max_tokens, 1), 16_384),
         model,
+        ...(processedMessages ? { messages: processedMessages } : {}),
       };
 
       if (thinking) {
-        // Only set enable_thinking if type is explicitly provided
-        if (typeof thinking.type !== 'undefined') {
-          result.enable_thinking = thinking.type === 'enabled';
+        // Only some models support specifying enable_thinking, while other slow-thinking models only support adjusting thinking budget
+        const hybridThinkingModels = [
+          /GLM-4\.([5-7])(?!.*Air$)/, // GLM-4.5、GLM-4.6、GLM-4.7 和对应 V 版本（不包含 Air）
+          /Qwen3-(?:\d+B|\d+B-A\d+B)$/, // Qwen3-8B、Qwen3-14B、Qwen3-32B、Qwen3-30B-A3B、Qwen3-235B-A22B
+          /DeepSeek-V3\.[12]/, // DeepSeek-V3.1、DeepSeek-V3.2
+          /Hunyuan-A13B-Instruct/,
+          /moonshotai\/kimi-k2\.5/, // Kimi K2.5
+        ];
+        if (hybridThinkingModels.some((regexp) => regexp.test(model))) {
+          result.enable_thinking = isThinkingEnabled;
         }
         if (typeof thinkingBudget !== 'undefined') {
-          result.thinking_budget = Math.min(Math.max(thinkingBudget, 128), 32_768);
+          result.thinking_budget = Math.min(Math.max(thinkingBudget, 1), 32_768);
         }
       }
       return result;
     },
-  },
-  constructorOptions: {
-    fetch: siliconFetch,
   },
   createImage: createSiliconCloudImage,
   debug: {

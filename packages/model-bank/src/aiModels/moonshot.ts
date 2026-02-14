@@ -1,4 +1,4 @@
-import type { AIChatModelCard } from '../types/aiModel';
+import { type AIChatModelCard } from '../types/aiModel';
 
 // https://platform.moonshot.cn/docs/pricing/chat
 const moonshotChatModels: AIChatModelCard[] = [
@@ -7,21 +7,22 @@ const moonshotChatModels: AIChatModelCard[] = [
       functionCall: true,
       reasoning: true,
       structuredOutput: true,
+      video: true,
       vision: true,
     },
     contextWindowTokens: 262_144,
     description:
-      'Kimi K2.5 is Kimi\'s most versatile model to date, featuring a native multimodal architecture that supports both vision and text inputs, "thinking" and "non-thinking" modes, and both conversational and agent tasks.',
+      'Kimi K2.5 is the most intelligent Kimi model to date, featuring native multimodal architecture with enhanced visual understanding, Agent Swarm (100 parallel agents), and superior performance across reasoning, coding, and agent tasks.',
     displayName: 'Kimi K2.5',
     enabled: true,
     id: 'kimi-k2.5',
-    maxOutput: 32_768,
+    maxOutput: 65_536,
     pricing: {
       currency: 'CNY',
       units: [
-        { name: 'textInput_cacheRead', rate: 0.7, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 1, strategy: 'fixed', unit: 'millionTokens' },
         { name: 'textInput', rate: 4, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textOutput', rate: 21, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 16, strategy: 'fixed', unit: 'millionTokens' },
       ],
     },
     releasedAt: '2026-01-27',
@@ -40,6 +41,7 @@ const moonshotChatModels: AIChatModelCard[] = [
     description:
       'K2 long-thinking model with 256k context, supporting multi-step tool use and reasoning for complex problems.',
     displayName: 'Kimi K2 Thinking',
+    enabled: true,
     id: 'kimi-k2-thinking',
     maxOutput: 65_536,
     pricing: {
@@ -85,6 +87,7 @@ const moonshotChatModels: AIChatModelCard[] = [
     description:
       'kimi-k2-0905-preview offers a 256k context window, stronger agentic coding, better front-end code quality, and improved context understanding.',
     displayName: 'Kimi K2 0905',
+    enabled: true,
     id: 'kimi-k2-0905-preview',
     pricing: {
       currency: 'CNY',
@@ -152,32 +155,8 @@ const moonshotChatModels: AIChatModelCard[] = [
       currency: 'CNY',
       units: [
         { name: 'textInput_cacheRead', rate: 1, strategy: 'fixed', unit: 'millionTokens' },
-        {
-          lookup: {
-            prices: {
-              '[0, 0.008_192]': 2,
-              '[0.008_193, 0.032_768]': 5,
-              '[0.032_769, 0.131_072]': 10,
-            },
-            pricingParams: ['textInput'],
-          },
-          name: 'textInput',
-          strategy: 'lookup',
-          unit: 'millionTokens',
-        },
-        {
-          lookup: {
-            prices: {
-              '[0, 0.008_192]': 10,
-              '[0.008_193, 0.032_768]': 20,
-              '[0.032_769, 0.131_072]': 30,
-            },
-            pricingParams: ['textInput'],
-          },
-          name: 'textOutput',
-          strategy: 'lookup',
-          unit: 'millionTokens',
-        },
+        { name: 'textInput', rate: 10, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 30, strategy: 'fixed', unit: 'millionTokens' },
       ],
     },
     releasedAt: '2025-02-17',

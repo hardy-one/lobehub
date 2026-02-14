@@ -4,18 +4,6 @@ import { type OpenAICompatibleFactoryOptions } from '../../core/openaiCompatible
 import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
 import { processMultiProviderModelList } from '../../utils/modelParse';
 
-// Models that support interleaved thinking format (reasoning -> reasoning_content)
-const INTERLEAVED_THINKING_MODELS = new Set([
-  'deepseek-ai/deepseek-v3.1',
-  'deepseek-ai/deepseek-v3.1-terminus',
-  'deepseek-ai/deepseek-v3.2',
-  'z-ai/glm4.7',
-  'z-ai/glm5',
-  'moonshotai/kimi-k2.5',
-  'minimaxai/minimax-m2',
-  'minimaxai/minimax-m2.1',
-]);
-
 export interface NvidiaModelCard {
   id: string;
 }
@@ -26,30 +14,28 @@ export const params = {
     handlePayload: (payload) => {
       const { model, thinking, messages, ...rest } = payload;
 
+      // Convert reasoning to reasoning_content for NVIDIA API format
+      // NVIDIA NIM requires reasoning_content instead of reasoning for all models
+      const processedMessages = messages?.map((message: any) => {
+        if (message.role === 'assistant' && message.reasoning?.content) {
+          const { reasoning, ...restMessage } = message;
+          return {
+            ...restMessage,
+            reasoning_content: reasoning.content,
+          };
+        }
+        return message;
+      });
+
       // Convert thinking.type to boolean for API
       const thinkingFlag =
         thinking?.type === 'enabled' ? true : thinking?.type === 'disabled' ? false : undefined;
 
-      // Process interleaved thinking - convert reasoning to reasoning_content
-      // Only for models that support interleaved thinking format
-      const processedMessages = INTERLEAVED_THINKING_MODELS.has(model)
-        ? messages?.map((message: any) => {
-            if (message.role === 'assistant' && message.reasoning?.content) {
-              const { reasoning, ...restMessage } = message;
-              return {
-                ...restMessage,
-                reasoning_content: reasoning.content,
-              };
-            }
-            return message;
-          })
-        : messages;
-
       return {
         ...rest,
         model,
-        ...(processedMessages ? { messages: processedMessages } : {}),
-        // Send chat_template_kwargs based on thinking parameter
+        messages: processedMessages,
+        // Send chat_template_kwargs when thinking is explicitly set
         ...(thinkingFlag !== undefined
           ? {
               chat_template_kwargs: { thinking: thinkingFlag },

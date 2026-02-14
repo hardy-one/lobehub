@@ -11,9 +11,12 @@ import {
 
 export class TopicService {
   createTopic = (params: CreateTopicParams): Promise<string> => {
+    const { agentId, sessionId, ...rest } = params;
+
     return lambdaClient.topic.createTopic.mutate({
-      ...params,
-      sessionId: this.toDbSessionId(params.sessionId),
+      ...rest,
+      agentId: agentId ?? undefined,
+      sessionId: this.toDbSessionId(sessionId),
     });
   };
 
@@ -105,8 +108,11 @@ export class TopicService {
     return lambdaClient.topic.removeTopic.mutate({ id });
   };
 
-  removeTopics = (sessionId: string) => {
-    return lambdaClient.topic.batchDeleteBySessionId.mutate({ id: this.toDbSessionId(sessionId) });
+  removeTopics = (params: { agentId?: string; sessionId?: string | null }) => {
+    return lambdaClient.topic.batchDeleteBySessionId.mutate({
+      agentId: params.agentId,
+      id: this.toDbSessionId(params.sessionId),
+    });
   };
 
   removeTopicsByAgentId = (agentId: string) => {

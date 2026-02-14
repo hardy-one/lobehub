@@ -258,17 +258,29 @@ describe('displayMessageSelectors', () => {
   });
 
   describe('showInboxWelcome', () => {
+    const inboxAgentId = 'inbox-agent';
+
+    const setupInboxAgent = () => {
+      act(() => {
+        useAgentStore.setState({
+          builtinAgentIdMap: { [INBOX_SESSION_ID]: inboxAgentId },
+        });
+      });
+    };
+
     it('should return false if the active session is not the inbox session', () => {
+      setupInboxAgent();
       const state = merge(initialStore, { activeAgentId: 'someActiveId' });
       const result = displayMessageSelectors.showInboxWelcome(state);
       expect(result).toBe(false);
     });
 
     it('should return false if there are existing messages in the inbox session', () => {
+      setupInboxAgent();
       const state = merge(initialStore, {
-        activeAgentId: INBOX_SESSION_ID,
+        activeAgentId: inboxAgentId,
         messagesMap: {
-          [messageMapKey({ agentId: 'inbox' })]: mockMessages,
+          [messageMapKey({ agentId: inboxAgentId })]: mockMessages,
         },
       });
       const result = displayMessageSelectors.showInboxWelcome(state);
@@ -276,8 +288,9 @@ describe('displayMessageSelectors', () => {
     });
 
     it('should return true if the active session is the inbox session and there are no existing messages', () => {
+      setupInboxAgent();
       const state = merge(initialStore, {
-        activeAgentId: INBOX_SESSION_ID,
+        activeAgentId: inboxAgentId,
         messages: [],
       });
       const result = displayMessageSelectors.showInboxWelcome(state);

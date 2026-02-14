@@ -4,13 +4,16 @@ import { type OpenAICompatibleFactoryOptions } from '../../core/openaiCompatible
 import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
 import { processMultiProviderModelList } from '../../utils/modelParse';
 
-const THINKING_MODELS = new Set([
+// Models that support interleaved thinking format (reasoning -> reasoning_content)
+const INTERLEAVED_THINKING_MODELS = new Set([
   'deepseek-ai/deepseek-v3.1',
   'deepseek-ai/deepseek-v3.1-terminus',
   'deepseek-ai/deepseek-v3.2',
   'z-ai/glm4.7',
   'z-ai/glm5',
   'moonshotai/kimi-k2.5',
+  'minimaxai/minimax-m2',
+  'minimaxai/minimax-m2.1',
 ]);
 
 export interface NvidiaModelCard {
@@ -28,22 +31,26 @@ export const params = {
         thinking?.type === 'enabled' ? true : thinking?.type === 'disabled' ? false : undefined;
 
       // Process interleaved thinking - convert reasoning to reasoning_content
-      const processedMessages = messages?.map((message: any) => {
-        if (message.role === 'assistant' && message.reasoning?.content) {
-          const { reasoning, ...restMessage } = message;
-          return {
-            ...restMessage,
-            reasoning_content: reasoning.content,
-          };
-        }
-        return message;
-      });
+      // Only for models that support interleaved thinking format
+      const processedMessages = INTERLEAVED_THINKING_MODELS.has(model)
+        ? messages?.map((message: any) => {
+            if (message.role === 'assistant' && message.reasoning?.content) {
+              const { reasoning, ...restMessage } = message;
+              return {
+                ...restMessage,
+                reasoning_content: reasoning.content,
+              };
+            }
+            return message;
+          })
+        : messages;
 
       return {
         ...rest,
         model,
         ...(processedMessages ? { messages: processedMessages } : {}),
-        ...(THINKING_MODELS.has(model)
+        // Send chat_template_kwargs based on thinking parameter
+        ...(thinkingFlag !== undefined
           ? {
               chat_template_kwargs: { thinking: thinkingFlag },
             }

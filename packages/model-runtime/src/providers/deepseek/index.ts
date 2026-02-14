@@ -1,6 +1,6 @@
 import { ModelProvider } from 'model-bank';
 
-import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatibleFactory';
+import { type OpenAICompatibleFactoryOptions } from '../../core/openaiCompatibleFactory';
 import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
 import { MODEL_LIST_CONFIGS, processModelList } from '../../utils/modelParse';
 
@@ -12,35 +12,31 @@ export const params = {
   baseURL: 'https://api.deepseek.com/v1',
   chatCompletion: {
     handlePayload: (payload) => {
-      const shouldForceAssistantReasoningContent = payload.model === 'deepseek-reasoner';
-
       // Transform reasoning object to reasoning_content string for multi-turn conversations
+      // DeepSeek Reasoner API requires all assistant messages to have reasoning_content field
       const messages = payload.messages.map((message: any) => {
-        const { reasoning, ...rest } = message;
-
-        const reasoningContent =
-          typeof rest.reasoning_content === 'string'
-            ? rest.reasoning_content
-            : typeof reasoning?.content === 'string'
-              ? reasoning.content
-              : undefined;
-
-        // DeepSeek reasoner with tool calls requires assistant history messages to carry reasoning_content
-        if (message.role === 'assistant' && shouldForceAssistantReasoningContent) {
+        // If message is assistant role with reasoning.content, convert it
+        if (message.role === 'assistant' && message.reasoning?.content) {
+          const { reasoning, ...rest } = message;
           return {
             ...rest,
-            reasoning_content: reasoningContent ?? '',
+            reasoning_content: reasoning.content,
           };
         }
 
-        if (reasoningContent !== undefined) {
+        // For assistant messages, ensure reasoning_content exists (required by DeepSeek Reasoner API)
+        if (message.role === 'assistant') {
+          const { reasoning, ...rest } = message;
           return {
             ...rest,
-            reasoning_content: reasoningContent,
+            reasoning_content: '',
           };
         }
 
-        return rest;
+        // For non-assistant messages, just remove reasoning field if present
+        const msg = { ...message };
+        delete msg.reasoning;
+        return msg;
       });
 
       return {

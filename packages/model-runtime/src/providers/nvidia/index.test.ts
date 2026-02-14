@@ -53,7 +53,7 @@ describe('LobeNvidiaAI - custom features', () => {
       });
     });
 
-    it('should add chat_template_kwargs with thinking undefined for thinking models without thinking type', () => {
+    it('should not add chat_template_kwargs when thinking type is not set', () => {
       const payload = {
         model: 'deepseek-ai/deepseek-v3.1',
         messages: [{ role: 'user', content: 'test' }],
@@ -65,7 +65,6 @@ describe('LobeNvidiaAI - custom features', () => {
       expect(result).toEqual({
         model: 'deepseek-ai/deepseek-v3.1',
         messages: [{ role: 'user', content: 'test' }],
-        chat_template_kwargs: { thinking: undefined },
       });
     });
 
@@ -110,7 +109,6 @@ describe('LobeNvidiaAI - custom features', () => {
       expect(result).toEqual({
         model: 'deepseek-ai/deepseek-v3.1',
         messages: [{ role: 'user', content: 'test' }],
-        chat_template_kwargs: { thinking: undefined },
       });
     });
 

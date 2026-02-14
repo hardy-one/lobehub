@@ -181,6 +181,42 @@ describe('LobeNvidiaAI - custom features', () => {
         messages: [{ role: 'user', content: 'test' }],
       });
     });
+
+    it('should convert reasoning to reasoning_content for assistant messages', () => {
+      const payload = {
+        model: 'deepseek-ai/deepseek-v3.2',
+        messages: [
+          { role: 'user', content: 'test' },
+          { role: 'assistant', reasoning: { content: 'thinking process' }, content: 'response' },
+        ],
+        thinking: { type: 'enabled' as const },
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.messages).toEqual([
+        { role: 'user', content: 'test' },
+        { role: 'assistant', content: 'response', reasoning_content: 'thinking process' },
+      ]);
+    });
+
+    it('should not modify messages without reasoning', () => {
+      const payload = {
+        model: 'deepseek-ai/deepseek-v3.2',
+        messages: [
+          { role: 'user', content: 'test' },
+          { role: 'assistant', content: 'response' },
+        ],
+        thinking: { type: 'enabled' as const },
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.messages).toEqual([
+        { role: 'user', content: 'test' },
+        { role: 'assistant', content: 'response' },
+      ]);
+    });
   });
 
   describe('models', () => {

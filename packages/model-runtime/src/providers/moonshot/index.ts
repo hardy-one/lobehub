@@ -1,16 +1,17 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import type { ChatModelCard } from '@lobechat/types';
+import { type ChatModelCard } from '@lobechat/types';
 import { ModelProvider } from 'model-bank';
-import OpenAI from 'openai';
+import type OpenAI from 'openai';
 
-import { CreateRouterRuntimeOptions, createRouterRuntime } from '../../core/RouterRuntime';
 import {
   buildDefaultAnthropicPayload,
   createAnthropicCompatibleParams,
   createAnthropicCompatibleRuntime,
 } from '../../core/anthropicCompatibleFactory';
 import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
-import { ChatStreamPayload } from '../../types';
+import { resolveParameters } from '../../core/parameterResolver';
+import { createRouterRuntime, type CreateRouterRuntimeOptions } from '../../core/RouterRuntime';
+import { type ChatStreamPayload } from '../../types';
 import { getModelPropertyWithFallback } from '../../utils/getFallbackModelProperty';
 import { MODEL_LIST_CONFIGS, processModelList } from '../../utils/modelParse';
 
@@ -102,17 +103,19 @@ const buildMoonshotAnthropicPayload = async (
 
   if (!isKimiK25Model(payload.model)) return basePayloadWithSearch;
 
+  // thinking is already converted from enableReasoning by modelParamsResolver
+  const isThinkingEnabled = payload.thinking?.type !== 'disabled';
   const resolvedThinkingBudget = payload.thinking?.budget_tokens
     ? Math.min(payload.thinking.budget_tokens, resolvedMaxTokens - 1)
     : 1024;
-  const thinkingParam =
-    payload.thinking?.type === 'disabled'
-      ? ({ type: 'disabled' } as const)
-      : ({ budget_tokens: resolvedThinkingBudget, type: 'enabled' } as const);
+
+  const thinkingParam = isThinkingEnabled
+    ? ({ budget_tokens: resolvedThinkingBudget, type: 'enabled' } as const)
+    : ({ type: 'disabled' } as const);
 
   return {
     ...basePayloadWithSearch,
-    ...getK25Params(thinkingParam.type === 'enabled'),
+    ...getK25Params(isThinkingEnabled),
     thinking: thinkingParam,
   };
 };
@@ -195,7 +198,73 @@ export const LobeMoonshotOpenAI = createOpenAICompatibleRuntime({
   baseURL: DEFAULT_MOONSHOT_BASE_URL,
   chatCompletion: {
     forceImageBase64: true,
-    handlePayload: buildMoonshotOpenAIPayload,
+    handlePayload: (payload: ChatStreamPayload) => {
+      const { enabledSearch, messages, temperature, tools, tool_choice, ...rest } = payload;
+
+      // thinking is already converted from enableReasoning by modelParamsResolver
+      const isThinkingEnabled = payload.thinking?.type !== 'disabled';
+
+      const filteredMessages = messages.map((message: any) => {
+        let normalizedMessage = message;
+
+        // Add a space for empty assistant messages (#8418)
+        if (message.role === 'assistant' && (!message.content || message.content === '')) {
+          normalizedMessage = { ...normalizedMessage, content: ' ' };
+        }
+
+        // Interleaved thinking - Moonshot API requires reasoning_content when thinking is enabled
+        if (message.role === 'assistant' && message.reasoning) {
+          const { reasoning, ...messageWithoutReasoning } = normalizedMessage;
+          return {
+            ...messageWithoutReasoning,
+            // Always include reasoning_content for Moonshot compatibility
+            // Use empty string as placeholder when no reasoning content
+            reasoning_content: reasoning.content || '',
+          };
+        }
+        return normalizedMessage;
+      });
+
+      // K2.5 thinking mode constraints:
+      // 1. Official $web_search tool is incompatible with thinking mode
+      // 2. tool_choice can only be "auto" or "none" when thinking is enabled
+
+      // Custom tools are preserved, only official $web_search is disabled in thinking mode
+      const moonshotTools = enabledSearch
+        ? [
+            ...(tools || []),
+            {
+              function: {
+                name: '$web_search',
+              },
+              type: 'builtin_function',
+            },
+          ]
+        : tools;
+
+      // Disable $web_search when thinking is enabled (but keep custom tools)
+      const finalTools = isThinkingEnabled
+        ? moonshotTools?.filter((tool: any) => tool.function?.name !== '$web_search')
+        : moonshotTools;
+
+      // Resolve parameters with normalization
+      const resolvedParams = resolveParameters({ temperature }, { normalizeTemperature: true });
+
+      // Validate tool_choice for thinking mode
+      const resolvedToolChoice = isThinkingEnabled
+        ? tool_choice === 'auto' || tool_choice === 'none'
+          ? tool_choice
+          : 'auto'
+        : tool_choice;
+
+      return {
+        ...rest,
+        messages: filteredMessages,
+        temperature: resolvedParams.temperature,
+        tool_choice: resolvedToolChoice,
+        tools: finalTools,
+      } as any;
+    },
   },
   debug: {
     chatCompletion: () => process.env.DEBUG_MOONSHOT_CHAT_COMPLETION === '1',

@@ -1,12 +1,16 @@
-import type { ChatCitationItem, ModelPerformance, ModelUsage } from '@lobechat/types';
-import type { Pricing } from 'model-bank';
+import { type ChatCitationItem, type ModelPerformance, type ModelUsage } from '@lobechat/types';
+import { type Pricing } from 'model-bank';
 
 import { parseToolCalls } from '../../helpers';
-import type { ChatStreamCallbacks } from '../../types';
+import {
+  type ChatStreamCallbacks,
+  type MessageToolCall,
+  type MessageToolCallChunk,
+} from '../../types';
 import { AgentRuntimeErrorType } from '../../types/error';
 import { safeParseJSON } from '../../utils/safeParseJSON';
 import { nanoid } from '../../utils/uuid';
-import type { ComputeChatCostOptions } from '../usageConverters/utils/computeChatCost';
+import { type ComputeChatCostOptions } from '../usageConverters/utils/computeChatCost';
 
 export type ChatPayloadForTransformStream = {
   model?: string;
@@ -383,10 +387,26 @@ export function createCallbacksTransformer(cb: ChatStreamCallbacks | undefined) 
           }
 
           case 'tool_calls': {
-            if (!toolsCalling) toolsCalling = [];
-            toolsCalling = parseToolCalls(toolsCalling, data);
+            // Track existing IDs for detecting new tools
+            const prevIds = new Set((toolsCalling || []).map((t: MessageToolCall) => t.id));
+            const newTools: MessageToolCallChunk[] = [];
 
-            await callbacks.onToolsCalling?.({ chunk: data, toolsCalling });
+            if (!toolsCalling) toolsCalling = [];
+            const newToolsCalling = parseToolCalls(toolsCalling, data);
+
+            // Find newly added tools
+            for (const tool of newToolsCalling) {
+              if (!prevIds.has(tool.id)) {
+                newTools.push(tool as MessageToolCallChunk);
+              }
+            }
+
+            toolsCalling = newToolsCalling;
+
+            // On-demand: only trigger callback when there are new tools
+            if (newTools.length > 0) {
+              await callbacks.onToolsCalling?.({ chunk: data, toolsCalling });
+            }
             break;
           }
 

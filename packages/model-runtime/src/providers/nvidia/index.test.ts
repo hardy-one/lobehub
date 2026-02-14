@@ -118,6 +118,69 @@ describe('LobeNvidiaAI - custom features', () => {
         chat_template_kwargs: { thinking: true },
       });
     });
+
+    it('should add chat_template_kwargs for deepseek-v3.2', () => {
+      const payload = {
+        model: 'deepseek-ai/deepseek-v3.2',
+        messages: [{ role: 'user', content: 'test' }],
+        thinking: { type: 'enabled' as const },
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result).toEqual({
+        model: 'deepseek-ai/deepseek-v3.2',
+        messages: [{ role: 'user', content: 'test' }],
+        chat_template_kwargs: { thinking: true },
+      });
+    });
+
+    it('should add chat_template_kwargs for glm-4.7', () => {
+      const payload = {
+        model: 'z-ai/glm4.7',
+        messages: [{ role: 'user', content: 'test' }],
+        thinking: { type: 'enabled' as const },
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result).toEqual({
+        model: 'z-ai/glm4.7',
+        messages: [{ role: 'user', content: 'test' }],
+        chat_template_kwargs: { thinking: true },
+      });
+    });
+
+    it('should add chat_template_kwargs for kimi-k2.5', () => {
+      const payload = {
+        model: 'moonshotai/kimi-k2.5',
+        messages: [{ role: 'user', content: 'test' }],
+        thinking: { type: 'enabled' as const },
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result).toEqual({
+        model: 'moonshotai/kimi-k2.5',
+        messages: [{ role: 'user', content: 'test' }],
+        chat_template_kwargs: { thinking: true },
+      });
+    });
+
+    it('should not add chat_template_kwargs for minimax-m2.1', () => {
+      const payload = {
+        model: 'minimaxai/minimax-m2.1',
+        messages: [{ role: 'user', content: 'test' }],
+        thinking: { type: 'enabled' as const },
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result).toEqual({
+        model: 'minimaxai/minimax-m2.1',
+        messages: [{ role: 'user', content: 'test' }],
+      });
+    });
   });
 
   describe('models', () => {

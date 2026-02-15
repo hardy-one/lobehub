@@ -56,6 +56,23 @@ export const List: FC<ListProps> = ({
 
   const activeKey = menuKey(provider, model);
 
+  // Find the index of the currently active model to scroll to
+  const initialTopMostItemIndex = useMemo(() => {
+    return listItems.findIndex((item) => {
+      switch (item.type) {
+        case 'model-item-single':
+        case 'model-item-multiple': {
+          return item.data.providers.some((p) => menuKey(p.id, item.data.model.id) === activeKey);
+        }
+        case 'provider-model-item': {
+          return menuKey(item.provider.id, item.model.id) === activeKey;
+        }
+        default:
+          return false;
+      }
+    });
+  }, [activeKey, listItems]);
+
   const handleScrollingStateChange = useCallback((scrolling: boolean) => {
     setIsScrolling(scrolling);
   }, []);
@@ -89,6 +106,7 @@ export const List: FC<ListProps> = ({
       }}
     >
       <Virtuoso
+        initialTopMostItemIndex={initialTopMostItemIndex}
         isScrolling={handleScrollingStateChange}
         itemContent={itemContent}
         overscan={200}

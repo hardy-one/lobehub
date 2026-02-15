@@ -385,7 +385,7 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       functionCall: true,
       vision: true,
     },
-    contextWindowTokens: 65_536,
+    contextWindowTokens: 8_192,
     description:
       'Qwen3-Omni-30B-A3B-Instruct is a Qwen3-series MoE model with 30B total and 3B active parameters, delivering strong performance at lower inference cost. Trained on high-quality multi-source multilingual data, it supports full-modal inputs (text, images, audio, video) and cross-modal understanding and generation.',
     displayName: 'Qwen3 Omni 30B A3B Instruct',
@@ -1481,7 +1481,7 @@ const siliconcloudChatModels: AIChatModelCard[] = [
     abilities: {
       vision: true,
     },
-    contextWindowTokens: 4096,
+    contextWindowTokens: 32_768,
     description:
       'DeepSeek-VL2 is a MoE vision-language model based on DeepSeekMoE-27B with sparse activation, achieving strong performance with only 4.5B active parameters. It excels at visual QA, OCR, document/table/chart understanding, and visual grounding.',
     displayName: 'DeepSeek VL2',
@@ -1500,7 +1500,7 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       functionCall: true,
       reasoning: true,
     },
-    contextWindowTokens: 131_072,
+    contextWindowTokens: 4_096,
     description:
       'QwQ is a reasoning model in the Qwen family. Compared with standard instruction-tuned models, it adds thinking and reasoning that significantly boost downstream performance, especially on hard problems. QwQ-32B is a mid-size reasoning model competitive with top reasoning models like DeepSeek-R1 and o1-mini. It uses RoPE, SwiGLU, RMSNorm, and attention QKV bias, with 64 layers and 40 Q attention heads (8 KV in GQA).',
     displayName: 'QwQ 32B',

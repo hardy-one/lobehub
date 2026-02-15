@@ -64,6 +64,7 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       functionCall: true,
       reasoning: true,
       vision: true,
+      video: true,
     },
     contextWindowTokens: 262_144,
     description:
@@ -111,6 +112,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       'MiniMax-M2.1 is an open-source large language model optimized for agent capabilities, excelling in programming, tool usage, instruction following, and long-term planning. The model supports multilingual software development and complex multi-step workflow execution, achieving a score of 74.0 on SWE-bench Verified and surpassing Claude Sonnet 4.5 in multilingual scenarios.',
     displayName: 'MiniMax-M2.1 (Pro)',
     id: 'Pro/MiniMaxAI/MiniMax-M2.1',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
     pricing: {
       currency: 'CNY',
       units: [
@@ -122,6 +126,29 @@ const siliconcloudChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['reasoningBudgetToken'],
     },
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+    },
+    contextWindowTokens: 192_000,
+    description:
+      'MiniMax-M2.5 is the latest large language model from MiniMax, featuring a Mixture-of-Experts (MoE) architecture with 229 billion total parameters. It achieves industry-leading performance in programming, agent tool calling, search tasks, and office scenarios, with a SWE-Bench Verified score of 80.2% and 37% faster inference speed compared to M2.1.',
+    displayName: 'MiniMax-M2.5 (Pro)',
+    id: 'Pro/MiniMaxAI/MiniMax-M2.5',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
+    pricing: {
+      currency: 'CNY',
+      units: [
+        { name: 'textInput', rate: 2.1, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 8.4, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-02-13',
     type: 'chat',
   },
   {
@@ -300,6 +327,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       'MiniMax-M2 redefines agent efficiency. It is a compact, fast, cost-effective MoE model with 230B total and 10B active parameters, built for top-tier coding and agent tasks while retaining strong general intelligence. With only 10B active parameters, it rivals much larger models, making it ideal for high-efficiency applications.',
     displayName: 'MiniMax-M2',
     id: 'MiniMaxAI/MiniMax-M2',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
     pricing: {
       currency: 'CNY',
       units: [
@@ -505,6 +535,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       'Qwen3-Next-80B-A3B-Thinking is a next-gen base model for complex reasoning. It uses the Qwen3-Next architecture with hybrid attention (Gated DeltaNet + Gated Attention) and highly sparse MoE for extreme training/inference efficiency. With 80B total parameters but ~3B active at inference, it cuts compute and delivers 10x+ throughput over Qwen3-32B on >32K contexts. This Thinking version targets multi-step tasks like proofs, code synthesis, logic analysis, and planning, outputting structured chain-of-thought. It outperforms Qwen3-32B-Thinking and beats Gemini-2.5-Flash-Thinking on several benchmarks.',
     displayName: 'Qwen3 Next 80B A3B Thinking',
     id: 'Qwen/Qwen3-Next-80B-A3B-Thinking',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
     pricing: {
       currency: 'CNY',
       units: [
@@ -564,6 +597,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       'Qwen3-VL-30B-A3B-Thinking is the reasoning-enhanced version of Qwen3-VL, optimized for multimodal reasoning, image-to-code, and complex visual understanding. It supports 256K context with stronger chain-of-thought ability.',
     displayName: 'Qwen3 VL 30B A3B Thinking',
     id: 'Qwen/Qwen3-VL-30B-A3B-Thinking',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
     pricing: {
       currency: 'CNY',
       units: [
@@ -603,6 +639,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       'Qwen3-VL-235B-A22B-Thinking is the flagship thinking version of Qwen3-VL, optimized for complex multimodal reasoning, long-context reasoning, and agent interaction in enterprise scenarios.',
     displayName: 'Qwen3 VL 235B A22B Thinking',
     id: 'Qwen/Qwen3-VL-235B-A22B-Thinking',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
     pricing: {
       currency: 'CNY',
       units: [
@@ -759,6 +798,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       'Ring-flash-2.0 is a high-performance thinking model optimized from Ling-flash-2.0-base. It uses an MoE architecture with 100B total parameters and only 6.1B active per inference. Its icepop algorithm stabilizes RL training for MoE models, enabling continued gains in complex reasoning. It achieves major breakthroughs on tough benchmarks (math contests, code generation, logical reasoning), surpassing top dense models under 40B and rivaling larger open MoE and closed reasoning models. It also performs well in creative writing, and its efficient architecture delivers fast inference at lower deployment cost for high concurrency.',
     displayName: 'Ring Flash 2.0',
     id: 'inclusionAI/Ring-flash-2.0',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
     pricing: {
       currency: 'CNY',
       units: [
@@ -949,6 +991,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       'GLM-4.5-Air is a base model for agent applications using a Mixture-of-Experts architecture. It is optimized for tool use, web browsing, software engineering, and frontend coding, and integrates with code agents like Claude Code and Roo Code. It uses hybrid reasoning to handle both complex reasoning and everyday scenarios.',
     displayName: 'GLM-4.5-Air',
     id: 'zai-org/GLM-4.5-Air',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
     pricing: {
       currency: 'CNY',
       units: [
@@ -1341,6 +1386,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       'GLM-4.1V-9B-Thinking is an open-source VLM from Zhipu AI and Tsinghua KEG Lab, designed for complex multimodal cognition. Built on GLM-4-9B-0414, it adds chain-of-thought reasoning and RL to significantly improve cross-modal reasoning and stability.',
     displayName: 'GLM-4.1V 9B Thinking (Free)',
     id: 'THUDM/GLM-4.1V-9B-Thinking',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
     pricing: {
       currency: 'CNY',
       units: [
@@ -1361,6 +1409,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       'GLM-4.1V-9B-Thinking is an open-source VLM from Zhipu AI and Tsinghua KEG Lab, designed for complex multimodal cognition. Built on GLM-4-9B-0414, it adds chain-of-thought reasoning and RL to significantly improve cross-modal reasoning and stability.',
     displayName: 'GLM-4.1V 9B Thinking (Pro)',
     id: 'Pro/THUDM/GLM-4.1V-9B-Thinking',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
     pricing: {
       currency: 'CNY',
       units: [
@@ -1403,6 +1454,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       'GLM-Z1-32B-0414 is a deep-thinking reasoning model built from GLM-4-32B-0414 with cold-start data and expanded RL, further trained on math, code, and logic. It significantly improves math ability and complex task solving over the base model.',
     displayName: 'GLM-Z1 32B 0414',
     id: 'THUDM/GLM-Z1-32B-0414',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
     pricing: {
       currency: 'CNY',
       units: [
@@ -1423,6 +1477,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       'GLM-Z1-9B-0414 is a small 9B-parameter GLM model that retains open-source strengths while delivering impressive capability. It performs strongly on math reasoning and general tasks, leading its size class among open models.',
     displayName: 'GLM-Z1 9B 0414 (Free)',
     id: 'THUDM/GLM-Z1-9B-0414',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
     pricing: {
       currency: 'CNY',
       units: [
@@ -1580,6 +1637,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       'DeepSeek-R1 is an RL-driven reasoning model that reduces repetition and improves readability. It uses cold-start data before RL to further boost reasoning, matches OpenAI-o1 on math, code, and reasoning tasks, and improves overall results through careful training.',
     displayName: 'DeepSeek R1 (Pro)',
     id: 'Pro/deepseek-ai/DeepSeek-R1',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
     pricing: {
       currency: 'CNY',
       units: [
@@ -1617,6 +1677,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       'DeepSeek-R1-Distill-Qwen-32B is distilled from Qwen2.5-32B and fine-tuned on 800K curated DeepSeek-R1 samples. It excels in math, programming, and reasoning, achieving strong results on AIME 2024, MATH-500 (94.3% accuracy), and GPQA Diamond.',
     displayName: 'DeepSeek R1 Distill Qwen 32B',
     id: 'deepseek-ai/DeepSeek-R1-Distill-Qwen-32B',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
     pricing: {
       currency: 'CNY',
       units: [
@@ -1636,6 +1699,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       'DeepSeek-R1-Distill-Qwen-14B is distilled from Qwen2.5-14B and fine-tuned on 800K curated DeepSeek-R1 samples. It shows strong reasoning, with 93.9% on MATH-500, 69.7% on AIME 2024, and a 1481 CodeForces rating.',
     displayName: 'DeepSeek R1 Distill Qwen 14B',
     id: 'deepseek-ai/DeepSeek-R1-Distill-Qwen-14B',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
     pricing: {
       currency: 'CNY',
       units: [
@@ -1655,6 +1721,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       'DeepSeek-R1-Distill-Qwen-7B is distilled from Qwen2.5-Math-7B and fine-tuned on 800K curated DeepSeek-R1 samples. It performs strongly, with 92.8% on MATH-500, 55.5% on AIME 2024, and a 1189 CodeForces rating for a 7B model.',
     displayName: 'DeepSeek R1 Distill Qwen 7B (Free)',
     id: 'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
     pricing: {
       currency: 'CNY',
       units: [
@@ -1674,6 +1743,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       'DeepSeek-R1-Distill-Qwen-7B is distilled from Qwen2.5-Math-7B and fine-tuned on 800K curated DeepSeek-R1 samples. It performs strongly, with 92.8% on MATH-500, 55.5% on AIME 2024, and a 1189 CodeForces rating for a 7B model.',
     displayName: 'DeepSeek R1 Distill Qwen 7B (Pro)',
     id: 'Pro/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
     pricing: {
       currency: 'CNY',
       units: [
@@ -1729,6 +1801,9 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       'QVQ-72B-Preview is a research model from Qwen focused on visual reasoning, with strengths in complex scene understanding and visual math problems.',
     displayName: 'QVQ 72B Preview',
     id: 'Qwen/QVQ-72B-Preview',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
     pricing: {
       currency: 'CNY',
       units: [

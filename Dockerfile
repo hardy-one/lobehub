@@ -116,6 +116,10 @@ COPY --from=base /distroless/ /
 # Automatically leverage output traces to reduce image size
 # https://nextjs.org/docs/advanced-features/output-file-tracing
 COPY --from=builder /app/.next/standalone /app/
+
+# Copy static files - this ensures _next/static is included in the image
+COPY --from=builder /app/.next/static /app/.next/static
+
 # Copy Next export output for desktop renderer
 COPY --from=builder /app/apps/desktop/dist/next /app/apps/desktop/dist/next
 

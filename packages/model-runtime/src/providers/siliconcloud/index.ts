@@ -44,12 +44,8 @@ export const params = {
     },
     handlePayload: (payload) => {
       const { max_tokens, model, thinking, messages, ...rest } = payload;
-      const thinkingBudget =
-        thinking?.budget_tokens === 0 ? 1 : thinking?.budget_tokens || undefined;
 
-      const isThinkingEnabled = thinking?.type === 'enabled';
-
-      // Process interleaved thinking - convert reasoning to reasoning_content
+      // Format conversion: reasoning → reasoning_content
       const processedMessages = messages?.map((message: any) => {
         if (message.role === 'assistant' && message.reasoning?.content) {
           const { reasoning, ...restMessage } = message;
@@ -66,25 +62,18 @@ export const params = {
         max_tokens:
           max_tokens === undefined ? undefined : Math.min(Math.max(max_tokens, 1), 16_384),
         model,
-        ...(processedMessages ? { messages: processedMessages } : {}),
+        messages: processedMessages,
       };
 
+      // Format conversion: thinking → enable_thinking + thinking_budget
+      // Pure format conversion, API decides if parameters are supported
       if (thinking) {
-        // Only some models support specifying enable_thinking, while other slow-thinking models only support adjusting thinking budget
-        const hybridThinkingModels = [
-          /GLM-4\.([5-7])(?!.*Air$)/, // GLM-4.5、GLM-4.6、GLM-4.7 和对应 V 版本（不包含 Air）
-          /Qwen3-(?:\d+B|\d+B-A\d+B)$/, // Qwen3-8B、Qwen3-14B、Qwen3-32B、Qwen3-30B-A3B、Qwen3-235B-A22B
-          /DeepSeek-V3\.[12]/, // DeepSeek-V3.1、DeepSeek-V3.2
-          /Hunyuan-A13B-Instruct/,
-          /moonshotai\/kimi-k2\.5/, // Kimi K2.5
-        ];
-        if (hybridThinkingModels.some((regexp) => regexp.test(model))) {
-          result.enable_thinking = isThinkingEnabled;
-        }
-        if (typeof thinkingBudget !== 'undefined') {
-          result.thinking_budget = Math.min(Math.max(thinkingBudget, 1), 32_768);
+        result.enable_thinking = thinking.type === 'enabled';
+        if (thinking.budget_tokens) {
+          result.thinking_budget = Math.min(Math.max(thinking.budget_tokens, 1), 32_768);
         }
       }
+
       return result;
     },
   },

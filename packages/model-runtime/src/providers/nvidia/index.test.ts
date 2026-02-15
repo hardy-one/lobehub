@@ -83,6 +83,45 @@ describe('LobeNvidiaAI - custom features', () => {
       });
     });
 
+    it('should use enable_thinking and clear_thinking for GLM models', () => {
+      const payload = {
+        model: 'z-ai/glm5',
+        messages: [{ role: 'user', content: 'test' }],
+        thinking: { type: 'enabled' as const },
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.chat_template_kwargs).toEqual({ enable_thinking: true, clear_thinking: false });
+    });
+
+    it('should use enable_thinking and clear_thinking for GLM models when disabled', () => {
+      const payload = {
+        model: 'z-ai/glm5',
+        messages: [{ role: 'user', content: 'test' }],
+        thinking: { type: 'disabled' as const },
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.chat_template_kwargs).toEqual({
+        enable_thinking: false,
+        clear_thinking: false,
+      });
+    });
+
+    it('should use thinking for non-GLM models', () => {
+      const payload = {
+        model: 'deepseek-ai/deepseek-v3.2',
+        messages: [{ role: 'user', content: 'test' }],
+        thinking: { type: 'enabled' as const },
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.chat_template_kwargs).toEqual({ thinking: true });
+    });
+
     // reasoning -> reasoning_content conversion
     it('should convert reasoning to reasoning_content for all NVIDIA models', () => {
       const payload = {
@@ -117,7 +156,8 @@ describe('LobeNvidiaAI - custom features', () => {
         { role: 'user', content: 'test' },
         { role: 'assistant', content: 'response', reasoning_content: 'thinking process' },
       ]);
-      expect(result.chat_template_kwargs).toEqual({ thinking: true });
+      // GLM models use enable_thinking + clear_thinking
+      expect(result.chat_template_kwargs).toEqual({ enable_thinking: true, clear_thinking: false });
     });
 
     it('should preserve other payload properties', () => {

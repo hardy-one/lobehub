@@ -160,7 +160,7 @@ const siliconcloudChatModels: AIChatModelCard[] = [
     description:
       "GLM-4.7 is Zhipu's new generation flagship model with 355B total parameters and 32B active parameters, fully upgraded in general dialogue, reasoning, and agent capabilities. GLM-4.7 enhances Interleaved Thinking and introduces Preserved Thinking and Turn-level Thinking.",
     displayName: 'GLM-4.7 (Pro)',
-    id: 'Pro/zai-org/glm-4.7',
+    id: 'Pro/zai-org/GLM-4.7',
     pricing: {
       currency: 'CNY',
       units: [
@@ -315,29 +315,6 @@ const siliconcloudChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['reasoningBudgetToken'],
     },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
-      reasoning: true,
-    },
-    contextWindowTokens: 128_000,
-    description:
-      'MiniMax-M2 redefines agent efficiency. It is a compact, fast, cost-effective MoE model with 230B total and 10B active parameters, built for top-tier coding and agent tasks while retaining strong general intelligence. With only 10B active parameters, it rivals much larger models, making it ideal for high-efficiency applications.',
-    displayName: 'MiniMax-M2',
-    id: 'MiniMaxAI/MiniMax-M2',
-    settings: {
-      extendParams: ['reasoningBudgetToken'],
-    },
-    pricing: {
-      currency: 'CNY',
-      units: [
-        { name: 'textInput', rate: 2.1, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textOutput', rate: 8.4, strategy: 'fixed', unit: 'millionTokens' },
-      ],
-    },
-    releasedAt: '2025-10-28',
     type: 'chat',
   },
   {
@@ -875,30 +852,6 @@ const siliconcloudChatModels: AIChatModelCard[] = [
   {
     abilities: {
       functionCall: true,
-      reasoning: true,
-      vision: true,
-    },
-    contextWindowTokens: 65_536,
-    description:
-      'Step3 is a cutting-edge multimodal reasoning model from StepFun, built on an MoE architecture with 321B total and 38B active parameters. Its end-to-end design minimizes decoding cost while delivering top-tier vision-language reasoning. With MFA and AFD design, it stays efficient on both flagship and low-end accelerators. Pretraining uses 20T+ text tokens and 4T image-text tokens across many languages. It reaches leading open-model performance on math, code, and multimodal benchmarks.',
-    displayName: 'Step 3',
-    id: 'stepfun-ai/step3',
-    pricing: {
-      currency: 'CNY',
-      units: [
-        { name: 'textInput', rate: 4, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textOutput', rate: 10, strategy: 'fixed', unit: 'millionTokens' },
-      ],
-    },
-    releasedAt: '2025-07-31',
-    settings: {
-      extendParams: ['reasoningBudgetToken'],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
     },
     contextWindowTokens: 262_144,
     description:
@@ -953,29 +906,6 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2025-08-11',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
-      reasoning: true,
-    },
-    contextWindowTokens: 131_072,
-    description:
-      'GLM-4.5 is a base model built for agent applications using a Mixture-of-Experts architecture. It is deeply optimized for tool use, web browsing, software engineering, and frontend coding, and integrates with code agents like Claude Code and Roo Code. It uses hybrid reasoning to handle both complex reasoning and everyday scenarios.',
-    displayName: 'GLM-4.5',
-    id: 'zai-org/GLM-4.5',
-    pricing: {
-      currency: 'CNY',
-      units: [
-        { name: 'textInput', rate: 3.5, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textOutput', rate: 14, strategy: 'fixed', unit: 'millionTokens' },
-      ],
-    },
-    releasedAt: '2025-07-28',
     settings: {
       extendParams: ['enableReasoning', 'reasoningBudgetToken'],
     },
@@ -1086,28 +1016,6 @@ const siliconcloudChatModels: AIChatModelCard[] = [
     },
     contextWindowTokens: 131_072,
     description:
-      'Kimi-Dev-72B is an open-source code LLM optimized with large-scale RL to produce robust, production-ready patches. It scores 60.4% on SWE-bench Verified, setting a new open-model record for automated software engineering tasks like bug fixing and code review.',
-    displayName: 'Kimi Dev 72B',
-    id: 'moonshotai/Kimi-Dev-72B',
-    pricing: {
-      currency: 'CNY',
-      units: [
-        { name: 'textInput', rate: 2, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textOutput', rate: 8, strategy: 'fixed', unit: 'millionTokens' },
-      ],
-    },
-    releasedAt: '2025-06-17',
-    settings: {
-      extendParams: ['reasoningBudgetToken'],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      reasoning: true,
-    },
-    contextWindowTokens: 131_072,
-    description:
       'Hunyuan-A13B-Instruct uses 80B total parameters with 13B active to match larger models. It supports fast/slow hybrid reasoning, stable long-text understanding, and leading agent ability on BFCL-v3 and τ-Bench. GQA and multi-quant formats enable efficient inference.',
     displayName: 'Hunyuan A13B Instruct',
     id: 'tencent/Hunyuan-A13B-Instruct',
@@ -1121,50 +1029,6 @@ const siliconcloudChatModels: AIChatModelCard[] = [
     releasedAt: '2025-06-27',
     settings: {
       extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      reasoning: true,
-    },
-    contextWindowTokens: 131_072,
-    description:
-      'MiniMax-M1 is an open-weights large-scale hybrid-attention reasoning model with 456B total parameters and ~45.9B active per token. It natively supports 1M context and uses Flash Attention to cut FLOPs by 75% on 100K-token generation vs DeepSeek R1. With an MoE architecture plus CISPO and hybrid-attention RL training, it achieves leading performance on long-input reasoning and real software engineering tasks.',
-    displayName: 'MiniMax M1 80K',
-    id: 'MiniMaxAI/MiniMax-M1-80k',
-    pricing: {
-      currency: 'CNY',
-      units: [
-        { name: 'textInput', rate: 4, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textOutput', rate: 16, strategy: 'fixed', unit: 'millionTokens' },
-      ],
-    },
-    releasedAt: '2025-06-16',
-    settings: {
-      extendParams: ['reasoningBudgetToken'],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      reasoning: true,
-    },
-    contextWindowTokens: 131_072,
-    description:
-      'QwenLong-L1-32B is the first long-context reasoning model (LRM) trained with RL, optimized for long-text reasoning. Its progressive context expansion RL enables stable transfer from short to long context. It surpasses OpenAI-o3-mini and Qwen3-235B-A22B on seven long-context document QA benchmarks, rivaling Claude-3.7-Sonnet-Thinking. It is especially strong at math, logic, and multi-hop reasoning.',
-    displayName: 'QwenLong L1 32B',
-    id: 'Tongyi-Zhiwen/QwenLong-L1-32B',
-    pricing: {
-      currency: 'CNY',
-      units: [
-        { name: 'textInput', rate: 1, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textOutput', rate: 4, strategy: 'fixed', unit: 'millionTokens' },
-      ],
-    },
-    releasedAt: '2025-05-26',
-    settings: {
-      extendParams: ['reasoningBudgetToken'],
     },
     type: 'chat',
   },
@@ -1264,30 +1128,6 @@ const siliconcloudChatModels: AIChatModelCard[] = [
     contextWindowTokens: 131_072,
     description:
       'Qwen3 is a next-gen Tongyi Qwen model with major gains in reasoning, general ability, agent capability, and multilingual performance, and supports switching thinking modes.',
-    displayName: 'Qwen3 235B A22B',
-    id: 'Qwen/Qwen3-235B-A22B',
-    organization: 'Qwen',
-    pricing: {
-      currency: 'CNY',
-      units: [
-        { name: 'textInput', rate: 2.5, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textOutput', rate: 10, strategy: 'fixed', unit: 'millionTokens' },
-      ],
-    },
-    releasedAt: '2025-04-28',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
-      reasoning: true,
-    },
-    contextWindowTokens: 131_072,
-    description:
-      'Qwen3 is a next-gen Tongyi Qwen model with major gains in reasoning, general ability, agent capability, and multilingual performance, and supports switching thinking modes.',
     displayName: 'Qwen3 32B',
     id: 'Qwen/Qwen3-32B',
     organization: 'Qwen',
@@ -1296,30 +1136,6 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       units: [
         { name: 'textInput', rate: 1, strategy: 'fixed', unit: 'millionTokens' },
         { name: 'textOutput', rate: 4, strategy: 'fixed', unit: 'millionTokens' },
-      ],
-    },
-    releasedAt: '2025-04-28',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
-      reasoning: true,
-    },
-    contextWindowTokens: 131_072,
-    description:
-      'Qwen3 is a next-gen Tongyi Qwen model with major gains in reasoning, general ability, agent capability, and multilingual performance, and supports switching thinking modes.',
-    displayName: 'Qwen3 30B A3B',
-    id: 'Qwen/Qwen3-30B-A3B',
-    organization: 'Qwen',
-    pricing: {
-      currency: 'CNY',
-      units: [
-        { name: 'textInput', rate: 0.7, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textOutput', rate: 2.8, strategy: 'fixed', unit: 'millionTokens' },
       ],
     },
     releasedAt: '2025-04-28',
@@ -1373,74 +1189,6 @@ const siliconcloudChatModels: AIChatModelCard[] = [
     releasedAt: '2025-04-28',
     settings: {
       extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      reasoning: true,
-      vision: true,
-    },
-    contextWindowTokens: 65_536,
-    description:
-      'GLM-4.1V-9B-Thinking is an open-source VLM from Zhipu AI and Tsinghua KEG Lab, designed for complex multimodal cognition. Built on GLM-4-9B-0414, it adds chain-of-thought reasoning and RL to significantly improve cross-modal reasoning and stability.',
-    displayName: 'GLM-4.1V 9B Thinking (Free)',
-    id: 'THUDM/GLM-4.1V-9B-Thinking',
-    settings: {
-      extendParams: ['reasoningBudgetToken'],
-    },
-    pricing: {
-      currency: 'CNY',
-      units: [
-        { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textOutput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
-      ],
-    },
-    releasedAt: '2025-07-02',
-    type: 'chat',
-  },
-  {
-    abilities: {
-      reasoning: true,
-      vision: true,
-    },
-    contextWindowTokens: 65_536,
-    description:
-      'GLM-4.1V-9B-Thinking is an open-source VLM from Zhipu AI and Tsinghua KEG Lab, designed for complex multimodal cognition. Built on GLM-4-9B-0414, it adds chain-of-thought reasoning and RL to significantly improve cross-modal reasoning and stability.',
-    displayName: 'GLM-4.1V 9B Thinking (Pro)',
-    id: 'Pro/THUDM/GLM-4.1V-9B-Thinking',
-    settings: {
-      extendParams: ['reasoningBudgetToken'],
-    },
-    pricing: {
-      currency: 'CNY',
-      units: [
-        { name: 'textInput', rate: 0.25, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textOutput', rate: 1, strategy: 'fixed', unit: 'millionTokens' },
-      ],
-    },
-    releasedAt: '2025-07-02',
-    type: 'chat',
-  },
-  {
-    abilities: {
-      reasoning: true,
-    },
-    contextWindowTokens: 131_072,
-    description:
-      'GLM-Z1-Rumination-32B-0414 is a deep reasoning model with rumination capabilities (benchmarked against OpenAI Deep Research). Unlike typical deep-thinking models, it spends longer deliberation to solve more open and complex problems.',
-    displayName: 'GLM-Z1-Rumination 32B 0414',
-    id: 'THUDM/GLM-Z1-Rumination-32B-0414',
-    pricing: {
-      currency: 'CNY',
-      units: [
-        { name: 'textInput', rate: 1, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textOutput', rate: 4, strategy: 'fixed', unit: 'millionTokens' },
-      ],
-    },
-    releasedAt: '2025-04-14',
-    settings: {
-      extendParams: ['reasoningBudgetToken'],
     },
     type: 'chat',
   },
@@ -1714,50 +1462,6 @@ const siliconcloudChatModels: AIChatModelCard[] = [
   {
     abilities: {
       functionCall: true,
-      reasoning: true,
-    },
-    contextWindowTokens: 131_072,
-    description:
-      'DeepSeek-R1-Distill-Qwen-7B is distilled from Qwen2.5-Math-7B and fine-tuned on 800K curated DeepSeek-R1 samples. It performs strongly, with 92.8% on MATH-500, 55.5% on AIME 2024, and a 1189 CodeForces rating for a 7B model.',
-    displayName: 'DeepSeek R1 Distill Qwen 7B (Free)',
-    id: 'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B',
-    settings: {
-      extendParams: ['reasoningBudgetToken'],
-    },
-    pricing: {
-      currency: 'CNY',
-      units: [
-        { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textOutput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
-      ],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
-      reasoning: true,
-    },
-    contextWindowTokens: 131_072,
-    description:
-      'DeepSeek-R1-Distill-Qwen-7B is distilled from Qwen2.5-Math-7B and fine-tuned on 800K curated DeepSeek-R1 samples. It performs strongly, with 92.8% on MATH-500, 55.5% on AIME 2024, and a 1189 CodeForces rating for a 7B model.',
-    displayName: 'DeepSeek R1 Distill Qwen 7B (Pro)',
-    id: 'Pro/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B',
-    settings: {
-      extendParams: ['reasoningBudgetToken'],
-    },
-    pricing: {
-      currency: 'CNY',
-      units: [
-        { name: 'textInput', rate: 0.35, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textOutput', rate: 0.35, strategy: 'fixed', unit: 'millionTokens' },
-      ],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
     },
     contextWindowTokens: 32_768,
     description:
@@ -1787,28 +1491,6 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       units: [
         { name: 'textInput', rate: 0.99, strategy: 'fixed', unit: 'millionTokens' },
         { name: 'textOutput', rate: 0.99, strategy: 'fixed', unit: 'millionTokens' },
-      ],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      reasoning: true,
-      vision: true,
-    },
-    contextWindowTokens: 32_768,
-    description:
-      'QVQ-72B-Preview is a research model from Qwen focused on visual reasoning, with strengths in complex scene understanding and visual math problems.',
-    displayName: 'QVQ 72B Preview',
-    id: 'Qwen/QVQ-72B-Preview',
-    settings: {
-      extendParams: ['reasoningBudgetToken'],
-    },
-    pricing: {
-      currency: 'CNY',
-      units: [
-        { name: 'textInput', rate: 9.9, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textOutput', rate: 9.9, strategy: 'fixed', unit: 'millionTokens' },
       ],
     },
     type: 'chat',
@@ -2106,6 +1788,95 @@ const siliconcloudChatModels: AIChatModelCard[] = [
         { name: 'textOutput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
       ],
     },
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+    },
+    contextWindowTokens: 131_072,
+    description:
+      'DeepSeek-R1-Distill-Qwen-7B is distilled from Qwen2.5-Math-7B and fine-tuned on 800K curated DeepSeek-R1 samples. It excels in math, programming, and reasoning, achieving 92.8% on MATH-500, 55.5% on AIME 2024, and 1189 on CodeForces.',
+    displayName: 'DeepSeek R1 Distill Qwen 7B',
+    id: 'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
+    pricing: {
+      currency: 'CNY',
+      units: [
+        { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2025-01-20',
+    type: 'chat',
+  },
+  {
+    abilities: {
+      vision: true,
+    },
+    contextWindowTokens: 65_536,
+    description:
+      'GLM-4.1V-9B-Thinking is an open-source vision language model (VLM) jointly released by Zhipu AI and Tsinghua University KEG Lab. Based on GLM-4-9B-0414, it introduces Chain-of-Thought reasoning mechanism and uses reinforcement learning strategy, significantly improving its cross-modal reasoning ability and stability. As a lightweight 9B model, it achieves a balance between deployment efficiency and performance.',
+    displayName: 'GLM-4.1V 9B Thinking',
+    id: 'THUDM/GLM-4.1V-9B-Thinking',
+    pricing: {
+      currency: 'CNY',
+      units: [
+        { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2025-07-02',
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+      vision: true,
+    },
+    contextWindowTokens: 131_072,
+    description:
+      'GLM-4.6V achieves SOTA visual understanding accuracy at the same parameter scale, and is the first to natively integrate Function Call capability into vision models in the model architecture, connecting the chain from visual perception to executable action (Action), providing a unified technical foundation for multimodal Agents in real business scenarios. Visual context window expanded to 128K, supporting long video stream processing and high-resolution multi-image analysis.',
+    displayName: 'GLM-4.6V',
+    id: 'zai-org/GLM-4.6V',
+    settings: {
+      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+    },
+    pricing: {
+      currency: 'CNY',
+      units: [
+        { name: 'textInput', rate: 3.5, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 14, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2025-12-08',
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+    },
+    contextWindowTokens: 262_144,
+    description:
+      'Step 3.5 Flash is the most powerful open-source foundation model from StepFun, using sparse Mixture of Experts (MoE) architecture with 196B total parameters, only 11B active parameters per token. Model supports 256K context window, achieving 100-300 tok/s generation throughput through 3-way Multi-Token Prediction (MTP-3). Excellent performance on programming and Agent tasks, SWE-bench Verified reaches 74.4%.',
+    displayName: 'Step 3.5 Flash',
+    id: 'stepfun-ai/Step-3.5-Flash',
+    settings: {
+      extendParams: ['reasoningBudgetToken'],
+    },
+    pricing: {
+      currency: 'CNY',
+      units: [
+        { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-02-02',
     type: 'chat',
   },
 ];

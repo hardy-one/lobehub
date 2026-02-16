@@ -1,8 +1,8 @@
 import { Flexbox } from '@lobehub/ui';
-import { type FC, type ReactNode } from 'react';
-import { useCallback, useMemo, useState } from 'react';
+import { type FC, type ReactNode, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Virtuoso } from 'react-virtuoso';
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 
 import { useEnabledChatModels } from '@/hooks/useEnabledChatModels';
 
@@ -56,8 +56,8 @@ export const List: FC<ListProps> = ({
 
   const activeKey = menuKey(provider, model);
 
-  // Find the index of the currently active model to scroll to
-  const initialTopMostItemIndex = useMemo(() => {
+  // Find the index of the currently active model to scroll to center
+  const activeIndex = useMemo(() => {
     return listItems.findIndex((item) => {
       switch (item.type) {
         case 'model-item-single':
@@ -72,6 +72,26 @@ export const List: FC<ListProps> = ({
       }
     });
   }, [activeKey, listItems]);
+
+  // Use ref to access Virtuoso's scrollToIndex method
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
+
+  // Scroll to the active model in center position on mount
+  useEffect(() => {
+    if (activeIndex >= 0) {
+      // Use double requestAnimationFrame to ensure Virtuoso is mounted and ref is available
+      const frame = requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          virtuosoRef.current?.scrollToIndex({
+            align: 'center',
+            behavior: 'auto',
+            index: activeIndex,
+          });
+        });
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [activeIndex]);
 
   const handleScrollingStateChange = useCallback((scrolling: boolean) => {
     setIsScrolling(scrolling);
@@ -106,10 +126,10 @@ export const List: FC<ListProps> = ({
       }}
     >
       <Virtuoso
-        initialTopMostItemIndex={initialTopMostItemIndex}
         isScrolling={handleScrollingStateChange}
         itemContent={itemContent}
         overscan={200}
+        ref={virtuosoRef}
         style={{ height: listHeight }}
         totalCount={listItems.length}
       />

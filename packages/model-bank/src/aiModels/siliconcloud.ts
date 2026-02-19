@@ -203,9 +203,6 @@ const siliconcloudChatModels: AIChatModelCard[] = [
       'MiniMax-M2.1 is an open-source large language model optimized for agent capabilities, excelling in programming, tool usage, instruction following, and long-term planning. The model supports multilingual software development and complex multi-step workflow execution, achieving a score of 74.0 on SWE-bench Verified and surpassing Claude Sonnet 4.5 in multilingual scenarios.',
     displayName: 'MiniMax-M2.1 (Pro)',
     id: 'Pro/MiniMaxAI/MiniMax-M2.1',
-    settings: {
-      extendParams: ['reasoningBudgetToken'],
-    },
     pricing: {
       currency: 'CNY',
       units: [

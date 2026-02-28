@@ -375,6 +375,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
       functionCall: true,
       reasoning: true,
       vision: true,
+      video: true,
     },
     contextWindowTokens: 1_010_000,
     description:
@@ -384,7 +385,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
     id: 'qwen/qwen3.5-397b-a17b',
     maxOutput: 65_536,
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['enableReasoning'],
     },
     type: 'chat',
   },

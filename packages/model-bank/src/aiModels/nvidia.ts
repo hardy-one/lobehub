@@ -356,6 +356,38 @@ const nvidiaChatModels: AIChatModelCard[] = [
     id: 'qwen/qwen2.5-coder-32b-instruct',
     type: 'chat',
   },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+    },
+    contextWindowTokens: 204_800,
+    description:
+      'MiniMax-M2.5 is the latest large language model from MiniMax, featuring a Mixture-of-Experts (MoE) architecture with 229 billion total parameters. It achieves industry-leading performance in programming, agent tool calling, search tasks, and office scenarios.',
+    displayName: 'MiniMax-M2.5',
+    enabled: true,
+    id: 'minimaxai/minimax-m2.5',
+    maxOutput: 131_072,
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+      vision: true,
+    },
+    contextWindowTokens: 1_010_000,
+    description:
+      'Supports text, image, and video inputs. For text-only tasks, its performance is comparable to Qwen3 Max, offering higher efficiency and lower cost. In multimodal capabilities, it delivers significant improvements over the Qwen3 VL series.',
+    displayName: 'Qwen3.5-397B-A17B',
+    enabled: true,
+    id: 'qwen/qwen3.5-397b-a17b',
+    maxOutput: 65_536,
+    settings: {
+      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+    },
+    type: 'chat',
+  },
 ];
 
 export const allModels = [...nvidiaChatModels];

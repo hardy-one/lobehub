@@ -44,6 +44,19 @@ const processTopicRoute = async (context: WorkflowContext<MemoryExtractionPayloa
         'workflow.memory_user_memory.user_id': payload.userIds[0],
         'workflow.name': 'memory-user-memory:process-topic',
       });
+      console.info('[memory-user-memory][process-topic] Received workflow request', {
+        workflowRunId: context.workflowRunId,
+        sources: payload.sources,
+        userIds: payload.userIds,
+        topicIds: payload.topicIds,
+        layers: payload.layers,
+        asyncTaskId: payload.asyncTaskId,
+        forceAll: payload.forceAll,
+        forceTopics: payload.forceTopics,
+        from: payload.from,
+        to: payload.to,
+        userInitiated: payload.userInitiated,
+      });
 
       const topicId = payload.topicIds[0];
       const userId = payload.userIds[0];
@@ -59,6 +72,7 @@ const processTopicRoute = async (context: WorkflowContext<MemoryExtractionPayloa
       }
 
       const executor = await MemoryExtractionExecutor.create();
+      console.info('[memory-user-memory][process-topic] MemoryExtractionExecutor created');
 
       try {
         {
@@ -66,6 +80,11 @@ const processTopicRoute = async (context: WorkflowContext<MemoryExtractionPayloa
           if (payload.layers.length) {
             layers = payload.layers.filter((layer) => CEPA_LAYERS.includes(layer));
           }
+          console.info('[memory-user-memory][process-topic] Extracting CEPA layers', {
+            userId,
+            topicId,
+            layers,
+          });
 
           await context.run(
             `memory:user-memory:extract:users:${userId}:topics:${topicId}:cepa`,
@@ -89,6 +108,11 @@ const processTopicRoute = async (context: WorkflowContext<MemoryExtractionPayloa
           if (payload.layers.length) {
             layers = payload.layers.filter((layer) => IDENTITY_LAYERS.includes(layer));
           }
+          console.info('[memory-user-memory][process-topic] Extracting Identity layers', {
+            userId,
+            topicId,
+            layers,
+          });
 
           await context.run(
             `memory:user-memory:extract:users:${userId}:topics:${topicId}:identity`,
@@ -109,6 +133,13 @@ const processTopicRoute = async (context: WorkflowContext<MemoryExtractionPayloa
         }
 
         span.setStatus({ code: SpanStatusCode.OK });
+        console.info(
+          '[memory-user-memory][process-topic] Topic extraction completed successfully',
+          {
+            userId,
+            topicId,
+          },
+        );
         return {
           processedTopics: 1,
           processedUsers: 1,

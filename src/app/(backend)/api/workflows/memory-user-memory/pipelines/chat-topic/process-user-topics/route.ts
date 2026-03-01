@@ -21,6 +21,19 @@ const { upstashWorkflowExtraHeaders } = parseMemoryExtractionConfig();
 export const { POST } = serve<MemoryExtractionPayloadInput>(
   async (context) => {
     const params = normalizeMemoryExtractionPayload(context.requestPayload || {});
+    console.info('[memory-user-memory][process-user-topics] Received workflow request', {
+      workflowRunId: context.workflowRunId,
+      sources: params.sources,
+      userIds: params.userIds,
+      topicIds: params.topicIds,
+      topicCursor: params.topicCursor,
+      from: params.from,
+      to: params.to,
+      asyncTaskId: params.asyncTaskId,
+      forceAll: params.forceAll,
+      forceTopics: params.forceTopics,
+      userInitiated: params.userInitiated,
+    });
     if (!params.userIds.length) {
       return { message: 'No user ids provided for topic processing.' };
     }
@@ -29,6 +42,7 @@ export const { POST } = serve<MemoryExtractionPayloadInput>(
     }
 
     const executor = await MemoryExtractionExecutor.create();
+    console.info('[memory-user-memory][process-user-topics] MemoryExtractionExecutor created');
 
     const scheduleNextPage = async (userId: string, cursorCreatedAt: Date, cursorId: string) => {
       await MemoryExtractionWorkflowService.triggerProcessUserTopics(
@@ -49,7 +63,14 @@ export const { POST } = serve<MemoryExtractionPayloadInput>(
       );
     };
 
+    console.info('[memory-user-memory][process-user-topics] Processing users', {
+      userIds: params.userIds,
+    });
     for (const userId of params.userIds) {
+      console.info('[memory-user-memory][process-user-topics] Processing user', {
+        userId,
+        topicCursorFromParams: params.topicCursor,
+      });
       const topicCursor =
         params.topicCursor && params.topicCursor.userId === userId
           ? {
@@ -68,7 +89,17 @@ export const { POST } = serve<MemoryExtractionPayloadInput>(
               },
             )
           : undefined;
+      console.info('[memory-user-memory][process-user-topics] Topics from payload', {
+        userId,
+        hasTopicIdsFromParams: !!params.topicIds?.length,
+        topicsFromPayloadCount: topicsFromPayload?.length || 0,
+      });
 
+      console.info('[memory-user-memory][process-user-topics] Fetching topic batch for user', {
+        userId,
+        topicCursorId: topicCursor?.id,
+        hasTopicsFromPayload: !!topicsFromPayload?.length,
+      });
       const topicBatch = await context.run<{
         cursor?: ListTopicsForMemoryExtractorCursor;
         ids: string[];
@@ -89,6 +120,12 @@ export const { POST } = serve<MemoryExtractionPayloadInput>(
                 TOPIC_PAGE_SIZE,
               ),
       );
+      console.info('[memory-user-memory][process-user-topics] Topic batch fetched', {
+        userId,
+        topicIdsCount: topicBatch.ids.length,
+        hasCursor: 'cursor' in topicBatch,
+        cursorId: 'cursor' in topicBatch ? topicBatch.cursor?.id : undefined,
+      });
 
       const ids = topicBatch.ids;
       if (!ids.length) {
@@ -96,6 +133,14 @@ export const { POST } = serve<MemoryExtractionPayloadInput>(
       }
 
       const cursor = 'cursor' in topicBatch ? topicBatch.cursor : undefined;
+      console.info('[memory-user-memory][process-user-topics] Processing topic batches', {
+        userId,
+        totalTopics: ids.length,
+        topicBatchSize: TOPIC_BATCH_SIZE,
+        batchCount: Math.ceil(ids.length / TOPIC_BATCH_SIZE),
+        hasCursor: !!cursor,
+        cursorId: cursor?.id,
+      });
 
       // TODO: follow the new pattern of process-topic
       // remove the batch sequential, replace it with context.invoke(...) pattern
@@ -105,8 +150,17 @@ export const { POST } = serve<MemoryExtractionPayloadInput>(
         // URLs would inherit that base and lose the desired /process-topics/workflows prefix.
         await context.run(
           `memory:user-memory:extract:users:${userId}:process-topics-batch:${batchIndex}`,
-          () =>
-            MemoryExtractionWorkflowService.triggerProcessTopics(
+          () => {
+            console.info(
+              '[memory-user-memory][process-user-topics] Triggering process-topics for topic batch',
+              {
+                userId,
+                batchIndex,
+                topicIdsCount: topicIds.length,
+                firstTopicId: topicIds[0],
+              },
+            );
+            return MemoryExtractionWorkflowService.triggerProcessTopics(
               userId,
               {
                 ...buildWorkflowPayloadInput(params),
@@ -116,11 +170,20 @@ export const { POST } = serve<MemoryExtractionPayloadInput>(
                 userIds: [userId],
               },
               { extraHeaders: upstashWorkflowExtraHeaders },
-            ),
+            );
+          },
         );
       });
 
       if (!topicsFromPayload && cursor) {
+        console.info(
+          '[memory-user-memory][process-user-topics] Scheduling next topic batch with cursor',
+          {
+            userId,
+            cursorId: cursor.id,
+            cursorCreatedAt: cursor.createdAt,
+          },
+        );
         await context.run(
           `memory:user-memory:extract:users:${userId}:topics:${cursor.id}:schedule-next-batch`,
           () => {
@@ -138,6 +201,9 @@ export const { POST } = serve<MemoryExtractionPayloadInput>(
       }
     }
 
+    console.info('[memory-user-memory][process-user-topics] Workflow completed successfully', {
+      processedUsers: params.userIds.length,
+    });
     return { processedUsers: params.userIds.length };
   },
   {

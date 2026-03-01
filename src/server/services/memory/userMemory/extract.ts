@@ -1093,6 +1093,18 @@ export class MemoryExtractionExecutor {
   }
 
   async extractTopic(job: TopicExtractionJob) {
+    console.info('[memory-extraction][extractTopic] Starting topic extraction', {
+      userId: job.userId,
+      topicId: job.topicId,
+      source: job.source,
+      layers: job.layers,
+      asyncTaskId: job.asyncTaskId,
+      forceAll: job.forceAll,
+      forceTopics: job.forceTopics,
+      from: job.from,
+      to: job.to,
+      userInitiated: job.userInitiated,
+    });
     const attributes = {
       source: job.source,
       source_id: job.topicId,
@@ -1179,12 +1191,24 @@ export class MemoryExtractionExecutor {
             sourceUpdatedAt: topic.updatedAt,
             userId: job.userId,
           };
+          console.info('[memory-extraction][extractTopic] Extraction job created', {
+            userId: job.userId,
+            topicId: topic.id,
+            force: extractionJob.force,
+            layers: extractionJob.layers,
+            source: extractionJob.source,
+          });
 
           const userModel = new UserModel(db, job.userId);
           const [userState, aiProviderRuntimeState] = await Promise.all([
             userModel.getUserState(KeyVaultsGateKeeper.getUserKeyVaults),
             this.getAiProviderRuntimeState(job.userId),
           ]);
+          console.info('[memory-extraction][extractTopic] User and AI provider state fetched', {
+            userId: job.userId,
+            hasUserState: !!userState,
+            hasAiProviderRuntimeState: !!aiProviderRuntimeState,
+          });
           const keyVaults = await this.resolveRuntimeKeyVaults(aiProviderRuntimeState);
           const language = userState.settings?.general?.responseLanguage;
 

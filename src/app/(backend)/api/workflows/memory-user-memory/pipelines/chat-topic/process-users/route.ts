@@ -19,11 +19,23 @@ const { upstashWorkflowExtraHeaders } = parseMemoryExtractionConfig();
 export const { POST } = serve<MemoryExtractionPayloadInput>(
   async (context) => {
     const params = normalizeMemoryExtractionPayload(context.requestPayload || {});
+    console.info('[memory-user-memory][process-users] Received workflow request', {
+      workflowRunId: context.workflowRunId,
+      sources: params.sources,
+      userIds: params.userIds,
+      userCursor: params.userCursor,
+      from: params.from,
+      to: params.to,
+      asyncTaskId: params.asyncTaskId,
+      mode: params.mode,
+      userInitiated: params.userInitiated,
+    });
     if (params.sources.length === 0) {
       return { message: 'No sources provided, skip memory extraction.' };
     }
 
     const executor = await MemoryExtractionExecutor.create();
+    console.info('[memory-user-memory][process-users] MemoryExtractionExecutor created');
 
     // NOTICE: Upstash Workflow only supports serializable data into plain JSON,
     // this causes the Date object to be converted into string when passed as parameter from
@@ -31,12 +43,22 @@ export const { POST } = serve<MemoryExtractionPayloadInput>(
     const userCursor = params.userCursor
       ? { createdAt: new Date(params.userCursor.createdAt), id: params.userCursor.id }
       : undefined;
+    console.info('[memory-user-memory][process-users] Fetching user batch', {
+      userIdsFromParams: params.userIds,
+      userCursor,
+      userCursorFromParams: params.userCursor,
+    });
 
     const userBatch = await context.run('memory:user-memory:extract:get-users', () =>
       params.userIds.length > 0
         ? { ids: params.userIds }
         : executor.getUsers(USER_PAGE_SIZE, userCursor),
     );
+    console.info('[memory-user-memory][process-users] User batch fetched', {
+      userIdsCount: userBatch.ids.length,
+      hasCursor: 'cursor' in userBatch,
+      cursorId: 'cursor' in userBatch ? userBatch.cursor?.id : undefined,
+    });
 
     const ids = userBatch.ids;
     if (ids.length === 0) {
@@ -44,12 +66,27 @@ export const { POST } = serve<MemoryExtractionPayloadInput>(
     }
 
     const cursor = 'cursor' in userBatch ? userBatch.cursor : undefined;
+    console.info('[memory-user-memory][process-users] Processing user batches', {
+      totalUsers: ids.length,
+      userBatchSize: USER_BATCH_SIZE,
+      batchCount: Math.ceil(ids.length / USER_BATCH_SIZE),
+      hasCursor: !!cursor,
+      cursorId: cursor?.id,
+    });
 
     const batches = chunk(ids, USER_BATCH_SIZE);
     await Promise.all(
       batches.map((userIds) =>
-        context.run(`memory:user-memory:extract:users:process-topic-batches`, () =>
-          MemoryExtractionWorkflowService.triggerProcessUserTopics(
+        context.run(`memory:user-memory:extract:users:process-topic-batches`, () => {
+          console.info(
+            '[memory-user-memory][process-users] Triggering process-user-topics for user batch',
+            {
+              batchUserIds: userIds,
+              batchSize: userIds.length,
+              firstUserId: userIds[0],
+            },
+          );
+          return MemoryExtractionWorkflowService.triggerProcessUserTopics(
             {
               ...buildWorkflowPayloadInput(params),
               topicCursor: undefined,
@@ -57,12 +94,16 @@ export const { POST } = serve<MemoryExtractionPayloadInput>(
               userIds,
             },
             { extraHeaders: upstashWorkflowExtraHeaders },
-          ),
-        ),
+          );
+        }),
       ),
     );
 
     if (params.userIds.length === 0 && cursor) {
+      console.info('[memory-user-memory][process-users] Scheduling next user batch with cursor', {
+        cursorId: cursor.id,
+        cursorCreatedAt: cursor.createdAt,
+      });
       await context.run('memory:user-memory:extract:users:schedule-next-user-batch', () =>
         MemoryExtractionWorkflowService.triggerProcessUsers(
           {
@@ -76,6 +117,11 @@ export const { POST } = serve<MemoryExtractionPayloadInput>(
       );
     }
 
+    console.info('[memory-user-memory][process-users] Workflow completed successfully', {
+      batchesProcessed: batches.length,
+      processedUsers: ids.length,
+      nextCursorId: cursor ? cursor.id : null,
+    });
     return {
       batches: batches.length,
       nextCursor: cursor ? cursor.id : null,

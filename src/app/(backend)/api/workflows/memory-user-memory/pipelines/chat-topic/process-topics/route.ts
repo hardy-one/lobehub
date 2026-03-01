@@ -44,6 +44,18 @@ export const { POST } = serve<MemoryExtractionPayloadInput>(
           'workflow.memory_user_memory.user_count': payload.userIds.length,
           'workflow.name': 'memory-user-memory:process-topics',
         });
+        console.info('[memory-user-memory][process-topics] Received workflow request', {
+          workflowRunId: context.workflowRunId,
+          sources: payload.sources,
+          userIds: payload.userIds,
+          topicIds: payload.topicIds,
+          topicCount: payload.topicIds.length,
+          layers: payload.layers,
+          forceAll: payload.forceAll,
+          forceTopics: payload.forceTopics,
+          asyncTaskId: payload.asyncTaskId,
+          userInitiated: payload.userInitiated,
+        });
 
         try {
           if (!payload.userIds.length) {
@@ -75,9 +87,28 @@ export const { POST } = serve<MemoryExtractionPayloadInput>(
           }
 
           const userId = payload.userIds[0];
+          console.info('[memory-user-memory][process-topics] Processing topics for user', {
+            userId,
+            topicCount: payload.topicIds.length,
+          });
           // Delegate per-topic extraction to dedicated workflow for better isolation
+          console.info(
+            '[memory-user-memory][process-topics] Invoking process-topic workflow for each topic',
+            {
+              userId,
+              topicIds: payload.topicIds,
+            },
+          );
           await Promise.all(
             payload.topicIds.map(async (topicId, index) => {
+              console.info(
+                '[memory-user-memory][process-topics] Invoking process-topic for topic',
+                {
+                  userId,
+                  topicId,
+                  index,
+                },
+              );
               await context.invoke(
                 `memory:user-memory:extract:users:${userId}:topics:${topicId}:invoke:${index}`,
                 {
@@ -109,6 +140,12 @@ export const { POST } = serve<MemoryExtractionPayloadInput>(
           );
 
           // Trigger user persona update after topic processing using the workflow client.
+          console.info(
+            '[memory-user-memory][process-topics] All topics processed, triggering persona update',
+            {
+              userId,
+            },
+          );
           await context.run(`memory:user-memory:users:${userId}`, async () => {
             await MemoryExtractionWorkflowService.triggerPersonaUpdate(userId, payload.baseUrl, {
               extraHeaders: upstashWorkflowExtraHeaders,
@@ -116,6 +153,11 @@ export const { POST } = serve<MemoryExtractionPayloadInput>(
           });
 
           span.setStatus({ code: SpanStatusCode.OK });
+          console.info('[memory-user-memory][process-topics] Workflow completed successfully', {
+            processedTopics: payload.topicIds.length,
+            processedUsers: payload.userIds.length,
+            userId,
+          });
 
           return {
             processedTopics: payload.topicIds.length,

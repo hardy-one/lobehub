@@ -73,7 +73,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
     displayName: 'GLM-5',
     enabled: true,
     id: 'z-ai/glm5',
-    maxOutput: 131_072,
     settings: {
       extendParams: ['enableReasoning'],
     },
@@ -90,7 +89,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
     displayName: 'Kimi K2.5',
     enabled: true,
     id: 'moonshotai/kimi-k2.5',
-    maxOutput: 65_536,
     settings: {
       extendParams: ['enableReasoning'],
     },
@@ -285,7 +283,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
     displayName: 'MiniMax-M2.5',
     enabled: true,
     id: 'minimaxai/minimax-m2.5',
-    maxOutput: 131_072,
     type: 'chat',
   },
   {
@@ -301,7 +298,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
     displayName: 'Qwen3.5 397B A17B',
     enabled: true,
     id: 'qwen/qwen3.5-397b-a17b',
-    maxOutput: 65_536,
     settings: {
       extendParams: ['enableReasoning'],
     },
@@ -319,7 +315,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
     displayName: 'Qwen3.5 122B A10B',
     enabled: true,
     id: 'qwen/qwen3.5-122b-a10b',
-    maxOutput: 65_536,
     settings: {
       extendParams: ['enableReasoning'],
     },

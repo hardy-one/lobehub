@@ -177,6 +177,266 @@ const siliconcloudChatModels: AIChatModelCard[] = [
   },
   {
     abilities: {
+      functionCall: true,
+      reasoning: true,
+      vision: true,
+      video: true,
+    },
+    contextWindowTokens: 262_144,
+    description:
+      'Qwen3.5-397B-A17B is the latest vision-language model in the Qwen series, featuring a Mixture of Experts (MoE) architecture with 397B total parameters and 17B active parameters. The model natively supports a 256K context length, extendable to approximately 1M tokens. It supports 201 languages and offers unified vision-language understanding capabilities, tool calling, and reasoning thinking modes.',
+    displayName: 'Qwen3.5 397B A17B',
+    id: 'qwen/qwen3.5-397b-a17b',
+    pricing: {
+      currency: 'CNY',
+      units: [
+        {
+          lookup: {
+            prices: {
+              '[0, 0.131072]': 0.8,
+              '[0.131072, infinity]': 2.0,
+            },
+            pricingParams: ['textInput'],
+          },
+          name: 'textInput',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+        {
+          lookup: {
+            prices: {
+              '[0, 0.131072]': 4.8,
+              '[0.131072, infinity]': 12.0,
+            },
+            pricingParams: ['textInput'],
+          },
+          name: 'textOutput',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+      ],
+    },
+    releasedAt: '2026-03-03',
+    settings: {
+      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+      vision: true,
+      video: true,
+    },
+    contextWindowTokens: 262_144,
+    description:
+      'Qwen3.5-122B-A10B is a native multimodal large language model developed by the Qwen team, with 122B total parameters and only 10B active parameters. The model employs a highly efficient hybrid architecture combining Gated Delta Networks with Sparse Mixture of Experts (MoE). It natively supports 256K context length, extendable to approximately 1 million tokens. Through early fusion training, the model achieves unified vision-language foundational capabilities, supporting text, image, and video understanding. It delivers excellent performance across multiple benchmarks including knowledge, reasoning, coding, agents, visual understanding, and multilingual tasks, surpassing GPT-5-mini and Qwen3-235B-A22B on several metrics. The model has Thinking Mode enabled by default, supports tool calling, and covers 201 languages and dialects.',
+    displayName: 'Qwen3.5 122B A10B',
+    id: 'qwen/qwen3.5-122b-a10b',
+    pricing: {
+      currency: 'CNY',
+      units: [
+        {
+          lookup: {
+            prices: {
+              '[0, 0.131072]': 0.8,
+              '[0.131072, infinity]': 2.0,
+            },
+            pricingParams: ['textInput'],
+          },
+          name: 'textInput',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+        {
+          lookup: {
+            prices: {
+              '[0, 0.131072]': 6.4,
+              '[0.131072, infinity]': 16.0,
+            },
+            pricingParams: ['textInput'],
+          },
+          name: 'textOutput',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+      ],
+    },
+    releasedAt: '2026-03-03',
+    settings: {
+      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+      vision: true,
+      video: true,
+    },
+    contextWindowTokens: 262_144,
+    description:
+      'Qwen3.5-35B-A3B is a native multimodal large language model developed by the Qwen team, with 35B total parameters and only 3B active parameters. The model employs a highly efficient hybrid architecture combining Gated Delta Networks with Sparse Mixture of Experts (MoE). It natively supports 256K context length, extendable to approximately 1 million tokens. Through early fusion training, the model achieves unified vision-language foundational capabilities, supporting text, image, and video understanding. It delivers excellent performance across multiple benchmarks including reasoning, coding, agents, and visual understanding. The model has Thinking Mode enabled by default, supports tool calling, and covers 201 languages and dialects.',
+    displayName: 'Qwen3.5 35B A3B',
+    id: 'qwen/qwen3.5-35b-a3b',
+    pricing: {
+      currency: 'CNY',
+      units: [
+        {
+          lookup: {
+            prices: {
+              '[0, 0.131072]': 0.4,
+              '[0.131072, infinity]': 1.6,
+            },
+            pricingParams: ['textInput'],
+          },
+          name: 'textInput',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+        {
+          lookup: {
+            prices: {
+              '[0, 0.131072]': 3.2,
+              '[0.131072, infinity]': 12.8,
+            },
+            pricingParams: ['textInput'],
+          },
+          name: 'textOutput',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+      ],
+    },
+    releasedAt: '2026-03-03',
+    settings: {
+      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+      vision: true,
+      video: true,
+    },
+    contextWindowTokens: 262_144,
+    description:
+      'Qwen3.5-27B is a native multimodal large language model developed by the Qwen team with 27B parameters. The model employs a highly efficient hybrid architecture combining Gated Delta Networks with Gated Attention. It natively supports 256K context length, extendable to approximately 1 million tokens. Through early fusion training, the model achieves unified vision-language foundational capabilities, supporting text, image, and video understanding. It delivers excellent performance across multiple benchmarks including reasoning, coding, agents, and visual understanding, surpassing Qwen3-235B-A22B and GPT-5-mini on several metrics. The model has Thinking Mode enabled by default, supports tool calling, and covers 201 languages and dialects.',
+    displayName: 'Qwen3.5 27B',
+    id: 'qwen/qwen3.5-27b',
+    pricing: {
+      currency: 'CNY',
+      units: [
+        {
+          lookup: {
+            prices: {
+              '[0, 0.131072]': 0.6,
+              '[0.131072, infinity]': 1.8,
+            },
+            pricingParams: ['textInput'],
+          },
+          name: 'textInput',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+        {
+          lookup: {
+            prices: {
+              '[0, 0.131072]': 4.8,
+              '[0.131072, infinity]': 14.4,
+            },
+            pricingParams: ['textInput'],
+          },
+          name: 'textOutput',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+      ],
+    },
+    releasedAt: '2026-03-03',
+    settings: {
+      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+      vision: true,
+      video: true,
+    },
+    contextWindowTokens: 262_144,
+    description:
+      'Qwen3.5-9B is a native multimodal large language model developed by the Qwen team with 9B parameters. As the lightweight Dense model in the Qwen3.5 series, it employs a highly efficient hybrid architecture combining Gated Delta Networks with Gated Attention. It natively supports 256K context length, extendable to approximately 1 million tokens. Through early fusion training, the model achieves unified vision-language foundational capabilities, supporting text, image, and video understanding. The model has Thinking Mode enabled by default, supports tool calling, and covers 201 languages and dialects.',
+    displayName: 'Qwen3.5 9B',
+    id: 'qwen/qwen3.5-9b',
+    pricing: {
+      currency: 'CNY',
+      units: [
+        {
+          lookup: {
+            prices: {
+              '[0, 0.131072]': 0.5,
+              '[0.131072, infinity]': 1.5,
+            },
+            pricingParams: ['textInput'],
+          },
+          name: 'textInput',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+        {
+          lookup: {
+            prices: {
+              '[0, 0.131072]': 4.0,
+              '[0.131072, infinity]': 12.0,
+            },
+            pricingParams: ['textInput'],
+          },
+          name: 'textOutput',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+      ],
+    },
+    releasedAt: '2026-03-03',
+    settings: {
+      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+      vision: true,
+      video: true,
+    },
+    contextWindowTokens: 262_144,
+    description:
+      'Qwen3.5-4B is a native multimodal large language model developed by the Qwen team with 4B parameters, making it the lightest Dense model in the Qwen3.5 series. The model employs a highly efficient hybrid architecture combining Gated Delta Networks with Gated Attention. It natively supports 256K context length, extendable to approximately 1 million tokens. Through early fusion training, the model achieves unified vision-language foundational capabilities, supporting text, image, and video understanding. It delivers excellent performance among models of similar size, surpassing GPT-5-Nano and Gemini-2.5-Flash-Lite on several metrics. The model has Thinking Mode enabled by default, supports tool calling, and covers 201 languages and dialects.',
+    displayName: 'Qwen3.5 4B',
+    id: 'qwen/qwen3.5-4b',
+    pricing: {
+      currency: 'CNY',
+      units: [
+        { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-03-03',
+    settings: {
+      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: {
       vision: true,
     },
     description:

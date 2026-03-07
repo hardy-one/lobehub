@@ -101,88 +101,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
       functionCall: true,
       reasoning: true,
     },
-    contextWindowTokens: 204_800,
-    description:
-      'MiniMax-M2.1 is a compact, fast, cost-effective MoE model built for top-tier coding and agent performance.',
-    displayName: 'MiniMax-M2.1',
-    enabled: true,
-    id: 'minimaxai/minimax-m2.1',
-    maxOutput: 131_072,
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
-      reasoning: true,
-    },
-    contextWindowTokens: 131_072,
-    description:
-      'DeepSeek V3.2 is a next-gen reasoning model with stronger complex reasoning and chain-of-thought capabilities.',
-    displayName: 'DeepSeek V3.2',
-    enabled: true,
-    id: 'deepseek-ai/deepseek-v3.2',
-    maxOutput: 65_536,
-    settings: {
-      extendParams: ['enableReasoning'],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
-      reasoning: true,
-    },
-    contextWindowTokens: 200_000,
-    description:
-      'GLM-4.7 is Zhipu latest flagship model, enhanced for Agentic Coding scenarios with improved coding capabilities.',
-    displayName: 'GLM-4.7',
-    enabled: true,
-    id: 'z-ai/glm4.7',
-    maxOutput: 131_072,
-    settings: {
-      extendParams: ['enableReasoning'],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
-      reasoning: true,
-    },
-    contextWindowTokens: 200_000,
-    description:
-      "GLM-5 is Zhipu AI's new flagship foundation model for agent engineering, achieving open-source SOTA performance in coding and agent capabilities. It matches Claude Opus 4.5 in performance.",
-    displayName: 'GLM-5',
-    enabled: true,
-    id: 'z-ai/glm5',
-    maxOutput: 131_072,
-    settings: {
-      extendParams: ['enableReasoning'],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
-      reasoning: true,
-    },
-    contextWindowTokens: 262_144,
-    description:
-      'Kimi K2.5 is the most intelligent Kimi model to date, featuring native multimodal architecture.',
-    displayName: 'Kimi K2.5',
-    enabled: true,
-    id: 'moonshotai/kimi-k2.5',
-    maxOutput: 65_536,
-    settings: {
-      extendParams: ['enableReasoning'],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
-      reasoning: true,
-    },
     contextWindowTokens: 131_072,
     description:
       'DeepSeek V3.1 is a next-gen reasoning model with stronger complex reasoning and chain-of-thought for deep analysis tasks.',
@@ -380,9 +298,27 @@ const nvidiaChatModels: AIChatModelCard[] = [
     contextWindowTokens: 1_010_000,
     description:
       'Supports text, image, and video inputs. For text-only tasks, its performance is comparable to Qwen3 Max, offering higher efficiency and lower cost. In multimodal capabilities, it delivers significant improvements over the Qwen3 VL series.',
-    displayName: 'Qwen3.5-397B-A17B',
+    displayName: 'Qwen3.5 397B A17B',
     enabled: true,
     id: 'qwen/qwen3.5-397b-a17b',
+    maxOutput: 65_536,
+    settings: {
+      extendParams: ['enableReasoning'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+      vision: true,
+    },
+    contextWindowTokens: 262_144,
+    description:
+      'Supports text, image, and video inputs. For text-only tasks, its performance is comparable to Qwen3 Max, offering higher efficiency and lower cost. In multimodal capabilities, it delivers significant improvements over the Qwen3 VL series.',
+    displayName: 'Qwen3.5 122B A10B',
+    enabled: true,
+    id: 'qwen/qwen3.5-122b-a10b',
     maxOutput: 65_536,
     settings: {
       extendParams: ['enableReasoning'],

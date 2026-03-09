@@ -9,9 +9,9 @@ import Loading from '@/components/Loading/BrandTextLoading';
 import NavHeader from '@/features/NavHeader';
 import { useAgentStore } from '@/store/agent';
 
-import { INTEGRATION_PROVIDERS } from './const';
-import PlatformDetail from './PlatformDetail';
-import PlatformList from './PlatformList';
+import { CHANNEL_PROVIDERS } from './const';
+import PlatformDetail from './detail';
+import PlatformList from './list';
 
 const styles = createStaticStyles(({ css }) => ({
   container: css`
@@ -24,9 +24,9 @@ const styles = createStaticStyles(({ css }) => ({
   `,
 }));
 
-const IntegrationPage = memo(() => {
+const ChannelPage = memo(() => {
   const { aid } = useParams<{ aid?: string }>();
-  const [activeProviderId, setActiveProviderId] = useState(INTEGRATION_PROVIDERS[0].id);
+  const [activeProviderId, setActiveProviderId] = useState(CHANNEL_PROVIDERS[0].id);
 
   const { data: providers, isLoading } = useAgentStore((s) => s.useFetchBotProviders(aid));
 
@@ -36,7 +36,7 @@ const IntegrationPage = memo(() => {
   );
 
   const activeProvider = useMemo(
-    () => INTEGRATION_PROVIDERS.find((p) => p.id === activeProviderId) || INTEGRATION_PROVIDERS[0],
+    () => CHANNEL_PROVIDERS.find((p) => p.id === activeProviderId) || CHANNEL_PROVIDERS[0],
     [activeProviderId],
   );
 
@@ -51,14 +51,14 @@ const IntegrationPage = memo(() => {
     <Flexbox flex={1} height={'100%'}>
       <NavHeader />
       <Flexbox flex={1} style={{ overflowY: 'auto' }}>
-        {isLoading && <Loading debugId="IntegrationPage" />}
+        {isLoading && <Loading debugId="ChannelPage" />}
 
         {!isLoading && (
           <div className={styles.container}>
             <PlatformList
               activeId={activeProviderId}
               connectedPlatforms={connectedPlatforms}
-              providers={INTEGRATION_PROVIDERS}
+              providers={CHANNEL_PROVIDERS}
               onSelect={setActiveProviderId}
             />
             <PlatformDetail agentId={aid} currentConfig={currentConfig} provider={activeProvider} />
@@ -69,4 +69,4 @@ const IntegrationPage = memo(() => {
   );
 });
 
-export default IntegrationPage;
+export default ChannelPage;

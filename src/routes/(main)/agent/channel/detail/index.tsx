@@ -7,9 +7,8 @@ import { useTranslation } from 'react-i18next';
 
 import { useAgentStore } from '@/store/agent';
 
-import { type IntegrationProvider } from '../const';
+import { type ChannelProvider } from '../const';
 import Body from './Body';
-import Header from './Header';
 
 const styles = createStaticStyles(({ css, cssVar }) => ({
   main: css`
@@ -19,6 +18,7 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
     display: flex;
     flex: 1;
     flex-direction: column;
+    align-items: center;
 
     background: ${cssVar.colorBgContainer};
   `,
@@ -32,11 +32,14 @@ interface CurrentConfig {
   platform: string;
 }
 
-export interface IntegrationFormValues {
+export interface ChannelFormValues {
   applicationId: string;
+  appSecret?: string;
   botToken: string;
+  encryptKey?: string;
   publicKey: string;
   secretToken?: string;
+  verificationToken?: string;
   webhookProxyUrl?: string;
 }
 
@@ -48,13 +51,13 @@ export interface TestResult {
 interface PlatformDetailProps {
   agentId: string;
   currentConfig?: CurrentConfig;
-  provider: IntegrationProvider;
+  provider: ChannelProvider;
 }
 
 const PlatformDetail = memo<PlatformDetailProps>(({ provider, agentId, currentConfig }) => {
   const { t } = useTranslation('agent');
   const { message: msg, modal } = App.useApp();
-  const [form] = Form.useForm<IntegrationFormValues>();
+  const [form] = Form.useForm<ChannelFormValues>();
 
   const [createBotProvider, deleteBotProvider, updateBotProvider, connectBot] = useAgentStore(
     (s) => [s.createBotProvider, s.deleteBotProvider, s.updateBotProvider, s.connectBot],
@@ -75,9 +78,12 @@ const PlatformDetail = memo<PlatformDetailProps>(({ provider, agentId, currentCo
     if (currentConfig) {
       form.setFieldsValue({
         applicationId: currentConfig.applicationId || '',
+        appSecret: currentConfig.credentials?.appSecret || '',
         botToken: currentConfig.credentials?.botToken || '',
+        encryptKey: currentConfig.credentials?.encryptKey || '',
         publicKey: currentConfig.credentials?.publicKey || '',
         secretToken: currentConfig.credentials?.secretToken || '',
+        verificationToken: currentConfig.credentials?.verificationToken || '',
         webhookProxyUrl: currentConfig.credentials?.webhookProxyUrl || '',
       });
     }
@@ -101,12 +107,22 @@ const PlatformDetail = memo<PlatformDetailProps>(({ provider, agentId, currentCo
       }
 
       // Build platform-specific credentials
-      const credentials: Record<string, string> = { botToken: values.botToken };
+      const credentials: Record<string, string> =
+        provider.authMode === 'app-secret'
+          ? { appId: applicationId, appSecret: values.appSecret || '' }
+          : { botToken: values.botToken };
+
       if (provider.fieldTags.publicKey) {
         credentials.publicKey = values.publicKey || 'default';
       }
       if (provider.fieldTags.secretToken && values.secretToken) {
         credentials.secretToken = values.secretToken;
+      }
+      if (provider.fieldTags.verificationToken && values.verificationToken) {
+        credentials.verificationToken = values.verificationToken;
+      }
+      if (provider.fieldTags.encryptKey && values.encryptKey) {
+        credentials.encryptKey = values.encryptKey;
       }
       if (provider.webhookMode === 'auto' && values.webhookProxyUrl) {
         credentials.webhookProxyUrl = values.webhookProxyUrl;
@@ -138,7 +154,9 @@ const PlatformDetail = memo<PlatformDetailProps>(({ provider, agentId, currentCo
     agentId,
     provider.id,
     provider.autoAppId,
+    provider.authMode,
     provider.fieldTags,
+    provider.webhookMode,
     form,
     currentConfig,
     createBotProvider,
@@ -153,13 +171,13 @@ const PlatformDetail = memo<PlatformDetailProps>(({ provider, agentId, currentCo
       onOk: async () => {
         try {
           await deleteBotProvider(currentConfig.id, agentId);
-          msg.success(t('integration.removed'));
+          msg.success(t('channel.removed'));
           form.resetFields();
         } catch {
-          msg.error(t('integration.removeFailed'));
+          msg.error(t('channel.removeFailed'));
         }
       },
-      title: t('integration.deleteConfirm'),
+      title: t('channel.deleteConfirm'),
     });
   }, [currentConfig, agentId, deleteBotProvider, msg, t, modal, form]);
 
@@ -169,7 +187,7 @@ const PlatformDetail = memo<PlatformDetailProps>(({ provider, agentId, currentCo
       try {
         await updateBotProvider(currentConfig.id, agentId, { enabled });
       } catch {
-        msg.error(t('integration.updateFailed'));
+        msg.error(t('channel.updateFailed'));
       }
     },
     [currentConfig, agentId, updateBotProvider, msg, t],
@@ -177,7 +195,7 @@ const PlatformDetail = memo<PlatformDetailProps>(({ provider, agentId, currentCo
 
   const handleTestConnection = useCallback(async () => {
     if (!currentConfig) {
-      msg.warning(t('integration.saveFirstWarning'));
+      msg.warning(t('channel.saveFirstWarning'));
       return;
     }
 
@@ -201,12 +219,8 @@ const PlatformDetail = memo<PlatformDetailProps>(({ provider, agentId, currentCo
 
   return (
     <main className={styles.main}>
-      <Header
-        currentConfig={currentConfig}
-        provider={provider}
-        onToggleEnable={handleToggleEnable}
-      />
       <Body
+        currentConfig={currentConfig}
         form={form}
         hasConfig={!!currentConfig}
         provider={provider}
@@ -214,10 +228,11 @@ const PlatformDetail = memo<PlatformDetailProps>(({ provider, agentId, currentCo
         saving={saving}
         testResult={testResult}
         testing={testing}
-        onCopied={() => msg.success(t('integration.copied'))}
+        onCopied={() => msg.success(t('channel.copied'))}
         onDelete={handleDelete}
         onSave={handleSave}
         onTestConnection={handleTestConnection}
+        onToggleEnable={handleToggleEnable}
       />
     </main>
   );

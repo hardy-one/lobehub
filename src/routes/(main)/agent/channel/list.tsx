@@ -6,7 +6,7 @@ import { Info } from 'lucide-react';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import type { IntegrationProvider } from './const';
+import type { ChannelProvider } from './const';
 
 const styles = createStaticStyles(({ css, cssVar }) => ({
   root: css`
@@ -78,7 +78,7 @@ interface PlatformListProps {
   activeId: string;
   connectedPlatforms: Set<string>;
   onSelect: (id: string) => void;
-  providers: IntegrationProvider[];
+  providers: ChannelProvider[];
 }
 
 const PlatformList = memo<PlatformListProps>(
@@ -89,7 +89,7 @@ const PlatformList = memo<PlatformListProps>(
     return (
       <aside className={styles.root}>
         <div className={styles.list}>
-          <div className={styles.title}>{t('integration.platforms')}</div>
+          <div className={styles.title}>{t('channel.platforms')}</div>
           {providers.map((provider) => {
             const ProviderIcon = provider.icon;
             return (
@@ -110,7 +110,9 @@ const PlatformList = memo<PlatformListProps>(
         </div>
         <div style={{ borderTop: `1px solid ${theme.colorBorder}`, padding: 12 }}>
           <a
-            href="#"
+            href="https://lobehub.com/docs/usage/channels/overview"
+            rel="noopener noreferrer"
+            target="_blank"
             style={{
               alignItems: 'center',
               color: theme.colorTextSecondary,
@@ -119,7 +121,7 @@ const PlatformList = memo<PlatformListProps>(
               gap: 4,
             }}
           >
-            <Icon icon={Info} size={'small'} /> {t('integration.documentation')}
+            <Icon icon={Info} size={'small'} /> {t('channel.documentation')}
           </a>
         </div>
       </aside>

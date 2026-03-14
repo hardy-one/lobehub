@@ -38,7 +38,7 @@ const PlanTag = memo<PlanTagProps>(({ type = PlanType.Preview }) => {
     <Link
       style={{ cursor: 'pointer' }}
       target={isDesktop ? '_blank' : undefined}
-      to={urlJoin(isDesktop ? OFFICIAL_URL : '/', isFree ? '/settings/plans' : '/settings/usage')}
+      to={urlJoin(isDesktop ? OFFICIAL_URL : '/', isFree ? '/settings/plans' : '/settings/stats')}
     >
       <PlanIcon plan={type} size={22} type={'tag'} />
     </Link>

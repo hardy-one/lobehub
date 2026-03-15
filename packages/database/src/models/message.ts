@@ -1442,7 +1442,7 @@ export class MessageModel {
           const messageUpdateData: Record<string, any> = {};
 
           if (content !== undefined) {
-            messageUpdateData.content = content;
+            messageUpdateData.content = sanitizeNullBytes(content);
           }
 
           if (metadata !== undefined) {
@@ -1450,7 +1450,7 @@ export class MessageModel {
             const existingMessage = await trx.query.messages.findFirst({
               where: and(eq(messages.id, id), eq(messages.userId, this.userId)),
             });
-            messageUpdateData.metadata = merge(existingMessage?.metadata || {}, metadata);
+            messageUpdateData.metadata = sanitizeNullBytes(merge(existingMessage?.metadata || {}, metadata));
           }
 
           if (Object.keys(messageUpdateData).length > 0) {
@@ -1471,11 +1471,11 @@ export class MessageModel {
             const pluginUpdateData: Record<string, any> = {};
 
             if (pluginState !== undefined) {
-              pluginUpdateData.state = merge(pluginItem.state || {}, pluginState);
+              pluginUpdateData.state = sanitizeNullBytes(merge(pluginItem.state || {}, pluginState));
             }
 
             if (pluginError !== undefined) {
-              pluginUpdateData.error = pluginError;
+              pluginUpdateData.error = sanitizeNullBytes(pluginError);
             }
 
             if (Object.keys(pluginUpdateData).length > 0) {

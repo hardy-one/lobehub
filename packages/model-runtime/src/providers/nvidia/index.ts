@@ -10,7 +10,7 @@ const supportPreservedThinkingModels = new Set(['z-ai/glm4.7', 'z-ai/glm5']);
 
 // Models that use enable_thinking parameter (without clear_thinking)
 // Ref: NVIDIA NIM
-const enableThinkingModels = new Set(['qwen/qwen3.5-397b-a17b']);
+const enableThinkingModels = new Set(['qwen/qwen3.5-397b-a17b', 'qwen/qwen3.5-122b-a10b']);
 
 export interface NvidiaModelCard {
   id: string;
@@ -32,7 +32,8 @@ export const params = {
             reasoning_content: reasoning.content,
           };
         }
-        return message;
+        // Always return a new object to maintain immutability
+        return { ...message };
       });
 
       // Convert thinking.type to boolean for API

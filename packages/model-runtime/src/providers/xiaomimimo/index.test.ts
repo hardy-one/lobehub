@@ -179,6 +179,63 @@ describe('LobeXiaomiMiMoAI - custom features', () => {
       ]);
     });
 
+    it('should transform reasoning.content to reasoning_content in messages', () => {
+      const payload = {
+        messages: [
+          {
+            role: 'assistant',
+            content: 'I need to use a tool',
+            reasoning: { content: 'Let me think about this step by step' },
+          },
+          { role: 'user', content: 'Hello' },
+        ],
+        model: 'gpt-4o',
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.messages[0]).toEqual({
+        role: 'assistant',
+        content: 'I need to use a tool',
+        reasoning_content: 'Let me think about this step by step',
+      });
+      expect(result.messages[0].reasoning).toBeUndefined();
+    });
+
+    it('should preserve existing reasoning_content if already a string', () => {
+      const payload = {
+        messages: [
+          {
+            role: 'assistant',
+            content: 'Using a tool',
+            reasoning_content: 'Already a string',
+            reasoning: { content: 'Object content' },
+          },
+        ],
+        model: 'gpt-4o',
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.messages[0].reasoning_content).toBe('Already a string');
+      expect(result.messages[0].reasoning).toBeUndefined();
+    });
+
+    it('should not add reasoning_content if reasoning is undefined', () => {
+      const payload = {
+        messages: [
+          { role: 'assistant', content: 'Hello' },
+          { role: 'user', content: 'Hi' },
+        ],
+        model: 'gpt-4o',
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.messages[0].reasoning_content).toBeUndefined();
+      expect(result.messages[1].reasoning_content).toBeUndefined();
+    });
+
     it('should not modify messages without reasoning field', () => {
       const payload = {
         messages: [

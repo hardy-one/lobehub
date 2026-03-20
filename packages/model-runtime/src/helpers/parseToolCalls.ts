@@ -1,38 +1,59 @@
-import { produce } from 'immer';
+import { type MessageToolCall, type MessageToolCallChunk, MessageToolCallSchema } from '../types';
 
-import type { MessageToolCall, MessageToolCallChunk } from '../types';
-import { MessageToolCallSchema } from '../types';
+/**
+ * Parse and merge tool calls from streaming chunks
+ * Uses native Map for O(1) lookup instead of Immer for better performance
+ *
+ * @param origin - Existing accumulated tool calls
+ * @param value - New tool call chunks from current stream event
+ * @returns Merged tool calls array
+ */
+export const parseToolCalls = (
+  origin: MessageToolCall[],
+  value: MessageToolCallChunk[],
+): MessageToolCall[] => {
+  // Early return if no new data
+  if (!value || value.length === 0) return origin;
 
-export const parseToolCalls = (origin: MessageToolCall[], value: MessageToolCallChunk[]) =>
-  produce(origin, (draft) => {
-    // if there is no origin, we should parse all the value and set it to draft
-    if (draft.length === 0) {
-      draft.push(...value.map((item) => MessageToolCallSchema.parse(item)));
-      return;
-    }
+  // Build ID map for O(1) lookup
+  const idMap = new Map(origin.map((t) => [t.id, t]));
 
-    // if there is origin, we should merge the value to the origin
-    value.forEach(({ index, ...item }) => {
-      // First, try to find existing tool call by id (more reliable than index for parallel tool calls)
-      const existingByIdIndex = item.id ? draft.findIndex((d) => d.id === item.id) : -1;
-
-      if (existingByIdIndex !== -1) {
-        // Found existing tool call with same id - merge arguments
-        if (item.function?.arguments) {
-          draft[existingByIdIndex].function.arguments += item.function.arguments;
-        }
-      } else if (!draft?.[index]) {
-        // No item at this index - insert new tool call
-        draft?.splice(index, 0, MessageToolCallSchema.parse(item));
-      } else if (item.id && draft[index].id !== item.id) {
-        // Different id at same index - this is a new parallel tool call (e.g., from Gemini)
-        // Push to end of draft instead of overwriting
-        draft.push(MessageToolCallSchema.parse(item));
-      } else {
-        // Same index and same id (or no id) - merge arguments
-        if (item.function?.arguments) {
-          draft[index].function.arguments += item.function.arguments;
-        }
+  for (const item of value) {
+    // Try to find existing tool call by id first
+    if (item.id && idMap.has(item.id)) {
+      // Tool call exists by ID - merge arguments
+      const existing = idMap.get(item.id)!;
+      if (item.function?.arguments) {
+        existing.function.arguments += item.function.arguments;
       }
-    });
-  });
+    }
+    // Check if same index but different ID (parallel tool calls from Gemini)
+    else if (
+      typeof item.index === 'number' &&
+      origin[item.index] &&
+      item.id &&
+      origin[item.index].id !== item.id
+    ) {
+      // Different ID at same index - this is a new parallel tool call
+      // Add to map and list as a new entry
+      const parsed = MessageToolCallSchema.parse(item);
+      idMap.set(parsed.id, parsed);
+    }
+    // Try to find by index if id not present or not found
+    else if (typeof item.index === 'number' && origin[item.index]) {
+      // Match by index - merge arguments
+      const existing = origin[item.index];
+      if (item.function?.arguments) {
+        existing.function.arguments += item.function.arguments;
+      }
+    }
+    // New tool call - validate and add
+    else {
+      const parsed = MessageToolCallSchema.parse(item);
+      idMap.set(parsed.id, parsed);
+    }
+  }
+
+  // Return as array, maintaining order of original calls
+  return Array.from(idMap.values());
+};

@@ -352,12 +352,18 @@ export class AiAgentService {
     const model = agentConfig.model!;
     const provider = agentConfig.provider!;
 
+    // Get model's context window tokens from model-bank
+    const { LOBE_DEFAULT_MODEL_LIST } = await import('model-bank');
+    const modelInfo = LOBE_DEFAULT_MODEL_LIST.find(
+      (item) => item.id === model && item.providerId === provider,
+    );
+    const contextWindowTokens = modelInfo?.contextWindowTokens;
+
     // 4. Get installed plugins from database
     const installedPlugins = await this.pluginModel.query();
     log('execAgent: got %d installed plugins', installedPlugins.length);
 
     // 5. Get model abilities from model-bank for function calling support check
-    const { LOBE_DEFAULT_MODEL_LIST } = await import('model-bank');
     const isModelSupportToolUse = (m: string, p: string) => {
       const info = LOBE_DEFAULT_MODEL_LIST.find((item) => item.id === m && item.providerId === p);
       return info?.abilities?.functionCall ?? true;
@@ -872,7 +878,7 @@ export class AiAgentService {
         initialContext,
         initialMessages: allMessages,
         maxSteps,
-        modelRuntimeConfig: { model, provider },
+        modelRuntimeConfig: { model, provider, contextWindowTokens },
         hooks,
         operationId,
         signal,

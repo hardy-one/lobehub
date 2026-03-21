@@ -13,8 +13,33 @@ export interface TokenCountOptions {
 /** Default max context window (128k tokens) */
 export const DEFAULT_MAX_CONTEXT = 128_000;
 
-/** Default threshold ratio (50% of max context) */
-export const DEFAULT_THRESHOLD_RATIO = 0.5;
+/**
+ * Minimum buffer required for compression process
+ *
+ * Compression needs:
+ * - Input messages (at threshold): ~threshold tokens
+ * - Compressed output: ~30-40% of input
+ * - System prompt: ~800 tokens
+ *
+ * For 128k context at 70%: 89.6k (input) + ~30k (output) + 800 ≈ 120k < 128k (safe)
+ * For 32k context at 70%: 22.4k (input) + ~8k (output) + 800 ≈ 31.2k > 32k (NOT safe)
+ *
+ * Setting MIN_COMPRESSION_BUFFER to 20k ensures:
+ * - Small context models (≤64k) have enough buffer for compression
+ * - Large context models (≥128k) still use the optimal 70% threshold
+ */
+export const MIN_COMPRESSION_BUFFER = 20_000;
+
+/**
+ * Default threshold ratio (70% of max context)
+ *
+ * Rationale:
+ * - 70% provides a good balance between utilizing context window and leaving room for compression
+ * - At 70% of 128k = 89.6k, compression needs ~89.6k (input) + ~27k (output) ≈ 117k < 128k (safe)
+ * - At 70% of 200k = 140k, compression needs ~140k (input) + ~42k (output) ≈ 182k < 200k (safe)
+ * - Higher than 50% to avoid premature compression, but lower than 90% to ensure compression process has buffer
+ */
+export const DEFAULT_THRESHOLD_RATIO = 0.7;
 
 /**
  * Message interface for token counting
@@ -68,13 +93,31 @@ export function calculateMessageTokens(messages: TokenCountMessage[]): number {
 
 /**
  * Calculate the compression threshold based on max context window
+ *
+ * Applies minimum buffer protection for small context models:
+ * - For models with context ≤ 20k: disabled (returns maxContext, effectively disabling auto-compression)
+ * - For models with context ≤ 64k: uses conservative threshold to ensure 20k buffer
+ * - For models with context ≥ 128k: uses optimal 70% threshold
+ *
  * @param options - Token count options
  * @returns Compression threshold in tokens
  */
 export function getCompressionThreshold(options: TokenCountOptions = {}): number {
   const maxContext = options.maxWindowToken ?? DEFAULT_MAX_CONTEXT;
   const ratio = options.thresholdRatio ?? DEFAULT_THRESHOLD_RATIO;
-  return Math.floor(maxContext * ratio);
+  const threshold = Math.floor(maxContext * ratio);
+
+  // Ensure minimum buffer for compression process
+  // Compression needs: input (threshold) + output (~35% of input) + system prompt (~800)
+  const maxSafeThreshold = maxContext - MIN_COMPRESSION_BUFFER;
+
+  // For very small context models (< 20k), disable auto-compression
+  // as there's not enough room for meaningful compression
+  if (maxSafeThreshold <= 0) {
+    return maxContext; // Return max to effectively disable compression
+  }
+
+  return Math.min(threshold, maxSafeThreshold);
 }
 
 /**

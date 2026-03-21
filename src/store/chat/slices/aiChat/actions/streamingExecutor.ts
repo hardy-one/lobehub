@@ -25,6 +25,7 @@ import { resolveAgentConfig } from '@/services/chat/mecha';
 import { messageService } from '@/services/message';
 import { getAgentStoreState } from '@/store/agent';
 import { agentSelectors } from '@/store/agent/selectors';
+import { useAiInfraStore } from '@/store/aiInfra';
 import { createAgentExecutors } from '@/store/chat/agents/createAgentExecutors';
 import { type ChatStore } from '@/store/chat/store';
 import { pageAgentRuntime } from '@/store/tool/slices/builtin/executors/lobe-page-agent';
@@ -424,9 +425,15 @@ export class StreamingExecutorActionImpl {
     const model = agentConfigData.model;
     const provider = agentConfigData.provider;
 
+    // Get context window tokens from AI infrastructure store
+    const contextWindowTokens = useAiInfraStore
+      .getState()
+      .enabledModels.find((m) => m.id === model && m.providerId === provider)?.contextWindowTokens;
+
     const modelRuntimeConfig = {
       model,
       provider: provider!,
+      contextWindowTokens,
       // TODO: Support dedicated compression model from chatConfig.compressionModelId
       compressionModel: { model, provider: provider! },
     };

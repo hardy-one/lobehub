@@ -109,12 +109,12 @@ describe('tokenCounter', () => {
     it('should use default values', () => {
       const threshold = getCompressionThreshold();
       expect(threshold).toBe(Math.floor(DEFAULT_MAX_CONTEXT * DEFAULT_THRESHOLD_RATIO));
-      expect(threshold).toBe(64_000); // 128k * 0.5
+      expect(threshold).toBe(89_600); // 128k * 0.7
     });
 
     it('should use custom maxWindowToken', () => {
       const threshold = getCompressionThreshold({ maxWindowToken: 200_000 });
-      expect(threshold).toBe(100_000); // 200k * 0.5
+      expect(threshold).toBe(140_000); // 200k * 0.7
     });
 
     it('should use custom thresholdRatio', () => {
@@ -131,11 +131,56 @@ describe('tokenCounter', () => {
     });
 
     it('should floor the result', () => {
+      // Use a large enough maxWindowToken to avoid hitting the minimum buffer protection
       const threshold = getCompressionThreshold({
-        maxWindowToken: 100,
+        maxWindowToken: 100_000,
         thresholdRatio: 0.33,
       });
-      expect(threshold).toBe(33); // floor(100 * 0.33) = 33
+      expect(threshold).toBe(33_000); // floor(100k * 0.33) = 33k
+    });
+
+    it('should apply minimum buffer protection for 64k context', () => {
+      const threshold = getCompressionThreshold({ maxWindowToken: 64_000 });
+      // 64k * 0.7 = 44.8k, but maxSafeThreshold = 64k - 20k = 44k
+      // Math.min(44800, 44000) = 44000
+      expect(threshold).toBe(44_000);
+    });
+
+    it('should apply minimum buffer protection for 32k context', () => {
+      const threshold = getCompressionThreshold({ maxWindowToken: 32_000 });
+      // 32k * 0.7 = 22.4k, but maxSafeThreshold = 32k - 20k = 12k
+      // Math.min(22400, 12000) = 12000
+      expect(threshold).toBe(12_000);
+    });
+
+    it('should apply minimum buffer protection for 16k context', () => {
+      const threshold = getCompressionThreshold({ maxWindowToken: 16_000 });
+      // 16k * 0.7 = 11.2k, but maxSafeThreshold = 16k - 20k = -4k (negative)
+      // Returns maxContext to disable compression
+      expect(threshold).toBe(16_000);
+    });
+
+    it('should disable compression for very small context (< 20k)', () => {
+      const threshold = getCompressionThreshold({ maxWindowToken: 8_000 });
+      // maxSafeThreshold = 8k - 20k = -12k (negative)
+      // Returns maxContext to disable compression
+      expect(threshold).toBe(8_000);
+    });
+
+    it('should use 70% threshold for large context (≥128k)', () => {
+      const threshold128k = getCompressionThreshold({ maxWindowToken: 128_000 });
+      expect(threshold128k).toBe(89_600); // 128k * 0.7 = 89.6k
+
+      const threshold200k = getCompressionThreshold({ maxWindowToken: 200_000 });
+      expect(threshold200k).toBe(140_000); // 200k * 0.7 = 140k
+    });
+
+    it('should transition smoothly at buffer boundary', () => {
+      // At exactly 20k buffer boundary
+      const threshold = getCompressionThreshold({ maxWindowToken: 28_571 });
+      // 28571 * 0.7 ≈ 19999, maxSafeThreshold = 28571 - 20000 = 8571
+      // Math.min(19999, 8571) = 8571
+      expect(threshold).toBe(8_571);
     });
   });
 
@@ -146,7 +191,7 @@ describe('tokenCounter', () => {
 
       expect(result.needsCompression).toBe(false);
       expect(result.currentTokenCount).toBeGreaterThan(0);
-      expect(result.threshold).toBe(64_000); // 128k * 0.5
+      expect(result.threshold).toBe(89_600); // 128k * 0.7
     });
 
     it('should return needsCompression=true when over threshold', () => {
@@ -154,22 +199,22 @@ describe('tokenCounter', () => {
       const messages = [
         {
           content: '',
-          metadata: { usage: { totalOutputTokens: 70_000 } },
+          metadata: { usage: { totalOutputTokens: 100_000 } },
           role: 'assistant',
         },
       ];
       const result = shouldCompress(messages);
 
       expect(result.needsCompression).toBe(true);
-      expect(result.currentTokenCount).toBe(70_000);
-      expect(result.threshold).toBe(64_000); // 128k * 0.5
+      expect(result.currentTokenCount).toBe(100_000);
+      expect(result.threshold).toBe(89_600); // 128k * 0.7
     });
 
     it('should return needsCompression=false when exactly at threshold', () => {
       const messages = [
         {
           content: '',
-          metadata: { usage: { totalOutputTokens: 64_000 } },
+          metadata: { usage: { totalOutputTokens: 89_600 } },
           role: 'assistant',
         },
       ];
@@ -177,7 +222,7 @@ describe('tokenCounter', () => {
 
       // Exactly at threshold should not trigger compression
       expect(result.needsCompression).toBe(false);
-      expect(result.currentTokenCount).toBe(64_000);
+      expect(result.currentTokenCount).toBe(89_600);
     });
 
     it('should use custom options', () => {
@@ -189,13 +234,26 @@ describe('tokenCounter', () => {
         },
       ];
       const result = shouldCompress(messages, {
+        maxWindowToken: 100_000,
+        thresholdRatio: 0.75,
+      });
+
+      // threshold = 100k * 0.75 = 75k, current = 50k < 75k
+      // But with min buffer: maxSafeThreshold = 100k - 20k = 80k
+      // Math.min(75k, 80k) = 75k, current = 50k < 75k, no compression needed
+      expect(result.needsCompression).toBe(false);
+      expect(result.threshold).toBe(75_000);
+
+      // Let's use a smaller context to trigger compression
+      const result2 = shouldCompress(messages, {
         maxWindowToken: 60_000,
         thresholdRatio: 0.75,
       });
 
-      // threshold = 60k * 0.75 = 45k, current = 50k > 45k
-      expect(result.needsCompression).toBe(true);
-      expect(result.threshold).toBe(45_000);
+      // threshold = 60k * 0.75 = 45k, but maxSafeThreshold = 60k - 20k = 40k
+      // Math.min(45k, 40k) = 40k, current = 50k > 40k, compression needed
+      expect(result2.needsCompression).toBe(true);
+      expect(result2.threshold).toBe(40_000);
     });
 
     it('should handle empty messages', () => {

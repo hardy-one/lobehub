@@ -1,5 +1,10 @@
 import type { AgentRuntimeContext, AgentState } from '@lobechat/agent-runtime';
-import { AgentRuntime, findInMessages, GeneralChatAgent } from '@lobechat/agent-runtime';
+import {
+  AgentRuntime,
+  findInMessages,
+  GeneralChatAgent,
+  resolveCompressionMode,
+} from '@lobechat/agent-runtime';
 import type { ISnapshotStore } from '@lobechat/agent-tracing';
 import { dynamicInterventionAudits } from '@lobechat/builtin-tools/dynamicInterventionAudits';
 import { AgentRuntimeErrorType, ChatErrorType, type ChatMessageError } from '@lobechat/types';
@@ -1524,11 +1529,18 @@ export class AgentRuntimeService {
     operationId: string;
     stepIndex: number;
   }) {
+    // Context compression mode with backward compatibility for legacy enableContextCompression
+    const contextCompressionMode = resolveCompressionMode({
+      contextCompressionMode: metadata?.agentConfig?.chatConfig?.contextCompressionMode,
+      enableContextCompression: metadata?.agentConfig?.chatConfig?.enableContextCompression,
+    });
+
     // Create Durable Agent instance
     const agent = new GeneralChatAgent({
       agentConfig: metadata?.agentConfig,
       compressionConfig: {
-        enabled: metadata?.agentConfig?.chatConfig?.enableContextCompression ?? true,
+        enabled: contextCompressionMode !== 'disabled',
+        mode: contextCompressionMode === 'disabled' ? undefined : contextCompressionMode,
       },
       dynamicInterventionAudits,
       modelRuntimeConfig: metadata?.modelRuntimeConfig,

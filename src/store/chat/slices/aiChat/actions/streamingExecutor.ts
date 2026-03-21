@@ -5,7 +5,12 @@ import {
   type Cost,
   type Usage,
 } from '@lobechat/agent-runtime';
-import { AgentRuntime, computeStepContext, GeneralChatAgent } from '@lobechat/agent-runtime';
+import {
+  AgentRuntime,
+  computeStepContext,
+  GeneralChatAgent,
+  resolveCompressionMode,
+} from '@lobechat/agent-runtime';
 import { createPathScopeAudit } from '@lobechat/builtin-tool-local-system';
 import { PageAgentIdentifier } from '@lobechat/builtin-tool-page-agent';
 import { manualModeExcludeToolIds } from '@lobechat/builtin-tools';
@@ -26,6 +31,7 @@ import { localFileService } from '@/services/electron/localFileService';
 import { messageService } from '@/services/message';
 import { getAgentStoreState } from '@/store/agent';
 import { agentSelectors } from '@/store/agent/selectors';
+import { useAiInfraStore } from '@/store/aiInfra';
 import { createAgentExecutors } from '@/store/chat/agents/createAgentExecutors';
 import { type ChatStore, useChatStore } from '@/store/chat/store';
 import { pageAgentRuntime } from '@/store/tool/slices/builtin/executors/lobe-page-agent';
@@ -440,9 +446,15 @@ export class StreamingExecutorActionImpl {
     const model = agentConfigData.model;
     const provider = agentConfigData.provider;
 
+    // Get context window tokens from AI infrastructure store
+    const contextWindowTokens = useAiInfraStore
+      .getState()
+      .enabledModels.find((m) => m.id === model && m.providerId === provider)?.contextWindowTokens;
+
     const modelRuntimeConfig = {
       model,
       provider: provider!,
+      contextWindowTokens,
       // TODO: Support dedicated compression model from chatConfig.compressionModelId
       compressionModel: { model, provider: provider! },
     };
@@ -451,10 +463,17 @@ export class StreamingExecutorActionImpl {
     // ===========================================
     log('[internal_execAgentRuntime] Creating agent runtime with config', modelRuntimeConfig);
 
+    // Context compression mode with backward compatibility for legacy enableContextCompression
+    const contextCompressionMode = resolveCompressionMode({
+      contextCompressionMode: agentConfigData.chatConfig?.contextCompressionMode,
+      enableContextCompression: agentConfigData.chatConfig?.enableContextCompression,
+    });
+
     const agent = new GeneralChatAgent({
       agentConfig: { maxSteps: 1000 },
       compressionConfig: {
-        enabled: agentConfigData.chatConfig?.enableContextCompression ?? true, // Default to enabled
+        enabled: contextCompressionMode !== 'disabled',
+        mode: contextCompressionMode === 'disabled' ? undefined : contextCompressionMode,
       },
       dynamicInterventionAudits,
       operationId: `${messageKey}/${params.parentMessageId}`,

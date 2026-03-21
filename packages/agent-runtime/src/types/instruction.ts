@@ -5,6 +5,7 @@ import type {
   RuntimeStepContext,
 } from '@lobechat/types';
 
+import type { CompressionMode } from '../utils/tokenCounter';
 import type { FinishReason } from './event';
 import type { AgentState, ToolRegistry } from './state';
 import type { Cost, CostCalculationContext, Usage } from './usage';
@@ -219,6 +220,8 @@ export interface AgentInstructionCompressContext {
     existingSummary?: string;
     /** Messages to compress */
     messages: any[];
+    /** Compression mode: 'economy' compresses early and limits context, 'full' uses optimal threshold */
+    mode?: CompressionMode;
   };
   type: 'compress_context';
 }

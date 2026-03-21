@@ -2,7 +2,6 @@ import type { AgentRuntimeContext, AgentState } from '@lobechat/agent-runtime';
 import { BUILTIN_AGENT_SLUGS, getAgentRuntimeConfig } from '@lobechat/builtin-agents';
 import { builtinSkills } from '@lobechat/builtin-skills';
 import { LocalSystemManifest } from '@lobechat/builtin-tool-local-system';
-import { MessageToolIdentifier } from '@lobechat/builtin-tool-message';
 import {
   type DeviceAttachment,
   generateSystemPrompt,
@@ -104,8 +103,6 @@ interface InternalExecAgentParams extends ExecAgentParams {
   };
   /** Cron job ID that triggered this execution (if trigger is 'cron') */
   cronJobId?: string;
-  /** Disable all tools (no plugins, no system manifests). Useful for eval/benchmark scenarios. */
-  disableTools?: boolean;
   /** Discord context for injecting channel/guild info into agent system message */
   discordContext?: any;
   /** Eval context for injecting environment prompts into system message */
@@ -238,8 +235,6 @@ export class AiAgentService {
       functionTools,
       hooks,
       instructions,
-      model: modelOverride,
-      provider: providerOverride,
       stepCallbacks,
       stream,
       title,
@@ -308,10 +303,6 @@ export class AiAgentService {
 
     // Use actual agent ID from config for subsequent operations
     const resolvedAgentId = agentConfig.id;
-
-    // Apply per-call model/provider overrides (e.g. from task.config)
-    if (modelOverride) agentConfig.model = modelOverride;
-    if (providerOverride) agentConfig.provider = providerOverride;
 
     log(
       'execAgent: got agent config for %s (id: %s), model: %s, provider: %s',
@@ -387,7 +378,42 @@ export class AiAgentService {
     const model = agentConfig.model!;
     const provider = agentConfig.provider!;
 
-    // 4. Fetch user settings (memory config + timezone)
+    // Get model's context window tokens from model-bank
+    const { LOBE_DEFAULT_MODEL_LIST } = await import('model-bank');
+    const modelInfo = LOBE_DEFAULT_MODEL_LIST.find(
+      (item) => item.id === model && item.providerId === provider,
+    );
+    const contextWindowTokens = modelInfo?.contextWindowTokens;
+
+    // 4. Get installed plugins from database
+    const installedPlugins = await this.pluginModel.query();
+    log('execAgent: got %d installed plugins', installedPlugins.length);
+
+    // 5. Get model abilities from model-bank for function calling support check
+    const isModelSupportToolUse = (m: string, p: string) => {
+      const info = LOBE_DEFAULT_MODEL_LIST.find((item) => item.id === m && item.providerId === p);
+      return info?.abilities?.functionCall ?? true;
+    };
+
+    // 6. Fetch LobeHub Skills manifests (temporary solution until LOBE-3517 is implemented)
+    let lobehubSkillManifests: LobeToolManifest[] = [];
+    try {
+      lobehubSkillManifests = await this.marketService.getLobehubSkillManifests();
+    } catch (error) {
+      log('execAgent: failed to fetch lobehub skill manifests: %O', error);
+    }
+    log('execAgent: got %d lobehub skill manifests', lobehubSkillManifests.length);
+
+    // 7. Fetch Klavis tool manifests from database
+    let klavisManifests: LobeToolManifest[] = [];
+    try {
+      klavisManifests = await this.klavisService.getKlavisManifests();
+    } catch (error) {
+      log('execAgent: failed to fetch klavis manifests: %O', error);
+    }
+    log('execAgent: got %d klavis manifests', klavisManifests.length);
+
+    // 8. Fetch user settings (memory config + timezone)
     // Agent-level memory config takes priority; fallback to user-level setting
     const agentMemoryEnabled = agentConfig.chatConfig?.memory?.enabled;
     let globalMemoryEnabled = agentMemoryEnabled ?? false;
@@ -410,172 +436,122 @@ export class AiAgentService {
       userTimezone ?? 'default',
     );
 
-    // 5. Tool discovery — short-circuit when disableTools is set
-    let tools: any[] | undefined;
-    let toolsResult: { enabledToolIds: string[]; tools?: any[] | undefined } = {
-      enabledToolIds: [],
-      tools: undefined,
-    };
-    const toolManifestMap: Record<string, any> = {};
-    const toolSourceMap: Record<string, ToolSource> = {};
-    let onlineDevices: DeviceAttachment[] = [];
-    let activeDeviceId: string | undefined;
+    await throwIfExecutionAborted('tool discovery');
+
+    // 9. Create tools using Server AgentToolsEngine
+    const hasEnabledKnowledgeBases =
+      agentConfig.knowledgeBases?.some((kb: { enabled?: boolean | null }) => kb.enabled === true) ??
+      false;
+
+    // Check if agent has documents (for auto-enabling agent-documents tool)
     let hasAgentDocuments = false;
-    let hasEnabledKnowledgeBases = false;
-    const isBotConversation = !!(botContext || discordContext);
+    try {
+      const docs = await this.agentDocumentsService.getAgentDocuments(resolvedAgentId);
+      hasAgentDocuments = docs.length > 0;
+    } catch {
+      // Agent documents check is non-critical
+    }
 
-    // These are needed outside the tools block (for agent management context, skill engine, etc.)
-    let lobehubSkillManifests: LobeToolManifest[] = [];
-    let klavisManifests: LobeToolManifest[] = [];
-    let agentPlugins: string[] = [...(agentConfig?.plugins ?? []), ...(additionalPluginIds || [])];
-
-    // model-bank is needed both for tool support check and model metadata
-    const { LOBE_DEFAULT_MODEL_LIST } = await import('model-bank');
-
-    if (params.disableTools) {
-      log('execAgent: tools disabled by disableTools flag, skipping all tool discovery');
-    } else {
-      // 5a. Get installed plugins from database
-      const installedPlugins = await this.pluginModel.query();
-      log('execAgent: got %d installed plugins', installedPlugins.length);
-
-      // 5b. Get model abilities from model-bank for function calling support check
-      const isModelSupportToolUse = (m: string, p: string) => {
-        const info = LOBE_DEFAULT_MODEL_LIST.find((item) => item.id === m && item.providerId === p);
-        return info?.abilities?.functionCall ?? true;
-      };
-
-      // 5c. Fetch LobeHub Skills manifests
+    // Build device context for ToolsEngine enableChecker
+    const gatewayConfigured = deviceProxy.isConfigured;
+    const boundDeviceId = agentConfig.agencyConfig?.boundDeviceId;
+    let onlineDevices: DeviceAttachment[] = [];
+    if (gatewayConfigured) {
       try {
-        lobehubSkillManifests = await this.marketService.getLobehubSkillManifests();
+        onlineDevices = await deviceProxy.queryDeviceList(this.userId);
+        log('execAgent: found %d online device(s)', onlineDevices.length);
       } catch (error) {
-        log('execAgent: failed to fetch lobehub skill manifests: %O', error);
+        log('execAgent: failed to query device list: %O', error);
       }
-      log('execAgent: got %d lobehub skill manifests', lobehubSkillManifests.length);
+    }
+    const deviceOnline = onlineDevices.length > 0;
 
-      // 5d. Fetch Klavis tool manifests from database
-      try {
-        klavisManifests = await this.klavisService.getKlavisManifests();
-      } catch (error) {
-        log('execAgent: failed to fetch klavis manifests: %O', error);
-      }
-      log('execAgent: got %d klavis manifests', klavisManifests.length);
+    const toolsContext: ServerAgentToolsContext = {
+      installedPlugins,
+      isModelSupportToolUse,
+    };
 
-      await throwIfExecutionAborted('tool discovery');
+    // Dynamically inject topic-reference tool when prompt contains <refer_topic> tags
+    const hasTopicReference = /refer_topic/.test(prompt ?? '');
+    const agentPlugins = [
+      ...(agentConfig?.plugins ?? []),
+      ...(additionalPluginIds || []),
+      ...(hasTopicReference ? ['lobe-topic-reference'] : []),
+    ];
 
-      // 5e. Create tools using Server AgentToolsEngine
-      hasEnabledKnowledgeBases =
-        agentConfig.knowledgeBases?.some(
-          (kb: { enabled?: boolean | null }) => kb.enabled === true,
-        ) ?? false;
+    // Derive activeDeviceId from device context:
+    // 1. If agent has a bound device and it's online, use it
+    // 2. In IM/Bot scenarios, auto-activate when exactly one device is online
+    const activeDeviceId = boundDeviceId
+      ? deviceOnline
+        ? boundDeviceId
+        : undefined
+      : (discordContext || botContext) && onlineDevices.length === 1
+        ? onlineDevices[0].deviceId
+        : undefined;
 
-      try {
-        const docs = await this.agentDocumentsService.getAgentDocuments(resolvedAgentId);
-        hasAgentDocuments = docs.length > 0;
-      } catch {
-        // Agent documents check is non-critical
-      }
+    const toolsEngine = createServerAgentToolsEngine(toolsContext, {
+      additionalManifests: [...lobehubSkillManifests, ...klavisManifests],
+      agentConfig: {
+        chatConfig: agentConfig.chatConfig ?? undefined,
+        plugins: agentPlugins,
+      },
+      deviceContext: gatewayConfigured
+        ? {
+            autoActivated: activeDeviceId ? true : undefined,
+            boundDeviceId,
+            deviceOnline,
+            gatewayConfigured: true,
+          }
+        : undefined,
+      globalMemoryEnabled,
+      hasAgentDocuments,
+      hasEnabledKnowledgeBases,
+      model,
+      provider,
+    });
 
-      log('execAgent: isBotConversation=%s', isBotConversation);
+    // Generate tools and manifest map
+    // Include device tool IDs so ToolsEngine can process them via enableChecker
+    const pluginIds = [
+      ...(agentConfig.plugins || []),
+      ...(additionalPluginIds || []),
+      LocalSystemManifest.identifier,
+      RemoteDeviceManifest.identifier,
+    ];
+    log('execAgent: agent configured plugins: %O', pluginIds);
 
-      // Build device context for ToolsEngine enableChecker
-      const gatewayConfigured = deviceProxy.isConfigured;
-      const boundDeviceId = agentConfig.agencyConfig?.boundDeviceId;
-      if (gatewayConfigured) {
-        try {
-          onlineDevices = await deviceProxy.queryDeviceList(this.userId);
-          log('execAgent: found %d online device(s)', onlineDevices.length);
-        } catch (error) {
-          log('execAgent: failed to query device list: %O', error);
-        }
-      }
-      const deviceOnline = onlineDevices.length > 0;
+    // When skillActivateMode is 'manual', exclude only discovery tools (lobe-activator, lobe-skill-store)
+    // so that externally enabled tools (sandbox, web browsing, etc.) remain available
+    const isManualMode = agentConfig.chatConfig?.skillActivateMode === 'manual';
 
-      const toolsContext: ServerAgentToolsContext = {
-        installedPlugins,
-        isModelSupportToolUse,
-      };
+    const toolsResult = toolsEngine.generateToolsDetailed({
+      excludeDefaultToolIds: isManualMode ? manualModeExcludeToolIds : undefined,
+      model,
+      provider,
+      toolIds: pluginIds,
+    });
 
-      // Dynamically inject topic-reference tool when prompt contains <refer_topic> tags
-      const hasTopicReference = /refer_topic/.test(prompt ?? '');
-      agentPlugins = [
-        ...agentPlugins,
-        ...(hasTopicReference ? ['lobe-topic-reference'] : []),
-        ...(isBotConversation ? [MessageToolIdentifier] : []),
-      ];
+    const tools = toolsResult.tools;
 
-      // Derive activeDeviceId from device context
-      activeDeviceId = boundDeviceId
-        ? deviceOnline
-          ? boundDeviceId
-          : undefined
-        : (discordContext || botContext) && onlineDevices.length === 1
-          ? onlineDevices[0].deviceId
-          : undefined;
+    log('execAgent: enabled tool ids: %O', toolsResult.enabledToolIds);
 
-      const toolsEngine = createServerAgentToolsEngine(toolsContext, {
-        additionalManifests: [...lobehubSkillManifests, ...klavisManifests],
-        agentConfig: {
-          chatConfig: agentConfig.chatConfig ?? undefined,
-          plugins: agentPlugins,
-        },
-        deviceContext: gatewayConfigured
-          ? {
-              autoActivated: activeDeviceId ? true : undefined,
-              boundDeviceId,
-              deviceOnline,
-              gatewayConfigured: true,
-            }
-          : undefined,
-        globalMemoryEnabled,
-        hasAgentDocuments,
-        hasEnabledKnowledgeBases,
-        isBotConversation,
-        model,
-        provider,
-      });
+    // Get manifest map and convert from Map to Record
+    const manifestMap = toolsEngine.getEnabledPluginManifests(pluginIds);
+    const toolManifestMap: Record<string, any> = {};
+    manifestMap.forEach((manifest, id) => {
+      toolManifestMap[id] = manifest;
+    });
 
-      // 5f. Generate tools and manifest map
-      const pluginIds = [
-        ...(agentConfig.plugins || []),
-        ...(additionalPluginIds || []),
-        LocalSystemManifest.identifier,
-        RemoteDeviceManifest.identifier,
-        ...(isBotConversation ? [MessageToolIdentifier] : []),
-      ];
-      log('execAgent: agent configured plugins: %O', pluginIds);
-
-      const isManualMode = agentConfig.chatConfig?.skillActivateMode === 'manual';
-
-      toolsResult = toolsEngine.generateToolsDetailed({
-        excludeDefaultToolIds: isManualMode ? manualModeExcludeToolIds : undefined,
-        model,
-        provider,
-        toolIds: pluginIds,
-      });
-
-      tools = toolsResult.tools;
-
-      log('execAgent: enabled tool ids: %O', toolsResult.enabledToolIds);
-
-      const manifestMap = toolsEngine.getEnabledPluginManifests(pluginIds);
-      manifestMap.forEach((manifest, id) => {
-        toolManifestMap[id] = manifest;
-      });
-
-      for (const manifest of lobehubSkillManifests) {
-        toolSourceMap[manifest.identifier] = 'lobehubSkill';
-      }
-      for (const manifest of klavisManifests) {
-        toolSourceMap[manifest.identifier] = 'klavis';
-      }
-
-      log(
-        'execAgent: generated %d tools, %d lobehub skills, %d klavis tools',
-        tools?.length ?? 0,
-        lobehubSkillManifests.length,
-        klavisManifests.length,
-      );
+    // Build toolSourceMap for routing tool execution
+    const toolSourceMap: Record<string, ToolSource> = {};
+    // Mark lobehub skills
+    for (const manifest of lobehubSkillManifests) {
+      toolSourceMap[manifest.identifier] = 'lobehubSkill';
+    }
+    // Mark klavis tools
+    for (const manifest of klavisManifests) {
+      toolSourceMap[manifest.identifier] = 'klavis';
     }
 
     // Inject client function tools from Response API
@@ -604,6 +580,15 @@ export class AiAgentService {
       };
       toolsResult.enabledToolIds.push(CLIENT_FN_IDENTIFIER);
     }
+
+    log(
+      'execAgent: generated %d tools from %d configured plugins, %d lobehub skills, %d klavis tools, %d client function tools',
+      tools?.length ?? 0,
+      pluginIds.length,
+      lobehubSkillManifests.length,
+      klavisManifests.length,
+      functionTools?.length ?? 0,
+    );
 
     // Override RemoteDevice manifest's systemRole with dynamic device list prompt
     // The manifest is already included/excluded by ToolsEngine enableChecker
@@ -964,7 +949,7 @@ export class AiAgentService {
         initialContext,
         initialMessages: allMessages,
         maxSteps,
-        modelRuntimeConfig: { model, provider },
+        modelRuntimeConfig: { model, provider, contextWindowTokens },
         hooks,
         operationId,
         signal,

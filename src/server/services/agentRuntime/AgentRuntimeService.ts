@@ -1503,6 +1503,7 @@ export class AgentRuntimeService {
       agentConfig: metadata?.agentConfig,
       compressionConfig: {
         enabled: contextCompressionMode !== 'disabled',
+        maxWindowToken: metadata?.modelRuntimeConfig?.contextWindowTokens,
         mode: contextCompressionMode === 'disabled' ? undefined : contextCompressionMode,
       },
       dynamicInterventionAudits,

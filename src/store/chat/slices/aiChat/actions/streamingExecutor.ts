@@ -458,6 +458,7 @@ export class StreamingExecutorActionImpl {
       agentConfig: { maxSteps: 1000 },
       compressionConfig: {
         enabled: contextCompressionMode !== 'disabled',
+        maxWindowToken: contextWindowTokens,
         mode: contextCompressionMode === 'disabled' ? undefined : contextCompressionMode,
       },
       dynamicInterventionAudits,

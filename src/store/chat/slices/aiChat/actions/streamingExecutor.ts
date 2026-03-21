@@ -447,9 +447,10 @@ export class StreamingExecutorActionImpl {
     const provider = agentConfigData.provider;
 
     // Get context window tokens from AI infrastructure store
-    const contextWindowTokens = useAiInfraStore
-      .getState()
-      .enabledModels.find((m) => m.id === model && m.providerId === provider)?.contextWindowTokens;
+    const aiInfraState = useAiInfraStore.getState();
+    const contextWindowTokens = aiInfraState.enabledAiModels?.find(
+      (m: any) => m.id === model && m.providerId === provider,
+    )?.contextWindowTokens;
 
     const modelRuntimeConfig = {
       model,
@@ -473,6 +474,7 @@ export class StreamingExecutorActionImpl {
       agentConfig: { maxSteps: 1000 },
       compressionConfig: {
         enabled: contextCompressionMode !== 'disabled',
+        maxWindowToken: contextWindowTokens,
         mode: contextCompressionMode === 'disabled' ? undefined : contextCompressionMode,
       },
       dynamicInterventionAudits,

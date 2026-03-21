@@ -59,7 +59,7 @@ export interface LobeAgentChatConfig extends AgentMemoryChatConfig {
    * Enable context compression
    * @deprecated Use contextCompressionMode instead. Will be removed in a future version.
    * Migration:
-   * - enableContextCompression: true → contextCompressionMode: 'full'
+   * - enableContextCompression: true → contextCompressionMode: 'economy'
    * - enableContextCompression: false → contextCompressionMode: 'disabled'
    */
   enableContextCompression?: boolean;

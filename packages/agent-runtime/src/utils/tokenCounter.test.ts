@@ -288,7 +288,7 @@ describe('tokenCounter', () => {
         resolveCompressionMode({
           enableContextCompression: true,
         }),
-      ).toBe('full');
+      ).toBe('economy');
 
       expect(
         resolveCompressionMode({
@@ -297,8 +297,8 @@ describe('tokenCounter', () => {
       ).toBe('disabled');
     });
 
-    it('should default to full when both are undefined', () => {
-      expect(resolveCompressionMode({})).toBe('full');
+    it('should default to economy when both are undefined', () => {
+      expect(resolveCompressionMode({})).toBe('economy');
     });
 
     it('should handle contextCompressionMode set to full', () => {

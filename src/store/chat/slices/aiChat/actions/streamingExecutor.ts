@@ -5,7 +5,12 @@ import {
   type Cost,
   type Usage,
 } from '@lobechat/agent-runtime';
-import { AgentRuntime, computeStepContext, GeneralChatAgent } from '@lobechat/agent-runtime';
+import {
+  AgentRuntime,
+  computeStepContext,
+  GeneralChatAgent,
+  resolveCompressionMode,
+} from '@lobechat/agent-runtime';
 import { PageAgentIdentifier } from '@lobechat/builtin-tool-page-agent';
 import { manualModeExcludeToolIds } from '@lobechat/builtin-tools';
 import { dynamicInterventionAudits } from '@lobechat/builtin-tools/dynamicInterventionAudits';
@@ -442,10 +447,17 @@ export class StreamingExecutorActionImpl {
     // ===========================================
     log('[internal_execAgentRuntime] Creating agent runtime with config', modelRuntimeConfig);
 
+    // Context compression mode with backward compatibility for legacy enableContextCompression
+    const contextCompressionMode = resolveCompressionMode({
+      contextCompressionMode: agentConfigData.chatConfig?.contextCompressionMode,
+      enableContextCompression: agentConfigData.chatConfig?.enableContextCompression,
+    });
+
     const agent = new GeneralChatAgent({
       agentConfig: { maxSteps: 1000 },
       compressionConfig: {
-        enabled: agentConfigData.chatConfig?.enableContextCompression ?? true, // Default to enabled
+        enabled: contextCompressionMode !== 'disabled',
+        mode: contextCompressionMode === 'disabled' ? undefined : contextCompressionMode,
       },
       dynamicInterventionAudits,
       operationId: `${messageKey}/${params.parentMessageId}`,

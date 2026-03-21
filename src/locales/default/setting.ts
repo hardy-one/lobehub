@@ -674,6 +674,12 @@ export default {
   'settingModel.enableContextCompression.desc':
     'Automatically compress historical messages into summaries when conversation exceeds 64,000 tokens, saving 60-80% token usage',
   'settingModel.enableContextCompression.title': 'Enable Auto Context Compression',
+  'settingModel.contextCompressionMode.desc':
+    'Economy: compress early to save tokens on long conversations. Full: use more context for better quality.',
+  'settingModel.contextCompressionMode.disabled': 'Disabled',
+  'settingModel.contextCompressionMode.economy': 'Economy',
+  'settingModel.contextCompressionMode.full': 'Full',
+  'settingModel.contextCompressionMode.title': 'Context Compression',
   'settingModel.enableMaxTokens.title': 'Enable Max Tokens Limit',
   'settingModel.enableReasoningEffort.title': 'Enable Reasoning Effort Adjustment',
   'settingModel.frequencyPenalty.desc':

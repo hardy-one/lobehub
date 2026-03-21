@@ -6,6 +6,7 @@ import {
   DEFAULT_THRESHOLD_RATIO,
   estimateTokens,
   getCompressionThreshold,
+  resolveCompressionMode,
   shouldCompress,
 } from './tokenCounter';
 
@@ -181,6 +182,132 @@ describe('tokenCounter', () => {
       // 28571 * 0.7 ≈ 19999, maxSafeThreshold = 28571 - 20000 = 8571
       // Math.min(19999, 8571) = 8571
       expect(threshold).toBe(8_571);
+    });
+
+    describe('economy mode', () => {
+      it('should use 50% threshold for 128k context', () => {
+        const threshold = getCompressionThreshold({
+          mode: 'economy',
+          maxWindowToken: 128_000,
+        });
+        expect(threshold).toBe(64_000); // 128k * 0.5 = 64k
+      });
+
+      it('should cap at 128k for large context models (1M)', () => {
+        const threshold = getCompressionThreshold({
+          mode: 'economy',
+          maxWindowToken: 1_000_000,
+        });
+        // Capped at 128k, then 128k * 0.5 = 64k
+        expect(threshold).toBe(64_000);
+      });
+
+      it('should use actual context for small context models (32k)', () => {
+        const threshold = getCompressionThreshold({
+          mode: 'economy',
+          maxWindowToken: 32_000,
+        });
+        // min(32k, 128k) = 32k, then 32k * 0.5 = 16k
+        // maxSafeThreshold = 32k - 20k = 12k
+        // Math.min(16k, 12k) = 12k
+        expect(threshold).toBe(12_000);
+      });
+
+      it('should use actual context for small context models (64k)', () => {
+        const threshold = getCompressionThreshold({
+          mode: 'economy',
+          maxWindowToken: 64_000,
+        });
+        // min(64k, 128k) = 64k, then 64k * 0.5 = 32k
+        // maxSafeThreshold = 64k - 20k = 44k
+        // Math.min(32k, 44k) = 32k
+        expect(threshold).toBe(32_000);
+      });
+
+      it('should disable compression for very small context (< 20k)', () => {
+        const threshold = getCompressionThreshold({
+          mode: 'economy',
+          maxWindowToken: 16_000,
+        });
+        // min(16k, 128k) = 16k, then 16k * 0.5 = 8k
+        // maxSafeThreshold = 16k - 20k = -4k (negative)
+        // Returns maxContext to disable compression
+        expect(threshold).toBe(16_000);
+      });
+    });
+
+    describe('disabled mode', () => {
+      it('should return maxContext for 128k context', () => {
+        const threshold = getCompressionThreshold({
+          mode: 'disabled',
+          maxWindowToken: 128_000,
+        });
+        // Disabled mode returns maxContext, effectively disabling compression
+        expect(threshold).toBe(128_000);
+      });
+
+      it('should return maxContext for large context (1M)', () => {
+        const threshold = getCompressionThreshold({
+          mode: 'disabled',
+          maxWindowToken: 1_000_000,
+        });
+        // Disabled mode returns maxContext, effectively disabling compression
+        expect(threshold).toBe(1_000_000);
+      });
+
+      it('should return maxContext for small context (32k)', () => {
+        const threshold = getCompressionThreshold({
+          mode: 'disabled',
+          maxWindowToken: 32_000,
+        });
+        // Disabled mode returns maxContext, effectively disabling compression
+        expect(threshold).toBe(32_000);
+      });
+    });
+  });
+
+  describe('resolveCompressionMode', () => {
+    it('should prefer contextCompressionMode over enableContextCompression', () => {
+      expect(
+        resolveCompressionMode({
+          contextCompressionMode: 'economy',
+          enableContextCompression: true,
+        }),
+      ).toBe('economy');
+
+      expect(
+        resolveCompressionMode({
+          contextCompressionMode: 'disabled',
+          enableContextCompression: true,
+        }),
+      ).toBe('disabled');
+    });
+
+    it('should use enableContextCompression when contextCompressionMode is undefined', () => {
+      expect(
+        resolveCompressionMode({
+          enableContextCompression: true,
+        }),
+      ).toBe('full');
+
+      expect(
+        resolveCompressionMode({
+          enableContextCompression: false,
+        }),
+      ).toBe('disabled');
+    });
+
+    it('should default to full when both are undefined', () => {
+      expect(resolveCompressionMode({})).toBe('full');
+    });
+
+    it('should handle contextCompressionMode set to full', () => {
+      expect(
+        resolveCompressionMode({
+          contextCompressionMode: 'full',
+          enableContextCompression: false,
+        }),
+      ).toBe('full');
     });
   });
 

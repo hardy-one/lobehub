@@ -1,17 +1,62 @@
 import { estimateTokenCount } from 'tokenx';
 
 /**
+ * Compression mode type
+ */
+export type CompressionMode = 'disabled' | 'economy' | 'full';
+
+/**
+ * Compression strategy type (excludes 'disabled')
+ * Used when compression is enabled to specify the compression strategy
+ */
+export type CompressionStrategy = Exclude<CompressionMode, 'disabled'>;
+
+/**
+ * Resolve context compression mode with backward compatibility
+ *
+ * Supports legacy `enableContextCompression` boolean and new `contextCompressionMode` enum.
+ * Priority: contextCompressionMode > enableContextCompression > default ('full')
+ *
+ * @param options - Configuration options
+ * @param options.contextCompressionMode - New enum-based compression mode
+ * @param options.enableContextCompression - Legacy boolean flag (deprecated)
+ * @returns Resolved compression mode
+ */
+export function resolveCompressionMode(options: {
+  contextCompressionMode?: CompressionMode;
+  enableContextCompression?: boolean;
+}): CompressionMode {
+  // Prefer new contextCompressionMode if set
+  if (options.contextCompressionMode !== undefined) {
+    return options.contextCompressionMode;
+  }
+
+  // Fall back to legacy enableContextCompression flag
+  // Default to true (enabled) for backward compatibility
+  return (options.enableContextCompression ?? true) ? 'full' : 'disabled';
+}
+
+/**
  * Options for token counting and compression threshold calculation
  */
 export interface TokenCountOptions {
   /** Model's max context window token count */
   maxWindowToken?: number;
-  /** Threshold ratio for triggering compression, default 0.75 */
+  /** Compression mode: 'economy' limits context to 128k/50%, 'full' uses model context/70% */
+  mode?: CompressionMode;
+  /** Threshold ratio for triggering compression, default 0.7 */
   thresholdRatio?: number;
 }
 
 /** Default max context window (128k tokens) */
 export const DEFAULT_MAX_CONTEXT = 128_000;
+
+/**
+ * Economy mode context window cap (128k tokens)
+ * For large context models (e.g., 1M), cap at 128k to limit token consumption.
+ * For small context models (< 128k), use the model's actual context window.
+ */
+export const ECONOMY_MAX_CONTEXT = 128_000;
 
 /**
  * Minimum buffer required for compression process
@@ -40,6 +85,16 @@ export const MIN_COMPRESSION_BUFFER = 20_000;
  * - Higher than 50% to avoid premature compression, but lower than 90% to ensure compression process has buffer
  */
 export const DEFAULT_THRESHOLD_RATIO = 0.7;
+
+/**
+ * Economy threshold ratio (50% of max context)
+ *
+ * Rationale:
+ * - 50% compresses early to save tokens for long conversations
+ * - At 50% of 128k = 64k, compression needs ~64k (input) + ~19k (output) ≈ 83k < 128k (safe)
+ * - Suitable for users who prioritize token savings over context retention
+ */
+export const ECONOMY_THRESHOLD_RATIO = 0.5;
 
 /**
  * Message interface for token counting
@@ -97,24 +152,38 @@ export function calculateMessageTokens(messages: TokenCountMessage[]): number {
  * Applies minimum buffer protection for small context models:
  * - For models with context ≤ 20k: disabled (returns maxContext, effectively disabling auto-compression)
  * - For models with context ≤ 64k: uses conservative threshold to ensure 20k buffer
- * - For models with context ≥ 128k: uses optimal 70% threshold
+ * - For models with context ≥ 128k: uses optimal threshold based on mode
  *
  * @param options - Token count options
  * @returns Compression threshold in tokens
  */
 export function getCompressionThreshold(options: TokenCountOptions = {}): number {
-  const maxContext = options.maxWindowToken ?? DEFAULT_MAX_CONTEXT;
-  const ratio = options.thresholdRatio ?? DEFAULT_THRESHOLD_RATIO;
+  const modelContext = options.maxWindowToken ?? DEFAULT_MAX_CONTEXT;
+
+  // Disabled mode: return maxContext to effectively disable compression
+  if (options.mode === 'disabled') {
+    return modelContext;
+  }
+
+  // Determine effective context window and threshold ratio based on mode
+  // Economy mode: cap context at 128k for large models to limit token consumption
+  // Full mode: use model's actual context window
+  const isEconomy = options.mode === 'economy';
+  const maxContext = isEconomy ? Math.min(modelContext, ECONOMY_MAX_CONTEXT) : modelContext;
+  const ratio = isEconomy
+    ? ECONOMY_THRESHOLD_RATIO
+    : (options.thresholdRatio ?? DEFAULT_THRESHOLD_RATIO);
+
+  // Calculate base threshold
   const threshold = Math.floor(maxContext * ratio);
 
-  // Ensure minimum buffer for compression process
+  // Apply minimum buffer protection for compression process
   // Compression needs: input (threshold) + output (~35% of input) + system prompt (~800)
   const maxSafeThreshold = maxContext - MIN_COMPRESSION_BUFFER;
 
   // For very small context models (< 20k), disable auto-compression
-  // as there's not enough room for meaningful compression
   if (maxSafeThreshold <= 0) {
-    return maxContext; // Return max to effectively disable compression
+    return maxContext;
   }
 
   return Math.min(threshold, maxSafeThreshold);

@@ -431,9 +431,10 @@ export class StreamingExecutorActionImpl {
     const provider = agentConfigData.provider;
 
     // Get context window tokens from AI infrastructure store
-    const contextWindowTokens = useAiInfraStore
-      .getState()
-      .enabledModels.find((m) => m.id === model && m.providerId === provider)?.contextWindowTokens;
+    const aiInfraState = useAiInfraStore.getState();
+    const contextWindowTokens = aiInfraState.enabledAiModels?.find(
+      (m: any) => m.id === model && m.providerId === provider,
+    )?.contextWindowTokens;
 
     const modelRuntimeConfig = {
       model,

@@ -12,6 +12,7 @@ const minimaxCodingPlanChatModels: AIChatModelCard[] = [
     description:
       'MiniMax M2.7: Beginning the journey of recursive self-improvement, top real-world engineering capabilities.',
     displayName: 'MiniMax M2.7',
+    enabled: true,
     id: 'MiniMax-M2.7',
     maxOutput: 131_072,
     organization: 'MiniMax',
@@ -42,6 +43,7 @@ const minimaxCodingPlanChatModels: AIChatModelCard[] = [
     description:
       'MiniMax M2.5: Flagship open-source large model focusing on solving complex real-world tasks.',
     displayName: 'MiniMax M2.5',
+    enabled: true,
     id: 'MiniMax-M2.5',
     maxOutput: 131_072,
     organization: 'MiniMax',

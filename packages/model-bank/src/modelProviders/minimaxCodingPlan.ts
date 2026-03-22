@@ -10,7 +10,7 @@ const MinimaxCodingPlan: ModelProviderCard = {
   id: 'minimaxcodingplan',
   modelList: { showModelFetcher: false },
   modelsUrl: 'https://platform.minimax.io/docs/coding-plan/intro',
-  name: 'MiniMax Coding Plan',
+  name: 'MiniMax Token Plan',
   settings: {
     disableBrowserRequest: true,
     proxyUrl: {

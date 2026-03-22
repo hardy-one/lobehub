@@ -7,17 +7,19 @@ const kimiCodingPlanChatModels: AIChatModelCard[] = [
     abilities: {
       functionCall: true,
       reasoning: true,
+      video: true,
       vision: true,
     },
     contextWindowTokens: 262_144,
     description:
-      "Kimi K2.5: Kimi's most intelligent model, supporting visual and text input, thinking and non-thinking modes.",
+      "Kimi K2.5 is Kimi's most versatile model to date, featuring a native multimodal architecture that supports both vision and text inputs, 'thinking' and 'non-thinking' modes, and both conversational and agent tasks.",
     displayName: 'Kimi K2.5',
+    enabled: true,
     id: 'kimi-k2.5',
-    maxOutput: 65_536,
+    maxOutput: 32_768,
     organization: 'Moonshot',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['enableReasoning'],
     },
     type: 'chat',
   },

@@ -1,10 +1,10 @@
-import { ProviderIcon } from '@lobehub/icons';
 import { Flexbox, Tag, Text, Tooltip } from '@lobehub/ui';
 import { type TableColumnType } from 'antd';
 import { cssVar } from 'antd-style';
 import { memo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import ProviderIcon from '@/components/ProviderIcon';
 import InlineTable from '@/components/InlineTable';
 import { parseAsInteger, useQueryParam } from '@/hooks/useQueryParam';
 import { useClientDataSWR } from '@/libs/swr';

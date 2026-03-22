@@ -1,6 +1,7 @@
 import { BRANDING_PROVIDER } from '@lobechat/business-const';
-import { ProviderCombine, ProviderIcon } from '@lobehub/icons';
-import { Avatar, Flexbox, Skeleton, Tag, Text } from '@lobehub/ui';
+import { ProviderCombine } from '@lobehub/icons';
+import ProviderIcon from '@/components/ProviderIcon';
+import { Avatar, Flexbox, Skeleton, Tag,Text } from '@lobehub/ui';
 import { Divider } from 'antd';
 import { cssVar, cx } from 'antd-style';
 import { memo } from 'react';

@@ -1,4 +1,5 @@
-import { ProviderIcon } from '@lobehub/icons';
+import {  } from '@lobehub/icons';
+import ProviderIcon from '@/components/ProviderIcon';
 import { type FormItemProps } from '@lobehub/ui';
 import { Button, Flexbox, FormModal, Icon, Input, Select, TextArea } from '@lobehub/ui';
 import { App } from 'antd';

@@ -1,4 +1,5 @@
-import { ProviderIcon } from '@lobehub/icons';
+import {  } from '@lobehub/icons';
+import ProviderIcon from '@/components/ProviderIcon';
 import { Block, Flexbox, Text } from '@lobehub/ui';
 import { createStaticStyles } from 'antd-style';
 import { memo } from 'react';

@@ -1,4 +1,5 @@
-import { ModelIcon, ProviderIcon } from '@lobehub/icons';
+import { ModelIcon } from '@lobehub/icons';
+import ProviderIcon from '@/components/ProviderIcon';
 import { ActionIcon, Flexbox, Modal } from '@lobehub/ui';
 import { cssVar } from 'antd-style';
 import { MaximizeIcon } from 'lucide-react';

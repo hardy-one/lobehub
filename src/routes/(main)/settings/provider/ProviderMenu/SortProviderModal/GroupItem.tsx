@@ -1,4 +1,5 @@
-import { ProviderIcon } from '@lobehub/icons';
+import {  } from '@lobehub/icons';
+import ProviderIcon from '@/components/ProviderIcon';
 import { Avatar, Flexbox, SortableList } from '@lobehub/ui';
 import { memo } from 'react';
 

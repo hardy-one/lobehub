@@ -1,7 +1,8 @@
 'use client';
 
 import { CheckCircleFilled } from '@ant-design/icons';
-import { ProviderIcon } from '@lobehub/icons';
+import {  } from '@lobehub/icons';
+import ProviderIcon from '@/components/ProviderIcon';
 import { CopyButton, Flexbox, Icon } from '@lobehub/ui';
 import { App, Avatar, Button, Typography } from 'antd';
 import { createStyles, cssVar } from 'antd-style';

@@ -1,6 +1,7 @@
 'use client';
 
-import { ModelTag, ProviderIcon } from '@lobehub/icons';
+import { ModelTag,  } from '@lobehub/icons';
+import ProviderIcon from '@/components/ProviderIcon';
 import { Flexbox, Tag } from '@lobehub/ui';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';

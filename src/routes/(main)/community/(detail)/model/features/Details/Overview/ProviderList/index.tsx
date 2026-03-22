@@ -1,6 +1,7 @@
 'use client';
 
-import { ProviderIcon } from '@lobehub/icons';
+import {  } from '@lobehub/icons';
+import ProviderIcon from '@/components/ProviderIcon';
 import { ActionIcon, Block, Flexbox, Icon, Tooltip, TooltipGroup } from '@lobehub/ui';
 import { cssVar } from 'antd-style';
 import { BadgeCheck, BookIcon, ChevronRightIcon, KeyIcon } from 'lucide-react';

@@ -1,4 +1,5 @@
-import { ProviderIcon } from '@lobehub/icons';
+import {  } from '@lobehub/icons';
+import ProviderIcon from '@/components/ProviderIcon';
 import { Button, Center, Flexbox } from '@lobehub/ui';
 import { ModelProvider } from 'model-bank';
 import { memo, useMemo, useState } from 'react';

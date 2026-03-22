@@ -1,6 +1,6 @@
 import { type ChatModelCard } from '@lobechat/types';
-import { type IconAvatarProps } from '@lobehub/icons';
-import { LobeHub, ModelIcon, ProviderIcon } from '@lobehub/icons';
+import { type IconAvatarProps, LobeHub, ModelIcon } from '@lobehub/icons';
+import ProviderIcon from '@/components/ProviderIcon';
 import { type FlexboxProps } from '@lobehub/ui';
 import { Avatar, Flexbox, Icon, Tag, Text, Tooltip } from '@lobehub/ui';
 import { createStaticStyles, useResponsive } from 'antd-style';

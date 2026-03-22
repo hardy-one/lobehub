@@ -1,6 +1,7 @@
 'use client';
 
-import { ModelIcon, ProviderIcon } from '@lobehub/icons';
+import { ModelIcon,  } from '@lobehub/icons';
+import ProviderIcon from '@/components/ProviderIcon';
 import { Block, Flexbox, Icon, Popover, Tag, Text } from '@lobehub/ui';
 import { createStaticStyles } from 'antd-style';
 import dayjs from 'dayjs';

@@ -26,6 +26,7 @@ import { z } from 'zod';
 
 import { FormInput, FormPassword } from '@/components/FormInput';
 import { SkeletonInput, SkeletonSwitch } from '@/components/Skeleton';
+import { getProviderIconKey } from '@/constants/providerIconMapping';
 import { lambdaQuery } from '@/libs/trpc/client';
 import { aiProviderSelectors, useAiInfraStore } from '@/store/aiInfra';
 import { type AiProviderDetailItem, type AiProviderSourceType } from '@/types/aiProvider';
@@ -444,7 +445,7 @@ const ProviderConfig = memo<ProviderConfigProps>(
           </Flexbox>
         ) : (
           <>
-            {title ?? <ProviderCombine provider={id} size={24} />}
+            {title ?? <ProviderCombine provider={getProviderIconKey(id)} size={24} />}
             <Tooltip title={t('providerModels.config.helpDoc')}>
               <a
                 href={urlJoin(BASE_PROVIDER_DOC_URL, id)}

@@ -15,7 +15,7 @@ export type CompressionStrategy = Exclude<CompressionMode, 'disabled'>;
  * Resolve context compression mode with backward compatibility
  *
  * Supports legacy `enableContextCompression` boolean and new `contextCompressionMode` enum.
- * Priority: contextCompressionMode > enableContextCompression > default ('full')
+ * Priority: contextCompressionMode > enableContextCompression > default ('economy')
  *
  * @param options - Configuration options
  * @param options.contextCompressionMode - New enum-based compression mode
@@ -32,8 +32,10 @@ export function resolveCompressionMode(options: {
   }
 
   // Fall back to legacy enableContextCompression flag
-  // Default to true (enabled) for backward compatibility
-  return (options.enableContextCompression ?? true) ? 'full' : 'disabled';
+  // Legacy true → 'economy' (50% threshold, 128k cap for better token efficiency)
+  // Legacy false → 'disabled' (no compression)
+  // Default to 'economy' when both are undefined
+  return (options.enableContextCompression ?? true) ? 'economy' : 'disabled';
 }
 
 /**

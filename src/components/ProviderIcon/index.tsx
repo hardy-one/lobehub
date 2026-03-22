@@ -1,6 +1,7 @@
 'use client';
 
 import { ProviderIcon as BaseProviderIcon } from '@lobehub/icons';
+import { type CSSProperties } from 'react';
 import { memo } from 'react';
 
 import { getProviderIconKey } from '@/constants/providerIconMapping';
@@ -10,6 +11,7 @@ export interface ProviderIconProps {
   provider?: string;
   shape?: 'circle' | 'square';
   size?: number;
+  style?: CSSProperties;
   type?: 'avatar' | 'mono' | 'color' | 'combine' | 'combine-color';
 }
 

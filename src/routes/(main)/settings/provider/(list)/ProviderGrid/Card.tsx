@@ -1,13 +1,15 @@
 import { BRANDING_PROVIDER } from '@lobechat/business-const';
 import { ProviderCombine } from '@lobehub/icons';
 import ProviderIcon from '@/components/ProviderIcon';
-import { Avatar, Flexbox, Skeleton, Tag,Text } from '@lobehub/ui';
+import { Avatar, Flexbox, Skeleton, Tag, Text} from '@lobehub/ui';
 import { Divider } from 'antd';
 import { cssVar, cx } from 'antd-style';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { BrandingProviderCard } from '@/business/client/features/BrandingProviderCard';
+import ProviderIcon from '@/components/ProviderIcon';
+import { getProviderIconKey } from '@/constants/providerIconMapping';
 import { useIsDark } from '@/hooks/useIsDark';
 import { type AiProviderListItem } from '@/types/aiProvider';
 
@@ -54,7 +56,7 @@ const ProviderCard = memo<ProviderCardProps>(
                 {source === 'builtin' ? (
                   <Flexbox horizontal align={'center'} gap={8}>
                     <ProviderCombine
-                      provider={id}
+                      provider={getProviderIconKey(id)}
                       size={24}
                       style={{ color: cssVar.colorText }}
                       title={name}

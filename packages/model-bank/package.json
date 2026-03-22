@@ -30,6 +30,7 @@
     "./github": "./src/aiModels/github.ts",
     "./githubCopilot": "./src/aiModels/githubCopilot.ts",
     "./google": "./src/aiModels/google.ts",
+    "./glmcodingplan": "./src/aiModels/glmCodingPlan.ts",
     "./groq": "./src/aiModels/groq.ts",
     "./lobehub": "./src/aiModels/lobehub/index.ts",
     "./higress": "./src/aiModels/higress.ts",

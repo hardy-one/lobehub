@@ -8,7 +8,7 @@ const BailianCodingPlan: ModelProviderCard = {
     'Aliyun Bailian Coding Plan is a specialized AI coding service providing access to coding-optimized models from Qwen, GLM, Kimi, and MiniMax via a dedicated endpoint.',
   disableBrowserRequest: true,
   id: 'bailiancodingplan',
-  modelList: { showModelFetcher: true },
+  modelList: { showModelFetcher: false },
   modelsUrl: 'https://help.aliyun.com/zh/model-studio/coding-plan-overview',
   name: 'Aliyun Bailian Coding Plan',
   settings: {
@@ -22,7 +22,7 @@ const BailianCodingPlan: ModelProviderCard = {
     },
     sdkType: 'openai',
     showDeployName: true,
-    showModelFetcher: true,
+    showModelFetcher: false,
   },
   url: 'https://help.aliyun.com/zh/model-studio/coding-plan-overview',
 };

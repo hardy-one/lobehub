@@ -8,6 +8,8 @@ import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import urlJoin from 'url-join';
 
+import { getProviderIconKey } from '@/constants/providerIconMapping';
+
 import { useDetailContext } from './DetailProvider';
 
 const Header = memo<{ mobile?: boolean }>(({ mobile: isMobile }) => {
@@ -28,7 +30,10 @@ const Header = memo<{ mobile?: boolean }>(({ mobile: isMobile }) => {
         }}
       >
         <Flexbox align={'flex-start'} width={'100%'}>
-          <ProviderCombine provider={identifier} size={mobile ? 32 : 48} />
+          <ProviderCombine
+            provider={getProviderIconKey(identifier || '')}
+            size={mobile ? 32 : 48}
+          />
           <Flexbox horizontal align={'center'} gap={4}>
             {Boolean(url || modelsUrl) ? (
               <a href={url || (modelsUrl as string)} rel="noreferrer" target="_blank">

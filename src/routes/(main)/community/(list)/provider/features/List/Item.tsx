@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import urlJoin from 'url-join';
 
+import { getProviderIconKey } from '@/constants/providerIconMapping';
 import { type DiscoverProviderItem } from '@/types/discover';
 
 const styles = createStaticStyles(({ css, cssVar }) => {
@@ -79,7 +80,11 @@ const ProviderItem = memo<DiscoverProviderItem>(
             }}
           >
             <Link style={{ color: 'inherit', overflow: 'hidden' }} to={link}>
-              <ProviderCombine provider={identifier} size={28} style={{ flex: 'none' }} />
+              <ProviderCombine
+                provider={getProviderIconKey(identifier)}
+                size={28}
+                style={{ flex: 'none' }}
+              />
             </Link>
             <div className={styles.author}>@{name}</div>
           </Flexbox>

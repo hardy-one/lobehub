@@ -40,6 +40,7 @@ export { LobeStepfunAI } from './providers/stepfun';
 export { LobeStraicoAI } from './providers/straico';
 export { LobeTogetherAI } from './providers/togetherai';
 export { LobeVolcengineAI } from './providers/volcengine';
+export { LobeVolcengineCodingPlanAI } from './providers/volcengineCodingPlan';
 export { LobeXiaomiMiMoAI } from './providers/xiaomimimo';
 export { LobeZenMuxAI } from './providers/zenmux';
 export { LobeZeroOneAI } from './providers/zeroone';

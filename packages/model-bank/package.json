@@ -15,6 +15,7 @@
     "./azureai": "./src/aiModels/azureai.ts",
     "./azure": "./src/aiModels/azure.ts",
     "./baichuan": "./src/aiModels/baichuan.ts",
+    "./bailianCodingPlan": "./src/aiModels/bailianCodingPlan.ts",
     "./bedrock": "./src/aiModels/bedrock.ts",
     "./bfl": "./src/aiModels/bfl.ts",
     "./cerebras": "./src/aiModels/cerebras.ts",

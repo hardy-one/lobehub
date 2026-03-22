@@ -11,6 +11,7 @@ import AnthropicProvider from './anthropic';
 import AzureProvider from './azure';
 import AzureAIProvider from './azureai';
 import BaichuanProvider from './baichuan';
+import BailianCodingPlanProvider from './bailianCodingPlan';
 import BedrockProvider from './bedrock';
 import BflProvider from './bfl';
 import CerebrasProvider from './cerebras';
@@ -141,6 +142,7 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
   XinferenceProvider,
   MoonshotProvider,
   BedrockProvider,
+  BailianCodingPlanProvider,
   VertexAIProvider,
   { ...AzureProvider, chatModels: [] },
   AzureAIProvider,
@@ -228,6 +230,7 @@ export { default as AnthropicProviderCard } from './anthropic';
 export { default as AzureProviderCard } from './azure';
 export { default as AzureAIProviderCard } from './azureai';
 export { default as BaichuanProviderCard } from './baichuan';
+export { default as BailianCodingPlanProviderCard } from './bailianCodingPlan';
 export { default as BedrockProviderCard } from './bedrock';
 export { default as BflProviderCard } from './bfl';
 export { default as CerebrasProviderCard } from './cerebras';

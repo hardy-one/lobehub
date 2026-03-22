@@ -10,6 +10,7 @@ import { default as anthropic } from './anthropic';
 import { default as azure } from './azure';
 import { default as azureai } from './azureai';
 import { default as baichuan } from './baichuan';
+import { default as bailiancodingplan } from './bailianCodingPlan';
 import { default as bedrock } from './bedrock';
 import { default as bfl } from './bfl';
 import { default as cerebras } from './cerebras';
@@ -104,6 +105,7 @@ export const LOBE_DEFAULT_MODEL_LIST = buildDefaultModelList({
   azure,
   azureai,
   baichuan,
+  bailiancodingplan,
   bedrock,
   bfl,
   cerebras,
@@ -179,6 +181,7 @@ export { default as anthropic } from './anthropic';
 export { default as azure } from './azure';
 export { default as azureai } from './azureai';
 export { default as baichuan } from './baichuan';
+export { default as bailiancodingplan } from './bailianCodingPlan';
 export { default as bedrock } from './bedrock';
 export { default as bfl } from './bfl';
 export { default as cerebras } from './cerebras';

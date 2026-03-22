@@ -8,6 +8,7 @@
   "azure.description": "Azure offers advanced AI models, including GPT-3.5 and GPT-4 series, for diverse data types and complex tasks with a focus on safe, reliable, and sustainable AI.",
   "azureai.description": "Azure provides advanced AI models, including GPT-3.5 and GPT-4 series, for diverse data types and complex tasks with a focus on safe, reliable, and sustainable AI.",
   "baichuan.description": "Baichuan AI focuses on foundation models with strong performance on Chinese knowledge, long-context processing, and creative generation. Its models (Baichuan 4, Baichuan 3 Turbo, Baichuan 3 Turbo 128k) are optimized for different scenarios and offer strong value.",
+  "bailianCodingPlan.description": "Aliyun Bailian Coding Plan is a specialized AI coding service providing access to coding-optimized models from Qwen, GLM, Kimi, and MiniMax via a dedicated endpoint.",
   "bedrock.description": "Amazon Bedrock provides enterprises with advanced language and vision models, including Anthropic Claude and Meta Llama 3.1, spanning lightweight to high-performance options for text, chat, and image tasks.",
   "bfl.description": "A leading frontier AI research lab building the visual infrastructure of tomorrow.",
   "cerebras.description": "Cerebras is an inference platform built on its CS-3 system, focused on ultra-low latency and high-throughput LLM service for real-time workloads like code generation and agent tasks.",

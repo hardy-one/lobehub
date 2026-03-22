@@ -31,6 +31,7 @@ export enum ModelProvider {
   InfiniAI = 'infiniai',
   InternLM = 'internlm',
   Jina = 'jina',
+  KimiCodingPlan = 'kimicodingplan',
   LMStudio = 'lmstudio',
   LobeHub = 'lobehub',
   LongCat = 'longcat',

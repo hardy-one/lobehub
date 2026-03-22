@@ -33,6 +33,7 @@ import { default as hunyuan } from './hunyuan';
 import { default as infiniai } from './infiniai';
 import { default as internlm } from './internlm';
 import { default as jina } from './jina';
+import { default as kimicodingplan } from './kimiCodingPlan';
 import { default as lmstudio } from './lmstudio';
 import { default as lobehub } from './lobehub/index';
 import { default as longcat } from './longcat';
@@ -130,6 +131,7 @@ export const LOBE_DEFAULT_MODEL_LIST = buildDefaultModelList({
   infiniai,
   internlm,
   jina,
+  kimicodingplan,
   lmstudio,
   longcat,
   ...(ENABLE_BUSINESS_FEATURES ? { lobehub } : {}),
@@ -208,6 +210,7 @@ export { default as hunyuan } from './hunyuan';
 export { default as infiniai } from './infiniai';
 export { default as internlm } from './internlm';
 export { default as jina } from './jina';
+export { default as kimicodingplan } from './kimiCodingPlan';
 export { default as lmstudio } from './lmstudio';
 export { default as lobehub } from './lobehub/index';
 export { default as longcat } from './longcat';

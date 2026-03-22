@@ -34,6 +34,7 @@ export enum ModelProvider {
   LobeHub = 'lobehub',
   LongCat = 'longcat',
   Minimax = 'minimax',
+  MinimaxCodingPlan = 'minimaxcodingplan',
   Mistral = 'mistral',
   ModelScope = 'modelscope',
   Moonshot = 'moonshot',

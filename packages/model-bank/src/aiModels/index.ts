@@ -36,6 +36,7 @@ import { default as lmstudio } from './lmstudio';
 import { default as lobehub } from './lobehub/index';
 import { default as longcat } from './longcat';
 import { default as minimax } from './minimax';
+import { default as minimaxcodingplan } from './minimaxCodingPlan';
 import { default as mistral } from './mistral';
 import { default as modelscope } from './modelscope';
 import { default as moonshot } from './moonshot';
@@ -131,6 +132,7 @@ export const LOBE_DEFAULT_MODEL_LIST = buildDefaultModelList({
   longcat,
   ...(ENABLE_BUSINESS_FEATURES ? { lobehub } : {}),
   minimax,
+  minimaxcodingplan,
   mistral,
   modelscope,
   moonshot,
@@ -207,6 +209,7 @@ export { default as lmstudio } from './lmstudio';
 export { default as lobehub } from './lobehub/index';
 export { default as longcat } from './longcat';
 export { default as minimax } from './minimax';
+export { default as minimaxcodingplan } from './minimaxCodingPlan';
 export { default as mistral } from './mistral';
 export { default as modelscope } from './modelscope';
 export { default as moonshot } from './moonshot';

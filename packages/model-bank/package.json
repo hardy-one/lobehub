@@ -41,6 +41,7 @@
     "./lmstudio": "./src/aiModels/lmstudio.ts",
     "./longcat": "./src/aiModels/longcat.ts",
     "./minimax": "./src/aiModels/minimax.ts",
+    "./minimaxcodingplan": "./src/aiModels/minimaxCodingPlan.ts",
     "./mistral": "./src/aiModels/mistral.ts",
     "./modelscope": "./src/aiModels/modelscope.ts",
     "./moonshot": "./src/aiModels/moonshot.ts",

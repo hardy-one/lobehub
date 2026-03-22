@@ -37,6 +37,7 @@ import LMStudioProvider from './lmstudio';
 import LobeHubProvider from './lobehub';
 import LongCatProvider from './longcat';
 import MinimaxProvider from './minimax';
+import MinimaxCodingPlanProvider from './minimaxCodingPlan';
 import MistralProvider from './mistral';
 import ModelScopeProvider from './modelscope';
 import MoonshotProvider from './moonshot';
@@ -189,6 +190,7 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
   BaichuanProvider,
   VolcengineProvider,
   MinimaxProvider,
+  MinimaxCodingPlanProvider,
   LMStudioProvider,
   InternLMProvider,
   HigressProvider,
@@ -256,6 +258,7 @@ export { default as LMStudioProviderCard } from './lmstudio';
 export { default as LobeHubProviderCard } from './lobehub';
 export { default as LongCatProviderCard } from './longcat';
 export { default as MinimaxProviderCard } from './minimax';
+export { default as MinimaxCodingPlanProviderCard } from './minimaxCodingPlan';
 export { default as MistralProviderCard } from './mistral';
 export { default as ModelScopeProviderCard } from './modelscope';
 export { default as MoonshotProviderCard } from './moonshot';

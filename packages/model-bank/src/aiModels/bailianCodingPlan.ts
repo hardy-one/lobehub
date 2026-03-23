@@ -19,7 +19,7 @@ const bailianCodingPlanChatModels: AIChatModelCard[] = [
     maxOutput: 65_536,
     organization: 'Qwen',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['enableReasoning', 'reasoningBudgetToken80k'],
     },
     type: 'chat',
   },
@@ -50,7 +50,7 @@ const bailianCodingPlanChatModels: AIChatModelCard[] = [
     maxOutput: 65_536,
     organization: 'Qwen',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['enableReasoning', 'reasoningBudgetToken80k'],
     },
     type: 'chat',
   },
@@ -81,7 +81,7 @@ const bailianCodingPlanChatModels: AIChatModelCard[] = [
     maxOutput: 131_072,
     organization: 'Zhipu',
     settings: {
-      extendParams: ['enableReasoning'],
+      extendParams: ['enableReasoning', 'reasoningBudgetToken32k'],
     },
     type: 'chat',
   },
@@ -99,7 +99,7 @@ const bailianCodingPlanChatModels: AIChatModelCard[] = [
     maxOutput: 131_072,
     organization: 'Zhipu',
     settings: {
-      extendParams: ['enableReasoning'],
+      extendParams: ['enableReasoning', 'reasoningBudgetToken32k'],
     },
     type: 'chat',
   },

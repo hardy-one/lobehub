@@ -145,7 +145,7 @@ const ControlsForm = memo<ControlsFormProps>(({ model: modelProp, provider: prov
       label: t('extendParams.reasoningBudgetToken.title'),
       layout: 'vertical',
       minWidth: undefined,
-      name: 'reasoningBudgetToken',
+      name: 'reasoningBudgetToken32k',
       style: {
         paddingBottom: 0,
       },
@@ -155,7 +155,7 @@ const ControlsForm = memo<ControlsFormProps>(({ model: modelProp, provider: prov
       label: t('extendParams.reasoningBudgetToken.title'),
       layout: 'vertical',
       minWidth: undefined,
-      name: 'reasoningBudgetToken',
+      name: 'reasoningBudgetToken80k',
       style: {
         paddingBottom: 0,
       },

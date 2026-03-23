@@ -96,6 +96,14 @@ export interface LobeAgentChatConfig extends AgentMemoryChatConfig {
   imageResolution2?: '512px' | '1K' | '2K' | '4K';
   inputTemplate?: string;
   reasoningBudgetToken?: number;
+  /**
+   * Reasoning budget token for models with 32k max (GLM-5/GLM-4.7)
+   */
+  reasoningBudgetToken32k?: number;
+  /**
+   * Reasoning budget token for models with 80k max (Qwen3 series)
+   */
+  reasoningBudgetToken80k?: number;
   reasoningEffort?: 'low' | 'medium' | 'high';
   /**
    * Runtime environment configuration (desktop only)
@@ -186,6 +194,8 @@ export const AgentChatConfigSchema = z
     imageResolution2: z.enum(['512px', '1K', '2K', '4K']).optional(),
     runtimeEnv: RuntimeEnvConfigSchema.optional(),
     reasoningBudgetToken: z.number().optional(),
+    reasoningBudgetToken32k: z.number().optional(),
+    reasoningBudgetToken80k: z.number().optional(),
     reasoningEffort: z.enum(['low', 'medium', 'high']).optional(),
     searchFCModel: z
       .object({

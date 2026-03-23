@@ -25,6 +25,8 @@ import ImageResolution2Slider from './ImageResolution2Slider';
 import ImageResolutionSlider from './ImageResolutionSlider';
 import ReasoningEffortSlider from './ReasoningEffortSlider';
 import ReasoningTokenSlider from './ReasoningTokenSlider';
+import ReasoningTokenSlider32k from './ReasoningTokenSlider32k';
+import ReasoningTokenSlider80k from './ReasoningTokenSlider80k';
 import TextVerbositySlider from './TextVerbositySlider';
 import ThinkingBudgetSlider from './ThinkingBudgetSlider';
 import ThinkingLevel2Slider from './ThinkingLevel2Slider';
@@ -130,6 +132,26 @@ const ControlsForm = memo<ControlsFormProps>(({ model: modelProp, provider: prov
     },
     (enableReasoning || modelExtendParams?.includes('reasoningBudgetToken')) && {
       children: <ReasoningTokenSlider />,
+      label: t('extendParams.reasoningBudgetToken.title'),
+      layout: 'vertical',
+      minWidth: undefined,
+      name: 'reasoningBudgetToken',
+      style: {
+        paddingBottom: 0,
+      },
+    },
+    modelExtendParams?.includes('reasoningBudgetToken32k') && {
+      children: <ReasoningTokenSlider32k />,
+      label: t('extendParams.reasoningBudgetToken.title'),
+      layout: 'vertical',
+      minWidth: undefined,
+      name: 'reasoningBudgetToken',
+      style: {
+        paddingBottom: 0,
+      },
+    },
+    modelExtendParams?.includes('reasoningBudgetToken80k') && {
+      children: <ReasoningTokenSlider80k />,
       label: t('extendParams.reasoningBudgetToken.title'),
       layout: 'vertical',
       minWidth: undefined,

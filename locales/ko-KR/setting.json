@@ -602,7 +602,7 @@
   "settingImage.defaultCount.desc": "새 작업을 생성할 때 이미지 생성 패널의 기본 이미지 수를 설정합니다.",
   "settingImage.defaultCount.label": "기본 이미지 수",
   "settingImage.defaultCount.title": "AI 그림 설정",
-  "settingModel.contextCompressionMode.desc": "경제 모드: 토큰 절약을 위해 일찍 압축. 충분 모드: 더 나은 품질을 위해 많은 컨텍스트 사용.",
+  "settingModel.contextCompressionMode.desc": "경제: 토큰 절약을 위해 일찍 압축. 충분: 더 나은 품질을 위해 많은 컨텍스트 사용.",
   "settingModel.contextCompressionMode.disabled": "비활성화",
   "settingModel.contextCompressionMode.economy": "경제",
   "settingModel.contextCompressionMode.full": "충분",

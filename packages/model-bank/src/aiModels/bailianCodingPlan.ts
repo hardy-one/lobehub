@@ -18,6 +18,7 @@ const bailianCodingPlanChatModels: AIChatModelCard[] = [
     id: 'qwen3.5-plus',
     maxOutput: 65_536,
     organization: 'Qwen',
+    releasedAt: '2026-02-15',
     settings: {
       extendParams: ['enableReasoning', 'reasoningBudgetToken80k'],
     },
@@ -34,6 +35,7 @@ const bailianCodingPlanChatModels: AIChatModelCard[] = [
     id: 'qwen3-coder-plus',
     maxOutput: 65_536,
     organization: 'Qwen',
+    releasedAt: '2025-09-23',
     type: 'chat',
   },
   {
@@ -49,6 +51,7 @@ const bailianCodingPlanChatModels: AIChatModelCard[] = [
     id: 'qwen3-max-2026-01-23',
     maxOutput: 65_536,
     organization: 'Qwen',
+    releasedAt: '2026-01-23',
     settings: {
       extendParams: ['enableReasoning', 'reasoningBudgetToken80k'],
     },
@@ -65,6 +68,7 @@ const bailianCodingPlanChatModels: AIChatModelCard[] = [
     id: 'qwen3-coder-next',
     maxOutput: 65_536,
     organization: 'Qwen',
+    releasedAt: '2026-02-15',
     type: 'chat',
   },
   {
@@ -80,6 +84,7 @@ const bailianCodingPlanChatModels: AIChatModelCard[] = [
     id: 'glm-5',
     maxOutput: 131_072,
     organization: 'Zhipu',
+    releasedAt: '2026-02-12',
     settings: {
       extendParams: ['enableReasoning', 'reasoningBudgetToken32k'],
     },
@@ -98,6 +103,7 @@ const bailianCodingPlanChatModels: AIChatModelCard[] = [
     id: 'glm-4.7',
     maxOutput: 131_072,
     organization: 'Zhipu',
+    releasedAt: '2025-12-01',
     settings: {
       extendParams: ['enableReasoning', 'reasoningBudgetToken32k'],
     },
@@ -118,6 +124,7 @@ const bailianCodingPlanChatModels: AIChatModelCard[] = [
     id: 'kimi-k2.5',
     maxOutput: 32_768,
     organization: 'Moonshot',
+    releasedAt: '2026-01-27',
     settings: {
       extendParams: ['enableReasoning'],
     },
@@ -136,6 +143,7 @@ const bailianCodingPlanChatModels: AIChatModelCard[] = [
     id: 'MiniMax-M2.5',
     maxOutput: 131_072,
     organization: 'MiniMax',
+    releasedAt: '2026-02-12',
     type: 'chat',
   },
 ];

@@ -18,6 +18,7 @@ const kimiCodingPlanChatModels: AIChatModelCard[] = [
     id: 'kimi-k2.5',
     maxOutput: 32_768,
     organization: 'Moonshot',
+    releasedAt: '2026-01-27',
     settings: {
       extendParams: ['enableReasoning'],
     },
@@ -34,6 +35,7 @@ const kimiCodingPlanChatModels: AIChatModelCard[] = [
     id: 'kimi-k2',
     maxOutput: 65_536,
     organization: 'Moonshot',
+    releasedAt: '2025-07-01',
     type: 'chat',
   },
   {
@@ -48,6 +50,7 @@ const kimiCodingPlanChatModels: AIChatModelCard[] = [
     id: 'kimi-k2-thinking',
     maxOutput: 65_536,
     organization: 'Moonshot',
+    releasedAt: '2025-11-06',
     settings: {
       extendParams: ['enableReasoning', 'reasoningBudgetToken'],
     },

@@ -20,40 +20,7 @@ const volcengineCodingPlanChatModels: AIChatModelCard[] = [
     enabled: true,
     id: 'doubao-seed-code',
     maxOutput: 32_000,
-    pricing: {
-      currency: 'CNY',
-      units: [
-        {
-          lookup: {
-            prices: {
-              '[0, 0.032]': 1.2,
-              '[0.032, 0.128]': 1.4,
-              '[0.128, 0.256]': 2.8,
-            },
-            pricingParams: ['textInputRange'],
-          },
-          name: 'textInput',
-          strategy: 'lookup',
-          unit: 'millionTokens',
-        },
-        {
-          lookup: {
-            prices: {
-              '[0, 0.032]': 8,
-              '[0.032, 0.128]': 12,
-              '[0.128, 0.256]': 16,
-            },
-            pricingParams: ['textInputRange'],
-          },
-          name: 'textOutput',
-          strategy: 'lookup',
-          unit: 'millionTokens',
-        },
-        { name: 'textInput_cacheRead', rate: 0.24, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textInput_cacheWrite', rate: 0.017, strategy: 'fixed', unit: 'millionTokens' },
-      ],
-    },
-    releasedAt: '2025-10-28',
+    releasedAt: '2025-11-01',
     settings: {
       extendParams: ['enableReasoning'],
     },
@@ -76,44 +43,6 @@ const volcengineCodingPlanChatModels: AIChatModelCard[] = [
     enabled: true,
     id: 'doubao-seed-2.0-code',
     maxOutput: 128_000,
-    pricing: {
-      currency: 'CNY',
-      units: [
-        {
-          lookup: {
-            prices: {
-              '[0, 0.032]': 3.2,
-              '[0.032, 0.128]': 4.8,
-              '[0.128, 0.256]': 9.6,
-            },
-            pricingParams: ['textInputRange'],
-          },
-          name: 'textInput',
-          strategy: 'lookup',
-          unit: 'millionTokens',
-        },
-        {
-          lookup: {
-            prices: {
-              '[0, 0.032]': 16,
-              '[0.032, 0.128]': 24,
-              '[0.128, 0.256]': 48,
-            },
-            pricingParams: ['textInputRange'],
-          },
-          name: 'textOutput',
-          strategy: 'lookup',
-          unit: 'millionTokens',
-        },
-        { name: 'textInput_cacheRead', rate: 0.64, strategy: 'fixed', unit: 'millionTokens' },
-        {
-          lookup: { prices: { '1h': 0.017 }, pricingParams: ['ttl'] },
-          name: 'textInput_cacheWrite',
-          strategy: 'lookup',
-          unit: 'millionTokens',
-        },
-      ],
-    },
     releasedAt: '2026-02-15',
     settings: {
       extendParams: ['gpt5ReasoningEffort'],
@@ -137,44 +66,6 @@ const volcengineCodingPlanChatModels: AIChatModelCard[] = [
     enabled: true,
     id: 'doubao-seed-2.0-pro',
     maxOutput: 128_000,
-    pricing: {
-      currency: 'CNY',
-      units: [
-        {
-          lookup: {
-            prices: {
-              '[0, 0.032]': 3.2,
-              '[0.032, 0.128]': 4.8,
-              '[0.128, 0.256]': 9.6,
-            },
-            pricingParams: ['textInputRange'],
-          },
-          name: 'textInput',
-          strategy: 'lookup',
-          unit: 'millionTokens',
-        },
-        {
-          lookup: {
-            prices: {
-              '[0, 0.032]': 16,
-              '[0.032, 0.128]': 24,
-              '[0.128, 0.256]': 48,
-            },
-            pricingParams: ['textInputRange'],
-          },
-          name: 'textOutput',
-          strategy: 'lookup',
-          unit: 'millionTokens',
-        },
-        { name: 'textInput_cacheRead', rate: 0.64, strategy: 'fixed', unit: 'millionTokens' },
-        {
-          lookup: { prices: { '1h': 0.017 }, pricingParams: ['ttl'] },
-          name: 'textInput_cacheWrite',
-          strategy: 'lookup',
-          unit: 'millionTokens',
-        },
-      ],
-    },
     releasedAt: '2026-02-15',
     settings: {
       extendParams: ['gpt5ReasoningEffort'],
@@ -198,44 +89,6 @@ const volcengineCodingPlanChatModels: AIChatModelCard[] = [
     enabled: true,
     id: 'doubao-seed-2.0-lite',
     maxOutput: 128_000,
-    pricing: {
-      currency: 'CNY',
-      units: [
-        {
-          lookup: {
-            prices: {
-              '[0, 0.032]': 0.6,
-              '[0.032, 0.128]': 0.9,
-              '[0.128, 0.256]': 1.8,
-            },
-            pricingParams: ['textInputRange'],
-          },
-          name: 'textInput',
-          strategy: 'lookup',
-          unit: 'millionTokens',
-        },
-        {
-          lookup: {
-            prices: {
-              '[0, 0.032]': 3.6,
-              '[0.032, 0.128]': 5.4,
-              '[0.128, 0.256]': 10.8,
-            },
-            pricingParams: ['textInputRange'],
-          },
-          name: 'textOutput',
-          strategy: 'lookup',
-          unit: 'millionTokens',
-        },
-        { name: 'textInput_cacheRead', rate: 0.12, strategy: 'fixed', unit: 'millionTokens' },
-        {
-          lookup: { prices: { '1h': 0.017 }, pricingParams: ['ttl'] },
-          name: 'textInput_cacheWrite',
-          strategy: 'lookup',
-          unit: 'millionTokens',
-        },
-      ],
-    },
     releasedAt: '2026-02-15',
     settings: {
       extendParams: ['gpt5ReasoningEffort'],
@@ -255,6 +108,7 @@ const volcengineCodingPlanChatModels: AIChatModelCard[] = [
     id: 'MiniMax-M2.5',
     maxOutput: 131_072,
     organization: 'MiniMax',
+    releasedAt: '2026-02-12',
     type: 'chat',
   },
   {
@@ -269,6 +123,8 @@ const volcengineCodingPlanChatModels: AIChatModelCard[] = [
     enabled: true,
     id: 'glm-4.7',
     maxOutput: 131_072,
+    organization: 'Zhipu',
+    releasedAt: '2025-12-01',
     settings: {
       extendParams: ['enableReasoning'],
     },
@@ -286,6 +142,7 @@ const volcengineCodingPlanChatModels: AIChatModelCard[] = [
     enabled: true,
     id: 'deepseek-v3.2',
     maxOutput: 65_536,
+    releasedAt: '2025-12-01',
     settings: {
       extendParams: ['enableReasoning', 'reasoningBudgetToken'],
     },
@@ -305,6 +162,7 @@ const volcengineCodingPlanChatModels: AIChatModelCard[] = [
     enabled: true,
     id: 'kimi-k2.5',
     maxOutput: 32_768,
+    releasedAt: '2026-01-27',
     settings: {
       extendParams: ['enableReasoning'],
     },

@@ -16,6 +16,7 @@ const glmCodingPlanChatModels: AIChatModelCard[] = [
     id: 'GLM-5',
     maxOutput: 131_072,
     organization: 'Zhipu',
+    releasedAt: '2026-02-12',
     settings: {
       extendParams: ['enableReasoning'],
     },
@@ -33,6 +34,7 @@ const glmCodingPlanChatModels: AIChatModelCard[] = [
     id: 'GLM-5-Turbo',
     maxOutput: 131_072,
     organization: 'Zhipu',
+    releasedAt: '2026-02-12',
     settings: {
       extendParams: ['enableReasoning'],
     },
@@ -51,6 +53,7 @@ const glmCodingPlanChatModels: AIChatModelCard[] = [
     id: 'GLM-4.7',
     maxOutput: 131_072,
     organization: 'Zhipu',
+    releasedAt: '2025-12-01',
     settings: {
       extendParams: ['enableReasoning'],
     },
@@ -66,6 +69,7 @@ const glmCodingPlanChatModels: AIChatModelCard[] = [
     id: 'GLM-4.6',
     maxOutput: 65_536,
     organization: 'Zhipu',
+    releasedAt: '2025-12-01',
     type: 'chat',
   },
   {
@@ -78,6 +82,7 @@ const glmCodingPlanChatModels: AIChatModelCard[] = [
     id: 'GLM-4.5',
     maxOutput: 65_536,
     organization: 'Zhipu',
+    releasedAt: '2025-12-01',
     type: 'chat',
   },
   {
@@ -90,6 +95,7 @@ const glmCodingPlanChatModels: AIChatModelCard[] = [
     id: 'GLM-4.5-Air',
     maxOutput: 65_536,
     organization: 'Zhipu',
+    releasedAt: '2025-12-01',
     type: 'chat',
   },
 ];

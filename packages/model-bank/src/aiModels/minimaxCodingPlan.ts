@@ -16,6 +16,7 @@ const minimaxCodingPlanChatModels: AIChatModelCard[] = [
     id: 'MiniMax-M2.7',
     maxOutput: 131_072,
     organization: 'MiniMax',
+    releasedAt: '2026-03-18',
     settings: {
       extendParams: ['enableReasoning', 'reasoningBudgetToken'],
     },
@@ -32,6 +33,7 @@ const minimaxCodingPlanChatModels: AIChatModelCard[] = [
     id: 'MiniMax-M2.7-highspeed',
     maxOutput: 131_072,
     organization: 'MiniMax',
+    releasedAt: '2026-03-18',
     type: 'chat',
   },
   {
@@ -47,6 +49,7 @@ const minimaxCodingPlanChatModels: AIChatModelCard[] = [
     id: 'MiniMax-M2.5',
     maxOutput: 131_072,
     organization: 'MiniMax',
+    releasedAt: '2026-02-12',
     settings: {
       extendParams: ['enableReasoning', 'reasoningBudgetToken'],
     },
@@ -62,6 +65,7 @@ const minimaxCodingPlanChatModels: AIChatModelCard[] = [
     id: 'MiniMax-M2.5-highspeed',
     maxOutput: 131_072,
     organization: 'MiniMax',
+    releasedAt: '2026-02-12',
     type: 'chat',
   },
   {
@@ -74,6 +78,7 @@ const minimaxCodingPlanChatModels: AIChatModelCard[] = [
     id: 'MiniMax-M2.1',
     maxOutput: 131_072,
     organization: 'MiniMax',
+    releasedAt: '2025-12-23',
     type: 'chat',
   },
   {
@@ -86,6 +91,7 @@ const minimaxCodingPlanChatModels: AIChatModelCard[] = [
     id: 'MiniMax-M2',
     maxOutput: 131_072,
     organization: 'MiniMax',
+    releasedAt: '2025-12-23',
     type: 'chat',
   },
 ];

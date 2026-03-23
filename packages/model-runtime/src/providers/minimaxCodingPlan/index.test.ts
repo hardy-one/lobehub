@@ -5,7 +5,7 @@ import { testProvider } from '../../providerTestUtils';
 import { LobeMinimaxCodingPlanAI } from './index';
 
 const provider = ModelProvider.MinimaxCodingPlan;
-const defaultBaseURL = 'https://api.minimax.io/v1';
+const defaultBaseURL = 'https://api.minimaxi.com/v1';
 
 testProvider({
   Runtime: LobeMinimaxCodingPlanAI,

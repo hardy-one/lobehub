@@ -136,9 +136,6 @@ const bailianCodingPlanChatModels: AIChatModelCard[] = [
     id: 'MiniMax-M2.5',
     maxOutput: 131_072,
     organization: 'MiniMax',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
     type: 'chat',
   },
 ];

@@ -14,7 +14,7 @@ const KimiCodingPlan: ModelProviderCard = {
   settings: {
     disableBrowserRequest: true,
     proxyUrl: {
-      placeholder: 'https://api.moonshot.ai/v1',
+      placeholder: 'https://api.kimi.com/coding/v1',
     },
     responseAnimation: {
       speed: 2,

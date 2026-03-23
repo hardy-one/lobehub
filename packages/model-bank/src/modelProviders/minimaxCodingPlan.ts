@@ -14,7 +14,7 @@ const MinimaxCodingPlan: ModelProviderCard = {
   settings: {
     disableBrowserRequest: true,
     proxyUrl: {
-      placeholder: 'https://api.minimax.io/v1',
+      placeholder: 'https://api.minimaxi.com/v1',
     },
     responseAnimation: {
       speed: 2,

@@ -5,7 +5,7 @@ import { testProvider } from '../../providerTestUtils';
 import { LobeKimiCodingPlanAI } from './index';
 
 const provider = ModelProvider.KimiCodingPlan;
-const defaultBaseURL = 'https://api.moonshot.ai/v1';
+const defaultBaseURL = 'https://api.kimi.com/coding/v1';
 
 testProvider({
   Runtime: LobeKimiCodingPlanAI,

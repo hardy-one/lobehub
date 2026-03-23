@@ -4,7 +4,7 @@ import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactor
 import { processMultiProviderModelList } from '../../utils/modelParse';
 
 export const LobeKimiCodingPlanAI = createOpenAICompatibleRuntime({
-  baseURL: 'https://api.moonshot.ai/v1',
+  baseURL: 'https://api.kimi.com/coding/v1',
   chatCompletion: {
     handlePayload: (payload) => {
       const { model, thinking, ...rest } = payload;

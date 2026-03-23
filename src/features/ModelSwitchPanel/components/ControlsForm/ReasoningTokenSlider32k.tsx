@@ -6,8 +6,8 @@ import useMergeState from 'use-merge-value';
 const Kibi = 1024;
 const MAX_VALUE = 32 * Kibi; // 32768
 
-// Linear marks (in kibi units) with equal spacing
-const MARK_VALUES = [1, 2, 4, 8, 16, 32];
+// Mark values mapped by equal-spaced indices
+const MARK_TOKENS = [1, 2, 4, 8, 16, 32];
 
 interface ReasoningTokenSlider32kProps {
   defaultValue?: number;
@@ -23,18 +23,29 @@ const ReasoningTokenSlider32k = memo<ReasoningTokenSlider32kProps>(
       value,
     });
 
-    const [sliderValue, setSliderValue] = useMergeState(0, {
-      defaultValue: typeof defaultValue === 'undefined' ? 0 : defaultValue / Kibi,
-      value: typeof value === 'undefined' ? 0 : value / Kibi,
+    // Convert token value to index
+    const tokenToIndex = (t: number): number => {
+      const k = t / Kibi;
+      for (let i = 0; i < MARK_TOKENS.length - 1; i++) {
+        if (k <= MARK_TOKENS[i]) return i;
+      }
+      return MARK_TOKENS.length - 1;
+    };
+
+    const [sliderIndex, setSliderIndex] = useMergeState(0, {
+      defaultValue: typeof defaultValue === 'undefined' ? 0 : tokenToIndex(defaultValue),
+      value: typeof value === 'undefined' ? 0 : tokenToIndex(value),
     });
 
-    const marks = MARK_VALUES.reduce(
-      (acc, v) => {
-        acc[v] = `${v}k`;
-        return acc;
-      },
-      {} as Record<number, string>,
-    );
+    const marks = useMemo(() => {
+      return MARK_TOKENS.reduce(
+        (acc, token, index) => {
+          acc[index] = `${token}k`;
+          return acc;
+        },
+        {} as Record<number, string>,
+      );
+    }, []);
 
     const step = useMemo(() => {
       const current = token ?? 0;
@@ -51,14 +62,14 @@ const ReasoningTokenSlider32k = memo<ReasoningTokenSlider32kProps>(
         <Flexbox flex={1} style={{ minWidth: 200, maxWidth: 320 }}>
           <Slider
             marks={marks}
-            max={32}
-            min={1}
+            max={MARK_TOKENS.length - 1}
+            min={0}
             step={null}
             tooltip={{ open: false }}
-            value={sliderValue}
+            value={sliderIndex}
             onChange={(v) => {
-              setSliderValue(v);
-              setTokens(Math.min(v * Kibi, MAX_VALUE));
+              setSliderIndex(v);
+              setTokens(MARK_TOKENS[v] * Kibi);
             }}
           />
         </Flexbox>
@@ -74,7 +85,7 @@ const ReasoningTokenSlider32k = memo<ReasoningTokenSlider32kProps>(
               if (!e && e !== 0) return;
               const clampedValue = Math.min(Math.round(e as number), MAX_VALUE);
               setTokens(clampedValue);
-              setSliderValue(clampedValue / Kibi);
+              setSliderIndex(tokenToIndex(clampedValue));
             }}
           />
         </div>

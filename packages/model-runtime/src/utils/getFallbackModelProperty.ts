@@ -20,8 +20,15 @@ export const getModelPropertyWithFallback = async <T>(
       (m) => m.id === modelId && m.providerId === providerId,
     );
 
-    if (exactMatch && exactMatch[propertyName] !== undefined) {
-      return exactMatch[propertyName] as T;
+    if (exactMatch) {
+      if (exactMatch[propertyName] !== undefined) {
+        return exactMatch[propertyName] as T;
+      }
+
+      // pricing is provider-specific — do not fallback to other providers
+      if (propertyName === 'pricing') {
+        return undefined as T;
+      }
     }
   }
 

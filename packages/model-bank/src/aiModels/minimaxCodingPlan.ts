@@ -6,7 +6,6 @@ const minimaxCodingPlanChatModels: AIChatModelCard[] = [
   {
     abilities: {
       functionCall: true,
-      reasoning: true,
     },
     contextWindowTokens: 204_800,
     description:
@@ -17,9 +16,6 @@ const minimaxCodingPlanChatModels: AIChatModelCard[] = [
     maxOutput: 131_072,
     organization: 'MiniMax',
     releasedAt: '2026-03-18',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
     type: 'chat',
   },
   {
@@ -39,7 +35,6 @@ const minimaxCodingPlanChatModels: AIChatModelCard[] = [
   {
     abilities: {
       functionCall: true,
-      reasoning: true,
     },
     contextWindowTokens: 204_800,
     description:
@@ -50,9 +45,6 @@ const minimaxCodingPlanChatModels: AIChatModelCard[] = [
     maxOutput: 131_072,
     organization: 'MiniMax',
     releasedAt: '2026-02-12',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
     type: 'chat',
   },
   {

@@ -379,6 +379,21 @@ export class UpdaterManager {
    * electron-updater looks for {channel}-mac.yml
    */
   private configureUpdateProvider() {
+    // Hardy channel: use GitHub provider directly (no S3)
+    if (this.currentChannel === 'hardy') {
+      logger.info('Hardy channel: using GitHub provider');
+
+      autoUpdater.setFeedURL({
+        owner: 'hardy-one',
+        provider: 'github',
+        repo: 'lobe-release',
+      });
+
+      autoUpdater.allowPrerelease = true;
+      autoUpdater.channel = 'hardy';
+      return;
+    }
+
     const baseUrl = this.getBaseUpdateUrl();
     if (baseUrl) {
       const feedUrl = `${baseUrl}/${this.currentChannel}`;

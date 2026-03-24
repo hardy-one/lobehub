@@ -1,4 +1,4 @@
-export type UpdateChannel = 'stable' | 'nightly' | 'canary';
+export type UpdateChannel = 'stable' | 'nightly' | 'canary' | 'hardy';
 
 export interface ReleaseNoteInfo {
   /**

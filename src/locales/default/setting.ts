@@ -912,7 +912,9 @@ When I am ___, I need ___
   'tab.advanced.updateChannel.canaryDesc':
     'Triggered on every PR merge, multiple builds per day. Most unstable.',
   'tab.advanced.updateChannel.desc':
-    'By default, get notifications for stable updates. Nightly and Canary channels receive pre-release builds that may be unstable for production work.',
+    'By default, get notifications for stable updates. Nightly, Canary, and Hardy channels receive pre-release builds that may be unstable for production work.',
+  'tab.advanced.updateChannel.hardy': 'Hardy',
+  'tab.advanced.updateChannel.hardyDesc': 'Personal test build, not for production.',
   'tab.advanced.updateChannel.nightly': 'Nightly',
   'tab.advanced.updateChannel.nightlyDesc': 'Automated daily builds with the latest changes.',
   'tab.advanced.updateChannel.stable': 'Stable',

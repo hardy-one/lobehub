@@ -9,10 +9,12 @@ import type { SkillItem, SkillListItem, SkillResourceContent } from '@lobechat/t
 import type { CodeInterpreterToolName } from '@lobehub/market-sdk';
 import debug from 'debug';
 import { sha256 } from 'js-sha256';
+import mime from 'mime';
 
 import { AgentSkillModel } from '@/database/models/agentSkill';
 import { FileModel } from '@/database/models/file';
 import { UserModel } from '@/database/models/user';
+import { fileEnv } from '@/envs/file';
 import { filterBuiltinSkills } from '@/helpers/skillFilters';
 import { FileS3 } from '@/server/modules/S3';
 import { FileService } from '@/server/services/file';
@@ -228,63 +230,16 @@ class SkillServerRuntimeService implements SkillRuntimeService {
       const today = new Date().toISOString().split('T')[0];
       const key = `code-interpreter-exports/${today}/${this.topicId}/${filename}`;
 
-      // Step 1: Generate pre-signed upload URL
-      const uploadUrl = await s3.createPreSignedUrl(key);
-      log('Generated upload URL for key: %s', key);
+      // Infer Content-Type from filename
+      const contentType = mime.getType(filename) || 'application/octet-stream';
 
-      // Step 2: Call sandbox's exportFile tool with the upload URL
-      const market = this.marketService.market;
-      const response = await market.plugins.runBuildInTool(
-        'exportFile' as CodeInterpreterToolName,
-        { path, uploadUrl },
-        { topicId: this.topicId, userId: this.userId },
-      );
-
-      log('Sandbox exportFile response: %O', response);
-
-      if (!response.success) {
-        return {
-          filename,
-          success: false,
-        };
+      // Check if curl mode is enabled
+      if (fileEnv.S3_EXPORT_CURL_MODE) {
+        return await this.exportViaCurl(s3, key, path, filename, contentType);
       }
 
-      const result = response.data?.result;
-      const uploadSuccess = result?.success !== false;
-
-      if (!uploadSuccess) {
-        return {
-          filename,
-          success: false,
-        };
-      }
-
-      // Step 3: Get file metadata from S3
-      const metadata = await s3.getFileMetadata(key);
-      const fileSize = metadata.contentLength;
-      const mimeType = metadata.contentType || result?.mimeType || 'application/octet-stream';
-
-      // Step 4: Create persistent file record
-      const fileHash = sha256(key + Date.now().toString());
-
-      const { fileId, url } = await this.fileService.createFileRecord({
-        fileHash,
-        fileType: mimeType,
-        name: filename,
-        size: fileSize,
-        url: key, // Store S3 key
-      });
-
-      log('Created file record: fileId=%s, url=%s', fileId, url);
-
-      return {
-        fileId,
-        filename,
-        mimeType,
-        size: fileSize,
-        success: true,
-        url, // This is the permanent /f:id URL
-      };
+      // Default: use sandbox's exportFile tool
+      return await this.exportViaTool(s3, key, path, filename, contentType);
     } catch (error) {
       log('Error exporting file: %O', error);
       return {
@@ -293,6 +248,163 @@ class SkillServerRuntimeService implements SkillRuntimeService {
       };
     }
   };
+
+  /**
+   * Export file using sandbox's built-in exportFile tool
+   */
+  private async exportViaTool(
+    s3: FileS3,
+    key: string,
+    path: string,
+    filename: string,
+    contentType: string,
+  ): Promise<ExportFileResult> {
+    // Step 1: Generate pre-signed upload URL
+    const uploadUrl = await s3.createPreSignedUrl(key);
+    log('Generated upload URL for key: %s', key);
+
+    // Step 2: Call sandbox's exportFile tool with the upload URL
+    const market = this.marketService.market;
+    const response = await market.plugins.runBuildInTool(
+      'exportFile' as CodeInterpreterToolName,
+      { path, uploadUrl: uploadUrl! },
+      { topicId: this.topicId!, userId: this.userId },
+    );
+
+    log('Sandbox exportFile response: %O', response);
+
+    if (!response.success) {
+      return {
+        filename,
+        success: false,
+      };
+    }
+
+    const result = response.data?.result;
+    const uploadSuccess = result?.success !== false;
+
+    if (!uploadSuccess) {
+      return {
+        filename,
+        success: false,
+      };
+    }
+
+    return await this.createFileRecord(s3, key, filename, contentType, result?.mimeType);
+  }
+
+  /**
+   * Export file using curl command (compatibility mode for S3 providers with signature issues)
+   */
+  private async exportViaCurl(
+    s3: FileS3,
+    key: string,
+    path: string,
+    filename: string,
+    contentType: string,
+  ): Promise<ExportFileResult> {
+    log('Using curl mode for file export: %s', filename);
+
+    // Step 1: Generate pre-signed upload URL with Content-Type locked
+    const uploadUrl = await s3.createPreSignedUrl(key, contentType);
+    log('Generated upload URL for key: %s, Content-Type: %s', key, contentType);
+
+    const market = this.marketService.market;
+
+    // Step 2: Resolve to absolute path if needed
+    const realpathCommand = `realpath "${path}"`;
+    const realpathResponse = await market.plugins.runBuildInTool(
+      'runCommand' as CodeInterpreterToolName,
+      {
+        command: realpathCommand,
+        timeout: 5000,
+      } as any,
+      { topicId: this.topicId!, userId: this.userId },
+    );
+
+    // Use resolved path if successful, otherwise use original path
+    const absolutePath =
+      realpathResponse.success && realpathResponse.data?.result?.output?.trim()
+        ? realpathResponse.data.result.output.trim()
+        : path;
+
+    log('Resolved path: %s -> %s', path, absolutePath);
+
+    // Step 3: Use runCommand with curl to upload file to S3
+    const escapedUrl = uploadUrl.replaceAll("'", "'\\''");
+    const escapedPath = absolutePath.replaceAll("'", "'\\''");
+    const curlCommand = `curl -X PUT -H 'Content-Type: ${contentType}' --data-binary '@${escapedPath}' '${escapedUrl}'`;
+
+    log('Running curl upload command for file: %s', filename);
+
+    const response = await market.plugins.runBuildInTool(
+      'runCommand' as CodeInterpreterToolName,
+      {
+        command: curlCommand,
+        timeout: 60000,
+      } as any,
+      { topicId: this.topicId!, userId: this.userId },
+    );
+
+    log('Curl upload response: %O', response);
+
+    if (!response.success) {
+      return {
+        filename,
+        success: false,
+      };
+    }
+
+    // Check if curl actually succeeded (exit code 0)
+    const curlExitCode = response.data?.result?.exitCode;
+    if (curlExitCode !== 0 && curlExitCode !== undefined) {
+      log('curl failed with exit code %d: %s', curlExitCode, response.data?.result?.output);
+      return {
+        filename,
+        success: false,
+      };
+    }
+
+    return await this.createFileRecord(s3, key, filename, contentType);
+  }
+
+  /**
+   * Create file record after successful upload
+   */
+  private async createFileRecord(
+    s3: FileS3,
+    key: string,
+    filename: string,
+    contentType: string,
+    resultMimeType?: string,
+  ): Promise<ExportFileResult> {
+    // Get file metadata from S3
+    const metadata = await s3.getFileMetadata(key);
+    const fileSize = metadata.contentLength;
+    const mimeType = metadata.contentType || resultMimeType || contentType;
+
+    // Create persistent file record
+    const fileHash = sha256(key + Date.now().toString());
+
+    const { fileId, url } = await this.fileService.createFileRecord({
+      fileHash,
+      fileType: mimeType,
+      name: filename,
+      size: fileSize,
+      url: key, // Store S3 key
+    });
+
+    log('Created file record: fileId=%s, url=%s', fileId, url);
+
+    return {
+      fileId,
+      filename,
+      mimeType,
+      size: fileSize,
+      success: true,
+      url, // This is the permanent /f:id URL
+    };
+  }
 }
 
 /**

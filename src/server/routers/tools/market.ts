@@ -2,10 +2,12 @@ import { type CodeInterpreterToolName } from '@lobehub/market-sdk';
 import { TRPCError } from '@trpc/server';
 import debug from 'debug';
 import { sha256 } from 'js-sha256';
+import mime from 'mime';
 import { z } from 'zod';
 
 import { AgentSkillModel } from '@/database/models/agentSkill';
 import { FileModel } from '@/database/models/file';
+import { fileEnv } from '@/envs/file';
 import { type ToolCallContent } from '@/libs/mcp';
 import { authedProcedure, router } from '@/libs/trpc/lambda';
 import { marketUserInfo, serverDatabase, telemetry } from '@/libs/trpc/lambda/middleware';
@@ -635,6 +637,9 @@ export const marketRouter = router({
    * Export a file from sandbox and upload to S3, then create a persistent file record
    * This combines the previous getExportFileUploadUrl + execInSandbox + createFileRecord flow
    * Returns a permanent /f/:id URL instead of a temporary pre-signed URL
+   *
+   * When S3_EXPORT_CURL_MODE is enabled, uses curl for upload instead of sandbox's exportFile tool.
+   * This is a compatibility mode for S3 providers with signature issues.
    */
   exportAndUploadFile: marketToolProcedure
     .input(exportAndUploadFileSchema)
@@ -652,86 +657,16 @@ export const marketRouter = router({
         // Generate a unique key for the exported file
         const key = `code-interpreter-exports/${today}/${topicId}/${filename}`;
 
-        // Step 1: Generate pre-signed upload URL
-        const uploadUrl = await s3.createPreSignedUrl(key);
-        log('Generated upload URL for key: %s', key);
+        // Infer Content-Type from filename
+        const contentType = mime.getType(filename) || 'application/octet-stream';
 
-        // Step 2: Use MarketService from ctx
-        const market = ctx.marketService.market;
-
-        // Step 3: Call sandbox's exportFile tool with the upload URL
-        const response = await market.plugins.runBuildInTool(
-          'exportFile',
-          { path, uploadUrl },
-          { topicId, userId: ctx.userId },
-        );
-
-        log('Sandbox exportFile response: %O', response);
-
-        if (!response.success) {
-          const errorCode = response.error?.code;
-          const errorMessage = response.error?.message || 'Failed to export file from sandbox';
-
-          // Check for authentication errors and throw UNAUTHORIZED
-          if (
-            errorCode === 'invalid_token' ||
-            errorCode === 'token_expired' ||
-            errorCode === 'unauthorized' ||
-            errorMessage.toLowerCase().includes('invalid_token') ||
-            errorMessage.toLowerCase().includes('token expired')
-          ) {
-            throw new TRPCError({
-              code: 'UNAUTHORIZED',
-              message:
-                'Market authorization expired. An authorization dialog has been shown to the user. Please wait for the user to complete authorization and then retry the current task.',
-            });
-          }
-
-          return {
-            error: { message: errorMessage },
-            filename,
-            success: false,
-          } as ExportAndUploadFileResult;
+        // Check if curl mode is enabled
+        if (fileEnv.S3_EXPORT_CURL_MODE) {
+          return await exportViaCurl(s3, key, path, filename, contentType, ctx);
         }
 
-        const result = response.data?.result;
-        const uploadSuccess = result?.success !== false;
-
-        if (!uploadSuccess) {
-          return {
-            error: { message: result?.error || 'Failed to upload file from sandbox' },
-            filename,
-            success: false,
-          } as ExportAndUploadFileResult;
-        }
-
-        // Step 4: Get file metadata from S3 to verify upload and get actual size
-        const metadata = await s3.getFileMetadata(key);
-        const fileSize = metadata.contentLength;
-        const mimeType = metadata.contentType || result?.mimeType || 'application/octet-stream';
-
-        // Step 5: Create persistent file record using FileService
-        // Generate a simple hash from the key (since we don't have the actual file content)
-        const fileHash = sha256(key + Date.now().toString());
-
-        const { fileId, url } = await ctx.fileService.createFileRecord({
-          fileHash,
-          fileType: mimeType,
-          name: filename,
-          size: fileSize,
-          url: key, // Store S3 key
-        });
-
-        log('Created file record: fileId=%s, url=%s', fileId, url);
-
-        return {
-          fileId,
-          filename,
-          mimeType,
-          size: fileSize,
-          success: true,
-          url, // This is the permanent /f/:id URL
-        } as ExportAndUploadFileResult;
+        // Default: use sandbox's exportFile tool
+        return await exportViaTool(s3, key, path, filename, contentType, ctx);
       } catch (error) {
         log('Error in exportAndUploadFile: %O', error);
 
@@ -763,3 +698,208 @@ export const marketRouter = router({
       }
     }),
 });
+
+// ============================== Helper Functions for Export ==============================
+
+/**
+ * Export file using sandbox's built-in exportFile tool
+ */
+async function exportViaTool(
+  s3: FileS3,
+  key: string,
+  path: string,
+  filename: string,
+  contentType: string,
+  ctx: { fileService: FileService; marketService: MarketService; userId: string },
+): Promise<ExportAndUploadFileResult> {
+  // Step 1: Generate pre-signed upload URL
+  const uploadUrl = await s3.createPreSignedUrl(key);
+  log('Generated upload URL for key: %s', key);
+
+  // Step 2: Call sandbox's exportFile tool with the upload URL
+  const market = ctx.marketService.market;
+  const response = await market.plugins.runBuildInTool(
+    'exportFile',
+    { path, uploadUrl },
+    { topicId: key.split('/')[3], userId: ctx.userId }, // Extract topicId from key
+  );
+
+  log('Sandbox exportFile response: %O', response);
+
+  if (!response.success) {
+    const errorCode = response.error?.code;
+    const errorMessage = response.error?.message || 'Failed to export file from sandbox';
+
+    // Check for authentication errors and throw UNAUTHORIZED
+    if (
+      errorCode === 'invalid_token' ||
+      errorCode === 'token_expired' ||
+      errorCode === 'unauthorized' ||
+      errorMessage.toLowerCase().includes('invalid_token') ||
+      errorMessage.toLowerCase().includes('token expired')
+    ) {
+      throw new TRPCError({
+        code: 'UNAUTHORIZED',
+        message:
+          'Market authorization expired. An authorization dialog has been shown to the user. Please wait for the user to complete authorization and then retry the current task.',
+      });
+    }
+
+    return {
+      error: { message: errorMessage },
+      filename,
+      success: false,
+    } as ExportAndUploadFileResult;
+  }
+
+  const result = response.data?.result;
+  const uploadSuccess = result?.success !== false;
+
+  if (!uploadSuccess) {
+    return {
+      error: { message: result?.error || 'Failed to upload file from sandbox' },
+      filename,
+      success: false,
+    } as ExportAndUploadFileResult;
+  }
+
+  return await createFileRecord(s3, key, filename, contentType, ctx, result?.mimeType);
+}
+
+/**
+ * Export file using curl command (compatibility mode for S3 providers with signature issues)
+ */
+async function exportViaCurl(
+  s3: FileS3,
+  key: string,
+  path: string,
+  filename: string,
+  contentType: string,
+  ctx: { fileService: FileService; marketService: MarketService; userId: string },
+): Promise<ExportAndUploadFileResult> {
+  log('Using curl mode for file export: %s', filename);
+
+  const topicId = key.split('/')[3]; // Extract topicId from key
+
+  // Step 1: Generate pre-signed upload URL with Content-Type locked
+  const uploadUrl = await s3.createPreSignedUrl(key, contentType);
+  log('Generated upload URL for key: %s, Content-Type: %s', key, contentType);
+
+  const market = ctx.marketService.market;
+
+  // Step 2: Resolve to absolute path if needed
+  const realpathCommand = `realpath "${path}"`;
+  const realpathResponse = await market.plugins.runBuildInTool(
+    'runCommand',
+    {
+      command: realpathCommand,
+      timeout: 5000,
+    } as any,
+    { topicId, userId: ctx.userId },
+  );
+
+  // Use resolved path if successful, otherwise use original path
+  const absolutePath =
+    realpathResponse.success && realpathResponse.data?.result?.output?.trim()
+      ? realpathResponse.data.result.output.trim()
+      : path;
+
+  log('Resolved path: %s -> %s', path, absolutePath);
+
+  // Step 3: Use runCommand with curl to upload file to S3
+  const escapedUrl = uploadUrl.replaceAll("'", "'\\''");
+  const escapedPath = absolutePath.replaceAll("'", "'\\''");
+  const curlCommand = `curl -X PUT -H 'Content-Type: ${contentType}' --data-binary '@${escapedPath}' '${escapedUrl}'`;
+
+  log('Running curl upload command for file: %s', filename);
+
+  const curlResponse = await market.plugins.runBuildInTool(
+    'runCommand',
+    {
+      command: curlCommand,
+      timeout: 60000,
+    } as any,
+    { topicId, userId: ctx.userId },
+  );
+
+  log('Curl upload response: %O', curlResponse);
+
+  if (!curlResponse.success) {
+    const errorMessage = curlResponse.error?.message || 'Failed to upload file via curl';
+
+    // Check for authentication errors and throw UNAUTHORIZED
+    const errorCode = curlResponse.error?.code;
+    if (
+      errorCode === 'invalid_token' ||
+      errorCode === 'token_expired' ||
+      errorCode === 'unauthorized' ||
+      errorMessage.toLowerCase().includes('invalid_token') ||
+      errorMessage.toLowerCase().includes('token expired')
+    ) {
+      throw new TRPCError({
+        code: 'UNAUTHORIZED',
+        message:
+          'Market authorization expired. An authorization dialog has been shown to the user. Please wait for the user to complete authorization and then retry the current task.',
+      });
+    }
+
+    return {
+      error: { message: errorMessage },
+      filename,
+      success: false,
+    } as ExportAndUploadFileResult;
+  }
+
+  // Check if curl actually succeeded (exit code 0)
+  const curlExitCode = curlResponse.data?.result?.exitCode;
+  if (curlExitCode !== 0 && curlExitCode !== undefined) {
+    return {
+      error: {
+        message: `curl failed with exit code ${curlExitCode}: ${curlResponse.data?.result?.output || 'unknown error'}`,
+      },
+      filename,
+      success: false,
+    } as ExportAndUploadFileResult;
+  }
+
+  return await createFileRecord(s3, key, filename, contentType, ctx);
+}
+
+/**
+ * Create file record after successful upload
+ */
+async function createFileRecord(
+  s3: FileS3,
+  key: string,
+  filename: string,
+  contentType: string,
+  ctx: { fileService: FileService },
+  resultMimeType?: string,
+): Promise<ExportAndUploadFileResult> {
+  // Get file metadata from S3 to verify upload and get actual size
+  const metadata = await s3.getFileMetadata(key);
+  const fileSize = metadata.contentLength;
+  const mimeType = metadata.contentType || resultMimeType || contentType;
+
+  // Create persistent file record using FileService
+  const fileHash = sha256(key + Date.now().toString());
+
+  const { fileId, url } = await ctx.fileService.createFileRecord({
+    fileHash,
+    fileType: mimeType,
+    name: filename,
+    size: fileSize,
+    url: key, // Store S3 key
+  });
+
+  log('Created file record: fileId=%s, url=%s', fileId, url);
+
+  return {
+    fileId,
+    filename,
+    mimeType,
+    size: fileSize,
+    success: true,
+    url, // This is the permanent /f/:id URL
+  } as ExportAndUploadFileResult;
+}

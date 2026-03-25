@@ -305,14 +305,10 @@ class SkillServerRuntimeService implements SkillRuntimeService {
   ): Promise<ExportFileResult> {
     log('Using curl mode for file export: %s', filename);
 
-    // Step 1: Generate pre-signed upload URL with Content-Type locked
-    const uploadUrl = await s3.createPreSignedUrl(key, contentType);
-    log('Generated upload URL for key: %s, Content-Type: %s', key, contentType);
-
     const market = this.marketService.market;
 
-    // Step 2: Resolve to absolute path if needed
-    const realpathCommand = `realpath "${path}"`;
+    // Step 1: Resolve to absolute path and verify file exists
+    const realpathCommand = `realpath "${path}" && wc -c < "${path}"`;
     const realpathResponse = await market.plugins.runBuildInTool(
       'runCommand' as CodeInterpreterToolName,
       {
@@ -322,13 +318,41 @@ class SkillServerRuntimeService implements SkillRuntimeService {
       { topicId: this.topicId!, userId: this.userId },
     );
 
-    // Use resolved path if successful, otherwise use original path
-    const absolutePath =
-      realpathResponse.success && realpathResponse.data?.result?.output?.trim()
-        ? realpathResponse.data.result.output.trim()
-        : path;
+    if (!realpathResponse.success) {
+      return {
+        error: { message: 'Failed to resolve file path or file does not exist' },
+        filename,
+        success: false,
+      };
+    }
 
-    log('Resolved path: %s -> %s', path, absolutePath);
+    const output = realpathResponse.data?.result?.output || '';
+    const lines = output.trim().split('\n');
+
+    if (lines.length < 2) {
+      return {
+        error: { message: 'Failed to get file information' },
+        filename,
+        success: false,
+      };
+    }
+
+    const absolutePath = lines[0].trim();
+    const expectedFileSize = parseInt(lines[1].trim(), 10);
+
+    log('Resolved path: %s -> %s, size: %d bytes', path, absolutePath, expectedFileSize);
+
+    if (expectedFileSize === 0) {
+      return {
+        error: { message: 'File is empty (0 bytes)' },
+        filename,
+        success: false,
+      };
+    }
+
+    // Step 2: Generate pre-signed upload URL with Content-Type locked
+    const uploadUrl = await s3.createPreSignedUrl(key, contentType);
+    log('Generated upload URL for key: %s, Content-Type: %s', key, contentType);
 
     // Step 3: Use runCommand with curl to upload file to S3
     const escapedUrl = uploadUrl.replaceAll("'", "'\\''");
@@ -365,7 +389,8 @@ class SkillServerRuntimeService implements SkillRuntimeService {
       };
     }
 
-    return await this.createFileRecord(s3, key, filename, contentType);
+    // Step 4: Verify upload by checking actual file size on S3
+    return await this.createFileRecord(s3, key, filename, contentType, undefined, expectedFileSize);
   }
 
   /**
@@ -377,11 +402,21 @@ class SkillServerRuntimeService implements SkillRuntimeService {
     filename: string,
     contentType: string,
     resultMimeType?: string,
+    expectedFileSize?: number,
   ): Promise<ExportFileResult> {
     // Get file metadata from S3
     const metadata = await s3.getFileMetadata(key);
     const fileSize = metadata.contentLength;
     const mimeType = metadata.contentType || resultMimeType || contentType;
+
+    // Verify file size if expected size was provided (curl mode)
+    if (expectedFileSize !== undefined && fileSize !== expectedFileSize) {
+      log('File size mismatch: expected %d bytes, got %d bytes', expectedFileSize, fileSize);
+      return {
+        filename,
+        success: false,
+      };
+    }
 
     // Create persistent file record
     const fileHash = sha256(key + Date.now().toString());

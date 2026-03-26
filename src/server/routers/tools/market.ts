@@ -821,7 +821,10 @@ async function exportViaCurl(
 
   console.log('[curl export] stat response:', JSON.stringify(statResponse));
 
-  if (!statResponse.success || !statResponse.data?.result?.output?.trim()) {
+  const statOutput = statResponse.data?.result?.stdout?.trim();
+  console.log('[curl export] statOutput:', statOutput);
+
+  if (!statResponse.success || !statOutput) {
     console.log('[curl export] file not found, path:', path);
     return {
       error: { message: `File not found: ${path}` },
@@ -830,7 +833,7 @@ async function exportViaCurl(
     } as ExportAndUploadFileResult;
   }
 
-  const fileSize = parseInt(statResponse.data.result.output.trim(), 10);
+  const fileSize = parseInt(statOutput, 10);
   console.log('[curl export] file size:', fileSize, 'bytes');
 
   if (fileSize === 0) {

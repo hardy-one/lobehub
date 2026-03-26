@@ -844,7 +844,11 @@ async function exportViaCurl(
     } as ExportAndUploadFileResult;
   }
 
-  // Step 2: Use curl to upload file to S3
+  // Step 2: Generate pre-signed upload URL
+  const uploadUrl = await s3.createPreSignedUrl(key);
+  console.log('[curl export] Generated upload URL:', uploadUrl);
+
+  // Step 3: Use curl to upload file to S3
   const curlCommand = `curl -X PUT "${uploadUrl}" -H "Content-Type: ${contentType}" -d @${path}`;
   console.log('[curl export] Full curl command:', curlCommand);
   console.log('[curl export] Running curl command for file:', filename);

@@ -662,11 +662,11 @@ export const marketRouter = router({
 
         // Check if curl mode is enabled
         if (fileEnv.S3_EXPORT_CURL_MODE) {
-          return await exportViaCurl(s3, key, path, filename, contentType, ctx);
+          return await exportViaCurl(s3, key, path, filename, contentType, ctx, topicId);
         }
 
         // Default: use sandbox's exportFile tool
-        return await exportViaTool(s3, key, path, filename, contentType, ctx);
+        return await exportViaTool(s3, key, path, filename, contentType, ctx, topicId);
       } catch (error) {
         log('Error in exportAndUploadFile: %O', error);
 
@@ -711,6 +711,7 @@ async function exportViaTool(
   filename: string,
   contentType: string,
   ctx: { fileService: FileService; marketService: MarketService; userId: string },
+  topicId: string,
 ): Promise<ExportAndUploadFileResult> {
   // Step 1: Generate pre-signed upload URL
   const uploadUrl = await s3.createPreSignedUrl(key);
@@ -721,7 +722,7 @@ async function exportViaTool(
   const response = await market.plugins.runBuildInTool(
     'exportFile',
     { path, uploadUrl },
-    { topicId: key.split('/')[3], userId: ctx.userId }, // Extract topicId from key
+    { topicId, userId: ctx.userId },
   );
 
   log('Sandbox exportFile response: %O', response);
@@ -776,10 +777,10 @@ async function exportViaCurl(
   filename: string,
   contentType: string,
   ctx: { fileService: FileService; marketService: MarketService; userId: string },
+  topicId: string,
 ): Promise<ExportAndUploadFileResult> {
-  console.log('[curl export] Starting export:', { filename, path });
+  console.log('[curl export] Starting export:', { filename, path, topicId });
 
-  const topicId = key.split('/')[3]; // Extract topicId from key
   const market = ctx.marketService.market;
 
   console.log('[curl export] topicId:', topicId);

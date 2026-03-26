@@ -192,43 +192,56 @@ export class ServerSandboxService implements ISandboxService {
     filename: string,
     contentType: string,
   ): Promise<SandboxExportFileResult> {
-    log('Using curl mode for file export: %s', filename);
+    log('Using curl mode for file export: %s from path: %s', filename, path);
 
     // Step 1: Resolve to absolute path and verify file exists
     // curl --data-binary requires absolute path to work correctly
-    const realpathCommand = `realpath "${path}" && wc -c < "${path}"`;
-    const realpathResponse = await this.marketService.getSDK().plugins.runBuildInTool(
-      'runCommand',
-      {
-        command: realpathCommand,
-        timeout: 5000,
-      } as any,
-      { topicId: this.topicId, userId: this.userId },
-    );
+    // Try original path first, then try $HOME/{path} for relative paths
+    const isRelativePath = !path.startsWith('/');
+    const commands = isRelativePath
+      ? [
+          `realpath "${path}" 2>/dev/null && wc -c < "${path}" 2>/dev/null`,
+          `realpath "$HOME/${path}" 2>/dev/null && wc -c < "$HOME/${path}" 2>/dev/null`,
+        ]
+      : [`realpath "${path}" 2>/dev/null && wc -c < "${path}" 2>/dev/null`];
 
-    if (!realpathResponse.success) {
+    let absolutePath: string | undefined;
+    let expectedFileSize: number | undefined;
+    let lastError = 'Failed to resolve file path or file does not exist';
+
+    for (const cmd of commands) {
+      const response = await this.marketService.getSDK().plugins.runBuildInTool(
+        'runCommand',
+        {
+          command: cmd,
+          timeout: 5000,
+        } as any,
+        { topicId: this.topicId, userId: this.userId },
+      );
+
+      if (response.success) {
+        const output = response.data?.result?.output || '';
+        const lines = output.trim().split('\n');
+
+        if (lines.length >= 2 && lines[0].trim() && lines[1].trim()) {
+          absolutePath = lines[0].trim();
+          expectedFileSize = parseInt(lines[1].trim(), 10);
+          log('Resolved path: %s -> %s, size: %d bytes', path, absolutePath, expectedFileSize);
+          break;
+        }
+      } else {
+        lastError = response.error?.message || lastError;
+      }
+    }
+
+    if (!absolutePath || expectedFileSize === undefined) {
+      log('Failed to resolve path %s, tried commands: %s', path, commands.join('; '));
       return {
-        error: { message: 'Failed to resolve file path or file does not exist' },
+        error: { message: `File not found: ${path}. Tried relative path and $HOME/${path}` },
         filename,
         success: false,
       };
     }
-
-    const output = realpathResponse.data?.result?.output || '';
-    const lines = output.trim().split('\n');
-
-    if (lines.length < 2) {
-      return {
-        error: { message: 'Failed to get file information' },
-        filename,
-        success: false,
-      };
-    }
-
-    const absolutePath = lines[0].trim();
-    const expectedFileSize = parseInt(lines[1].trim(), 10);
-
-    log('Resolved path: %s -> %s, size: %d bytes', path, absolutePath, expectedFileSize);
 
     if (expectedFileSize === 0) {
       return {

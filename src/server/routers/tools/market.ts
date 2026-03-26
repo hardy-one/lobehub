@@ -777,50 +777,25 @@ async function exportViaCurl(
   contentType: string,
   ctx: { fileService: FileService; marketService: MarketService; userId: string },
 ): Promise<ExportAndUploadFileResult> {
-  log('Using curl mode for file export: %s from path: %s', filename, path);
+  console.log('[curl export] Starting export:', { filename, path });
 
   const topicId = key.split('/')[3]; // Extract topicId from key
   const market = ctx.marketService.market;
 
-  // Step 1: Resolve to absolute path and verify file exists
-  // Try original path first, then try common sandbox directories for relative paths
-  const isRelativePath = !path.startsWith('/');
-  const commands = isRelativePath
-    ? [
-        `realpath "${path}" 2>/dev/null && wc -c < "${path}" 2>/dev/null`,
-        `realpath "/workspace/${path}" 2>/dev/null && wc -c < "/workspace/${path}" 2>/dev/null`,
-        `realpath "$HOME/${path}" 2>/dev/null && wc -c < "$HOME/${path}" 2>/dev/null`,
-      ]
-    : [`realpath "${path}" 2>/dev/null && wc -c < "${path}" 2>/dev/null`];
+  // Step 1: Verify file exists
+  const statResponse = await market.plugins.runBuildInTool(
+    'runCommand',
+    {
+      command: `stat -c%s "${path}" 2>&1`,
+      timeout: 5000,
+    } as any,
+    { topicId, userId: ctx.userId },
+  );
 
-  let absolutePath: string | undefined;
-  let expectedFileSize: number | undefined;
+  console.log('[curl export] stat response:', JSON.stringify(statResponse));
 
-  for (const cmd of commands) {
-    const response = await market.plugins.runBuildInTool(
-      'runCommand',
-      {
-        command: cmd,
-        timeout: 5000,
-      } as any,
-      { topicId, userId: ctx.userId },
-    );
-
-    if (response.success) {
-      const output = response.data?.result?.output || '';
-      const lines = output.trim().split('\n');
-
-      if (lines.length >= 2 && lines[0].trim() && lines[1].trim()) {
-        absolutePath = lines[0].trim();
-        expectedFileSize = parseInt(lines[1].trim(), 10);
-        log('Resolved path: %s -> %s, size: %d bytes', path, absolutePath, expectedFileSize);
-        break;
-      }
-    }
-  }
-
-  if (!absolutePath || expectedFileSize === undefined) {
-    log('Failed to resolve path %s, tried commands: %s', path, commands.join('; '));
+  if (!statResponse.success || !statResponse.data?.result?.output?.trim()) {
+    console.log('[curl export] file not found, path:', path);
     return {
       error: { message: `File not found: ${path}` },
       filename,
@@ -828,7 +803,10 @@ async function exportViaCurl(
     } as ExportAndUploadFileResult;
   }
 
-  if (expectedFileSize === 0) {
+  const fileSize = parseInt(statResponse.data.result.output.trim(), 10);
+  console.log('[curl export] file size:', fileSize, 'bytes');
+
+  if (fileSize === 0) {
     return {
       error: { message: 'File is empty (0 bytes)' },
       filename,
@@ -836,16 +814,9 @@ async function exportViaCurl(
     } as ExportAndUploadFileResult;
   }
 
-  // Step 2: Generate pre-signed upload URL with Content-Type locked
-  const uploadUrl = await s3.createPreSignedUrl(key, contentType);
-  log('Generated upload URL for key: %s, Content-Type: %s', key, contentType);
-
-  // Step 3: Use runCommand with curl to upload file to S3
-  const escapedUrl = uploadUrl.replaceAll("'", "'\\''");
-  const escapedPath = absolutePath.replaceAll("'", "'\\''");
-  const curlCommand = `curl -X PUT -H 'Content-Type: ${contentType}' --data-binary '@${escapedPath}' '${escapedUrl}'`;
-
-  log('Running curl upload command for file: %s', filename);
+  // Step 2: Use curl to upload file to S3
+  const curlCommand = `curl -X PUT "${uploadUrl}" -H "Content-Type: ${contentType}" -d @${path}`;
+  console.log('[curl export] Running curl command for file:', filename);
 
   const curlResponse = await market.plugins.runBuildInTool(
     'runCommand',
@@ -856,7 +827,7 @@ async function exportViaCurl(
     { topicId, userId: ctx.userId },
   );
 
-  log('Curl upload response: %O', curlResponse);
+  console.log('[curl export] curl response:', JSON.stringify(curlResponse));
 
   if (!curlResponse.success) {
     const errorMessage = curlResponse.error?.message || 'Failed to upload file via curl';
@@ -896,8 +867,8 @@ async function exportViaCurl(
     } as ExportAndUploadFileResult;
   }
 
-  // Step 4: Verify upload by checking actual file size on S3
-  return await createFileRecord(s3, key, filename, contentType, ctx, undefined, expectedFileSize);
+  // Step 3: Create file record
+  return await createFileRecord(s3, key, filename, contentType, ctx);
 }
 
 /**
@@ -910,26 +881,11 @@ async function createFileRecord(
   contentType: string,
   ctx: { fileService: FileService },
   resultMimeType?: string,
-  expectedFileSize?: number,
 ): Promise<ExportAndUploadFileResult> {
-  // Get file metadata from S3 to verify upload and get actual size
   const metadata = await s3.getFileMetadata(key);
   const fileSize = metadata.contentLength;
   const mimeType = metadata.contentType || resultMimeType || contentType;
 
-  // Verify file size if expected size was provided (curl mode)
-  if (expectedFileSize !== undefined && fileSize !== expectedFileSize) {
-    log('File size mismatch: expected %d bytes, got %d bytes', expectedFileSize, fileSize);
-    return {
-      error: {
-        message: `File size mismatch: expected ${expectedFileSize} bytes, but uploaded ${fileSize} bytes`,
-      },
-      filename,
-      success: false,
-    } as ExportAndUploadFileResult;
-  }
-
-  // Create persistent file record using FileService
   const fileHash = sha256(key + Date.now().toString());
 
   const { fileId, url } = await ctx.fileService.createFileRecord({
@@ -937,10 +893,10 @@ async function createFileRecord(
     fileType: mimeType,
     name: filename,
     size: fileSize,
-    url: key, // Store S3 key
+    url: key,
   });
 
-  log('Created file record: fileId=%s, url=%s', fileId, url);
+  console.log('[curl export] created file record:', { fileId, url, fileSize });
 
   return {
     fileId,
@@ -948,6 +904,6 @@ async function createFileRecord(
     mimeType,
     size: fileSize,
     success: true,
-    url, // This is the permanent /f/:id URL
+    url,
   } as ExportAndUploadFileResult;
 }

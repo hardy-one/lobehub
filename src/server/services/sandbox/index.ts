@@ -194,49 +194,20 @@ export class ServerSandboxService implements ISandboxService {
   ): Promise<SandboxExportFileResult> {
     log('Using curl mode for file export: %s from path: %s', filename, path);
 
-    // Step 1: Resolve to absolute path and verify file exists
-    // curl --data-binary requires absolute path to work correctly
-    // Try original path first, then try common sandbox directories for relative paths
-    const isRelativePath = !path.startsWith('/');
-    const commands = isRelativePath
-      ? [
-          `realpath "${path}" 2>/dev/null && wc -c < "${path}" 2>/dev/null`,
-          `realpath "/workspace/${path}" 2>/dev/null && wc -c < "/workspace/${path}" 2>/dev/null`,
-          `realpath "$HOME/${path}" 2>/dev/null && wc -c < "$HOME/${path}" 2>/dev/null`,
-        ]
-      : [`realpath "${path}" 2>/dev/null && wc -c < "${path}" 2>/dev/null`];
+    // Step 1: Verify file exists
+    const statResponse = await this.marketService.getSDK().plugins.runBuildInTool(
+      'runCommand',
+      {
+        command: `stat -c%s "${path}" 2>&1`,
+        timeout: 5000,
+      } as any,
+      { topicId: this.topicId, userId: this.userId },
+    );
 
-    let absolutePath: string | undefined;
-    let expectedFileSize: number | undefined;
-    let lastError = 'Failed to resolve file path or file does not exist';
+    console.log('[curl export] stat response:', JSON.stringify(statResponse));
 
-    for (const cmd of commands) {
-      const response = await this.marketService.getSDK().plugins.runBuildInTool(
-        'runCommand',
-        {
-          command: cmd,
-          timeout: 5000,
-        } as any,
-        { topicId: this.topicId, userId: this.userId },
-      );
-
-      if (response.success) {
-        const output = response.data?.result?.output || '';
-        const lines = output.trim().split('\n');
-
-        if (lines.length >= 2 && lines[0].trim() && lines[1].trim()) {
-          absolutePath = lines[0].trim();
-          expectedFileSize = parseInt(lines[1].trim(), 10);
-          log('Resolved path: %s -> %s, size: %d bytes', path, absolutePath, expectedFileSize);
-          break;
-        }
-      } else {
-        lastError = response.error?.message || lastError;
-      }
-    }
-
-    if (!absolutePath || expectedFileSize === undefined) {
-      log('Failed to resolve path %s, tried commands: %s', path, commands.join('; '));
+    if (!statResponse.success || !statResponse.data?.result?.output?.trim()) {
+      console.log('[curl export] file not found or stat failed, path:', path);
       return {
         error: { message: `File not found: ${path}` },
         filename,
@@ -244,7 +215,10 @@ export class ServerSandboxService implements ISandboxService {
       };
     }
 
-    if (expectedFileSize === 0) {
+    const fileSize = parseInt(statResponse.data.result.output.trim(), 10);
+    console.log('[curl export] file size:', fileSize, 'bytes');
+
+    if (fileSize === 0) {
       return {
         error: { message: 'File is empty (0 bytes)' },
         filename,
@@ -256,10 +230,8 @@ export class ServerSandboxService implements ISandboxService {
     const uploadUrl = await s3.createPreSignedUrl(key, contentType);
     log('Generated upload URL for key: %s, Content-Type: %s', key, contentType);
 
-    // Step 3: Use runCommand with curl to upload file to S3
-    const escapedUrl = uploadUrl.replaceAll("'", "'\\''");
-    const escapedPath = absolutePath.replaceAll("'", "'\\''");
-    const curlCommand = `curl -X PUT -H 'Content-Type: ${contentType}' --data-binary '@${escapedPath}' '${escapedUrl}'`;
+    // Step 2: Use curl to upload file to S3
+    const curlCommand = `curl -X PUT "${uploadUrl}" -H "Content-Type: ${contentType}" -d @${path}`;
 
     log('Running curl upload command for file: %s', filename);
 
@@ -294,8 +266,8 @@ export class ServerSandboxService implements ISandboxService {
       };
     }
 
-    // Step 4: Verify upload by checking actual file size on S3
-    return await this.createFileRecord(s3, key, filename, contentType, undefined, expectedFileSize);
+    // Step 4: Create file record
+    return await this.createFileRecord(s3, key, filename, contentType);
   }
 
   /**
@@ -307,24 +279,35 @@ export class ServerSandboxService implements ISandboxService {
     filename: string,
     contentType: string,
     resultMimeType?: string,
-    expectedFileSize?: number,
   ): Promise<SandboxExportFileResult> {
-    // Get file metadata from S3 to verify upload and get actual size
+    // Get file metadata from S3
     const metadata = await s3.getFileMetadata(key);
     const fileSize = metadata.contentLength;
     const mimeType = metadata.contentType || resultMimeType || contentType;
 
-    // Verify file size if expected size was provided (curl mode)
-    if (expectedFileSize !== undefined && fileSize !== expectedFileSize) {
-      log('File size mismatch: expected %d bytes, got %d bytes', expectedFileSize, fileSize);
-      return {
-        error: {
-          message: `File size mismatch: expected ${expectedFileSize} bytes, but uploaded ${fileSize} bytes`,
-        },
-        filename,
-        success: false,
-      };
-    }
+    // Create persistent file record using FileService
+    const fileHash = sha256(key + Date.now().toString());
+
+    const { fileId, url } = await this.fileService.createFileRecord({
+      fileHash,
+      fileType: mimeType,
+      name: filename,
+      size: fileSize,
+      url: key, // Store S3 key
+    });
+
+    console.log('[curl export] created file record:', { fileId, url, fileSize });
+
+    return {
+      fileId,
+      filename,
+      mimeType,
+      size: fileSize,
+      success: true,
+      url,
+    };
+  }
+}
 
     // Create persistent file record using FileService
     const fileHash = sha256(key + Date.now().toString());

@@ -206,7 +206,10 @@ export class ServerSandboxService implements ISandboxService {
 
     console.log('[curl export] stat response:', JSON.stringify(statResponse));
 
-    if (!statResponse.success || !statResponse.data?.result?.output?.trim()) {
+    const statOutput = statResponse.data?.result?.stdout?.trim();
+    console.log('[curl export] statOutput:', statOutput);
+
+    if (!statResponse.success || !statOutput) {
       console.log('[curl export] file not found or stat failed, path:', path);
       return {
         error: { message: `File not found: ${path}` },
@@ -215,7 +218,7 @@ export class ServerSandboxService implements ISandboxService {
       };
     }
 
-    const fileSize = parseInt(statResponse.data.result.output.trim(), 10);
+    const fileSize = parseInt(statOutput, 10);
     console.log('[curl export] file size:', fileSize, 'bytes');
 
     if (fileSize === 0) {
@@ -231,7 +234,7 @@ export class ServerSandboxService implements ISandboxService {
     log('Generated upload URL for key: %s, Content-Type: %s', key, contentType);
 
     // Step 2: Use curl to upload file to S3
-    const curlCommand = `curl -X PUT "${uploadUrl}" -H "Content-Type: ${contentType}" -d @${path}`;
+    const curlCommand = `curl -X PUT "${uploadUrl}" -H "Content-Type: ${contentType}" --data-binary @${path}`;
 
     log('Running curl upload command for file: %s', filename);
 
@@ -259,7 +262,7 @@ export class ServerSandboxService implements ISandboxService {
     if (curlExitCode !== 0 && curlExitCode !== undefined) {
       return {
         error: {
-          message: `curl failed with exit code ${curlExitCode}: ${response.data?.result?.output || 'unknown error'}`,
+          message: `curl failed with exit code ${curlExitCode}: ${response.data?.result?.stdout || 'unknown error'}`,
         },
         filename,
         success: false,

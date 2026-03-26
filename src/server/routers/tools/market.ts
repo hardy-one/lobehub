@@ -782,7 +782,33 @@ async function exportViaCurl(
   const topicId = key.split('/')[3]; // Extract topicId from key
   const market = ctx.marketService.market;
 
+  console.log('[curl export] topicId:', topicId);
+
+  // Step 0: List files in current directory and /workspace/
+  console.log('[curl export] Listing current directory...');
+  const lsResponse = await market.plugins.runBuildInTool(
+    'runCommand',
+    {
+      command: 'ls -la 2>&1',
+      timeout: 5000,
+    } as any,
+    { topicId, userId: ctx.userId },
+  );
+  console.log('[curl export] ls -la response:', JSON.stringify(lsResponse));
+
+  console.log('[curl export] Listing /workspace/ directory...');
+  const lsWorkspaceResponse = await market.plugins.runBuildInTool(
+    'runCommand',
+    {
+      command: 'ls -la /workspace/ 2>&1',
+      timeout: 5000,
+    } as any,
+    { topicId, userId: ctx.userId },
+  );
+  console.log('[curl export] ls -la /workspace/ response:', JSON.stringify(lsWorkspaceResponse));
+
   // Step 1: Verify file exists
+  console.log('[curl export] Checking if file exists:', path);
   const statResponse = await market.plugins.runBuildInTool(
     'runCommand',
     {
@@ -816,6 +842,7 @@ async function exportViaCurl(
 
   // Step 2: Use curl to upload file to S3
   const curlCommand = `curl -X PUT "${uploadUrl}" -H "Content-Type: ${contentType}" -d @${path}`;
+  console.log('[curl export] Full curl command:', curlCommand);
   console.log('[curl export] Running curl command for file:', filename);
 
   const curlResponse = await market.plugins.runBuildInTool(

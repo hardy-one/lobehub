@@ -280,12 +280,10 @@ export class ServerSandboxService implements ISandboxService {
     contentType: string,
     resultMimeType?: string,
   ): Promise<SandboxExportFileResult> {
-    // Get file metadata from S3
     const metadata = await s3.getFileMetadata(key);
     const fileSize = metadata.contentLength;
     const mimeType = metadata.contentType || resultMimeType || contentType;
 
-    // Create persistent file record using FileService
     const fileHash = sha256(key + Date.now().toString());
 
     const { fileId, url } = await this.fileService.createFileRecord({
@@ -293,7 +291,7 @@ export class ServerSandboxService implements ISandboxService {
       fileType: mimeType,
       name: filename,
       size: fileSize,
-      url: key, // Store S3 key
+      url: key,
     });
 
     console.log('[curl export] created file record:', { fileId, url, fileSize });
@@ -305,30 +303,6 @@ export class ServerSandboxService implements ISandboxService {
       size: fileSize,
       success: true,
       url,
-    };
-  }
-}
-
-    // Create persistent file record using FileService
-    const fileHash = sha256(key + Date.now().toString());
-
-    const { fileId, url } = await this.fileService.createFileRecord({
-      fileHash,
-      fileType: mimeType,
-      name: filename,
-      size: fileSize,
-      url: key, // Store S3 key
-    });
-
-    log('Created file record: fileId=%s, url=%s', fileId, url);
-
-    return {
-      fileId,
-      filename,
-      mimeType,
-      size: fileSize,
-      success: true,
-      url, // This is the permanent /f/:id URL
     };
   }
 }

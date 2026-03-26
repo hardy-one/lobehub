@@ -783,11 +783,12 @@ async function exportViaCurl(
   const market = ctx.marketService.market;
 
   // Step 1: Resolve to absolute path and verify file exists
-  // Try original path first, then try $HOME/{path} for relative paths
+  // Try original path first, then try common sandbox directories for relative paths
   const isRelativePath = !path.startsWith('/');
   const commands = isRelativePath
     ? [
         `realpath "${path}" 2>/dev/null && wc -c < "${path}" 2>/dev/null`,
+        `realpath "/workspace/${path}" 2>/dev/null && wc -c < "/workspace/${path}" 2>/dev/null`,
         `realpath "$HOME/${path}" 2>/dev/null && wc -c < "$HOME/${path}" 2>/dev/null`,
       ]
     : [`realpath "${path}" 2>/dev/null && wc -c < "${path}" 2>/dev/null`];
@@ -821,7 +822,7 @@ async function exportViaCurl(
   if (!absolutePath || expectedFileSize === undefined) {
     log('Failed to resolve path %s, tried commands: %s', path, commands.join('; '));
     return {
-      error: { message: `File not found: ${path}. Tried relative path and $HOME/${path}` },
+      error: { message: `File not found: ${path}` },
       filename,
       success: false,
     } as ExportAndUploadFileResult;

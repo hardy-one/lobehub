@@ -66,6 +66,7 @@
     "./siliconcloud": "./src/aiModels/siliconcloud.ts",
     "./spark": "./src/aiModels/spark.ts",
     "./stepfun": "./src/aiModels/stepfun.ts",
+    "./stepfunCodingPlan": "./src/aiModels/stepfunCodingPlan.ts",
     "./straico": "./src/aiModels/straico.ts",
     "./taichu": "./src/aiModels/taichu.ts",
     "./tencentcloud": "./src/aiModels/tencentcloud.ts",

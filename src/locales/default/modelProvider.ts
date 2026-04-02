@@ -300,6 +300,8 @@ export default {
     'For Gemini 3.1 Flash-Lite Preview; controls thinking depth with minimal/low/medium/high levels.',
   'providerModels.item.modelConfig.extendParams.options.urlContext.hint':
     'For Gemini series; supports providing URL context.',
+  'providerModels.item.modelConfig.extendParams.options.preserveThinking.hint':
+    'For Qwen3.6+ series; preserves thinking content from previous turns in multi-turn conversations. Recommended for agent tasks.',
   'providerModels.item.modelConfig.extendParams.placeholder':
     'Select extended parameters to enable',
   'providerModels.item.modelConfig.extendParams.previewFallback': 'Preview unavailable',

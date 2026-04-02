@@ -7,13 +7,13 @@ export type LLMRoleType = 'user' | 'system' | 'assistant' | 'function' | 'tool';
 export type ChatResponseFormat =
   | { type: 'json_object' }
   | {
-    json_schema: {
-      name: string;
-      schema: Record<string, any>;
-      strict?: boolean;
+      json_schema: {
+        name: string;
+        schema: Record<string, any>;
+        strict?: boolean;
+      };
+      type: 'json_schema';
     };
-    type: 'json_schema';
-  };
 
 interface UserMessageContentPartThinking {
   signature: string;
@@ -119,6 +119,10 @@ export interface ChatStreamPayload {
    * @default 0
    */
   presence_penalty?: number;
+  /**
+   * Preserve thinking content from previous turns in multi-turn conversations (Qwen)
+   */
+  preserve_thinking?: boolean;
   provider?: string;
   reasoning?: {
     effort?: string;

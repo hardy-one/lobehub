@@ -9,7 +9,8 @@ export const LobeBailianCodingPlanAI = createOpenAICompatibleRuntime({
   baseURL: 'https://coding.dashscope.aliyuncs.com/v1',
   chatCompletion: {
     handlePayload: (payload) => {
-      const { model, presence_penalty, temperature, thinking, top_p, ...rest } = payload;
+      const { model, presence_penalty, preserve_thinking, temperature, thinking, top_p, ...rest } =
+        payload;
 
       const resolvedParams = resolveParameters(
         { presence_penalty, temperature, top_p },
@@ -36,6 +37,9 @@ export const LobeBailianCodingPlanAI = createOpenAICompatibleRuntime({
         top_p: resolvedParams.top_p,
         ...(payload.tools && {
           parallel_tool_calls: true,
+        }),
+        ...(preserve_thinking !== undefined && {
+          preserve_thinking,
         }),
       } as any;
     },

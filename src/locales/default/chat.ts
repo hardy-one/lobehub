@@ -86,6 +86,9 @@ export default {
   'extendParams.enableReasoning.title': 'Enable Deep Thinking',
   'extendParams.imageAspectRatio.title': 'Image Aspect Ratio',
   'extendParams.imageResolution.title': 'Image Resolution',
+  'extendParams.preserveThinking.desc':
+    'Preserve thinking content from previous turns in multi-turn conversations. Recommended for agent tasks to maintain reasoning consistency.',
+  'extendParams.preserveThinking.title': 'Preserve Thinking',
   'extendParams.reasoningBudgetToken.title': 'Thinking Consumption Token',
   'extendParams.reasoningEffort.title': 'Reasoning Intensity',
   'extendParams.textVerbosity.title': 'Output Text Detail Level',

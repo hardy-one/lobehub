@@ -288,6 +288,20 @@ const ControlsForm = memo<ControlsFormProps>(({ model: modelProp, provider: prov
       style: undefined,
       tag: 'urlContext',
     },
+    modelExtendParams?.includes('preserveThinking') && {
+      children: <Switch />,
+      desc: isNarrow ? (
+        <span style={descNarrow}>{t('extendParams.preserveThinking.desc')}</span>
+      ) : (
+        t('extendParams.preserveThinking.desc')
+      ),
+      label: t('extendParams.preserveThinking.title'),
+      layout: isNarrow ? 'vertical' : 'horizontal',
+      minWidth: undefined,
+      name: 'preserveThinking',
+      style: undefined,
+      tag: 'preserve_thinking',
+    },
     {
       children: <ThinkingSlider />,
       label: t('extendParams.thinking.title'),

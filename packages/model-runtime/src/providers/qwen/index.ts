@@ -26,8 +26,16 @@ export const LobeQwenAI = createOpenAICompatibleRuntime({
   baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   chatCompletion: {
     handlePayload: (payload) => {
-      const { model, presence_penalty, temperature, thinking, top_p, enabledSearch, ...rest } =
-        payload;
+      const {
+        model,
+        presence_penalty,
+        preserve_thinking,
+        temperature,
+        thinking,
+        top_p,
+        enabledSearch,
+        ...rest
+      } = payload;
 
       // Resolve parameters with model-specific constraints
       const resolvedParams = resolveParameters(
@@ -74,6 +82,9 @@ export const LobeQwenAI = createOpenAICompatibleRuntime({
         }),
         ...(payload.tools && {
           parallel_tool_calls: true,
+        }),
+        ...(preserve_thinking !== undefined && {
+          preserve_thinking,
         }),
       } as any;
     },

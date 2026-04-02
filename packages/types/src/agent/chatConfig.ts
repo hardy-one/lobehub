@@ -106,6 +106,12 @@ export interface LobeAgentChatConfig extends AgentMemoryChatConfig {
    */
   imageResolution2?: '512px' | '1K' | '2K' | '4K';
   inputTemplate?: string;
+  /**
+   * Preserve thinking content from previous turns in multi-turn conversations.
+   * Recommended for agent tasks to maintain reasoning consistency.
+   * Default: true
+   */
+  preserveThinking?: boolean;
   reasoningBudgetToken?: number;
   /**
    * Reasoning budget token for models with 32k max (GLM-5/GLM-4.7)
@@ -204,11 +210,12 @@ export const AgentChatConfigSchema = z
     imageAspectRatio2: z.string().optional(),
     imageResolution: z.enum(['1K', '2K', '4K']).optional(),
     imageResolution2: z.enum(['512px', '1K', '2K', '4K']).optional(),
-    runtimeEnv: RuntimeEnvConfigSchema.optional(),
+    preserveThinking: z.boolean().optional(),
     reasoningBudgetToken: z.number().optional(),
     reasoningBudgetToken32k: z.number().optional(),
     reasoningBudgetToken80k: z.number().optional(),
     reasoningEffort: z.enum(['low', 'medium', 'high']).optional(),
+    runtimeEnv: RuntimeEnvConfigSchema.optional(),
     searchFCModel: z
       .object({
         model: z.string(),

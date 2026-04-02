@@ -128,6 +128,10 @@ const EXTEND_PARAMS_OPTIONS: ExtendParamsOption[] = [
     key: 'urlContext',
   },
   {
+    hintKey: 'providerModels.item.modelConfig.extendParams.options.preserveThinking.hint',
+    key: 'preserveThinking',
+  },
+  {
     hintKey: 'providerModels.item.modelConfig.extendParams.options.imageAspectRatio.hint',
     key: 'imageAspectRatio',
   },
@@ -222,6 +226,7 @@ const PREVIEW_META: Partial<Record<ExtendParamsType, PreviewMeta>> = {
   thinkingLevel4: { labelSuffix: ' (Nano Banana 2)', previewWidth: 200, tag: 'thinkingLevel' },
   thinkingLevel5: { labelSuffix: ' (3.1 Flash-Lite)', previewWidth: 280, tag: 'thinkingLevel' },
   urlContext: { labelSuffix: ' (Gemini)', previewWidth: 400, tag: 'urlContext' },
+  preserveThinking: { previewWidth: 400, tag: 'preserve_thinking' },
 };
 
 type ExtendParamsDefinition = {
@@ -342,6 +347,7 @@ const ExtendParamsSelect = memo<ExtendParamsSelectProps>(({ value, onChange }) =
       thinkingLevel4: <ThinkingLevel4Slider value="minimal" />,
       thinkingLevel5: <ThinkingLevel5Slider value="minimal" />,
       urlContext: <Switch checked disabled />,
+      preserveThinking: <Switch checked disabled />,
     }),
     [],
   );

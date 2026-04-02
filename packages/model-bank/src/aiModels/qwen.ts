@@ -1507,6 +1507,85 @@ const qwenChatModels: AIChatModelCard[] = [
       vision: true,
     },
     config: {
+      deploymentName: 'qwen3.6-plus', // Supports context caching
+    },
+    contextWindowTokens: 1_000_000,
+    description:
+      'Qwen3.6 Plus supports text, image, and video input. Its performance on pure text tasks is comparable to Qwen3 Max, with better performance and lower cost. Its multimodal capabilities are significantly improved compared to the Qwen3 VL series.',
+    displayName: 'Qwen3.6 Plus',
+    enabled: true,
+    id: 'qwen3.6-plus',
+    maxOutput: 65_536,
+    organization: 'Qwen',
+    pricing: {
+      currency: 'CNY',
+      units: [
+        {
+          lookup: {
+            prices: {
+              '[0, 0.256]': 2 * 0.1,
+              '[0.256, infinity]': 8 * 0.1,
+            },
+            pricingParams: ['textInputRange'],
+          },
+          name: 'textInput_cacheRead',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+        {
+          lookup: {
+            prices: {
+              '[0, 0.256]': 2 * 1.25,
+              '[0.256, infinity]': 8 * 1.25,
+            },
+            pricingParams: ['textInputRange'],
+          },
+          name: 'textInput_cacheWrite',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+        {
+          lookup: {
+            prices: {
+              '[0, 0.256]': 2,
+              '[0.256, infinity]': 8,
+            },
+            pricingParams: ['textInputRange'],
+          },
+          name: 'textInput',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+        {
+          lookup: {
+            prices: {
+              '[0, 0.256]': 12,
+              '[0.256, infinity]': 48,
+            },
+            pricingParams: ['textInputRange'],
+          },
+          name: 'textOutput',
+          strategy: 'lookup',
+          unit: 'millionTokens',
+        },
+      ],
+    },
+    releasedAt: '2026-04-02',
+    settings: {
+      extendParams: ['enableReasoning', 'reasoningBudgetToken80k', 'preserveThinking'],
+      searchImpl: 'params',
+    },
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+      search: true,
+      video: true,
+      vision: true,
+    },
+    config: {
       deploymentName: 'qwen3.5-plus', // Supports context caching
     },
     contextWindowTokens: 1_000_000,

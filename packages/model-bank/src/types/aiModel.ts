@@ -246,6 +246,7 @@ export type ExtendParamsType =
   | 'enableReasoning'
   | 'enableAdaptiveThinking'
   | 'disableContextCaching'
+  | 'preserveThinking'
   | 'effort'
   | 'reasoningEffort'
   | 'gpt5ReasoningEffort'
@@ -284,6 +285,7 @@ export const ExtendParamsTypeSchema = z.enum([
   'enableReasoning',
   'enableAdaptiveThinking',
   'disableContextCaching',
+  'preserveThinking',
   'effort',
   'reasoningEffort',
   'gpt5ReasoningEffort',

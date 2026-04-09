@@ -7,10 +7,16 @@ import {
   createAnthropicCompatibleRuntime,
 } from '../../core/anthropicCompatibleFactory';
 import type { ChatStreamPayload } from '../../types';
-import { getModelPropertyWithFallback } from '../../utils/getFallbackModelProperty';
 import { processMultiProviderModelList } from '../../utils/modelParse';
 
 const DEFAULT_KIMI_CODING_BASE_URL = 'https://api.kimi.com/coding';
+
+// Max output tokens for each model (supports both model id and deploymentName)
+const KIMI_MODEL_MAX_OUTPUT: Record<string, number> = {
+  'k2p5': 32_768,
+  'kimi-k2.5': 32_768,
+  'kimi-k2-thinking': 65_536,
+};
 
 // Helpers for message normalization (shared with Moonshot provider)
 const isKimiK25Model = (model: string) => model === 'kimi-k2.5' || model === 'k2p5';
@@ -61,14 +67,7 @@ const normalizeMessagesForAnthropic = (
 const buildKimiCodingPlanAnthropicPayload = async (
   payload: ChatStreamPayload,
 ): Promise<Anthropic.MessageCreateParams> => {
-  const resolvedMaxTokens =
-    payload.max_tokens ??
-    (await getModelPropertyWithFallback<number | undefined>(
-      payload.model,
-      'maxOutput',
-      ModelProvider.KimiCodingPlan,
-    )) ??
-    8192;
+  const resolvedMaxTokens = payload.max_tokens ?? KIMI_MODEL_MAX_OUTPUT[payload.model] ?? 8192;
 
   const isK25 = isKimiK25Model(payload.model);
   const isNativeThinking = isKimiNativeThinkingModel(payload.model);

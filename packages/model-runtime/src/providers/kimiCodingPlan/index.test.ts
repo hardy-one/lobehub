@@ -157,7 +157,7 @@ describe('LobeKimiCodingPlanAI', () => {
         await instance.chat({
           messages: [{ content: 'Hello', role: 'user' }],
           model: 'kimi-k2.5',
-          thinking: { type: 'disabled' },
+          thinking: { budget_tokens: 0, type: 'disabled' },
         });
 
         const payload = getLastRequestPayload();
@@ -181,7 +181,7 @@ describe('LobeKimiCodingPlanAI', () => {
         await instance.chat({
           messages: [{ content: 'Hello', role: 'user' }],
           model: 'kimi-k2-thinking',
-          thinking: { type: 'disabled' },
+          thinking: { budget_tokens: 0, type: 'disabled' },
         });
 
         const payload = getLastRequestPayload();
@@ -278,7 +278,7 @@ describe('LobeKimiCodingPlanAI', () => {
             { content: 'Response', role: 'assistant' },
           ],
           model: 'kimi-k2.5',
-          thinking: { type: 'disabled' },
+          thinking: { budget_tokens: 0, type: 'disabled' },
         });
 
         const payload = getLastRequestPayload();

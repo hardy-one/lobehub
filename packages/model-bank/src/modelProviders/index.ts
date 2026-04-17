@@ -50,6 +50,8 @@ import NvidiaProvider from './nvidia';
 import OllamaProvider from './ollama';
 import OllamaCloudProvider from './ollamacloud';
 import OpenAIProvider from './openai';
+import OpenCodeGoProvider from './opencodeGo';
+import OpenCodeZenProvider from './opencodeZen';
 import OpenRouterProvider from './openrouter';
 import PerplexityProvider from './perplexity';
 import PPIOProvider from './ppio';
@@ -214,6 +216,8 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
   VercelAIGatewayProvider,
   CerebrasProvider,
   ZenMuxProvider,
+  OpenCodeZenProvider,
+  OpenCodeGoProvider,
   StraicoProvider,
   XiaomiMiMoProvider,
   LongCatProvider,
@@ -279,6 +283,8 @@ export { default as NvidiaProviderCard } from './nvidia';
 export { default as OllamaProviderCard } from './ollama';
 export { default as OllamaCloudProviderCard } from './ollamacloud';
 export { default as OpenAIProviderCard } from './openai';
+export { default as OpenCodeGoProviderCard } from './opencodeGo';
+export { default as OpenCodeZenProviderCard } from './opencodeZen';
 export { default as OpenRouterProviderCard } from './openrouter';
 export { default as PerplexityProviderCard } from './perplexity';
 export { default as PPIOProviderCard } from './ppio';

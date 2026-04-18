@@ -1,40 +1,79 @@
-import { ModelProvider } from 'model-bank';
+import { LOBE_DEFAULT_MODEL_LIST, ModelProvider } from 'model-bank';
 
-import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatibleFactory';
-import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
-import { processMultiProviderModelList } from '../../utils/modelParse';
+import { responsesAPIModels } from '../../const/models';
+import { createRouterRuntime } from '../../core/RouterRuntime';
+import type { CreateRouterRuntimeOptions } from '../../core/RouterRuntime/createRuntime';
+import { detectModelProvider, processMultiProviderModelList } from '../../utils/modelParse';
+
+const ZEN_BASE_URL = 'https://opencode.ai/zen/v1';
+
+// Claude models use @ai-sdk/anthropic via Zen Gateway
+const claudeModels = LOBE_DEFAULT_MODEL_LIST.map((m) => m.id).filter(
+  (id) => detectModelProvider(id) === 'anthropic',
+);
+
+// Gemini models use @ai-sdk/google via Zen Gateway
+const geminiModels = LOBE_DEFAULT_MODEL_LIST.map((m) => m.id).filter(
+  (id) => detectModelProvider(id) === 'google',
+);
+
+// GPT-5.x models use @ai-sdk/openai (Responses API) via Zen Gateway
+const gptModels = LOBE_DEFAULT_MODEL_LIST.map((m) => m.id).filter(
+  (id) => detectModelProvider(id) === 'openai',
+);
 
 export const params = {
-  baseURL: 'https://opencode.ai/zen/v1',
-  chatCompletion: {
-    handlePayload: (payload) => {
-      const { reasoning_effort, thinking, reasoning, ...rest } = payload;
-
-      const finalReasoning = {
-        ...reasoning,
-        ...(reasoning_effort && { effort: reasoning_effort }),
-        ...(thinking?.budget_tokens && { max_tokens: thinking.budget_tokens }),
-        ...(thinking?.type === 'enabled' && { enabled: true }),
-        ...(thinking?.type === 'disabled' && { enabled: false }),
-      };
-
-      const hasReasoning = Object.keys(finalReasoning).length > 0;
-
-      return {
-        ...rest,
-        ...(hasReasoning && { reasoning: finalReasoning }),
-      } as any;
-    },
-  },
   debug: {
     chatCompletion: () => process.env.DEBUG_OPENCODE_ZEN_CHAT_COMPLETION === '1',
   },
+  id: ModelProvider.OpenCodeZen,
   models: async ({ client: openAIClient }) => {
     const modelsPage = (await openAIClient.models.list()) as any;
     const modelList = modelsPage.data || [];
     return processMultiProviderModelList(modelList, 'opencodezen');
   },
-  provider: ModelProvider.OpenCodeZen,
-} satisfies OpenAICompatibleFactoryOptions;
+  routers: (options) => {
+    return [
+      // Anthropic router for Claude models
+      {
+        apiType: 'anthropic',
+        models: claudeModels,
+        options: {
+          ...options,
+          baseURL: options.baseURL || ZEN_BASE_URL,
+        },
+      },
+      // Google router for Gemini models
+      {
+        apiType: 'google',
+        models: geminiModels,
+        options: {
+          ...options,
+          baseURL: options.baseURL || ZEN_BASE_URL,
+        },
+      },
+      // OpenAI router for GPT-5.x models (Responses API)
+      {
+        apiType: 'openai',
+        models: gptModels,
+        options: {
+          ...options,
+          baseURL: options.baseURL || ZEN_BASE_URL,
+          chatCompletion: {
+            useResponseModels: [...Array.from(responsesAPIModels), /gpt-\d(?!\d)/, /^o\d/],
+          },
+        },
+      },
+      // OpenAI-compatible fallback for all other models (GLM, Kimi, MiniMax, Qwen, etc.)
+      {
+        apiType: 'openai',
+        options: {
+          ...options,
+          baseURL: options.baseURL || ZEN_BASE_URL,
+        },
+      },
+    ];
+  },
+} satisfies CreateRouterRuntimeOptions;
 
-export const LobeOpenCodeZenAI = createOpenAICompatibleRuntime(params);
+export const LobeOpenCodeZenAI = createRouterRuntime(params);

@@ -22,9 +22,6 @@ const opencodeGoChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-04-07',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
     type: 'chat',
   },
   {
@@ -45,9 +42,6 @@ const opencodeGoChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-02-11',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
     type: 'chat',
   },
   {
@@ -68,9 +62,6 @@ const opencodeGoChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-01-27',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
     type: 'chat',
   },
   {
@@ -92,7 +83,7 @@ const opencodeGoChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-03-18',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['reasoningEffort'],
     },
     type: 'chat',
   },
@@ -115,7 +106,7 @@ const opencodeGoChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-04-02',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['reasoningEffort'],
     },
     type: 'chat',
   },
@@ -137,9 +128,6 @@ const opencodeGoChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-02-12',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
     type: 'chat',
   },
   {
@@ -159,9 +147,6 @@ const opencodeGoChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-03-18',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
     type: 'chat',
   },
   {
@@ -182,7 +167,7 @@ const opencodeGoChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-03-18',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['reasoningEffort'],
     },
     type: 'chat',
   },
@@ -205,7 +190,7 @@ const opencodeGoChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-02-16',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['reasoningEffort'],
     },
     type: 'chat',
   },

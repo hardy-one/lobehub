@@ -266,9 +266,6 @@ const opencodeZenChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-02-11',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
     type: 'chat',
   },
   {
@@ -289,9 +286,6 @@ const opencodeZenChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-04-07',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
     type: 'chat',
   },
 
@@ -617,9 +611,6 @@ const opencodeZenChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-01-27',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
     type: 'chat',
   },
 
@@ -642,9 +633,6 @@ const opencodeZenChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-02-12',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
     type: 'chat',
   },
   {
@@ -665,9 +653,6 @@ const opencodeZenChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-02-12',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
     type: 'chat',
   },
 
@@ -691,9 +676,6 @@ const opencodeZenChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-03-11',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
     type: 'chat',
   },
 
@@ -718,7 +700,7 @@ const opencodeZenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-02-16',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['reasoningEffort'],
     },
     type: 'chat',
   },
@@ -743,7 +725,7 @@ const opencodeZenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-04-02',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['reasoningEffort'],
     },
     type: 'chat',
   },
@@ -769,9 +751,6 @@ const opencodeZenChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2025-10-17',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
     type: 'chat',
   },
 ];

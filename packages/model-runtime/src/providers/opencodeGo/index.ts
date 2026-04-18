@@ -1,74 +1,24 @@
 import { ModelProvider } from 'model-bank';
 
-import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatibleFactory';
-import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
-import type { ChatCompletionErrorPayload } from '../../types';
-import { AgentRuntimeErrorType } from '../../types/error';
+import { createRouterRuntime } from '../../core/RouterRuntime';
+import type { CreateRouterRuntimeOptions } from '../../core/RouterRuntime/createRuntime';
 import { processMultiProviderModelList } from '../../utils/modelParse';
 
+const GO_BASE_URL = 'https://opencode.ai/zen/go/v1';
+
+// MiniMax models in Go use @ai-sdk/anthropic (Anthropic Messages API format)
+// Endpoint: /go/v1/messages
+const minimaxModels = ['minimax-m2.5', 'minimax-m2.7'];
+
+// Qwen models in Go use @ai-sdk/alibaba which is not in our apiTypes.
+// They fall through to openai-compatible. The Gateway handles format conversion.
+// All other models (GLM, Kimi, MiMo) use @ai-sdk/openai-compatible.
+
 export const params = {
-  baseURL: 'https://opencode.ai/zen/go/v1',
-  chatCompletion: {
-    handleError: (error: any): Omit<ChatCompletionErrorPayload, 'provider'> | undefined => {
-      const status = error?.status;
-
-      if (status === 401) {
-        return {
-          error,
-          errorType: AgentRuntimeErrorType.InvalidProviderAPIKey,
-        };
-      }
-
-      if (status === 402) {
-        return {
-          error,
-          errorType: AgentRuntimeErrorType.InsufficientQuota,
-        };
-      }
-
-      if (status === 429) {
-        return {
-          error,
-          errorType: AgentRuntimeErrorType.ProviderBizError,
-          message: 'Request rate limit exceeded. Please try again later.',
-        };
-      }
-
-      if (error?.error || error?.code || error?.message) {
-        const errorData = error?.error?.error || error?.error || error;
-        const { code, message } = errorData;
-
-        if (code || message) {
-          return {
-            error: errorData,
-          };
-        }
-      }
-
-      return {
-        error,
-      };
-    },
-    handlePayload: (payload) => {
-      const { enabledSearch, model, thinking, ...rest } = payload;
-
-      return {
-        ...rest,
-        model,
-        stream: true,
-        ...(payload.tools && {
-          parallel_tool_calls: true,
-        }),
-      } as any;
-    },
-  },
   debug: {
     chatCompletion: () => process.env.DEBUG_OPENCODE_GO_CHAT_COMPLETION === '1',
   },
-  errorType: {
-    bizError: AgentRuntimeErrorType.ProviderBizError,
-    invalidAPIKey: AgentRuntimeErrorType.InvalidProviderAPIKey,
-  },
+  id: ModelProvider.OpenCodeGo,
   models: async () => {
     const { opencodego } = await import('model-bank');
     return processMultiProviderModelList(
@@ -76,7 +26,27 @@ export const params = {
       'opencodego',
     );
   },
-  provider: ModelProvider.OpenCodeGo,
-} satisfies OpenAICompatibleFactoryOptions;
+  routers: (options) => {
+    return [
+      // Anthropic router for MiniMax models (use Anthropic Messages API format)
+      {
+        apiType: 'anthropic',
+        models: minimaxModels,
+        options: {
+          ...options,
+          baseURL: options.baseURL || GO_BASE_URL,
+        },
+      },
+      // OpenAI-compatible fallback for all other models (GLM, Kimi, MiMo, Qwen)
+      {
+        apiType: 'openai',
+        options: {
+          ...options,
+          baseURL: options.baseURL || GO_BASE_URL,
+        },
+      },
+    ];
+  },
+} satisfies CreateRouterRuntimeOptions;
 
-export const LobeOpenCodeGoAI = createOpenAICompatibleRuntime(params);
+export const LobeOpenCodeGoAI = createRouterRuntime(params);

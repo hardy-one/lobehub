@@ -9,7 +9,7 @@ const OpenCodeZen: ModelProviderCard = {
   description:
     'OpenCode Zen provides access to curated models from OpenAI, Anthropic, Moonshot, MiniMax, Zhipu, Qwen, and more via a single API key.',
   id: 'opencodezen',
-  modelList: { showModelFetcher: false },
+  modelList: { showModelFetcher: true },
   modelsUrl: 'https://opencode.ai/zen',
   name: 'OpenCode Zen',
   settings: {
@@ -17,6 +17,7 @@ const OpenCodeZen: ModelProviderCard = {
       placeholder: 'https://opencode.ai/zen/v1',
     },
     sdkType: 'openai',
+    showModelFetcher: true,
   },
   url: 'https://opencode.ai/zen',
 };

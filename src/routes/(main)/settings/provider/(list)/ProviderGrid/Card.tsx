@@ -13,7 +13,7 @@ import { type AiProviderListItem } from '@/types/aiProvider';
 import EnableSwitch from './EnableSwitch';
 import { styles } from './style';
 
-const isCodingPlanProvider = (id: string) => id.endsWith('codingplan') || id === 'opencodego';
+const isCodingPlanProvider = (id: string) => id.endsWith('codingplan');
 
 interface ProviderCardProps extends AiProviderListItem {
   loading?: boolean;

@@ -21,12 +21,12 @@ export const params = {
   debug: {
     chatCompletion: () => process.env.DEBUG_OPENCODE_GO_CHAT_COMPLETION === '1',
   },
-  id: ModelProvider.OpenCodeGo,
+  id: ModelProvider.OpenCodeCodingPlan,
   models: async () => {
-    const { opencodego } = await import('model-bank');
+    const { opencodecodingplan } = await import('model-bank');
     return processMultiProviderModelList(
-      opencodego.map((m: { id: string }) => ({ id: m.id })),
-      'opencodego',
+      opencodecodingplan.map((m: { id: string }) => ({ id: m.id })),
+      'opencodecodingplan',
     );
   },
   routers: (options) => {
@@ -53,4 +53,4 @@ export const params = {
   },
 } satisfies CreateRouterRuntimeOptions;
 
-export const LobeOpenCodeGoAI = createRouterRuntime(params);
+export const LobeOpenCodeCodingPlanAI = createRouterRuntime(params);

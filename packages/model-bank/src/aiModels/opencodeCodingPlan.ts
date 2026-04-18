@@ -3,7 +3,7 @@ import { type AIChatModelCard } from '../types/aiModel';
 // ref: https://opencode.ai/go
 // Model data sourced from models.dev API (opencode-go provider)
 
-const opencodeGoChatModels: AIChatModelCard[] = [
+const opencodeCodingPlanChatModels: AIChatModelCard[] = [
   {
     abilities: { functionCall: true, reasoning: true },
     contextWindowTokens: 204_800,
@@ -196,4 +196,4 @@ const opencodeGoChatModels: AIChatModelCard[] = [
   },
 ];
 
-export default opencodeGoChatModels;
+export default opencodeCodingPlanChatModels;

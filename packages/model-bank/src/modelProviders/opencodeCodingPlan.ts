@@ -1,13 +1,13 @@
 import type { ModelProviderCard } from '@/types/llm';
 
 // ref: https://opencode.ai/go
-const OpenCodeGo: ModelProviderCard = {
+const OpenCodeCodingPlan: ModelProviderCard = {
   chatModels: [],
   checkModel: 'glm-5.1',
   description:
     'OpenCode Go is a $10/month subscription providing reliable access to curated open coding models: GLM, Kimi, MiMo, Qwen, MiniMax.',
   disableBrowserRequest: true,
-  id: 'opencodego',
+  id: 'opencodecodingplan',
   modelList: { showModelFetcher: false },
   modelsUrl: 'https://opencode.ai/go',
   name: 'OpenCode Go',
@@ -22,4 +22,4 @@ const OpenCodeGo: ModelProviderCard = {
   url: 'https://opencode.ai/go',
 };
 
-export default OpenCodeGo;
+export default OpenCodeCodingPlan;

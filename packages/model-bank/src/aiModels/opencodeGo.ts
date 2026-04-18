@@ -30,7 +30,7 @@ const opencodeGoChatModels: AIChatModelCard[] = [
     description:
       'GLM-5 by Zhipu AI — high-performance coding model with strong reasoning abilities.',
     displayName: 'GLM-5',
-    enabled: true,
+    enabled: false,
     id: 'glm-5',
     maxOutput: 32_000,
     organization: 'Zhipu',
@@ -50,7 +50,7 @@ const opencodeGoChatModels: AIChatModelCard[] = [
     description:
       'Kimi K2.5 by Moonshot AI — advanced reasoning model with vision support for images and video input.',
     displayName: 'Kimi K2.5',
-    enabled: true,
+    enabled: false,
     id: 'kimi-k2.5',
     maxOutput: 32_000,
     organization: 'Moonshot',
@@ -70,7 +70,7 @@ const opencodeGoChatModels: AIChatModelCard[] = [
     description:
       'MiMo-V2-Omni by Xiaomi — multimodal model supporting text, image, audio, and PDF input.',
     displayName: 'MiMo-V2-Omni',
-    enabled: true,
+    enabled: false,
     id: 'mimo-v2-omni',
     maxOutput: 32_000,
     organization: 'Xiaomi',
@@ -116,7 +116,7 @@ const opencodeGoChatModels: AIChatModelCard[] = [
     description:
       'MiniMax M2.5 — efficient coding model with strong reasoning and function call support.',
     displayName: 'MiniMax M2.5',
-    enabled: true,
+    enabled: false,
     id: 'minimax-m2.5',
     maxOutput: 32_000,
     organization: 'MiniMax',
@@ -154,7 +154,7 @@ const opencodeGoChatModels: AIChatModelCard[] = [
     contextWindowTokens: 1_048_576,
     description: 'MiMo-V2-Pro by Xiaomi — high-throughput model with 1M token context window.',
     displayName: 'MiMo-V2-Pro',
-    enabled: true,
+    enabled: false,
     id: 'mimo-v2-pro',
     maxOutput: 32_000,
     organization: 'Xiaomi',
@@ -177,7 +177,7 @@ const opencodeGoChatModels: AIChatModelCard[] = [
     description:
       'Qwen3.5-Plus by Alibaba — cost-effective coding model with vision support for image and video input.',
     displayName: 'Qwen3.5-Plus',
-    enabled: true,
+    enabled: false,
     id: 'qwen3.5-plus',
     maxOutput: 32_000,
     organization: 'Alibaba',

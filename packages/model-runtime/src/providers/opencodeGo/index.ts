@@ -14,6 +14,9 @@ const minimaxModels = ['minimax-m2.5', 'minimax-m2.7'];
 // They fall through to openai-compatible. The Gateway handles format conversion.
 // All other models (GLM, Kimi, MiMo) use @ai-sdk/openai-compatible.
 
+// Anthropic SDK auto-appends /v1/messages to baseURL, so we need to strip trailing /v1
+const stripV1 = (url?: string) => url?.replace(/\/v1$/, '');
+
 export const params = {
   debug: {
     chatCompletion: () => process.env.DEBUG_OPENCODE_GO_CHAT_COMPLETION === '1',
@@ -27,6 +30,7 @@ export const params = {
     );
   },
   routers: (options) => {
+    const baseURL = options.baseURL || GO_BASE_URL;
     return [
       // Anthropic router for MiniMax models (use Anthropic Messages API format)
       {
@@ -34,7 +38,7 @@ export const params = {
         models: minimaxModels,
         options: {
           ...options,
-          baseURL: options.baseURL || GO_BASE_URL,
+          baseURL: stripV1(baseURL),
         },
       },
       // OpenAI-compatible fallback for all other models (GLM, Kimi, MiMo, Qwen)
@@ -42,7 +46,7 @@ export const params = {
         apiType: 'openai',
         options: {
           ...options,
-          baseURL: options.baseURL || GO_BASE_URL,
+          baseURL,
         },
       },
     ];

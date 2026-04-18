@@ -12,15 +12,13 @@ const claudeModels = LOBE_DEFAULT_MODEL_LIST.map((m) => m.id).filter(
   (id) => detectModelProvider(id) === 'anthropic',
 );
 
-// Gemini models use @ai-sdk/google via Zen Gateway
-const geminiModels = LOBE_DEFAULT_MODEL_LIST.map((m) => m.id).filter(
-  (id) => detectModelProvider(id) === 'google',
-);
-
 // GPT-5.x models use @ai-sdk/openai (Responses API) via Zen Gateway
 const gptModels = LOBE_DEFAULT_MODEL_LIST.map((m) => m.id).filter(
   (id) => detectModelProvider(id) === 'openai',
 );
+
+// Anthropic SDK auto-appends /v1/messages to baseURL, so we need to strip trailing /v1
+const stripV1 = (url?: string) => url?.replace(/\/v1$/, '');
 
 export const params = {
   debug: {
@@ -33,6 +31,7 @@ export const params = {
     return processMultiProviderModelList(modelList, 'opencodezen');
   },
   routers: (options) => {
+    const baseURL = options.baseURL || ZEN_BASE_URL;
     return [
       // Anthropic router for Claude models
       {
@@ -40,16 +39,7 @@ export const params = {
         models: claudeModels,
         options: {
           ...options,
-          baseURL: options.baseURL || ZEN_BASE_URL,
-        },
-      },
-      // Google router for Gemini models
-      {
-        apiType: 'google',
-        models: geminiModels,
-        options: {
-          ...options,
-          baseURL: options.baseURL || ZEN_BASE_URL,
+          baseURL: stripV1(baseURL),
         },
       },
       // OpenAI router for GPT-5.x models (Responses API)
@@ -58,18 +48,18 @@ export const params = {
         models: gptModels,
         options: {
           ...options,
-          baseURL: options.baseURL || ZEN_BASE_URL,
+          baseURL,
           chatCompletion: {
             useResponseModels: [...Array.from(responsesAPIModels), /gpt-\d(?!\d)/, /^o\d/],
           },
         },
       },
-      // OpenAI-compatible fallback for all other models (GLM, Kimi, MiniMax, Qwen, etc.)
+      // OpenAI-compatible fallback for all other models (Gemini, GLM, Kimi, MiniMax, Qwen, etc.)
       {
         apiType: 'openai',
         options: {
           ...options,
-          baseURL: options.baseURL || ZEN_BASE_URL,
+          baseURL,
         },
       },
     ];

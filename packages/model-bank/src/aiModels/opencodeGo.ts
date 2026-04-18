@@ -69,7 +69,7 @@ const opencodeGoChatModels: AIChatModelCard[] = [
     contextWindowTokens: 262_144,
     description:
       'MiMo-V2-Omni by Xiaomi — multimodal model supporting text, image, audio, and PDF input.',
-    displayName: 'MiMo-V2-Omni',
+    displayName: 'MiMo-V2 Omni',
     enabled: false,
     id: 'mimo-v2-omni',
     maxOutput: 32_000,
@@ -92,7 +92,7 @@ const opencodeGoChatModels: AIChatModelCard[] = [
     contextWindowTokens: 262_144,
     description:
       'Qwen3.6-Plus by Alibaba — latest Qwen coding model with strong reasoning and vision capabilities.',
-    displayName: 'Qwen3.6-Plus',
+    displayName: 'Qwen3.6 Plus',
     enabled: true,
     id: 'qwen3.6-plus',
     maxOutput: 32_000,
@@ -176,7 +176,7 @@ const opencodeGoChatModels: AIChatModelCard[] = [
     contextWindowTokens: 262_144,
     description:
       'Qwen3.5-Plus by Alibaba — cost-effective coding model with vision support for image and video input.',
-    displayName: 'Qwen3.5-Plus',
+    displayName: 'Qwen3.5 Plus',
     enabled: false,
     id: 'qwen3.5-plus',
     maxOutput: 32_000,

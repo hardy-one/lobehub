@@ -153,7 +153,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     abilities: { functionCall: true, reasoning: true },
     contextWindowTokens: 1_048_576,
     description: 'MiMo-V2-Pro by Xiaomi — high-throughput model with 1M token context window.',
-    displayName: 'MiMo-V2-Pro',
+    displayName: 'MiMo-V2 Pro',
     enabled: false,
     id: 'mimo-v2-pro',
     maxOutput: 32_000,

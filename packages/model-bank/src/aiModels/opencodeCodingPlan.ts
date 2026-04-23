@@ -48,6 +48,29 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     abilities: { functionCall: true, reasoning: true, vision: true },
     contextWindowTokens: 262_144,
     description:
+      "Kimi K2.6 is Moonshot AI's latest flagship model, delivering significant improvements in coding, agentic tasks, and multimodal understanding. It supports both 'thinking' and 'non-thinking' modes.",
+    displayName: 'Kimi K2.6',
+    enabled: true,
+    id: 'kimi-k2.6',
+    maxOutput: 32_000,
+    organization: 'Moonshot',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 0.6, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 3, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-04-10',
+    settings: {
+      extendParams: ['enableReasoning'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: { functionCall: true, reasoning: true, vision: true },
+    contextWindowTokens: 262_144,
+    description:
       'Kimi K2.5 by Moonshot AI — advanced reasoning model with vision support for images and video input.',
     displayName: 'Kimi K2.5',
     enabled: false,
@@ -144,6 +167,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
       units: [
         { name: 'textInput', rate: 0.3, strategy: 'fixed', unit: 'millionTokens' },
         { name: 'textOutput', rate: 1.2, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.06, strategy: 'fixed', unit: 'millionTokens' },
       ],
     },
     releasedAt: '2026-03-18',

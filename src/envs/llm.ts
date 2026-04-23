@@ -237,6 +237,12 @@ export const getLLMConfig = () => {
 
       ENABLED_LOBEHUB: z.boolean(),
 
+      ENABLED_OPENCODEZEN: z.boolean(),
+      OPENCODEZEN_API_KEY: z.string().optional(),
+
+      ENABLED_OPENCODECODINGPLAN: z.boolean(),
+      OPENCODECODINGPLAN_API_KEY: z.string().optional(),
+
       ENABLED_XIAOMIMIMO: z.boolean(),
       XIAOMIMIMO_API_KEY: z.string().optional(),
 
@@ -480,6 +486,12 @@ export const getLLMConfig = () => {
       STRAICO_API_KEY: process.env.STRAICO_API_KEY,
 
       ENABLED_LOBEHUB: !!process.env.ENABLED_LOBEHUB,
+
+      ENABLED_OPENCODEZEN: !!process.env.OPENCODEZEN_API_KEY,
+      OPENCODEZEN_API_KEY: process.env.OPENCODEZEN_API_KEY,
+
+      ENABLED_OPENCODECODINGPLAN: !!process.env.OPENCODECODINGPLAN_API_KEY,
+      OPENCODECODINGPLAN_API_KEY: process.env.OPENCODECODINGPLAN_API_KEY,
 
       ENABLED_XIAOMIMIMO: !!process.env.XIAOMIMIMO_API_KEY,
       XIAOMIMIMO_API_KEY: process.env.XIAOMIMIMO_API_KEY,

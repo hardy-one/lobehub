@@ -571,6 +571,32 @@ const siliconcloudChatModels: AIChatModelCard[] = [
     abilities: {
       functionCall: true,
       reasoning: true,
+      video: true,
+      vision: true,
+    },
+    contextWindowTokens: 262_144,
+    description:
+      "Kimi K2.6 is Moonshot AI's open-source native multimodal agent model. Built on MoE architecture with 1T total parameters and 32B activated, supporting 256K tokens context. It supports 4,000+ tool calls with sustained autonomous execution over 12 hours, multi-agent collaboration with up to 300 parallel sub-agents, and both Thinking and Instant inference modes.",
+    displayName: 'Kimi-K2.6 (Pro)',
+    id: 'Pro/moonshotai/Kimi-K2.6',
+    pricing: {
+      currency: 'CNY',
+      units: [
+        { name: 'textInput_cacheRead', rate: 1.1, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput', rate: 6.5, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 27, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-04-21',
+    settings: {
+      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
       vision: true,
       video: true,
     },

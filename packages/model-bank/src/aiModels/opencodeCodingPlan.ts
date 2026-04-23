@@ -173,6 +173,38 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
   },
   {
     abilities: { functionCall: true, reasoning: true, vision: true },
+    contextWindowTokens: 1_048_576,
+    description:
+      'MiMo-V2.5-Pro by Xiaomi — a leap in agentic and long horizon coherence. Significant improvements in agentic performance, software engineering, and tasks spanning 1000+ tool calls.',
+    displayName: 'MiMo-V2.5 Pro',
+    enabled: true,
+    id: 'mimo-v2.5-pro',
+    maxOutput: 32_000,
+    organization: 'Xiaomi',
+    releasedAt: '2026-04-22',
+    settings: {
+      extendParams: ['reasoningEffort'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: { functionCall: true, reasoning: true, vision: true },
+    contextWindowTokens: 1_048_576,
+    description:
+      'MiMo-V2.5 by Xiaomi — a leap in agency and multimodality. Native visual and audio understanding with strong agentic performance.',
+    displayName: 'MiMo-V2.5',
+    enabled: false,
+    id: 'mimo-v2.5',
+    maxOutput: 32_000,
+    organization: 'Xiaomi',
+    releasedAt: '2026-04-22',
+    settings: {
+      extendParams: ['reasoningEffort'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: { functionCall: true, reasoning: true, vision: true },
     contextWindowTokens: 262_144,
     description:
       'Qwen3.5-Plus by Alibaba — cost-effective coding model with vision support for image and video input.',

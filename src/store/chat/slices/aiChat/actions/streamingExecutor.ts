@@ -4,6 +4,7 @@ import {
   type AgentState,
   type Cost,
   type Usage,
+  resolveCompressionMode,
 } from '@lobechat/agent-runtime';
 import { AgentRuntime, computeStepContext, GeneralChatAgent } from '@lobechat/agent-runtime';
 import { LobeAgentManifest } from '@lobechat/builtin-tool-lobe-agent';
@@ -29,8 +30,7 @@ import { localFileService } from '@/services/electron/localFileService';
 import { messageService } from '@/services/message';
 import { getAgentStoreState } from '@/store/agent';
 import { agentSelectors } from '@/store/agent/selectors';
-import { aiModelSelectors } from '@/store/aiInfra/selectors';
-import { getAiInfraStoreState } from '@/store/aiInfra/store';
+import { aiModelSelectors, getAiInfraStoreState } from '@/store/aiInfra';
 import { createAgentExecutors } from '@/store/chat/agents/createAgentExecutors';
 import { emitClientAgentSignalSourceEvent } from '@/store/chat/slices/aiChat/actions/agentSignalBridge';
 import { type ChatStore, useChatStore } from '@/store/chat/store';
@@ -536,16 +536,21 @@ export class StreamingExecutorActionImpl {
     // ===========================================
     log('[executeClientAgent] Creating agent runtime with config', modelRuntimeConfig);
 
-    const contextWindowTokens = aiModelSelectors.modelContextWindowTokens(
-      model,
-      provider!,
-    )(getAiInfraStoreState());
+    const contextCompressionMode = resolveCompressionMode({
+      contextCompressionMode: agentConfigData.chatConfig?.contextCompressionMode,
+      enableContextCompression: agentConfigData.chatConfig?.enableContextCompression,
+    });
+
+    const contextWindowTokens = aiModelSelectors.modelContextWindowTokens(model, provider!)(
+      getAiInfraStoreState(),
+    );
 
     const agent = new GeneralChatAgent({
       agentConfig: { maxSteps: 1000 },
       compressionConfig: {
-        enabled: agentConfigData.chatConfig?.enableContextCompression ?? true, // Default to enabled
-        maxWindowToken: contextWindowTokens ?? undefined,
+        enabled: contextCompressionMode !== 'disabled',
+        maxWindowToken: contextWindowTokens,
+        mode: contextCompressionMode === 'disabled' ? undefined : contextCompressionMode,
       },
       dynamicInterventionAudits,
       operationId: `${messageKey}/${params.parentMessageId}`,

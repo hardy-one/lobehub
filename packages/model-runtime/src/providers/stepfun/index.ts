@@ -5,7 +5,7 @@ import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatible
 import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
 import { createStepfunImage } from './createImage';
 import type { ChatCompletionErrorPayload } from '../../types';
-import { AgentRuntimeErrorType } from '../../types/error'; (✨ feat: add Coding Plan providers and refactor ollamacloud)
+import { AgentRuntimeErrorType } from '../../types/error';
 
 export interface StepfunModelCard {
   id: string;
@@ -84,7 +84,7 @@ export const params = {
   errorType: {
     bizError: AgentRuntimeErrorType.ProviderBizError,
     invalidAPIKey: AgentRuntimeErrorType.InvalidProviderAPIKey,
-  }, (✨ feat: add Coding Plan providers and refactor ollamacloud)
+  },
   models: async ({ client }) => {
     const { LOBE_DEFAULT_MODEL_LIST } = await import('model-bank');
 

@@ -144,17 +144,14 @@ const createHeadlessEditorWithNodes = async () => {
     import('@lexical/link'),
   ]);
 
-  return createHeadlessEditor({
-    additionalPlugins: [
-      class LinkNodePlugin {
-        static pluginName = 'LinkNodePlugin';
-        constructor(kernel: any) {
-          kernel.registerNodes([LinkNode, AutoLinkNode]);
-        }
-        destroy() {}
-      },
-    ],
-  });
+  const editor = createHeadlessEditor();
+  // Register LinkNode + AutoLinkNode so headless editor can parse stored documents
+  // that contain hyperlinks (serialized type "link"). Without this, the default
+  // headless editor config skips LinkPlugin, causing parseEditorState errors.
+  if ('kernel' in editor) {
+    (editor.kernel as any).registerNodes([LinkNode, AutoLinkNode]);
+  }
+  return editor;
 };
 
 export const createMarkdownEditorSnapshot = async (

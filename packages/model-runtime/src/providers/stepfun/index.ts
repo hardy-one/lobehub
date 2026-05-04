@@ -4,6 +4,8 @@ import { ModelProvider } from 'model-bank';
 import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatibleFactory';
 import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
 import { createStepfunImage } from './createImage';
+import type { ChatCompletionErrorPayload } from '../../types';
+import { AgentRuntimeErrorType } from '../../types/error'; (✨ feat: add Coding Plan providers and refactor ollamacloud)
 
 export interface StepfunModelCard {
   id: string;
@@ -12,6 +14,47 @@ export interface StepfunModelCard {
 export const params = {
   baseURL: 'https://api.stepfun.com/v1',
   chatCompletion: {
+    handleError: (error: any): Omit<ChatCompletionErrorPayload, 'provider'> | undefined => {
+      const status = error?.status;
+
+      if (status === 401) {
+        return {
+          error,
+          errorType: AgentRuntimeErrorType.InvalidProviderAPIKey,
+        };
+      }
+
+      if (status === 402) {
+        return {
+          error,
+          errorType: AgentRuntimeErrorType.InsufficientQuota,
+        };
+      }
+
+      if (status === 429) {
+        return {
+          error,
+          errorType: AgentRuntimeErrorType.ProviderBizError,
+          message: 'Request rate limit exceeded. Please try again later.',
+        };
+      }
+
+      // Extract error details from nested structure or top-level fields
+      if (error?.error || error?.code || error?.message) {
+        const errorData = error?.error?.error || error?.error || error;
+        const { code, message } = errorData;
+
+        if (code || message) {
+          return {
+            error: errorData,
+          };
+        }
+      }
+
+      return {
+        error,
+      };
+    },
     handlePayload: (payload) => {
       const { enabledSearch, tools, ...rest } = payload;
 
@@ -38,6 +81,10 @@ export const params = {
     chatCompletion: () => process.env.DEBUG_STEPFUN_CHAT_COMPLETION === '1',
   },
   createImage: createStepfunImage,
+  errorType: {
+    bizError: AgentRuntimeErrorType.ProviderBizError,
+    invalidAPIKey: AgentRuntimeErrorType.InvalidProviderAPIKey,
+  }, (✨ feat: add Coding Plan providers and refactor ollamacloud)
   models: async ({ client }) => {
     const { LOBE_DEFAULT_MODEL_LIST } = await import('model-bank');
 

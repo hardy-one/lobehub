@@ -1813,7 +1813,7 @@ const qwenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-04-02',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['enableReasoning', 'reasoningBudgetToken80k'],
       searchImpl: 'params',
     },
     type: 'chat',

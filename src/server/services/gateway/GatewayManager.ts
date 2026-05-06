@@ -46,6 +46,12 @@ export class GatewayManager {
 
     log('Starting GatewayManager');
 
+    // Give the DB pool a moment to stabilize — fresh containers may not have
+    // the pool's initial connections ready immediately after migration, and
+    // the first query would hit connectionTimeoutMillis and log an ugly error.
+    // 2 seconds is typically enough for the pool to warm up.
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
     await this.sync().catch((err) => {
       console.error('[GatewayManager] Initial sync failed:', err);
     });

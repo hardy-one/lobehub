@@ -85,6 +85,15 @@ export const getAppConfig = () => {
        */
       enableQueueAgentRuntime: z.boolean().optional(),
       TELEMETRY_DISABLED: z.boolean().optional(),
+      /**
+       * Enable Server-Side Agent Execution via SSE
+       * Set to 'true' to enable server-side agent mode in self-hosted deployments.
+       * @default false (disabled by default, opt-in)
+       */
+      ENABLE_SERVER_AGENT: z
+        .enum(['true', 'false'])
+        .optional()
+        .transform((v) => v === 'true'),
     },
     runtimeEnv: {
       // Sentry
@@ -124,6 +133,7 @@ export const getAppConfig = () => {
       AGENT_GATEWAY_URL: process.env.AGENT_GATEWAY_URL,
       enableQueueAgentRuntime: process.env.AGENT_RUNTIME_MODE === 'queue',
       TELEMETRY_DISABLED: process.env.TELEMETRY_DISABLED === '1',
+      ENABLE_SERVER_AGENT: process.env.ENABLE_SERVER_AGENT,
     },
   });
 };

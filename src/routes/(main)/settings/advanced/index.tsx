@@ -40,18 +40,23 @@ const Page = memo(() => {
     enableAgentSelfIteration,
     enableInputMarkdown,
     enableGatewayMode,
+    enableServerAgentMode,
     updateLab,
   ] = useUserStore((s) => [
     preferenceSelectors.isPreferenceInit(s),
     labPreferSelectors.enableAgentSelfIteration(s),
     labPreferSelectors.enableInputMarkdown(s),
     labPreferSelectors.enableGatewayMode(s),
+    labPreferSelectors.enableServerAgentMode(s),
     s.updateLab,
   ]);
 
   const { enableAgentSelfIteration: canShowAgentSelfIterationLab } =
     useServerConfigStore(featureFlagsSelectors);
   const hasGatewayUrl = useServerConfigStore((s) => !!s.serverConfig.agentGatewayUrl);
+  const hasServerAgentMode = useServerConfigStore(
+    (s) => !!s.serverConfig.enableServerAgentMode,
+  );
 
   const [channel, setChannel] = useState<UpdateChannelValue>('stable');
 
@@ -155,6 +160,23 @@ const Page = memo(() => {
             className: styles.labItem,
             desc: tLabs('features.gatewayMode.desc'),
             label: tLabs('features.gatewayMode.title'),
+            minWidth: undefined,
+          } satisfies FormItemProps,
+        ]
+      : []),
+    ...(hasServerAgentMode && !hasGatewayUrl
+      ? [
+          {
+            children: (
+              <Switch
+                checked={enableServerAgentMode}
+                loading={!isPreferenceInit}
+                onChange={(checked: boolean) => updateLab({ enableServerAgentMode: checked })}
+              />
+            ),
+            className: styles.labItem,
+            desc: tLabs('features.serverAgentMode.desc'),
+            label: tLabs('features.serverAgentMode.title'),
             minWidth: undefined,
           } satisfies FormItemProps,
         ]

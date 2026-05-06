@@ -47,6 +47,10 @@ export const UserLabSchema = z.object({
    */
   enableGatewayMode: z.boolean().optional(),
   /**
+   * enable server-side agent execution via SSE for self-hosted deployments
+   */
+  enableServerAgentMode: z.boolean().optional(),
+  /**
    * enable multi-agent group chat mode
    */
   enableGroupChat: z.boolean().optional(),

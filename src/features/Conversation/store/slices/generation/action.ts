@@ -221,6 +221,7 @@ export const generationSlice: StateCreator<
     const runtimeType = selectRuntimeType({
       heterogeneousProvider: agentConfig?.agencyConfig?.heterogeneousProvider,
       isGatewayMode: chatStore.isGatewayModeEnabled(),
+      isServerSseMode: chatStore.isServerSseEnabled(),
     });
 
     // TODO(LOBE-8519 follow-up): continue is currently only wired for the client
@@ -384,6 +385,7 @@ export const generationSlice: StateCreator<
       const runtimeType = selectRuntimeType({
         heterogeneousProvider: agentConfig?.agencyConfig?.heterogeneousProvider,
         isGatewayMode: chatStore.isGatewayModeEnabled(),
+        isServerSseMode: chatStore.isServerSseEnabled(),
       });
 
       // ── Gateway mode: trigger server-side regeneration ──

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/consistent-type-imports */
 import type { HeadlessLiteXMLOperation } from '@lobehub/editor/headless';
-import type { SerializedEditorState, SerializedLexicalNode } from 'lexical';
+import { type SerializedEditorState, type SerializedLexicalNode, type NodeKey, $applyNodeReplacement, DecoratorNode } from 'lexical';
 
 import { EMPTY_EDITOR_STATE } from '@/libs/editor/constants';
 import { isValidEditorData } from '@/libs/editor/isValidEditorData';
@@ -126,17 +126,109 @@ const loadEditorState = (
   { editorData, fallbackContent = '' }: LoadEditorStateParams,
 ) => {
   if (isValidEditorData(editorData)) {
-    editor.hydrateEditorData(
-      editorData as unknown as SerializedEditorState<SerializedLexicalNode>,
-      {
-        keepId: true,
-      },
-    );
-    return;
+    try {
+      editor.hydrateEditorData(
+        editorData as unknown as SerializedEditorState<SerializedLexicalNode>,
+        {
+          keepId: true,
+        },
+      );
+      return;
+    } catch (err) {
+      console.warn(
+        '[headlessEditor] hydrateEditorData failed, falling back to markdown:',
+        (err as Error).message,
+      );
+    }
   }
 
   hydrateMarkdownOrEmptyState(editor, fallbackContent, { keepId: true });
 };
+
+interface SerializedBlockImageNode extends SerializedLexicalNode {
+  altText: string;
+  height: number;
+  maxWidth: number;
+  src: string;
+  width: number;
+  status?: string;
+}
+
+/**
+ * Minimal stub that satisfies Lexical's `parseEditorState` for documents
+ * containing "block-image" nodes. The real BlockImageNode is a DecoratorNode
+ * exported internally by @lobehub/editor but importing that package in
+ * Node.js pulls in React modules that crash with `document is not defined`.
+ *
+ * This stub only implements the deserialization/serialization interface
+ * needed by the headless editor's hydrate/export cycle.
+ */
+class StubBlockImageNode extends DecoratorNode<unknown> {
+  __altText: string;
+  __height: number;
+  __maxWidth: number;
+  __src: string;
+  __width: number;
+  __status?: string;
+
+  constructor(
+    { altText, height, maxWidth, src, width, status, key }: Partial<SerializedBlockImageNode> & { key?: NodeKey },
+  ) {
+    super(key);
+    this.__altText = altText ?? '';
+    this.__height = height ?? 0;
+    this.__maxWidth = maxWidth ?? 4200;
+    this.__src = src ?? '';
+    this.__width = width ?? 0;
+    this.__status = status;
+  }
+
+  static getType(): string { return 'block-image'; }
+
+  static clone(node: StubBlockImageNode): StubBlockImageNode {
+    return new StubBlockImageNode({
+      altText: node.__altText,
+      height: node.__height,
+      maxWidth: node.__maxWidth,
+      src: node.__src,
+      width: node.__width,
+      status: node.__status,
+      key: node.__key,
+    });
+  }
+
+  static importJSON(serializedNode: SerializedBlockImageNode): StubBlockImageNode {
+    const node = $applyNodeReplacement(
+      new StubBlockImageNode({
+        altText: serializedNode.altText,
+        height: serializedNode.height,
+        maxWidth: serializedNode.maxWidth,
+        src: serializedNode.src,
+        width: serializedNode.width,
+        status: serializedNode.status,
+      }),
+    );
+    return node;
+  }
+
+  exportJSON(): SerializedBlockImageNode {
+    return {
+      altText: this.__altText,
+      height: this.__height,
+      maxWidth: this.__maxWidth,
+      src: this.__src,
+      type: 'block-image',
+      version: 1,
+      width: this.__width,
+    };
+  }
+
+  createDOM(): HTMLElement { return document.createElement('div'); }
+
+  decorate(): unknown { return null; }
+
+  isInline(): boolean { return false; }
+}
 
 const createHeadlessEditorWithNodes = async () => {
   const [{ createHeadlessEditor }, { LinkNode, AutoLinkNode }] = await Promise.all([
@@ -145,11 +237,18 @@ const createHeadlessEditorWithNodes = async () => {
   ]);
 
   const editor = createHeadlessEditor();
-  // Register LinkNode + AutoLinkNode so headless editor can parse stored documents
-  // that contain hyperlinks (serialized type "link"). Without this, the default
-  // headless editor config skips LinkPlugin, causing parseEditorState errors.
   if ('kernel' in editor) {
-    (editor.kernel as any).registerNodes([LinkNode, AutoLinkNode]);
+    (editor.kernel as any).registerNodes([
+      LinkNode,
+      AutoLinkNode,
+      // Register stub BlockImageNode so headless editor can parse stored
+      // documents that contain images serialized as "block-image" nodes
+      // (created by ReactImagePlugin with defaultBlockImage=true). Without
+      // this, parseEditorState fails with 'type "block-image" not found'.
+      // A full BlockImageNode cannot be imported from @lobehub/editor in
+      // Node.js because it pulls in React modules that access `document`.
+      StubBlockImageNode,
+    ]);
   }
   return editor;
 };

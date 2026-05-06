@@ -222,6 +222,7 @@ export class ConversationLifecycleActionImpl {
     const runtimeType = selectRuntimeType({
       heterogeneousProvider,
       isGatewayMode: this.#get().isGatewayModeEnabled(),
+      isServerSseMode: this.#get().isServerSseEnabled(),
     });
 
     // ── Command Bus: extract and process built-in commands from editorData ──
@@ -672,6 +673,31 @@ export class ConversationLifecycleActionImpl {
         this.#get().failOperation(operationId, {
           message: e instanceof Error ? e.message : 'Unknown error',
           type: 'GatewayError',
+        });
+        return;
+      }
+    }
+
+    // ── Self-hosted SSE Server mode: server-side execution with SSE fallback ──
+    if (runtimeType === 'serverSse') {
+      this.#get().completeOperation(operationId);
+
+      try {
+        const result = await this.#get().executeServerSseAgent({
+          context: operationContext,
+          fileIds: fileIdList,
+          message,
+        });
+
+        return {
+          assistantMessageId: result.assistantMessageId,
+          userMessageId: result.userMessageId,
+        };
+      } catch (e) {
+        console.error('[ServerSse] Failed to start server-side agent:', e);
+        this.#get().failOperation(operationId, {
+          message: e instanceof Error ? e.message : 'Unknown error',
+          type: 'ServerSseError',
         });
         return;
       }
@@ -1169,6 +1195,7 @@ export class ConversationLifecycleActionImpl {
       const runtimeType = selectRuntimeType({
         heterogeneousProvider: parentAgentConfig?.agencyConfig?.heterogeneousProvider,
         isGatewayMode: this.#get().isGatewayModeEnabled(),
+        isServerSseMode: this.#get().isServerSseEnabled(),
       });
 
       // TODO(LOBE-8519 follow-up): only client sub-agent dispatch is

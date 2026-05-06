@@ -24,6 +24,7 @@ export class IoRedisRedisProvider implements BaseRedisProvider {
     const IORedis = await import('ioredis');
 
     this.client = new IORedis.default(this.config.url, {
+      connectTimeout: 5000,
       db: this.config.database,
       keyPrefix: this.config.prefix ? `${this.config.prefix}:` : undefined,
       lazyConnect: true,

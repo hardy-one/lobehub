@@ -551,7 +551,7 @@ export const createRuntimeExecutors = (
         if (isCredsEnabled && ctx.userId) {
           try {
             const { MarketService } = await import('@/server/services/market');
-            const marketService = new MarketService({ userInfo: { userId: ctx.userId } });
+            const marketService = await MarketService.createForUser(ctx.userId);
             const credsResult = await marketService.market.creds.list();
             const userCreds = (credsResult as any)?.data ?? [];
             credsListStr = generateCredsList(

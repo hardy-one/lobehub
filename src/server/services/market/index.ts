@@ -120,6 +120,36 @@ export class MarketService {
     });
   }
 
+  /**
+   * Create MarketService for a user with their OIDC accessToken (if available).
+   * Reads the user's market accessToken from DB settings so that Market API
+   * calls use Bearer auth rather than falling back to trusted-client-only auth.
+   * This avoids "Missing bearer token" errors from endpoints that require
+   * user-level OAuth tokens.
+   *
+   * - accessToken from DB → passed to MarketSDK (Authorization: Bearer header)
+   * - userInfo → generates trustedClientToken (x-lobe-trust-token header)
+   * Both headers are sent, so the Market API can accept whichever it needs.
+   */
+  static async createForUser(userId: string): Promise<MarketService> {
+    let accessToken: string | undefined;
+    try {
+      const { getServerDB } = await import('@/database/server');
+      const db = await getServerDB();
+      const { UserModel } = await import('@/database/models/user');
+      const userModel = new UserModel(db, userId);
+      const userSettings = await userModel.getUserSettings();
+      accessToken = (userSettings?.market as any)?.accessToken;
+    } catch (error) {
+      log('Failed to fetch market accessToken for user %s: %O', userId, error);
+    }
+
+    return new MarketService({
+      accessToken,
+      userInfo: { userId },
+    });
+  }
+
   // ============================== Feedback Methods ==============================
 
   /**

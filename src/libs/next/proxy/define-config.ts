@@ -198,14 +198,16 @@ export function defineConfig() {
   ]);
 
   const betterAuthMiddleware = async (req: NextRequest) => {
+    const t0 = Date.now();
     logBetterAuth('BetterAuth middleware processing request: %s %s', req.method, req.url);
 
     const response = defaultMiddleware(req);
+    const t1 = Date.now();
 
     // when enable auth protection, only public route is not protected, others are all protected
     const isProtected = !isPublicRoute(req);
 
-    logBetterAuth('Route protection status: %s, %s', req.url, isProtected ? 'protected' : 'public');
+    logBetterAuth('Route protection status: %s, %s (defaultMiddleware: %dms)', req.url, isProtected ? 'protected' : 'public', t1 - t0);
 
     // Skip session lookup for public routes to reduce latency
     if (!isProtected) return response;
@@ -214,6 +216,8 @@ export function defineConfig() {
     const session = await auth.api.getSession({
       headers: req.headers,
     });
+    const t2 = Date.now();
+    logBetterAuth('BetterAuth session lookup took %dms', t2 - t1);
 
     const isLoggedIn = !!session?.user;
 

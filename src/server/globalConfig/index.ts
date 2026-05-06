@@ -102,6 +102,9 @@ export const getServerGlobalConfig = async () => {
       ? { agentGatewayUrl: appEnv.AGENT_GATEWAY_URL }
       : undefined),
 
+    // Server-side agent execution via SSE (disabled by default; enable with ENABLE_SERVER_AGENT=true)
+    enableServerAgentMode: appEnv.ENABLE_SERVER_AGENT,
+
     image: cleanObject({
       defaultImageNum: imageEnv.AI_IMAGE_DEFAULT_IMAGE_NUM,
     }),

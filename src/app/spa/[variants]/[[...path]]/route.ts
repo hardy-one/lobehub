@@ -202,10 +202,19 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ path?: string[]; variants: string }> },
 ) {
+  const t0 = Date.now();
+  console.log('[SPA-Route] GET handler started');
+
   const { variants } = await params;
   const { locale, isMobile } = RouteVariants.deserializeVariants(variants);
 
+  const t1 = Date.now();
+  console.log('[SPA-Route] Deserialize: %dms, locale=%s, isMobile=%s', t1 - t0, locale, isMobile);
+
   const serverConfig = await getServerGlobalConfig();
+  const t2 = Date.now();
+  console.log('[SPA-Route] getServerGlobalConfig: %dms', t2 - t1);
+
   const featureFlags = getServerFeatureFlagsValue();
   const analyticsConfig = buildAnalyticsConfig();
   const clientEnv = buildClientEnv();
@@ -219,6 +228,8 @@ export async function GET(
   };
 
   let html = await getTemplate(isMobile);
+  const t3 = Date.now();
+  console.log('[SPA-Route] getTemplate: %dms', t3 - t2);
 
   html = html.replace(
     /window\.__SERVER_CONFIG__\s*=\s*undefined;\s*\/\*\s*SERVER_CONFIG\s*\*\//,
@@ -226,8 +237,13 @@ export async function GET(
   );
 
   const seoMeta = await buildSeoMeta(locale);
+  const t4 = Date.now();
+  console.log('[SPA-Route] buildSeoMeta: %dms', t4 - t3);
+
   html = html.replace('<!--SEO_META-->', seoMeta);
   html = html.replace('<!--ANALYTICS_SCRIPTS-->', '');
+
+  console.log('[SPA-Route] GET handler done: %dms total', t4 - t0);
 
   return new Response(html, {
     headers: {

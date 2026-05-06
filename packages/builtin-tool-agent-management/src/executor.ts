@@ -257,6 +257,7 @@ class AgentManagementExecutor extends BaseExecutor<typeof AgentManagementApiName
         const runtimeType = selectRuntimeType({
           heterogeneousProvider: parentAgentConfig?.agencyConfig?.heterogeneousProvider,
           isGatewayMode: get().isGatewayModeEnabled(),
+          isServerSseMode: get().isServerSseEnabled(),
         });
 
         // TODO(LOBE-8519 follow-up): only client sub-agent dispatch is wired.

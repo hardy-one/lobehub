@@ -13,5 +13,8 @@ export default {
   'features.inputMarkdown.desc':
     'Render Markdown in the input area in real time (bold text, code blocks, tables, etc.).',
   'features.inputMarkdown.title': 'Input Markdown Rendering',
+  'features.serverAgentMode.desc':
+    'Execute agent tasks on the server and stream results back via SSE. Requires Redis. Works in self-hosted deployments without the Gateway service.',
+  'features.serverAgentMode.title': 'Server-Side Agent Execution (SSE)',
   'title': 'Labs',
 };

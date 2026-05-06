@@ -206,10 +206,12 @@ export const createLambdaContext = async (request: NextRequest): Promise<LambdaC
 
   // If OIDC is not enabled or validation fails, try Better Auth authentication
   log('Attempting Better Auth authentication');
+  const t0 = Date.now();
   try {
     const session = await auth.api.getSession({
       headers: request.headers,
     });
+    console.log('[TRPC-Context] getSession: %dms, hasSession=%s', Date.now() - t0, !!session);
 
     if (session && session?.user?.id) {
       userId = session.user.id;

@@ -1,0 +1,294 @@
+import type { ConversationContext } from '@lobechat/types';
+import { AgentRuntimeErrorType } from '@lobechat/types';
+
+import { messageService } from '@/services/message';
+import type { StreamEvent } from '@/services/agentRuntime/type';
+import { emitClientAgentSignalSourceEvent } from '@/store/chat/slices/aiChat/actions/agentSignalBridge';
+import type { ChatStore } from '@/store/chat/store';
+import { notifyDesktopHumanApprovalRequired } from '@/store/chat/utils/desktopNotification';
+
+interface StreamChunkData {
+  chunkType?: string;
+  content?: string;
+  reasoning?: string;
+  toolsCalling?: any[];
+  toolMessageIds?: Record<string, unknown>;
+}
+
+const fetchAndReplaceMessages = async (get: () => ChatStore, context: ConversationContext) => {
+  const messages = await messageService.getMessages(context);
+  get().replaceMessages(messages, { context });
+};
+
+const toChatMessageError = (data: unknown) => {
+  if (typeof data === 'object' && data && 'type' in data && typeof data.type === 'string') {
+    const error = data as any;
+    return {
+      ...error,
+      message: error.message || error.body?.message,
+    };
+  }
+
+  const message =
+    typeof data === 'object' && data && 'message' in data && typeof data.message === 'string'
+      ? data.message
+      : typeof data === 'object' && data && 'error' in data && typeof data.error === 'string'
+        ? data.error
+        : 'Unknown error';
+
+  return {
+    body: { message },
+    message,
+    type: AgentRuntimeErrorType.AgentRuntimeError,
+  };
+};
+
+export const createSSEAgentEventHandler = (
+  get: () => ChatStore,
+  params: {
+    assistantMessageId: string;
+    context: ConversationContext;
+    operationId: string;
+    terminalFlag?: { reached: boolean };
+  },
+) => {
+  const { context, operationId, terminalFlag } = params;
+  const dispatchContext = { operationId };
+
+  let currentAssistantMessageId = params.assistantMessageId;
+  let terminalState: 'completed' | 'error' | undefined;
+
+  let accumulatedContent = '';
+  let accumulatedReasoning = '';
+
+  let processingChain: Promise<void> = Promise.resolve();
+
+  const enqueue = (fn: () => Promise<void> | void): void => {
+    processingChain = processingChain.then(fn, fn);
+  };
+
+  return (event: StreamEvent) => {
+    if (terminalState) return;
+
+    console.log(`[SSE-Agent] Received event: type=${event.type}, stepIndex=${event.stepIndex ?? 'N/A'}`);
+
+    if (event.type === 'agent_runtime_end' || event.type === 'error') {
+      terminalState = event.type === 'error' ? 'error' : 'completed';
+      if (terminalFlag) terminalFlag.reached = true;
+      console.log(`[SSE-Agent] Terminal state: ${terminalState}`);
+    }
+
+    switch (event.type) {
+      case 'agent_runtime_init':
+      case 'stream_start': {
+        enqueue(async () => {
+          accumulatedContent = '';
+          accumulatedReasoning = '';
+          void emitClientAgentSignalSourceEvent({
+            payload: {
+              agentId: context.agentId,
+              operationId,
+              stepIndex: event.stepIndex ?? 0,
+              topicId: context.topicId ?? undefined,
+            },
+            sourceId: `${operationId}:sse:start:${event.stepIndex}`,
+            sourceType: 'client.gateway.stream_start',
+          });
+          await fetchAndReplaceMessages(get, context).catch(console.error);
+        });
+        break;
+      }
+
+      case 'stream_chunk': {
+        enqueue(() => {
+          const data = event.data as StreamChunkData | undefined;
+          if (!data) return;
+
+          if (data.chunkType === 'text' && data.content) {
+            accumulatedContent += data.content;
+            get().internal_dispatchMessage(
+              {
+                id: currentAssistantMessageId,
+                type: 'updateMessage',
+                value: { content: accumulatedContent },
+              },
+              dispatchContext,
+            );
+          }
+
+          if (data.chunkType === 'reasoning' && data.reasoning) {
+            accumulatedReasoning += data.reasoning;
+            get().internal_dispatchMessage(
+              {
+                id: currentAssistantMessageId,
+                type: 'updateMessage',
+                value: { reasoning: { content: accumulatedReasoning } },
+              },
+              dispatchContext,
+            );
+          }
+
+          if (data.chunkType === 'tools_calling' && data.toolsCalling) {
+            get().internal_dispatchMessage(
+              {
+                id: currentAssistantMessageId,
+                type: 'updateMessage',
+                value: { tools: data.toolsCalling },
+              },
+              dispatchContext,
+            );
+
+            get().internal_toggleToolCallingStreaming(
+              currentAssistantMessageId,
+              data.toolsCalling.map(() => true),
+            );
+
+            if ((data as any).toolMessageIds) {
+              fetchAndReplaceMessages(get, context).catch(console.error);
+            }
+          }
+        });
+        break;
+      }
+
+      case 'stream_end': {
+        enqueue(() => {
+          get().internal_toggleToolCallingStreaming(currentAssistantMessageId, undefined);
+        });
+        break;
+      }
+
+      case 'stream_retry': {
+        console.log(
+          `[SSE-Agent] Server requested reconnect for operation ${operationId}, ` +
+          `stepIndex=${event.stepIndex ?? 'N/A'}`,
+        );
+        break;
+      }
+
+      case 'tool_start': {
+        console.log(
+          `[SSE-Agent] Tool start: stepIndex=${event.stepIndex ?? 'N/A'}`,
+        );
+        break;
+      }
+
+      case 'step_start': {
+        const stepData = event.data as {
+          pendingToolsCalling?: unknown[];
+          phase?: string;
+          requiresApproval?: boolean;
+        };
+        console.log(
+          `[SSE-Agent] Step start: stepIndex=${event.stepIndex ?? 'N/A'}, ` +
+          `phase=${stepData.phase ?? 'unknown'}`,
+        );
+        if (stepData.phase === 'human_approval' && stepData.requiresApproval && stepData.pendingToolsCalling) {
+          void notifyDesktopHumanApprovalRequired(get, context);
+        }
+        break;
+      }
+
+      case 'tool_end': {
+        enqueue(async () => {
+          await fetchAndReplaceMessages(get, context).catch(console.error);
+        });
+        break;
+      }
+
+      case 'step_complete': {
+        enqueue(async () => {
+          void emitClientAgentSignalSourceEvent({
+            payload: {
+              agentId: context.agentId,
+              operationId,
+              stepIndex: event.stepIndex ?? 0,
+              topicId: context.topicId ?? undefined,
+            },
+            sourceId: `${operationId}:sse:step_complete:${event.stepIndex}`,
+            sourceType: 'client.gateway.step_complete',
+          });
+          await fetchAndReplaceMessages(get, context).catch(console.error);
+        });
+        break;
+      }
+
+      case 'agent_runtime_end': {
+        enqueue(async () => {
+          void emitClientAgentSignalSourceEvent({
+            payload: {
+              agentId: context.agentId,
+              ...(currentAssistantMessageId
+                ? { assistantMessageId: currentAssistantMessageId }
+                : {}),
+              operationId,
+              topicId: context.topicId ?? undefined,
+            },
+            sourceId: `${operationId}:sse:runtime_end`,
+            sourceType: 'client.gateway.runtime_end',
+          });
+          get().internal_toggleToolCallingStreaming(currentAssistantMessageId, undefined);
+          get().completeOperation(operationId);
+
+          const completedOp = get().operations[operationId];
+          if (completedOp?.context.agentId) {
+            get().markUnreadCompleted(completedOp.context.agentId, completedOp.context.topicId);
+          }
+
+          await fetchAndReplaceMessages(get, context).catch(console.error);
+        });
+        break;
+      }
+
+      case 'error': {
+        enqueue(async () => {
+          const messageError = toChatMessageError(event.data);
+          const errorMessage = messageError.message;
+
+          void emitClientAgentSignalSourceEvent({
+            payload: {
+              agentId: context.agentId,
+              errorMessage,
+              operationId,
+              topicId: context.topicId ?? undefined,
+            },
+            sourceId: `${operationId}:sse:error`,
+            sourceType: 'client.gateway.error',
+          });
+
+          get().internal_toggleToolCallingStreaming(currentAssistantMessageId, undefined);
+          get().completeOperation(operationId);
+
+          const updateResult = await messageService
+            .updateMessageError(currentAssistantMessageId, messageError, {
+              agentId: context.agentId,
+              groupId: context.groupId,
+              threadId: context.threadId,
+              topicId: context.topicId,
+            })
+            .catch(console.error);
+
+          if (updateResult?.success && updateResult.messages) {
+            get().replaceMessages(updateResult.messages, { context });
+          } else {
+            await fetchAndReplaceMessages(get, context).catch(console.error);
+          }
+
+          get().internal_dispatchMessage(
+            {
+              id: currentAssistantMessageId,
+              type: 'updateMessage',
+              value: { error: messageError },
+            },
+            dispatchContext,
+          );
+        });
+        break;
+      }
+
+      case 'connected':
+      case 'heartbeat':
+        break;
+    }
+  };
+};

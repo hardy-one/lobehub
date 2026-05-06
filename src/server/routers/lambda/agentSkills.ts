@@ -61,7 +61,10 @@ const skillProcedure = authedProcedure.use(serverDatabase).use(async (opts) => {
     ctx: {
       fileModel: new FileModel(ctx.serverDB, ctx.userId),
       fileService: new FileService(ctx.serverDB, ctx.userId),
-      marketService: new MarketService({ userInfo: { userId: ctx.userId } }),
+      marketService: new MarketService({
+        accessToken: ctx.marketAccessToken,
+        userInfo: { userId: ctx.userId },
+      }),
       skillImporter: new SkillImporter(ctx.serverDB, ctx.userId),
       skillModel,
     },

@@ -7,12 +7,14 @@ export interface StreamEvent {
   timestamp: number;
   type:
     | 'connected'
-    | 'agent_runtime_init' // Agent runtime initialization
-    | 'agent_runtime_end' // Agent runtime finished (signals stream should close)
+    | 'agent_runtime_init'
+    | 'agent_runtime_end'
     | 'stream_start'
     | 'stream_chunk'
     | 'stream_end'
     | 'stream_retry'
+    | 'tool_start'
+    | 'tool_end'
     | 'step_start'
     | 'step_complete'
     | 'error'

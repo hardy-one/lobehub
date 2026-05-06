@@ -8,6 +8,7 @@ import type { ConversationContext, ExecAgentResult } from '@lobechat/types';
 
 import { isDesktop } from '@/const/version';
 import { aiAgentService, type ResumeApprovalParam } from '@/services/aiAgent';
+import { agentRuntimeClient } from '@/services/agentRuntime/client';
 import { messageService } from '@/services/message';
 import { topicService } from '@/services/topic';
 import type { ChatStore } from '@/store/chat/store';
@@ -15,6 +16,7 @@ import type { StoreSetter } from '@/store/types';
 import { useUserStore } from '@/store/user';
 
 import { createGatewayEventHandler } from './gatewayEventHandler';
+import { createSSEAgentEventHandler } from './sseAgentEventHandler';
 
 type Setter = StoreSetter<ChatStore>;
 
@@ -233,6 +235,18 @@ export class GatewayActionImpl {
     const enableGatewayMode = useUserStore.getState().preference.lab?.enableGatewayMode;
 
     return !!agentGatewayUrl && !!enableGatewayMode;
+  };
+
+  isServerSseEnabled = (): boolean => {
+    const enableServerAgentMode =
+      window.global_serverConfigStore?.getState()?.serverConfig?.enableServerAgentMode;
+    const userEnabled = useUserStore.getState().preference.lab?.enableServerAgentMode;
+
+    console.log(
+      `[SSE-Agent] isServerSseEnabled: serverConfig=${enableServerAgentMode}, userEnabled=${userEnabled}`,
+    );
+
+    return !!enableServerAgentMode && !!userEnabled;
   };
 
   /**
@@ -495,6 +509,163 @@ export class GatewayActionImpl {
       token,
       topicId,
     });
+  };
+
+  executeServerSseAgent = async (params: {
+    context: ConversationContext;
+    fileIds?: string[];
+    message: string;
+    onComplete?: () => void;
+    parentMessageId?: string;
+    resumeApproval?: ResumeApprovalParam;
+  }): Promise<ExecAgentResult> => {
+    const { context, fileIds, message, onComplete, parentMessageId, resumeApproval } = params;
+
+    console.log('[SSE-Agent] Starting server-side agent execution', {
+      agentId: context.agentId,
+      message: message.slice(0, 100),
+      topicId: context.topicId,
+    });
+
+    const isCreateNewTopic = !context.topicId;
+    const taskId = context.viewedTask?.type === 'detail' ? context.viewedTask.taskId : undefined;
+
+    const result = await aiAgentService.execAgentTask({
+      agentId: context.agentId,
+      appContext: {
+        defaultTaskAssigneeAgentId: context.defaultTaskAssigneeAgentId,
+        documentId: context.documentId,
+        groupId: context.groupId,
+        scope: context.scope,
+        taskId,
+        threadId: context.threadId,
+        topicId: context.topicId,
+      },
+      clientRuntime: isDesktop ? 'desktop' : 'web',
+      fileIds,
+      parentMessageId,
+      prompt: message,
+      resumeApproval,
+    });
+
+    console.log('[SSE-Agent] Server agent task created', {
+      agentId: result.agentId,
+      assistantMessageId: result.assistantMessageId,
+      operationId: result.operationId,
+      topicId: result.topicId,
+    });
+
+    if (isCreateNewTopic && result.topicId) {
+      try {
+        const newContext = { ...context, topicId: result.topicId };
+        const messages = await messageService.getMessages(newContext);
+        this.#get().replaceMessages(messages, { context: newContext });
+      } catch {
+        /* non-critical */
+      }
+
+      await this.#get().switchTopic(result.topicId, {
+        clearNewKey: true,
+        skipRefreshMessage: true,
+      });
+    }
+
+    const execContext = { ...context, topicId: result.topicId };
+
+    if (result.topicId) {
+      this.#get().internal_updateTopicLoading(result.topicId, true);
+    }
+
+    const { operationId: sseOpId } = this.#get().startOperation({
+      context: execContext,
+      metadata: { serverOperationId: result.operationId },
+      type: 'execServerAgentRuntime',
+    });
+
+    this.#get().associateMessageWithOperation(result.assistantMessageId, sseOpId);
+
+    this.#get().onOperationCancel(sseOpId, async () => {
+      await aiAgentService
+        .interruptTask({ operationId: result.operationId })
+        .catch((err) => console.error('[SSE] interruptTask failed:', err));
+    });
+
+    const terminalFlag = { reached: false };
+
+    const eventHandler = createSSEAgentEventHandler(this.#get, {
+      assistantMessageId: result.assistantMessageId,
+      context: execContext,
+      operationId: sseOpId,
+      terminalFlag,
+    });
+
+    const cleanupSse = (reason: string) => {
+      if (terminalFlag.reached) {
+        console.log(`[SSE-Agent] Skipping cleanup — terminal already reached (reason: ${reason})`);
+        return;
+      }
+      console.warn(`[SSE-Agent] Cleanup — unexpected disconnect (reason: ${reason})`);
+      this.#get().completeOperation(sseOpId);
+      if (result.topicId) {
+        this.#get().internal_updateTopicLoading(result.topicId, false);
+        topicService
+          .updateTopicMetadata(result.topicId, { runningOperation: null })
+          .catch(() => {});
+      }
+      onComplete?.();
+    };
+
+    const MAX_RETRIES = 3;
+    let retries = 0;
+    const abortRef: { current: AbortController | null } = { current: null };
+
+    const connectSse = () => {
+      abortRef.current?.abort();
+      abortRef.current = agentRuntimeClient.createStreamConnection(result.operationId, {
+        includeHistory: false,
+        lastEventId: '0',
+        onConnect: () => {
+          retries = 0;
+          console.log(`[SSE-Agent] SSE connected for operation ${result.operationId}`);
+        },
+        onDisconnect: () => {
+          console.log(`[SSE-Agent] SSE disconnected for operation ${result.operationId}`);
+          if (terminalFlag.reached) return;
+          if (retries < MAX_RETRIES) {
+            retries++;
+            console.log(`[SSE-Agent] Reconnecting (${retries}/${MAX_RETRIES})...`);
+            connectSse();
+          } else {
+            console.error(`[SSE-Agent] Max retries (${MAX_RETRIES}) reached`);
+            cleanupSse('max_retries');
+          }
+        },
+        onError: (error) => {
+          console.error(`[SSE-Agent] SSE error for operation ${result.operationId}:`, error);
+          if (terminalFlag.reached) return;
+          if (retries < MAX_RETRIES) {
+            retries++;
+            console.log(`[SSE-Agent] Reconnecting after error (${retries}/${MAX_RETRIES})...`);
+            connectSse();
+          } else {
+            cleanupSse('max_retries');
+          }
+        },
+        onEvent: (event: any) => eventHandler(event),
+      });
+    };
+
+    // Merged cancel handler: interrupt server task AND abort local SSE connection
+    this.#get().onOperationCancel(sseOpId, () => {
+      abortRef.current?.abort();
+      aiAgentService
+        .interruptTask({ operationId: result.operationId })
+        .catch((err) => console.error('[SSE-Agent] interruptTask failed:', err));
+    });
+
+    connectSse();
+
+    return result;
   };
 
   private internal_cleanupGatewayConnection = (operationId: string): void => {

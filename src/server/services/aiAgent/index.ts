@@ -236,7 +236,8 @@ export class AiAgentService {
   private readonly threadModel: ThreadModel;
   private readonly topicModel: TopicModel;
   private readonly agentRuntimeService: AgentRuntimeService;
-  private readonly marketService: MarketService;
+  private marketService: MarketService;
+  private marketAuthEnsured = false;
   private readonly klavisService: KlavisService;
 
   constructor(
@@ -257,6 +258,19 @@ export class AiAgentService {
     this.agentRuntimeService = new AgentRuntimeService(db, userId, options?.runtimeOptions);
     this.marketService = new MarketService({ userInfo: { userId } });
     this.klavisService = new KlavisService({ db, userId });
+  }
+
+  /**
+   * Lazily re-create marketService with the user's OIDC accessToken so
+   * Market API calls use Bearer auth instead of falling back to trusted-
+   * client-only auth (which logs "Missing bearer token" errors).
+   */
+  private async ensureMarketAuth(): Promise<MarketService> {
+    if (!this.marketAuthEnsured) {
+      this.marketService = await MarketService.createForUser(this.userId);
+      this.marketAuthEnsured = true;
+    }
+    return this.marketService;
   }
 
   private async resolveOperationTaskId(
@@ -722,7 +736,8 @@ export class AiAgentService {
 
       // 5c. Fetch LobeHub Skills manifests
       try {
-        lobehubSkillManifests = await this.marketService.getLobehubSkillManifests();
+        const market = await this.ensureMarketAuth();
+        lobehubSkillManifests = await market.getLobehubSkillManifests();
       } catch (error) {
         log('execAgent: failed to fetch lobehub skill manifests: %O', error);
       }

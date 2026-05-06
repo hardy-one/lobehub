@@ -58,6 +58,12 @@ export interface GlobalServerConfig {
    * events via the Gateway instead of running the agent loop client-side.
    */
   agentGatewayUrl?: string;
+  /**
+   * Whether server-side agent execution via SSE is available.
+   * Always true in self-hosted deployments. Mutually exclusive with agentGatewayUrl
+   * when Gateway mode is configured (Gateway takes priority).
+   */
+  enableServerAgentMode?: boolean;
   aiProvider: ServerLanguageModel;
   defaultAgent?: PartialDeep<UserDefaultAgent>;
   disableEmailPassword?: boolean;

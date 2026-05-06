@@ -144,7 +144,7 @@ class ServerCredsService implements ICredsService {
  * Per-request runtime (needs userId, topicId)
  */
 export const credsRuntime: ServerRuntimeRegistration = {
-  factory: (context) => {
+  factory: async (context) => {
     if (!context.userId) {
       throw new Error('userId is required for Creds execution');
     }
@@ -155,7 +155,7 @@ export const credsRuntime: ServerRuntimeRegistration = {
       context.topicId,
     );
 
-    const marketService = new MarketService({ userInfo: { userId: context.userId } });
+    const marketService = await MarketService.createForUser(context.userId);
     const credsService = new ServerCredsService(marketService);
 
     return new CredsExecutionRuntime(credsService, {

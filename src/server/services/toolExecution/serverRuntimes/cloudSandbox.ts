@@ -14,7 +14,7 @@ import { type ServerRuntimeRegistration } from './types';
  * Per-request runtime (needs topicId, userId)
  */
 export const cloudSandboxRuntime: ServerRuntimeRegistration = {
-  factory: (context) => {
+  factory: async (context) => {
     if (!context.userId || !context.topicId) {
       throw new Error('userId and topicId are required for Cloud Sandbox execution');
     }
@@ -23,7 +23,7 @@ export const cloudSandboxRuntime: ServerRuntimeRegistration = {
       throw new Error('serverDB is required for Cloud Sandbox execution');
     }
 
-    const marketService = new MarketService({ userInfo: { userId: context.userId } });
+    const marketService = await MarketService.createForUser(context.userId);
     const fileService = new FileService(context.serverDB, context.userId);
     const sandboxService = new ServerSandboxService({
       fileService,

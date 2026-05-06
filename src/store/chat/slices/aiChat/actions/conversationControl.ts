@@ -35,13 +35,14 @@ export class ConversationControlActionImpl {
 
   /**
    * Decide whether approve/reject/reject_continue should go through the
-   * Gateway resume path (new op carrying `resumeApproval`) instead of the
+   * server-mode resume path (new op carrying `resumeApproval`) instead of the
    * local `executeClientAgent` path. Mirrors the "interrupt + new op"
    * pattern from LOBE-7142.
    *
-   * Routes via `selectRuntimeType` so approve/reject align with how the
-   * conversation was dispatched at sendMessage time. Hetero resume is not yet
-   * implemented and falls through to client local resume — see LOBE-8519.
+   * Returns true for both Gateway WebSocket and self-hosted SSE modes.
+   * Actual dispatch to the correct runtime happens in `#dispatchServerResume`.
+   * Hetero resume is not yet implemented and falls through to client local
+   * resume — see LOBE-8519.
    *
    * We deliberately do **not** look for a living `execServerAgentRuntime`
    * op here. The server's `waiting_for_human` → `agent_runtime_end` signal
@@ -55,12 +56,12 @@ export class ConversationControlActionImpl {
     const agentConfig = context.agentId
       ? agentSelectors.getAgentConfigById(context.agentId)(getAgentStoreState())
       : undefined;
-    return (
-      selectRuntimeType({
-        heterogeneousProvider: agentConfig?.agencyConfig?.heterogeneousProvider,
-        isGatewayMode: this.#get().isGatewayModeEnabled(),
-      }) === 'gateway'
-    );
+    const rt = selectRuntimeType({
+      heterogeneousProvider: agentConfig?.agencyConfig?.heterogeneousProvider,
+      isGatewayMode: this.#get().isGatewayModeEnabled(),
+      isServerSseMode: this.#get().isServerSseEnabled(),
+    });
+    return rt === 'gateway' || rt === 'serverSse';
   };
 
   /**
@@ -102,6 +103,58 @@ export class ConversationControlActionImpl {
   #completeOpsById = (opIds: readonly string[]): void => {
     const { completeOperation } = this.#get();
     for (const id of opIds) completeOperation(id);
+  };
+
+  /**
+   * Dispatch a server-mode resume (approve/reject/continue) to the correct
+   * runtime — Gateway WebSocket or self-hosted SSE. Selects the runtime the
+   * same way sendMessageInternal does, so the resume path stays consistent
+   * with how the original operation was dispatched.
+   */
+  #dispatchServerResume = async (
+    effectiveContext: ConversationContext,
+    params: {
+      decision: 'approved' | 'rejected_continue';
+      parentMessageId: string;
+      toolCallId: string;
+      rejectionReason?: string;
+    },
+  ): Promise<void> => {
+    const agentConfig = effectiveContext.agentId
+      ? agentSelectors.getAgentConfigById(effectiveContext.agentId)(getAgentStoreState())
+      : undefined;
+    const rt = selectRuntimeType({
+      heterogeneousProvider: agentConfig?.agencyConfig?.heterogeneousProvider,
+      isGatewayMode: this.#get().isGatewayModeEnabled(),
+      isServerSseMode: this.#get().isServerSseEnabled(),
+    });
+
+    const resumeApproval = {
+      decision: params.decision,
+      parentMessageId: params.parentMessageId,
+      toolCallId: params.toolCallId,
+      ...(params.rejectionReason !== undefined && { rejectionReason: params.rejectionReason }),
+    };
+
+    if (rt === 'gateway') {
+      await this.#get().executeGatewayAgent({
+        context: effectiveContext,
+        message: '',
+        parentMessageId: params.parentMessageId,
+        resumeApproval,
+      });
+    } else if (rt === 'serverSse') {
+      await this.#get().executeServerSseAgent({
+        context: effectiveContext,
+        message: '',
+        parentMessageId: params.parentMessageId,
+        resumeApproval,
+      });
+    } else {
+      console.warn(
+        `[dispatchServerResume] Unexpected runtime type: ${rt}, no resume dispatched`,
+      );
+    }
   };
 
   stopGenerateMessage = (): void => {
@@ -219,11 +272,13 @@ export class ConversationControlActionImpl {
       optimisticContext,
     );
 
-    // 2.5. Server-mode: start a **new** Gateway op carrying the approval
-    // decision via `resumeApproval`. The server reads the target tool
-    // message, persists `intervention=approved`, dispatches the approved
-    // tool, and streams results back on the new op. No in-place resume of
-    // the paused op — simpler state + avoids stepIndex races.
+    // 2.5. Server-mode: start a **new** Gateway/SSE op carrying the approval
+    // decision via `resumeApproval`. Routes via `#dispatchServerResume` to
+    // the correct runtime (Gateway WebSocket or self-hosted SSE). The server
+    // reads the target tool message, persists `intervention=approved`,
+    // dispatches the approved tool, and streams results back on the new op.
+    // No in-place resume of the paused op — simpler state + avoids stepIndex
+    // races.
     if (this.#shouldUseGatewayResume(effectiveContext)) {
       const toolCallId = toolMessage.tool_call_id;
       if (!toolCallId) {
@@ -234,26 +289,21 @@ export class ConversationControlActionImpl {
         return;
       }
       // Snapshot paused op IDs before the resume call; retire them only
-      // after executeGatewayAgent succeeds so a transient failure leaves
+      // after #dispatchServerResume succeeds so a transient failure leaves
       // the running marker intact and `#shouldUseGatewayResume` still flags
-      // Gateway mode on retry.
+      // server-mode on retry.
       const pausedOpIds = this.#getRunningServerOps(effectiveContext).map((op) => op.id);
       try {
-        await this.#get().executeGatewayAgent({
-          context: effectiveContext,
-          message: '',
+        await this.#dispatchServerResume(effectiveContext, {
+          decision: 'approved',
           parentMessageId: toolMessageId,
-          resumeApproval: {
-            decision: 'approved',
-            parentMessageId: toolMessageId,
-            toolCallId,
-          },
+          toolCallId,
         });
         this.#completeOpsById(pausedOpIds);
         completeOperation(operationId);
       } catch (error) {
         const err = error as Error;
-        console.error('[approveToolCalling][server] Gateway resume failed:', err);
+        console.error('[approveToolCalling][server] Resume failed:', err);
         this.#get().failOperation(operationId, {
           type: 'approveToolCalling',
           message: err.message || 'Unknown error',
@@ -674,7 +724,7 @@ export class ConversationControlActionImpl {
       optimisticContext,
     );
 
-    // Server-mode: start a **new** Gateway op carrying the rejection.
+    // Server-mode: start a **new** Gateway/SSE op carrying the rejection.
     // We use `rejected_continue` uniformly — server-side `rejected` and
     // `rejected_continue` share the same code path (both surface the
     // rejection to the LLM as user feedback), so a separate `rejected`
@@ -690,20 +740,15 @@ export class ConversationControlActionImpl {
       }
       const pausedOpIds = this.#getRunningServerOps(effectiveContext).map((op) => op.id);
       try {
-        await this.#get().executeGatewayAgent({
-          context: effectiveContext,
-          message: '',
+        await this.#dispatchServerResume(effectiveContext, {
+          decision: 'rejected_continue',
           parentMessageId: messageId,
-          resumeApproval: {
-            decision: 'rejected_continue',
-            parentMessageId: messageId,
-            rejectionReason: reason,
-            toolCallId,
-          },
+          rejectionReason: reason,
+          toolCallId,
         });
         this.#completeOpsById(pausedOpIds);
       } catch (error) {
-        console.error('[rejectToolCalling][server] Gateway resume failed:', error);
+        console.error('[rejectToolCalling][server] Resume failed:', error);
       }
     }
 
@@ -729,7 +774,7 @@ export class ConversationControlActionImpl {
 
     const { agentId, topicId, threadId, scope } = effectiveContext;
 
-    // Server-mode: start a **new** Gateway op with `decision='rejected_continue'`.
+    // Server-mode: start a **new** Gateway/SSE op with `decision='rejected_continue'`.
     // Server persists the rejection on the target tool message and resumes
     // the LLM loop with the rejection content surfaced as user feedback.
     // Skip the client-mode `rejectToolCalling` chain below — that would fire
@@ -773,22 +818,17 @@ export class ConversationControlActionImpl {
       );
 
       try {
-        await this.#get().executeGatewayAgent({
-          context: effectiveContext,
-          message: '',
+        await this.#dispatchServerResume(effectiveContext, {
+          decision: 'rejected_continue',
           parentMessageId: messageId,
-          resumeApproval: {
-            decision: 'rejected_continue',
-            parentMessageId: messageId,
-            rejectionReason: reason,
-            toolCallId,
-          },
+          rejectionReason: reason,
+          toolCallId,
         });
         this.#completeOpsById(pausedOpIds);
         completeOperation(operationId);
       } catch (error) {
         const err = error as Error;
-        console.error('[rejectAndContinueToolCalling][server] Gateway resume failed:', err);
+        console.error('[rejectAndContinueToolCalling][server] Resume failed:', err);
         this.#get().failOperation(operationId, {
           type: 'rejectToolCalling',
           message: err.message || 'Unknown error',

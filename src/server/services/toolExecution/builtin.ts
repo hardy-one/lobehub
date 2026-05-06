@@ -13,11 +13,22 @@ const log = debug('lobe-server:builtin-tools-executor');
 
 export class BuiltinToolsExecutor implements IToolExecutor {
   private marketService: MarketService;
+  private marketAuthEnsured = false;
   private klavisService: KlavisService;
+  private userId: string;
 
   constructor(db: LobeChatDatabase, userId: string) {
+    this.userId = userId;
     this.marketService = new MarketService({ userInfo: { userId } });
     this.klavisService = new KlavisService({ db, userId });
+  }
+
+  private async ensureMarketAuth(): Promise<MarketService> {
+    if (!this.marketAuthEnsured) {
+      this.marketService = await MarketService.createForUser(this.userId);
+      this.marketAuthEnsured = true;
+    }
+    return this.marketService;
   }
 
   async execute(
@@ -68,7 +79,8 @@ export class BuiltinToolsExecutor implements IToolExecutor {
 
     // Route LobeHub Skills to MarketService
     if (source === 'lobehubSkill') {
-      return this.marketService.executeLobehubSkill({
+      const market = await this.ensureMarketAuth();
+      return market.executeLobehubSkill({
         args,
         context: {
           topicId: context.topicId,

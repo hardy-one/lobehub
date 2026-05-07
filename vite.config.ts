@@ -276,6 +276,14 @@ export default defineConfig({
             },
             urlPattern: /\/(api|trpc)\/.*/i,
           },
+          // Let external/third-party requests pass through without SW interference.
+          // The SW intercepts all fetch events in its scope, and cross-origin
+          // requests (Cloudflare Insights, analytics beacons, etc.) can fail
+          // with "no-response" if the SW cannot proxy them properly.
+          {
+            handler: 'NetworkOnly',
+            urlPattern: ({ url }) => url.origin !== self.location.origin,
+          },
         ],
       },
     }),

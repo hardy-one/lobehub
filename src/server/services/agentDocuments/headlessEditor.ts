@@ -238,17 +238,21 @@ const createHeadlessEditorWithNodes = async () => {
 
   const editor = createHeadlessEditor();
   if ('kernel' in editor) {
-    (editor.kernel as any).registerNodes([
-      LinkNode,
-      AutoLinkNode,
-      // Register stub BlockImageNode so headless editor can parse stored
-      // documents that contain images serialized as "block-image" nodes
-      // (created by ReactImagePlugin with defaultBlockImage=true). Without
-      // this, parseEditorState fails with 'type "block-image" not found'.
-      // A full BlockImageNode cannot be imported from @lobehub/editor in
-      // Node.js because it pulls in React modules that access `document`.
-      StubBlockImageNode,
-    ]);
+    const kernel = editor.kernel as any;
+    kernel.registerNodes([LinkNode, AutoLinkNode]);
+
+    const lexicalEditor = kernel.editor;
+    if (lexicalEditor?._nodes) {
+      const existing = lexicalEditor._nodes.get(StubBlockImageNode.getType());
+      if (!existing) {
+        lexicalEditor._nodes.set(StubBlockImageNode.getType(), {
+          klass: StubBlockImageNode,
+          replace: null,
+          replaceWithKlass: null,
+          type: 'node',
+        });
+      }
+    }
   }
   return editor;
 };

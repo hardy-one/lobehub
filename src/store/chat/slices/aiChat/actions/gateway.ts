@@ -511,6 +511,80 @@ export class GatewayActionImpl {
     });
   };
 
+  /**
+   * Reconnect to a running SSE server operation after page reload.
+   * Mirrors reconnectToGatewayOperation but uses SSE transport instead of
+   * Gateway WebSocket. Reads runningOperation from topic metadata, creates
+   * a local operation, and hooks up the SSE event handler.
+   */
+  reconnectToServerSseOperation = async (params: {
+    assistantMessageId: string;
+    operationId: string;
+    scope?: string;
+    threadId?: string | null;
+    topicId: string;
+  }): Promise<void> => {
+    const { assistantMessageId, operationId, topicId, scope, threadId } = params;
+
+    const agentId = this.#get().activeAgentId;
+    const context = {
+      agentId,
+      scope: (scope ?? 'main') as ConversationContext['scope'],
+      threadId: threadId ?? null,
+      topicId,
+    };
+
+    // Create a local operation so the UI shows loading state on reconnect
+    const { operationId: sseOpId } = this.#get().startOperation({
+      context,
+      metadata: { serverOperationId: operationId },
+      type: 'execServerAgentRuntime',
+    });
+
+    this.#get().associateMessageWithOperation(assistantMessageId, sseOpId);
+
+    // Cancel → interrupt server task + abort SSE
+    const abortRef: { current: AbortController | null } = { current: null };
+    this.#get().onOperationCancel(sseOpId, () => {
+      abortRef.current?.abort();
+      aiAgentService
+        .interruptTask({ operationId })
+        .catch((err) => console.error('[SSE-Agent] interruptTask failed:', err));
+      topicService.updateTopicMetadata(topicId, { runningOperation: null }).catch(() => {});
+    });
+
+    this.#get().internal_updateTopicLoading(topicId, true);
+
+    const terminalFlag = { reached: false };
+    const eventHandler = createSSEAgentEventHandler(this.#get, {
+      assistantMessageId,
+      context,
+      operationId: sseOpId,
+      terminalFlag,
+    });
+
+    abortRef.current = agentRuntimeClient.createStreamConnection(operationId, {
+      includeHistory: false,
+      lastEventId: '0',
+      onConnect: () => {
+        console.log(`[SSE-Agent] Reconnected for operation ${operationId}`);
+      },
+      onDisconnect: () => {
+        console.log(`[SSE-Agent] Reconnect SSE disconnected for operation ${operationId}`);
+        if (terminalFlag.reached) return;
+        this.#get().completeOperation(sseOpId);
+        this.#get().internal_updateTopicLoading(topicId, false);
+      },
+      onError: (error) => {
+        console.error(`[SSE-Agent] Reconnect SSE error for operation ${operationId}:`, error);
+        if (terminalFlag.reached) return;
+        this.#get().completeOperation(sseOpId);
+        this.#get().internal_updateTopicLoading(topicId, false);
+      },
+      onEvent: (event: any) => eventHandler(event),
+    });
+  };
+
   executeServerSseAgent = async (params: {
     context: ConversationContext;
     fileIds?: string[];
@@ -608,9 +682,11 @@ export class GatewayActionImpl {
       this.#get().completeOperation(sseOpId);
       if (result.topicId) {
         this.#get().internal_updateTopicLoading(result.topicId, false);
-        topicService
-          .updateTopicMetadata(result.topicId, { runningOperation: null })
-          .catch(() => {});
+        // Do NOT clear runningOperation here — the server-side agent may
+        // still be running. Clearing it would prevent reconnect after page
+        // reload / tab close. The server clears it via RuntimeExecutors
+        // when the operation actually finishes, and the SSE event handler's
+        // agent_runtime_end case also clears it for a faster local update.
       }
       onComplete?.();
     };
@@ -661,6 +737,12 @@ export class GatewayActionImpl {
       aiAgentService
         .interruptTask({ operationId: result.operationId })
         .catch((err) => console.error('[SSE-Agent] interruptTask failed:', err));
+      // Clear runningOperation so reconnect doesn't trigger for cancelled ops
+      if (result.topicId) {
+        topicService
+          .updateTopicMetadata(result.topicId, { runningOperation: null })
+          .catch(() => {});
+      }
     });
 
     connectSse();

@@ -11,39 +11,51 @@ interface RunningOperation {
 }
 
 /**
- * Auto-reconnect to a running Gateway operation on the given topic.
+ * Auto-reconnect to a running Gateway / SSE server operation on the given topic.
  *
  * The caller sources `runningOperation` itself — the chat-store topic map
  * (main agent) and the task-detail activity (task drawer) live in different
  * stores, so this hook stays source-agnostic.
  *
- * Reconnect only depends on whether the server has a Gateway URL configured;
- * the user's lab toggle controls *new* requests, not resuming an op that's
- * already running on the Gateway.
+ * Uses SWR with operationId as the key so the same operation deduplicates
+ * and only one reconnect attempt fires per op.
  *
- * SWR key is the operationId, so the same operation deduplicates and only
- * one reconnect attempt fires per op.
+ * Gateway mode: checks agentGatewayUrl.
+ * SSE mode (self-hosted): checks enableServerAgentMode.
  */
 export const useGatewayReconnect = (
   topicId: string | null | undefined,
   runningOperation: RunningOperation | null | undefined,
 ) => {
   const agentGatewayUrl = useServerConfigStore((s) => s.serverConfig.agentGatewayUrl);
+  const enableServerAgent = useServerConfigStore((s) => s.serverConfig.enableServerAgentMode);
+
+  const canReconnect = runningOperation && topicId && (!!agentGatewayUrl || !!enableServerAgent);
 
   useSWR(
-    runningOperation && topicId && agentGatewayUrl
-      ? ['reconnectGateway', runningOperation.operationId]
-      : null,
+    canReconnect ? ['reconnectServerOp', runningOperation.operationId] : null,
     async () => {
       if (!runningOperation || !topicId) return;
 
-      await useChatStore.getState().reconnectToGatewayOperation({
-        assistantMessageId: runningOperation.assistantMessageId,
-        operationId: runningOperation.operationId,
-        scope: runningOperation.scope,
-        threadId: runningOperation.threadId,
-        topicId,
-      });
+      const store = useChatStore.getState();
+
+      if (agentGatewayUrl) {
+        await store.reconnectToGatewayOperation({
+          assistantMessageId: runningOperation.assistantMessageId,
+          operationId: runningOperation.operationId,
+          scope: runningOperation.scope,
+          threadId: runningOperation.threadId,
+          topicId,
+        });
+      } else if (enableServerAgent) {
+        await store.reconnectToServerSseOperation({
+          assistantMessageId: runningOperation.assistantMessageId,
+          operationId: runningOperation.operationId,
+          scope: runningOperation.scope,
+          threadId: runningOperation.threadId,
+          topicId,
+        });
+      }
     },
     {
       revalidateIfStale: false,

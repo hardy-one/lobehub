@@ -297,6 +297,11 @@ export const createSSEAgentEventHandler = (
             get().markUnreadCompleted(completedOp.context.agentId, completedOp.context.topicId);
           }
 
+          // Clear topic loading state (yellow spinning circle in topic list)
+          if (context.topicId) {
+            get().internal_updateTopicLoading(context.topicId, false);
+          }
+
           // Final sync with server - this creates the proper assistantGroup structure
           await fetchAndReplaceMessages(get, context).catch(console.error);
         });
@@ -321,6 +326,11 @@ export const createSSEAgentEventHandler = (
 
           get().internal_toggleToolCallingStreaming(currentAssistantMessageId, undefined);
           get().completeOperation(operationId);
+
+          // Clear topic loading state on error
+          if (context.topicId) {
+            get().internal_updateTopicLoading(context.topicId, false);
+          }
 
           const updateResult = await messageService
             .updateMessageError(currentAssistantMessageId, messageError, {

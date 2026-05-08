@@ -415,18 +415,16 @@ export const generationSlice: StateCreator<
 
       // ── Gateway mode: trigger server-side regeneration ──
       if (runtimeType === 'gateway') {
-        // Do NOT switch branch before server execution - the branch will be set
-        // by the server when it creates the new assistant message.
-        // Switching now would cause optimistic update issues where activeBranchIndex
-        // points to a non-existent branch.
+        // Switch branch BEFORE server execution so the UI shows the new branch
+        // during streaming. The BranchResolver handles the optimistic case
+        // (activeBranchIndex === children.length → returns undefined) gracefully.
+        await chatStore.switchMessageBranch(messageId, nextBranchIndex, { operationId });
 
         await chatStore.executeGatewayAgent({
           context,
           message: item.content,
           onComplete: () => {
             chatStore.completeOperation(operationId);
-            // Ensure activeBranchIndex points to the newly created branch
-            chatStore.switchMessageBranch(messageId, nextBranchIndex).catch(console.error);
             if (hooks.onRegenerateComplete) {
               hooks.onRegenerateComplete(messageId);
             }
@@ -439,16 +437,16 @@ export const generationSlice: StateCreator<
 
       // ── ServerSse mode: trigger server-side regeneration via SSE ──
       if (runtimeType === 'serverSse') {
-        // Do NOT switch branch before server execution - same reason as gateway mode.
-        // The server creates the branch, and we'll see it when messages refresh.
+        // Switch branch BEFORE server execution so the UI shows the new branch
+        // during streaming. The BranchResolver handles the optimistic case
+        // (activeBranchIndex === children.length → returns undefined) gracefully.
+        await chatStore.switchMessageBranch(messageId, nextBranchIndex, { operationId });
 
         await chatStore.executeServerSseAgent({
           context,
           message: item.content,
           onComplete: () => {
             chatStore.completeOperation(operationId);
-            // Ensure activeBranchIndex points to the newly created branch
-            chatStore.switchMessageBranch(messageId, nextBranchIndex).catch(console.error);
             if (hooks.onRegenerateComplete) {
               hooks.onRegenerateComplete(messageId);
             }

@@ -1,5 +1,5 @@
 import { parse } from '@lobechat/conversation-flow';
-import { type TraceEventPayloads, type UIChatMessage } from '@lobechat/types';
+import { type TraceEventPayloads } from '@lobechat/types';
 import debug from 'debug';
 import isEqual from 'fast-deep-equal';
 
@@ -64,43 +64,6 @@ export class MessageInternalsActionImpl {
       payload,
       type: `dispatchMessage/${payload.type}`,
     });
-  };
-
-  /**
-   * Trigger a Zustand re-render by creating new references for messagesMap and dbMessagesMap
-   * at a specific key. Used by SSE streaming to sync mutated message content through the
-   * ChatStore -> ConversationArea -> StoreUpdater -> ConversationStore bridge without
-   * re-running parse() in the ChatStore.
-   *
-   * When `displayMessages` and/or `dbMessages` are provided, they are used instead of
-   * cloning from the current store. This lets callers pass arrays that already contain
-   * new object references, so downstream memo(isEqual) checks detect the changes
-   * (otherwise fast-deep-equal short-circuits on same-reference objects).
-   */
-  internal_refreshMessageMaps = (
-    key: string,
-    displayMessages?: UIChatMessage[],
-    dbMessages?: any[],
-  ): void => {
-    console.log(
-      `[ChatStore.internal_refreshMessageMaps] key=${key}, ` +
-      `dbLen=${dbMessages?.length ?? (this.#get().dbMessagesMap[key] || []).length}, ` +
-      `msgLen=${displayMessages?.length ?? (this.#get().messagesMap[key] || []).length}`,
-    );
-    this.#set(
-      {
-        dbMessagesMap: {
-          ...this.#get().dbMessagesMap,
-          [key]: dbMessages ?? [...(this.#get().dbMessagesMap[key] || [])],
-        },
-        messagesMap: {
-          ...this.#get().messagesMap,
-          [key]: displayMessages ?? [...(this.#get().messagesMap[key] || [])],
-        },
-      },
-      false,
-      'sseStreamChunk',
-    );
   };
 
   internal_traceMessage = async (id: string, payload: TraceEventPayloads): Promise<void> => {

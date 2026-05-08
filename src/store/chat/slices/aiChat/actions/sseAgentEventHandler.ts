@@ -6,7 +6,6 @@ import type { StreamEvent } from '@/services/agentRuntime/type';
 import { emitClientAgentSignalSourceEvent } from '@/store/chat/slices/aiChat/actions/agentSignalBridge';
 import type { ChatStore } from '@/store/chat/store';
 import { notifyDesktopHumanApprovalRequired } from '@/store/chat/utils/desktopNotification';
-import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 
 interface StreamChunkData {
   chunkType?: string;
@@ -49,150 +48,6 @@ const toChatMessageError = (data: unknown) => {
     message,
     type: AgentRuntimeErrorType.AgentRuntimeError,
   };
-};
-
-/**
- * Apply content updates to a message by creating a NEW object (not in-place mutation).
- * This is critical because ConversationProvider uses memo(..., isEqual) which short-circuits
- * on same-reference objects — in-place updates are invisible to the sync bridge.
- */
-const applyUpdates = (
-  msg: any,
-  updates: Partial<{ content: string; reasoning: { content: string }; tools: any[] }>,
-): any => {
-  let updated = msg;
-  if (updates.content !== undefined) {
-    updated = { ...updated, content: updates.content };
-  }
-  if (updates.reasoning !== undefined) {
-    updated = { ...updated, reasoning: updates.reasoning };
-  }
-  if (updates.tools !== undefined) {
-    updated = { ...updated, tools: updates.tools };
-  }
-  return updated;
-};
-
-/**
- * Update display messages directly without triggering parse().
- * Used during SSE streaming to update content without recreating assistantGroup.
- *
- * Also updates the corresponding raw message in dbMessagesMap and triggers
- * a Zustand set() via internal_refreshMessageMaps so the ChatStore ->
- * ConversationArea -> StoreUpdater -> ConversationStore bridge fires and
- * the UI re-renders with the updated content.
- */
-const updateDisplayMessageContent = (
-  get: () => ChatStore,
-  messageId: string,
-  context: ConversationContext,
-  updates: Partial<{ content: string; reasoning: { content: string }; tools: any[] }>,
-) => {
-  const key = messageMapKey({
-    agentId: context.agentId,
-    groupId: context.groupId,
-    threadId: context.threadId,
-    topicId: context.topicId,
-  });
-  const displayMessages = get().messagesMap[key] || [];
-  const rawMessages = get().dbMessagesMap[key] || [];
-  let mutated = false;
-
-  // Create mutable copies of the arrays so we can replace objects
-  const newDisplayMessages = [...displayMessages];
-  const newRawMessages = [...rawMessages];
-
-  const index = newDisplayMessages.findIndex((m: UIChatMessage) => m.id === messageId);
-  if (index < 0) {
-    // The message might be inside an assistantGroup's children rather than at
-    // the top level of the flatList. Search recursively.
-    for (let di = 0; di < newDisplayMessages.length; di++) {
-      const displayMsg = newDisplayMessages[di];
-      if (displayMsg.role === 'assistantGroup' && displayMsg.children) {
-        const childIndex = displayMsg.children.findIndex((c: any) => c.id === messageId);
-        if (childIndex >= 0 && displayMsg.children[childIndex]) {
-          const child = displayMsg.children[childIndex];
-          const newChild = applyUpdates(child, updates);
-
-          // Create new children array and new group message
-          const newChildren = [...displayMsg.children];
-          newChildren[childIndex] = newChild;
-          newDisplayMessages[di] = { ...displayMsg, children: newChildren };
-
-          // Also update the raw message — in dbMessagesMap this child is a
-          // standalone 'assistant' message, not nested inside a group.
-          const rawIndex = newRawMessages.findIndex((m: any) => m.id === messageId);
-          if (rawIndex >= 0) {
-            newRawMessages[rawIndex] = applyUpdates(newRawMessages[rawIndex], updates);
-          }
-
-          mutated = true;
-          break;
-        }
-      }
-    }
-    if (!mutated) {
-      console.log(
-        `[SSE-Agent] updateDisplayMessageContent: message ${messageId} not found in messagesMap[${key}] ` +
-        `(topLevel=${displayMessages.length}, searched inside assistantGroup children too)`,
-      );
-      return;
-    }
-  } else {
-    // Find the message in displayMessages and update it directly
-    const message = newDisplayMessages[index];
-    if (!message) return;
-
-    const rawMsg = newRawMessages.find((m: any) => m.id === messageId);
-
-    // For assistantGroup, find the last child block and update its content
-    if (message.role === 'assistantGroup' && message.children && message.children.length > 0) {
-      const lastIndex = message.children.length - 1;
-      const newLastChild = applyUpdates(message.children[lastIndex], updates);
-
-      // Create new children array and new group message
-      const newChildren = [...message.children];
-      newChildren[lastIndex] = newLastChild;
-      newDisplayMessages[index] = { ...message, children: newChildren };
-
-      // Mirror on raw message — in dbMessagesMap it's a plain 'assistant'
-      if (rawMsg?.role === 'assistant') {
-        const rawIndex = newRawMessages.findIndex((m: any) => m.id === messageId);
-        if (rawIndex >= 0) {
-          newRawMessages[rawIndex] = applyUpdates(rawMsg, updates);
-        }
-      }
-
-      mutated = true;
-    }
-
-    // For regular assistant message, update directly
-    if (message.role === 'assistant') {
-      newDisplayMessages[index] = applyUpdates(message, updates);
-
-      // Mirror on raw message
-      if (rawMsg?.role === 'assistant') {
-        const rawIndex = newRawMessages.findIndex((m: any) => m.id === messageId);
-        if (rawIndex >= 0) {
-          newRawMessages[rawIndex] = applyUpdates(rawMsg, updates);
-        }
-      }
-
-      mutated = true;
-    }
-  }
-
-  // Trigger the ChatStore -> ConversationStore sync bridge so the UI re-renders
-  if (mutated) {
-    console.log(
-      `[SSE-Agent] updateDisplayMessageContent: content updated for ${messageId}, triggering refresh`,
-    );
-    // Pass the pre-built arrays with new object references directly so that
-    // downstream memo(isEqual) checks (ConversationProvider) see new reference
-    // chains and re-render. Without new objects, fast-deep-equal short-circuits
-    // on same-reference objects and the sync bridge never fires.
-    get().internal_refreshMessageMaps(key, newDisplayMessages, newRawMessages);
-  }
 };
 
 export const createSSEAgentEventHandler = (
@@ -252,6 +107,14 @@ export const createSSEAgentEventHandler = (
       case 'agent_runtime_init':
       case 'stream_start': {
         enqueue(async () => {
+          // Read new assistant message ID from stream_start (created by server for this step)
+          const data = event.data as { assistantMessage?: { id: string } } | undefined;
+          const newAssistantMessageId = data?.assistantMessage?.id;
+          if (newAssistantMessageId) {
+            currentAssistantMessageId = newAssistantMessageId;
+            get().associateMessageWithOperation(currentAssistantMessageId, operationId);
+          }
+
           accumulatedContent = '';
           accumulatedReasoning = '';
           hasTools = false;
@@ -275,24 +138,46 @@ export const createSSEAgentEventHandler = (
           const data = event.data as StreamChunkData | undefined;
           if (!data) return;
 
-          // Handle text content - update display directly to avoid parse() recreating assistantGroup
+          // Handle text content — use internal_dispatchMessage (same as Gateway handler)
+          // to update raw messages through the reducer. This lets Immer create new
+          // object references naturally, so downstream memo(isEqual) detects changes
+          // and triggers re-render. parse() then rebuilds display messages correctly.
           if (data.chunkType === 'text' && data.content) {
             accumulatedContent += data.content;
-            // Once tools are present, content belongs to the last child block
-            // Update display directly without triggering parse()
-            updateDisplayMessageContent(get, currentAssistantMessageId, context, { content: accumulatedContent });
+            get().internal_dispatchMessage(
+              {
+                id: currentAssistantMessageId,
+                type: 'updateMessage',
+                value: { content: accumulatedContent },
+              },
+              dispatchContext,
+            );
           }
 
           // Handle reasoning content
           if (data.chunkType === 'reasoning' && data.reasoning) {
             accumulatedReasoning += data.reasoning;
-            updateDisplayMessageContent(get, currentAssistantMessageId, context, { reasoning: { content: accumulatedReasoning } });
+            get().internal_dispatchMessage(
+              {
+                id: currentAssistantMessageId,
+                type: 'updateMessage',
+                value: { reasoning: { content: accumulatedReasoning } },
+              },
+              dispatchContext,
+            );
           }
 
-          // Handle tools_calling - mark that we have tools
+          // Handle tools_calling
           if (data.chunkType === 'tools_calling' && data.toolsCalling) {
             hasTools = true;
-            updateDisplayMessageContent(get, currentAssistantMessageId, context, { tools: data.toolsCalling });
+            get().internal_dispatchMessage(
+              {
+                id: currentAssistantMessageId,
+                type: 'updateMessage',
+                value: { tools: data.toolsCalling },
+              },
+              dispatchContext,
+            );
 
             get().internal_toggleToolCallingStreaming(
               currentAssistantMessageId,

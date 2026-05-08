@@ -1,5 +1,6 @@
 import useSWR from 'swr';
 
+import { agentRuntimeService } from '@/services/agentRuntime';
 import { useChatStore } from '@/store/chat';
 import { useServerConfigStore } from '@/store/serverConfig';
 
@@ -36,6 +37,26 @@ export const useGatewayReconnect = (
     canReconnect ? ['reconnectServerOp', runningOperation.operationId] : null,
     async () => {
       if (!runningOperation || !topicId) return;
+
+      // Check if the operation is still running on the server before reconnecting.
+      // This prevents reconnecting to an operation that has already completed
+      // but whose runningOperation metadata hasn't been cleared yet (race condition).
+      try {
+        const status = await agentRuntimeService.getOperationStatus(runningOperation.operationId);
+        if (!status || status.status === 'done' || status.status === 'error') {
+          console.log(
+            `[useGatewayReconnect] Operation ${runningOperation.operationId} is no longer running (status: ${status?.status ?? 'unknown'}), skipping reconnect`,
+          );
+          return;
+        }
+      } catch (error) {
+        // If the status check fails (e.g., operation not found), skip reconnect
+        console.warn(
+          `[useGatewayReconnect] Failed to check operation status for ${runningOperation.operationId}:`,
+          error,
+        );
+        return;
+      }
 
       const store = useChatStore.getState();
 

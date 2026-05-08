@@ -15,6 +15,13 @@ interface StreamChunkData {
   toolMessageIds?: Record<string, unknown>;
 }
 
+export interface SSEEventHandlerState {
+  /** Latest event timestamp for reconnect lastEventId */
+  lastEventId: string;
+  /** Server requested reconnect via stream_retry event */
+  reconnectRequested: boolean;
+}
+
 const fetchAndReplaceMessages = async (get: () => ChatStore, context: ConversationContext) => {
   const messages = await messageService.getMessages(context);
   get().replaceMessages(messages, { context });
@@ -67,18 +74,30 @@ export const createSSEAgentEventHandler = (
     processingChain = processingChain.then(fn, fn);
   };
 
-  return (event: StreamEvent) => {
-    if (terminalState) return;
+  // Track state for reconnect scenarios
+  const state: SSEEventHandlerState = {
+    lastEventId: '0',
+    reconnectRequested: false,
+  };
 
-    console.log(`[SSE-Agent] Received event: type=${event.type}, stepIndex=${event.stepIndex ?? 'N/A'}`);
+  return {
+    handler: (event: StreamEvent) => {
+      if (terminalState) return;
 
-    if (event.type === 'agent_runtime_end' || event.type === 'error') {
-      terminalState = event.type === 'error' ? 'error' : 'completed';
-      if (terminalFlag) terminalFlag.reached = true;
-      console.log(`[SSE-Agent] Terminal state: ${terminalState}`);
-    }
+      // Update lastEventId for reconnect (use timestamp as event ID)
+      if (event.timestamp && event.timestamp.toString() > state.lastEventId) {
+        state.lastEventId = event.timestamp.toString();
+      }
 
-    switch (event.type) {
+      console.log(`[SSE-Agent] Received event: type=${event.type}, stepIndex=${event.stepIndex ?? 'N/A'}, lastEventId=${state.lastEventId}`);
+
+      if (event.type === 'agent_runtime_end' || event.type === 'error') {
+        terminalState = event.type === 'error' ? 'error' : 'completed';
+        if (terminalFlag) terminalFlag.reached = true;
+        console.log(`[SSE-Agent] Terminal state: ${terminalState}`);
+      }
+
+      switch (event.type) {
       case 'agent_runtime_init':
       case 'stream_start': {
         enqueue(async () => {
@@ -161,8 +180,10 @@ export const createSSEAgentEventHandler = (
       case 'stream_retry': {
         console.log(
           `[SSE-Agent] Server requested reconnect for operation ${operationId}, ` +
-          `stepIndex=${event.stepIndex ?? 'N/A'}`,
+          `stepIndex=${event.stepIndex ?? 'N/A'}, lastEventId=${state.lastEventId}`,
         );
+        // Signal to external SSE connection manager to reconnect
+        state.reconnectRequested = true;
         break;
       }
 
@@ -290,5 +311,7 @@ export const createSSEAgentEventHandler = (
       case 'heartbeat':
         break;
     }
+  },
+    state,
   };
 };

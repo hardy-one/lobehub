@@ -224,16 +224,6 @@ export const generationSlice: StateCreator<
       isServerSseMode: chatStore.isServerSseEnabled(),
     });
 
-    // TODO(LOBE-8519 follow-up): continue is currently only wired for the client
-    // runtime. Gateway / hetero continue both fall through to the client path
-    // here; a proper implementation needs runtime-specific resume semantics.
-    if (runtimeType !== 'client') {
-      console.warn(
-        `[continueGenerationMessage] runtime=${runtimeType} not yet supported; ` +
-          'falling through to client mode',
-      );
-    }
-
     // Create continue operation with ConversationStore context (includes groupId)
     const { operationId } = chatStore.startOperation({
       context: { ...context, messageId: displayMessageId },
@@ -241,6 +231,41 @@ export const generationSlice: StateCreator<
     });
 
     try {
+      // ── Gateway mode: trigger server-side continue via Gateway WebSocket ──
+      if (runtimeType === 'gateway') {
+        await chatStore.executeGatewayAgent({
+          context,
+          message: '',
+          onComplete: () => {
+            chatStore.completeOperation(operationId);
+            if (hooks.onContinueComplete) {
+              hooks.onContinueComplete(displayMessageId);
+            }
+          },
+          parentMessageId: dbMessageId,
+        });
+
+        return;
+      }
+
+      // ── ServerSse mode: trigger server-side continue via SSE ──
+      if (runtimeType === 'serverSse') {
+        await chatStore.executeServerSseAgent({
+          context,
+          message: '',
+          onComplete: () => {
+            chatStore.completeOperation(operationId);
+            if (hooks.onContinueComplete) {
+              hooks.onContinueComplete(displayMessageId);
+            }
+          },
+          parentMessageId: dbMessageId,
+        });
+
+        return;
+      }
+
+      // ── Client mode: run agent locally ──
       // Execute agent runtime with full context from ConversationStore
       await chatStore.executeClientAgent({
         context,
@@ -393,6 +418,25 @@ export const generationSlice: StateCreator<
         // Keep the regenerate operation running until the gateway session completes,
         // so isMessageRegenerating stays true and duplicate clicks are blocked.
         await chatStore.executeGatewayAgent({
+          context,
+          message: item.content,
+          onComplete: () => {
+            chatStore.completeOperation(operationId);
+            if (hooks.onRegenerateComplete) {
+              hooks.onRegenerateComplete(messageId);
+            }
+          },
+          parentMessageId: messageId,
+        });
+
+        return;
+      }
+
+      // ── ServerSse mode: trigger server-side regeneration via SSE ──
+      if (runtimeType === 'serverSse') {
+        // Keep the regenerate operation running until the SSE stream completes,
+        // so isMessageRegenerating stays true and duplicate clicks are blocked.
+        await chatStore.executeServerSseAgent({
           context,
           message: item.content,
           onComplete: () => {

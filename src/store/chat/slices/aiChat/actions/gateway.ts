@@ -16,7 +16,7 @@ import type { StoreSetter } from '@/store/types';
 import { useUserStore } from '@/store/user';
 
 import { createGatewayEventHandler } from './gatewayEventHandler';
-import { createSSEAgentEventHandler } from './sseAgentEventHandler';
+import { createSSEAgentEventHandler, type SSEEventHandlerState } from './sseAgentEventHandler';
 
 type Setter = StoreSetter<ChatStore>;
 
@@ -543,7 +543,16 @@ export class GatewayActionImpl {
 
     this.#get().associateMessageWithOperation(assistantMessageId, sseOpId);
 
-    // Cancel → interrupt server task + abort SSE
+    const terminalFlag = { reached: false };
+
+    const { handler: eventHandler, state: eventState } = createSSEAgentEventHandler(this.#get, {
+      assistantMessageId,
+      context,
+      operationId: sseOpId,
+      terminalFlag,
+    });
+
+    // Cancel → interrupt server task + abort SSE + clear runningOperation
     const abortRef: { current: AbortController | null } = { current: null };
     this.#get().onOperationCancel(sseOpId, () => {
       abortRef.current?.abort();
@@ -555,16 +564,10 @@ export class GatewayActionImpl {
 
     this.#get().internal_updateTopicLoading(topicId, true);
 
-    const terminalFlag = { reached: false };
-    const eventHandler = createSSEAgentEventHandler(this.#get, {
-      assistantMessageId,
-      context,
-      operationId: sseOpId,
-      terminalFlag,
-    });
-
+    // For reconnect, start with lastEventId '0' to get all events from the beginning
+    // The eventState will track and update lastEventId for subsequent reconnects
     abortRef.current = agentRuntimeClient.createStreamConnection(operationId, {
-      includeHistory: false,
+      includeHistory: true,
       lastEventId: '0',
       onConnect: () => {
         console.log(`[SSE-Agent] Reconnected for operation ${operationId}`);
@@ -572,6 +575,29 @@ export class GatewayActionImpl {
       onDisconnect: () => {
         console.log(`[SSE-Agent] Reconnect SSE disconnected for operation ${operationId}`);
         if (terminalFlag.reached) return;
+        // Check if server requested reconnect via stream_retry
+        if (eventState.reconnectRequested) {
+          console.log(`[SSE-Agent] Server requested reconnect, reconnecting with lastEventId=${eventState.lastEventId}...`);
+          eventState.reconnectRequested = false;
+          abortRef.current = agentRuntimeClient.createStreamConnection(operationId, {
+            includeHistory: false,
+            lastEventId: eventState.lastEventId,
+            onConnect: () => console.log(`[SSE-Agent] Reconnected for operation ${operationId}`),
+            onDisconnect: () => {
+              if (terminalFlag.reached) return;
+              this.#get().completeOperation(sseOpId);
+              this.#get().internal_updateTopicLoading(topicId, false);
+            },
+            onError: (error) => {
+              console.error(`[SSE-Agent] Reconnect SSE error:`, error);
+              if (terminalFlag.reached) return;
+              this.#get().completeOperation(sseOpId);
+              this.#get().internal_updateTopicLoading(topicId, false);
+            },
+            onEvent: eventHandler,
+          });
+          return;
+        }
         this.#get().completeOperation(sseOpId);
         this.#get().internal_updateTopicLoading(topicId, false);
       },
@@ -581,7 +607,7 @@ export class GatewayActionImpl {
         this.#get().completeOperation(sseOpId);
         this.#get().internal_updateTopicLoading(topicId, false);
       },
-      onEvent: (event: any) => eventHandler(event),
+      onEvent: eventHandler,
     });
   };
 
@@ -658,15 +684,9 @@ export class GatewayActionImpl {
 
     this.#get().associateMessageWithOperation(result.assistantMessageId, sseOpId);
 
-    this.#get().onOperationCancel(sseOpId, async () => {
-      await aiAgentService
-        .interruptTask({ operationId: result.operationId })
-        .catch((err) => console.error('[SSE] interruptTask failed:', err));
-    });
-
     const terminalFlag = { reached: false };
 
-    const eventHandler = createSSEAgentEventHandler(this.#get, {
+    const { handler: eventHandler, state: eventState } = createSSEAgentEventHandler(this.#get, {
       assistantMessageId: result.assistantMessageId,
       context: execContext,
       operationId: sseOpId,
@@ -682,35 +702,44 @@ export class GatewayActionImpl {
       this.#get().completeOperation(sseOpId);
       if (result.topicId) {
         this.#get().internal_updateTopicLoading(result.topicId, false);
-        // Do NOT clear runningOperation here — the server-side agent may
-        // still be running. Clearing it would prevent reconnect after page
-        // reload / tab close. The server clears it via RuntimeExecutors
-        // when the operation actually finishes, and the SSE event handler's
-        // agent_runtime_end case also clears it for a faster local update.
       }
       onComplete?.();
     };
 
     const MAX_RETRIES = 3;
+    const INITIAL_DELAY = 1000; // 1s initial delay
+    const MAX_DELAY = 10000; // 10s max delay
     let retries = 0;
     const abortRef: { current: AbortController | null } = { current: null };
 
     const connectSse = () => {
       abortRef.current?.abort();
+      // Use tracked lastEventId for reconnect to avoid duplicate events
+      const lastEventId = eventState.lastEventId;
+      console.log(`[SSE-Agent] Connecting with lastEventId=${lastEventId}`);
       abortRef.current = agentRuntimeClient.createStreamConnection(result.operationId, {
         includeHistory: false,
-        lastEventId: '0',
+        lastEventId,
         onConnect: () => {
           retries = 0;
+          eventState.reconnectRequested = false;
           console.log(`[SSE-Agent] SSE connected for operation ${result.operationId}`);
         },
         onDisconnect: () => {
           console.log(`[SSE-Agent] SSE disconnected for operation ${result.operationId}`);
           if (terminalFlag.reached) return;
+          // Check if server requested reconnect via stream_retry
+          if (eventState.reconnectRequested) {
+            console.log(`[SSE-Agent] Server requested reconnect, reconnecting immediately...`);
+            eventState.reconnectRequested = false;
+            connectSse();
+            return;
+          }
           if (retries < MAX_RETRIES) {
             retries++;
-            console.log(`[SSE-Agent] Reconnecting (${retries}/${MAX_RETRIES})...`);
-            connectSse();
+            const delay = Math.min(INITIAL_DELAY * Math.pow(2, retries - 1), MAX_DELAY);
+            console.log(`[SSE-Agent] Reconnecting in ${delay}ms (${retries}/${MAX_RETRIES})...`);
+            setTimeout(connectSse, delay);
           } else {
             console.error(`[SSE-Agent] Max retries (${MAX_RETRIES}) reached`);
             cleanupSse('max_retries');
@@ -721,17 +750,18 @@ export class GatewayActionImpl {
           if (terminalFlag.reached) return;
           if (retries < MAX_RETRIES) {
             retries++;
-            console.log(`[SSE-Agent] Reconnecting after error (${retries}/${MAX_RETRIES})...`);
-            connectSse();
+            const delay = Math.min(INITIAL_DELAY * Math.pow(2, retries - 1), MAX_DELAY);
+            console.log(`[SSE-Agent] Reconnecting after error in ${delay}ms (${retries}/${MAX_RETRIES})...`);
+            setTimeout(connectSse, delay);
           } else {
             cleanupSse('max_retries');
           }
         },
-        onEvent: (event: any) => eventHandler(event),
+        onEvent: eventHandler,
       });
     };
 
-    // Merged cancel handler: interrupt server task AND abort local SSE connection
+    // Single merged cancel handler: interrupt server task AND abort local SSE connection
     this.#get().onOperationCancel(sseOpId, () => {
       abortRef.current?.abort();
       aiAgentService

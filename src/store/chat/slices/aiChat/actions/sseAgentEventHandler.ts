@@ -52,10 +52,32 @@ const toChatMessageError = (data: unknown) => {
 };
 
 /**
+ * Apply content updates to a message by creating a NEW object (not in-place mutation).
+ * This is critical because ConversationProvider uses memo(..., isEqual) which short-circuits
+ * on same-reference objects — in-place updates are invisible to the sync bridge.
+ */
+const applyUpdates = (
+  msg: any,
+  updates: Partial<{ content: string; reasoning: { content: string }; tools: any[] }>,
+): any => {
+  let updated = msg;
+  if (updates.content !== undefined) {
+    updated = { ...updated, content: updates.content };
+  }
+  if (updates.reasoning !== undefined) {
+    updated = { ...updated, reasoning: updates.reasoning };
+  }
+  if (updates.tools !== undefined) {
+    updated = { ...updated, tools: updates.tools };
+  }
+  return updated;
+};
+
+/**
  * Update display messages directly without triggering parse().
  * Used during SSE streaming to update content without recreating assistantGroup.
  *
- * Also mutates the corresponding raw message in dbMessagesMap and triggers
+ * Also updates the corresponding raw message in dbMessagesMap and triggers
  * a Zustand set() via internal_refreshMessageMaps so the ChatStore ->
  * ConversationArea -> StoreUpdater -> ConversationStore bridge fires and
  * the UI re-renders with the updated content.
@@ -76,33 +98,32 @@ const updateDisplayMessageContent = (
   const rawMessages = get().dbMessagesMap[key] || [];
   let mutated = false;
 
-  const index = displayMessages.findIndex((m: UIChatMessage) => m.id === messageId);
+  // Create mutable copies of the arrays so we can replace objects
+  const newDisplayMessages = [...displayMessages];
+  const newRawMessages = [...rawMessages];
+
+  const index = newDisplayMessages.findIndex((m: UIChatMessage) => m.id === messageId);
   if (index < 0) {
     // The message might be inside an assistantGroup's children rather than at
     // the top level of the flatList. Search recursively.
-    for (const displayMsg of displayMessages) {
+    for (let di = 0; di < newDisplayMessages.length; di++) {
+      const displayMsg = newDisplayMessages[di];
       if (displayMsg.role === 'assistantGroup' && displayMsg.children) {
-        const childIndex = displayMsg.children.findIndex((c) => c.id === messageId);
+        const childIndex = displayMsg.children.findIndex((c: any) => c.id === messageId);
         if (childIndex >= 0 && displayMsg.children[childIndex]) {
           const child = displayMsg.children[childIndex];
-          if (updates.content !== undefined) {
-            child.content = updates.content;
-          }
-          if (updates.reasoning !== undefined) {
-            child.reasoning = updates.reasoning;
-          }
-          if (updates.tools !== undefined) {
-            child.tools = updates.tools;
-          }
+          const newChild = applyUpdates(child, updates);
 
-          // Mirror the mutation on the raw message.
-          // displayMsg.children are virtual objects from parse(); in raw
-          // messages the same content lives on a plain 'assistant' message.
-          const rawChild = rawMessages.find((m: any) => m.id === messageId);
-          if (rawChild?.role === 'assistant') {
-            if (updates.content !== undefined) rawChild.content = updates.content;
-            if (updates.reasoning !== undefined) rawChild.reasoning = updates.reasoning;
-            if (updates.tools !== undefined) rawChild.tools = updates.tools;
+          // Create new children array and new group message
+          const newChildren = [...displayMsg.children];
+          newChildren[childIndex] = newChild;
+          newDisplayMessages[di] = { ...displayMsg, children: newChildren };
+
+          // Also update the raw message — in dbMessagesMap this child is a
+          // standalone 'assistant' message, not nested inside a group.
+          const rawIndex = newRawMessages.findIndex((m: any) => m.id === messageId);
+          if (rawIndex >= 0) {
+            newRawMessages[rawIndex] = applyUpdates(newRawMessages[rawIndex], updates);
           }
 
           mutated = true;
@@ -119,33 +140,27 @@ const updateDisplayMessageContent = (
     }
   } else {
     // Find the message in displayMessages and update it directly
-    const message = displayMessages[index];
+    const message = newDisplayMessages[index];
     if (!message) return;
 
-    const rawMsg = rawMessages.find((m: any) => m.id === messageId);
+    const rawMsg = newRawMessages.find((m: any) => m.id === messageId);
 
     // For assistantGroup, find the last child block and update its content
     if (message.role === 'assistantGroup' && message.children && message.children.length > 0) {
-      const lastChild = message.children[message.children.length - 1];
-      if (lastChild) {
-        if (updates.content !== undefined) {
-          lastChild.content = updates.content;
-        }
-        if (updates.reasoning !== undefined) {
-          lastChild.reasoning = updates.reasoning;
-        }
-        if (updates.tools !== undefined) {
-          lastChild.tools = updates.tools;
-        }
-      }
+      const lastIndex = message.children.length - 1;
+      const newLastChild = applyUpdates(message.children[lastIndex], updates);
 
-      // Mirror the mutation on the raw message.
-      // The display message is a virtual assistantGroup from parse(); the raw
-      // message with the same ID is a plain 'assistant' with content directly.
+      // Create new children array and new group message
+      const newChildren = [...message.children];
+      newChildren[lastIndex] = newLastChild;
+      newDisplayMessages[index] = { ...message, children: newChildren };
+
+      // Mirror on raw message — in dbMessagesMap it's a plain 'assistant'
       if (rawMsg?.role === 'assistant') {
-        if (updates.content !== undefined) rawMsg.content = updates.content;
-        if (updates.reasoning !== undefined) rawMsg.reasoning = updates.reasoning;
-        if (updates.tools !== undefined) (rawMsg as any).tools = updates.tools;
+        const rawIndex = newRawMessages.findIndex((m: any) => m.id === messageId);
+        if (rawIndex >= 0) {
+          newRawMessages[rawIndex] = applyUpdates(rawMsg, updates);
+        }
       }
 
       mutated = true;
@@ -153,21 +168,14 @@ const updateDisplayMessageContent = (
 
     // For regular assistant message, update directly
     if (message.role === 'assistant') {
-      if (updates.content !== undefined) {
-        (message as any).content = updates.content;
-      }
-      if (updates.reasoning !== undefined) {
-        (message as any).reasoning = updates.reasoning;
-      }
-      if (updates.tools !== undefined) {
-        (message as any).tools = updates.tools;
-      }
+      newDisplayMessages[index] = applyUpdates(message, updates);
 
-      // Mirror the mutation on the raw message
+      // Mirror on raw message
       if (rawMsg?.role === 'assistant') {
-        if (updates.content !== undefined) (rawMsg as any).content = updates.content;
-        if (updates.reasoning !== undefined) (rawMsg as any).reasoning = updates.reasoning;
-        if (updates.tools !== undefined) (rawMsg as any).tools = updates.tools;
+        const rawIndex = newRawMessages.findIndex((m: any) => m.id === messageId);
+        if (rawIndex >= 0) {
+          newRawMessages[rawIndex] = applyUpdates(rawMsg, updates);
+        }
       }
 
       mutated = true;
@@ -179,7 +187,11 @@ const updateDisplayMessageContent = (
     console.log(
       `[SSE-Agent] updateDisplayMessageContent: content updated for ${messageId}, triggering refresh`,
     );
-    get().internal_refreshMessageMaps(key);
+    // Pass the pre-built arrays with new object references directly so that
+    // downstream memo(isEqual) checks (ConversationProvider) see new reference
+    // chains and re-render. Without new objects, fast-deep-equal short-circuits
+    // on same-reference objects and the sync bridge never fires.
+    get().internal_refreshMessageMaps(key, newDisplayMessages, newRawMessages);
   }
 };
 

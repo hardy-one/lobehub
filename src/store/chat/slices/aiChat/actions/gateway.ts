@@ -624,7 +624,9 @@ export class GatewayActionImpl {
     console.log('[SSE-Agent] Starting server-side agent execution', {
       agentId: context.agentId,
       message: message.slice(0, 100),
-      topicId: context.topicId,
+      parentMessageId: parentMessageId ?? 'none',
+      topicId: context.topicId ?? 'none',
+      hasOnComplete: !!onComplete,
     });
 
     const isCreateNewTopic = !context.topicId;
@@ -653,6 +655,7 @@ export class GatewayActionImpl {
       assistantMessageId: result.assistantMessageId,
       operationId: result.operationId,
       topicId: result.topicId,
+      hasOnComplete: !!onComplete,
     });
 
     if (isCreateNewTopic && result.topicId) {
@@ -689,6 +692,19 @@ export class GatewayActionImpl {
     const { handler: eventHandler, state: eventState } = createSSEAgentEventHandler(this.#get, {
       assistantMessageId: result.assistantMessageId,
       context: execContext,
+      onComplete: () => {
+        // Mirror gateway's onSessionComplete: complete the SSE operation,
+        // clear topic loading, clear runningOperation metadata, and invoke
+        // the caller's onComplete callback.
+        this.#get().completeOperation(sseOpId);
+        if (result.topicId) {
+          this.#get().internal_updateTopicLoading(result.topicId, false);
+          topicService
+            .updateTopicMetadata(result.topicId, { runningOperation: null })
+            .catch(() => {});
+        }
+        onComplete?.();
+      },
       operationId: sseOpId,
       terminalFlag,
     });

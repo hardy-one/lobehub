@@ -408,6 +408,11 @@ export const generationSlice: StateCreator<
         isServerSseMode: chatStore.isServerSseEnabled(),
       });
 
+      console.log(
+        `[Regenerate] messageId=${messageId}, runtimeType=${runtimeType}, ` +
+        `childrenCount=${childrenCount}, nextBranchIndex=${nextBranchIndex}`,
+      );
+
       // ── Gateway mode: trigger server-side regeneration ──
       if (runtimeType === 'gateway') {
         // Do NOT switch branch before server execution - the branch will be set

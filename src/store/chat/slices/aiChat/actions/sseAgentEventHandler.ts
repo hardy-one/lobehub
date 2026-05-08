@@ -113,9 +113,13 @@ export const createSSEAgentEventHandler = (
     context: ConversationContext;
     operationId: string;
     terminalFlag?: { reached: boolean };
+    /** Called when the agent runtime terminates (normal completion or error).
+     *  Equivalent to gateway's onSessionComplete. Required for SSE mode since
+     *  there is no WebSocket session lifecycle to trigger cleanup. */
+    onComplete?: () => void;
   },
 ) => {
-  const { context, operationId, terminalFlag } = params;
+  const { context, onComplete, operationId, terminalFlag } = params;
   const dispatchContext = { operationId };
 
   let currentAssistantMessageId = params.assistantMessageId;
@@ -279,6 +283,10 @@ export const createSSEAgentEventHandler = (
 
       case 'agent_runtime_end': {
         enqueue(async () => {
+          console.log(
+            `[SSE-Agent] agent_runtime_end — operation=${operationId}, topicId=${context.topicId ?? 'none'}, ` +
+            `assistantMessageId=${currentAssistantMessageId}`,
+          );
           void emitClientAgentSignalSourceEvent({
             payload: {
               agentId: context.agentId,
@@ -290,16 +298,20 @@ export const createSSEAgentEventHandler = (
             sourceType: 'client.gateway.runtime_end',
           });
           get().internal_toggleToolCallingStreaming(currentAssistantMessageId, undefined);
-          get().completeOperation(operationId);
+
+          // completeOperation + topic loading cleanup are delegated to onComplete
+          // (mirrors gateway's onSessionComplete — see executeServerSseAgent).
 
           const completedOp = get().operations[operationId];
           if (completedOp?.context.agentId) {
             get().markUnreadCompleted(completedOp.context.agentId, completedOp.context.topicId);
           }
 
-          // Clear topic loading state (yellow spinning circle in topic list)
-          if (context.topicId) {
-            get().internal_updateTopicLoading(context.topicId, false);
+          // onComplete handles: completeOperation, internal_updateTopicLoading(false),
+          // clear runningOperation metadata, and caller's onComplete callback.
+          if (onComplete) {
+            console.log(`[SSE-Agent] Calling onComplete callback`);
+            onComplete();
           }
 
           // Final sync with server - this creates the proper assistantGroup structure
@@ -313,6 +325,11 @@ export const createSSEAgentEventHandler = (
           const messageError = toChatMessageError(event.data);
           const errorMessage = messageError.message;
 
+          console.log(
+            `[SSE-Agent] error — operation=${operationId}, topicId=${context.topicId ?? 'none'}, ` +
+            `message=${errorMessage}`,
+          );
+
           void emitClientAgentSignalSourceEvent({
             payload: {
               agentId: context.agentId,
@@ -325,11 +342,15 @@ export const createSSEAgentEventHandler = (
           });
 
           get().internal_toggleToolCallingStreaming(currentAssistantMessageId, undefined);
-          get().completeOperation(operationId);
 
-          // Clear topic loading state on error
-          if (context.topicId) {
-            get().internal_updateTopicLoading(context.topicId, false);
+          // completeOperation + topic loading cleanup are delegated to onComplete
+          // (mirrors gateway's onSessionComplete — see executeServerSseAgent).
+
+          // onComplete handles: completeOperation, internal_updateTopicLoading(false),
+          // clear runningOperation metadata, and caller's onComplete callback.
+          if (onComplete) {
+            console.log(`[SSE-Agent] Calling onComplete callback (error path)`);
+            onComplete();
           }
 
           const updateResult = await messageService

@@ -1,4 +1,4 @@
-import type { ConversationContext, UIChatMessage } from '@lobechat/types';
+import type { ConversationContext } from '@lobechat/types';
 import { AgentRuntimeErrorType } from '@lobechat/types';
 
 import { messageService } from '@/services/message';
@@ -71,8 +71,6 @@ export const createSSEAgentEventHandler = (
 
   let accumulatedContent = '';
   let accumulatedReasoning = '';
-  /** Track if we've received tools_calling - once true, content updates go to children */
-  let hasTools = false;
 
   let processingChain: Promise<void> = Promise.resolve();
 
@@ -117,7 +115,6 @@ export const createSSEAgentEventHandler = (
 
           accumulatedContent = '';
           accumulatedReasoning = '';
-          hasTools = false;
           void emitClientAgentSignalSourceEvent({
             payload: {
               agentId: context.agentId,
@@ -138,10 +135,7 @@ export const createSSEAgentEventHandler = (
           const data = event.data as StreamChunkData | undefined;
           if (!data) return;
 
-          // Handle text content — use internal_dispatchMessage (same as Gateway handler)
-          // to update raw messages through the reducer. This lets Immer create new
-          // object references naturally, so downstream memo(isEqual) detects changes
-          // and triggers re-render. parse() then rebuilds display messages correctly.
+          // Handle text content – update raw messages through the reducer (same as Gateway handler)
           if (data.chunkType === 'text' && data.content) {
             accumulatedContent += data.content;
             get().internal_dispatchMessage(
@@ -169,7 +163,6 @@ export const createSSEAgentEventHandler = (
 
           // Handle tools_calling
           if (data.chunkType === 'tools_calling' && data.toolsCalling) {
-            hasTools = true;
             get().internal_dispatchMessage(
               {
                 id: currentAssistantMessageId,
@@ -257,10 +250,6 @@ export const createSSEAgentEventHandler = (
 
       case 'agent_runtime_end': {
         enqueue(async () => {
-          console.log(
-            `[SSE-Agent] agent_runtime_end — operation=${operationId}, topicId=${context.topicId ?? 'none'}, ` +
-            `assistantMessageId=${currentAssistantMessageId}`,
-          );
           void emitClientAgentSignalSourceEvent({
             payload: {
               agentId: context.agentId,
@@ -284,7 +273,6 @@ export const createSSEAgentEventHandler = (
           // onComplete handles: completeOperation, internal_updateTopicLoading(false),
           // clear runningOperation metadata, and caller's onComplete callback.
           if (onComplete) {
-            console.log(`[SSE-Agent] Calling onComplete callback`);
             onComplete();
           }
 
@@ -298,11 +286,6 @@ export const createSSEAgentEventHandler = (
         enqueue(async () => {
           const messageError = toChatMessageError(event.data);
           const errorMessage = messageError.message;
-
-          console.log(
-            `[SSE-Agent] error — operation=${operationId}, topicId=${context.topicId ?? 'none'}, ` +
-            `message=${errorMessage}`,
-          );
 
           void emitClientAgentSignalSourceEvent({
             payload: {
@@ -323,7 +306,6 @@ export const createSSEAgentEventHandler = (
           // onComplete handles: completeOperation, internal_updateTopicLoading(false),
           // clear runningOperation metadata, and caller's onComplete callback.
           if (onComplete) {
-            console.log(`[SSE-Agent] Calling onComplete callback (error path)`);
             onComplete();
           }
 

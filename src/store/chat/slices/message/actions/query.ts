@@ -87,10 +87,21 @@ export class MessageQueryActionImpl {
     // Get raw messages from dbMessagesMap and apply reducer
     const nextDbMap = { ...this.#get().dbMessagesMap, [messagesKey]: messages };
 
-    if (isEqual(nextDbMap, this.#get().dbMessagesMap)) return;
+    if (isEqual(nextDbMap, this.#get().dbMessagesMap)) {
+      console.log(
+        `[ChatStore.replaceMessages] SKIPPED — messages unchanged for key=${messagesKey}, ` +
+        `count=${messages.length}`,
+      );
+      return;
+    }
 
     // Parse messages using conversation-flow
     const { flatList } = parse(messages);
+
+    console.log(
+      `[ChatStore.replaceMessages] parsed key=${messagesKey}, count=${messages.length}, ` +
+      `flatList=${flatList.length}`,
+    );
 
     this.#set(
       {

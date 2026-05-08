@@ -176,7 +176,15 @@ export const dataSlice: StateCreator<
 
     // Get the current message to find its parent
     const message = dataSelectors.getDbMessageById(messageId)(state);
-    if (!message || !message.parentId) return;
+    if (!message || !message.parentId) {
+      console.warn(`[ConversationStore.switchMessageBranch] message not found or no parent: ${messageId}`);
+      return;
+    }
+
+    console.log(
+      `[ConversationStore.switchMessageBranch] messageId=${messageId}, parentId=${message.parentId}, ` +
+      `branchIndex=${branchIndex}`,
+    );
 
     // Update the parent's metadata.activeBranchIndex
     // because the branch indicator is on the child message,

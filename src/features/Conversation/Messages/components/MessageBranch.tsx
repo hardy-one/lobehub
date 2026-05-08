@@ -66,12 +66,18 @@ const MessageBranch = memo<MessageBranchProps>(({ activeBranchIndex, count, mess
 
   const handlePrevious = () => {
     if (activeBranchIndex > 0) {
+      console.log(
+        `[MessageBranch] PREV clicked: messageId=${messageId}, from=${activeBranchIndex} to=${activeBranchIndex - 1}, count=${count}`,
+      );
       switchMessageBranch(messageId, activeBranchIndex - 1);
     }
   };
 
   const handleNext = () => {
     if (activeBranchIndex < count - 1) {
+      console.log(
+        `[MessageBranch] NEXT clicked: messageId=${messageId}, from=${activeBranchIndex} to=${activeBranchIndex + 1}, count=${count}`,
+      );
       switchMessageBranch(messageId, activeBranchIndex + 1);
     }
   };

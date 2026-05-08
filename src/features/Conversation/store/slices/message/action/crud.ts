@@ -457,11 +457,20 @@ export const messageCRUDSlice: StateCreator<
   updateMessageMetadata: async (id, metadata) => {
     const { internal_dispatchMessage, replaceMessages, context } = get();
 
+    console.log(
+      `[ConversationStore.updateMessageMetadata] id=${id}, metadata=${JSON.stringify(metadata)}`,
+    );
+
     // Optimistic update
     internal_dispatchMessage({ id, type: 'updateMessageMetadata', value: metadata });
 
     // Persist to database
     const result = await messageService.updateMessageMetadata(id, metadata, context);
+
+    console.log(
+      `[ConversationStore.updateMessageMetadata] server result: success=${result?.success}, ` +
+      `hasMessages=${!!result?.messages}`,
+    );
 
     if (result?.success && result.messages) {
       replaceMessages(result.messages);

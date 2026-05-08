@@ -425,6 +425,8 @@ export const generationSlice: StateCreator<
           message: item.content,
           onComplete: () => {
             chatStore.completeOperation(operationId);
+            // Ensure activeBranchIndex points to the newly created branch
+            chatStore.switchMessageBranch(messageId, nextBranchIndex).catch(console.error);
             if (hooks.onRegenerateComplete) {
               hooks.onRegenerateComplete(messageId);
             }
@@ -445,6 +447,8 @@ export const generationSlice: StateCreator<
           message: item.content,
           onComplete: () => {
             chatStore.completeOperation(operationId);
+            // Ensure activeBranchIndex points to the newly created branch
+            chatStore.switchMessageBranch(messageId, nextBranchIndex).catch(console.error);
             if (hooks.onRegenerateComplete) {
               hooks.onRegenerateComplete(messageId);
             }

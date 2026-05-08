@@ -31,3 +31,6 @@ export {
   ToolCallProcessor,
   ToolMessageReorder,
 } from './processors';
+
+// Utilities
+export { filterActiveBranchMessages } from './utils/filterActiveBranchMessages';

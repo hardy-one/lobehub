@@ -14,13 +14,16 @@ import {
 import { TaskIdentifier } from '@lobechat/builtin-tool-task';
 import { builtinTools, manualModeExcludeToolIds } from '@lobechat/builtin-tools';
 import { LOADING_FLAT } from '@lobechat/const';
+import {
+  filterActiveBranchMessages,
+  SkillEngine,
+} from '@lobechat/context-engine';
 import type {
   AgentManagementContext,
   LobeToolManifest,
   ToolExecutor,
   ToolSource,
 } from '@lobechat/context-engine';
-import { SkillEngine } from '@lobechat/context-engine';
 import type { LobeChatDatabase } from '@lobechat/database';
 import { buildTaskManagerDefaultsPrompt } from '@lobechat/prompts';
 import type {
@@ -1234,6 +1237,13 @@ export class AiAgentService {
     // 11. Get existing messages if provided.
     const historyMessages = await loadHistoryMessages();
 
+    // Filter to only include active-branch messages (follows activeBranchIndex).
+    // Without this, all branches' messages leak into the LLM context, causing
+    // regenerated replies to "see" and reference content from previous branches.
+    const branchFilteredMessages = historyMessages.length > 1
+      ? filterActiveBranchMessages(historyMessages)
+      : historyMessages;
+
     await throwIfExecutionAborted('message history loading');
 
     // 12. Collect Phase 2 warnings (ingestion/parsing errors) alongside Phase 1 warnings
@@ -1499,7 +1509,7 @@ export class AiAgentService {
     };
 
     // Combine history messages with user message
-    const allMessages = effectiveResume ? historyMessages : [...historyMessages, userMessage];
+    const allMessages = effectiveResume ? branchFilteredMessages : [...branchFilteredMessages, userMessage];
 
     log('execAgent: prepared evalContext for executor');
 

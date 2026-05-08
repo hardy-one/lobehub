@@ -54,6 +54,11 @@ const toChatMessageError = (data: unknown) => {
 /**
  * Update display messages directly without triggering parse().
  * Used during SSE streaming to update content without recreating assistantGroup.
+ *
+ * Also mutates the corresponding raw message in dbMessagesMap and triggers
+ * a Zustand set() via internal_refreshMessageMaps so the ChatStore ->
+ * ConversationArea -> StoreUpdater -> ConversationStore bridge fires and
+ * the UI re-renders with the updated content.
  */
 const updateDisplayMessageContent = (
   get: () => ChatStore,
@@ -68,6 +73,9 @@ const updateDisplayMessageContent = (
     topicId: context.topicId,
   });
   const displayMessages = get().messagesMap[key] || [];
+  const rawMessages = get().dbMessagesMap[key] || [];
+  let mutated = false;
+
   const index = displayMessages.findIndex((m: UIChatMessage) => m.id === messageId);
   if (index < 0) {
     // The message might be inside an assistantGroup's children rather than at
@@ -86,49 +94,99 @@ const updateDisplayMessageContent = (
           if (updates.tools !== undefined) {
             child.tools = updates.tools;
           }
-          return;
+
+          // Mirror the mutation on the raw message's corresponding child
+          const rawGroup = rawMessages.find(
+            (m: any) =>
+              m.role === 'assistantGroup' &&
+              m.children?.some((c: any) => c.id === messageId),
+          );
+          if (rawGroup?.children) {
+            const rawChild = rawGroup.children.find((c: any) => c.id === messageId);
+            if (rawChild) {
+              if (updates.content !== undefined) rawChild.content = updates.content;
+              if (updates.reasoning !== undefined) rawChild.reasoning = updates.reasoning;
+              if (updates.tools !== undefined) rawChild.tools = updates.tools;
+            }
+          }
+
+          mutated = true;
+          break;
         }
       }
     }
-    console.log(
-      `[SSE-Agent] updateDisplayMessageContent: message ${messageId} not found in messagesMap[${key}] ` +
-      `(topLevel=${displayMessages.length}, searched inside assistantGroup children too)`,
-    );
-    return;
-  }
+    if (!mutated) {
+      console.log(
+        `[SSE-Agent] updateDisplayMessageContent: message ${messageId} not found in messagesMap[${key}] ` +
+        `(topLevel=${displayMessages.length}, searched inside assistantGroup children too)`,
+      );
+      return;
+    }
+  } else {
+    // Find the message in displayMessages and update it directly
+    const message = displayMessages[index];
+    if (!message) return;
 
-  // Find the message in displayMessages and update it directly
-  const message = displayMessages[index];
-  if (!message) return;
+    const rawMsg = rawMessages.find((m: any) => m.id === messageId);
 
-  // For assistantGroup, find the last child block and update its content
-  if (message.role === 'assistantGroup' && message.children && message.children.length > 0) {
-    const lastChild = message.children[message.children.length - 1];
-    if (lastChild) {
+    // For assistantGroup, find the last child block and update its content
+    if (message.role === 'assistantGroup' && message.children && message.children.length > 0) {
+      const lastChild = message.children[message.children.length - 1];
+      if (lastChild) {
+        if (updates.content !== undefined) {
+          lastChild.content = updates.content;
+        }
+        if (updates.reasoning !== undefined) {
+          lastChild.reasoning = updates.reasoning;
+        }
+        if (updates.tools !== undefined) {
+          lastChild.tools = updates.tools;
+        }
+      }
+
+      // Mirror the mutation on the raw message's last child
+      if (
+        rawMsg?.role === 'assistantGroup' &&
+        rawMsg.children &&
+        rawMsg.children.length > 0
+      ) {
+        const rawLastChild = rawMsg.children[rawMsg.children.length - 1];
+        if (rawLastChild) {
+          if (updates.content !== undefined) rawLastChild.content = updates.content;
+          if (updates.reasoning !== undefined) rawLastChild.reasoning = updates.reasoning;
+          if (updates.tools !== undefined) rawLastChild.tools = updates.tools;
+        }
+      }
+
+      mutated = true;
+    }
+
+    // For regular assistant message, update directly
+    if (message.role === 'assistant') {
       if (updates.content !== undefined) {
-        lastChild.content = updates.content;
+        (message as any).content = updates.content;
       }
       if (updates.reasoning !== undefined) {
-        lastChild.reasoning = updates.reasoning;
+        (message as any).reasoning = updates.reasoning;
       }
       if (updates.tools !== undefined) {
-        lastChild.tools = updates.tools;
+        (message as any).tools = updates.tools;
       }
+
+      // Mirror the mutation on the raw message
+      if (rawMsg?.role === 'assistant') {
+        if (updates.content !== undefined) (rawMsg as any).content = updates.content;
+        if (updates.reasoning !== undefined) (rawMsg as any).reasoning = updates.reasoning;
+        if (updates.tools !== undefined) (rawMsg as any).tools = updates.tools;
+      }
+
+      mutated = true;
     }
-    return;
   }
 
-  // For regular assistant message, update directly
-  if (message.role === 'assistant') {
-    if (updates.content !== undefined) {
-      (message as any).content = updates.content;
-    }
-    if (updates.reasoning !== undefined) {
-      (message as any).reasoning = updates.reasoning;
-    }
-    if (updates.tools !== undefined) {
-      (message as any).tools = updates.tools;
-    }
+  // Trigger the ChatStore -> ConversationStore sync bridge so the UI re-renders
+  if (mutated) {
+    get().internal_refreshMessageMaps(key);
   }
 };
 

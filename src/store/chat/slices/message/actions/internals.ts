@@ -66,6 +66,29 @@ export class MessageInternalsActionImpl {
     });
   };
 
+  /**
+   * Trigger a Zustand re-render by creating new references for messagesMap and dbMessagesMap
+   * at a specific key. Used by SSE streaming to sync mutated message content through the
+   * ChatStore -> ConversationArea -> StoreUpdater -> ConversationStore bridge without
+   * re-running parse() in the ChatStore.
+   */
+  internal_refreshMessageMaps = (key: string): void => {
+    this.#set(
+      {
+        dbMessagesMap: {
+          ...this.#get().dbMessagesMap,
+          [key]: [...(this.#get().dbMessagesMap[key] || [])],
+        },
+        messagesMap: {
+          ...this.#get().messagesMap,
+          [key]: [...(this.#get().messagesMap[key] || [])],
+        },
+      },
+      false,
+      'sseStreamChunk',
+    );
+  };
+
   internal_traceMessage = async (id: string, payload: TraceEventPayloads): Promise<void> => {
     // tracing the diff of update
     const message = displayMessageSelectors.getDisplayMessageById(id)(this.#get());

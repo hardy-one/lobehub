@@ -84,29 +84,23 @@ export class MessageQueryActionImpl {
 
     const messagesKey = messageMapKey(ctx);
 
-    // Get raw messages from dbMessagesMap and apply reducer
-    const nextDbMap = { ...this.#get().dbMessagesMap, [messagesKey]: messages };
-
-    if (isEqual(nextDbMap, this.#get().dbMessagesMap)) {
-      console.log(
-        `[ChatStore.replaceMessages] SKIPPED — messages unchanged for key=${messagesKey}, ` +
-        `count=${messages.length}`,
-      );
-      return;
-    }
-
-    // Parse messages using conversation-flow
+    // Always parse — comparing raw dbMessagesMap is unreliable because
+    // optimistic updates (e.g. updateMessageMetadata) may have already mutated
+    // the entry in place, making the replacement appear identical.
     const { flatList } = parse(messages);
 
+    const currentFlatList = this.#get().messagesMap[messagesKey];
+    if (isEqual(flatList, currentFlatList)) return;
+
     console.log(
-      `[ChatStore.replaceMessages] parsed key=${messagesKey}, count=${messages.length}, ` +
+      `[ChatStore.replaceMessages] UPDATE: key=${messagesKey}, count=${messages.length}, ` +
       `flatList=${flatList.length}`,
     );
 
     this.#set(
       {
         // Store raw messages from backend
-        dbMessagesMap: nextDbMap,
+        dbMessagesMap: { ...this.#get().dbMessagesMap, [messagesKey]: messages },
         // Store parsed messages for display
         messagesMap: { ...this.#get().messagesMap, [messagesKey]: flatList },
       },

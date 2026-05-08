@@ -95,19 +95,14 @@ const updateDisplayMessageContent = (
             child.tools = updates.tools;
           }
 
-          // Mirror the mutation on the raw message's corresponding child
-          const rawGroup = rawMessages.find(
-            (m: any) =>
-              m.role === 'assistantGroup' &&
-              m.children?.some((c: any) => c.id === messageId),
-          );
-          if (rawGroup?.children) {
-            const rawChild = rawGroup.children.find((c: any) => c.id === messageId);
-            if (rawChild) {
-              if (updates.content !== undefined) rawChild.content = updates.content;
-              if (updates.reasoning !== undefined) rawChild.reasoning = updates.reasoning;
-              if (updates.tools !== undefined) rawChild.tools = updates.tools;
-            }
+          // Mirror the mutation on the raw message.
+          // displayMsg.children are virtual objects from parse(); in raw
+          // messages the same content lives on a plain 'assistant' message.
+          const rawChild = rawMessages.find((m: any) => m.id === messageId);
+          if (rawChild?.role === 'assistant') {
+            if (updates.content !== undefined) rawChild.content = updates.content;
+            if (updates.reasoning !== undefined) rawChild.reasoning = updates.reasoning;
+            if (updates.tools !== undefined) rawChild.tools = updates.tools;
           }
 
           mutated = true;
@@ -144,18 +139,13 @@ const updateDisplayMessageContent = (
         }
       }
 
-      // Mirror the mutation on the raw message's last child
-      if (
-        rawMsg?.role === 'assistantGroup' &&
-        rawMsg.children &&
-        rawMsg.children.length > 0
-      ) {
-        const rawLastChild = rawMsg.children[rawMsg.children.length - 1];
-        if (rawLastChild) {
-          if (updates.content !== undefined) rawLastChild.content = updates.content;
-          if (updates.reasoning !== undefined) rawLastChild.reasoning = updates.reasoning;
-          if (updates.tools !== undefined) rawLastChild.tools = updates.tools;
-        }
+      // Mirror the mutation on the raw message.
+      // The display message is a virtual assistantGroup from parse(); the raw
+      // message with the same ID is a plain 'assistant' with content directly.
+      if (rawMsg?.role === 'assistant') {
+        if (updates.content !== undefined) rawMsg.content = updates.content;
+        if (updates.reasoning !== undefined) rawMsg.reasoning = updates.reasoning;
+        if (updates.tools !== undefined) (rawMsg as any).tools = updates.tools;
       }
 
       mutated = true;
@@ -186,6 +176,9 @@ const updateDisplayMessageContent = (
 
   // Trigger the ChatStore -> ConversationStore sync bridge so the UI re-renders
   if (mutated) {
+    console.log(
+      `[SSE-Agent] updateDisplayMessageContent: content updated for ${messageId}, triggering refresh`,
+    );
     get().internal_refreshMessageMaps(key);
   }
 };

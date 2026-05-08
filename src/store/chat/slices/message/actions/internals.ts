@@ -73,6 +73,11 @@ export class MessageInternalsActionImpl {
    * re-running parse() in the ChatStore.
    */
   internal_refreshMessageMaps = (key: string): void => {
+    console.log(
+      `[ChatStore.internal_refreshMessageMaps] key=${key}, ` +
+      `dbLen=${(this.#get().dbMessagesMap[key] || []).length}, ` +
+      `msgLen=${(this.#get().messagesMap[key] || []).length}`,
+    );
     this.#set(
       {
         dbMessagesMap: {

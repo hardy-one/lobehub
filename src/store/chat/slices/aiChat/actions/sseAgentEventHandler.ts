@@ -1,4 +1,4 @@
-import type { ConversationContext } from '@lobechat/types';
+import type { ConversationContext, UIChatMessage } from '@lobechat/types';
 import { AgentRuntimeErrorType } from '@lobechat/types';
 
 import { messageService } from '@/services/message';
@@ -6,6 +6,7 @@ import type { StreamEvent } from '@/services/agentRuntime/type';
 import { emitClientAgentSignalSourceEvent } from '@/store/chat/slices/aiChat/actions/agentSignalBridge';
 import type { ChatStore } from '@/store/chat/store';
 import { notifyDesktopHumanApprovalRequired } from '@/store/chat/utils/desktopNotification';
+import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 
 interface StreamChunkData {
   chunkType?: string;
@@ -50,6 +51,61 @@ const toChatMessageError = (data: unknown) => {
   };
 };
 
+/**
+ * Update display messages directly without triggering parse().
+ * Used during SSE streaming to update content without recreating assistantGroup.
+ */
+const updateDisplayMessageContent = (
+  get: () => ChatStore,
+  messageId: string,
+  context: ConversationContext,
+  updates: Partial<{ content: string; reasoning: { content: string }; tools: any[] }>,
+) => {
+  const key = messageMapKey({
+    agentId: context.agentId,
+    groupId: context.groupId,
+    threadId: context.threadId,
+    topicId: context.topicId,
+  });
+  const displayMessages = get().messagesMap[key] || [];
+  const index = displayMessages.findIndex((m: UIChatMessage) => m.id === messageId);
+  if (index < 0) return;
+
+  // Find the message in displayMessages and update it directly
+  const message = displayMessages[index];
+  if (!message) return;
+
+  // For assistantGroup, find the last child block and update its content
+  if (message.role === 'assistantGroup' && message.children && message.children.length > 0) {
+    const lastChild = message.children[message.children.length - 1];
+    if (lastChild) {
+      if (updates.content !== undefined) {
+        lastChild.content = updates.content;
+      }
+      if (updates.reasoning !== undefined) {
+        lastChild.reasoning = updates.reasoning;
+      }
+      if (updates.tools !== undefined) {
+        lastChild.tools = updates.tools;
+      }
+    }
+    return;
+  }
+
+  // For regular assistant message, update directly
+  if (message.role === 'assistant') {
+    if (updates.content !== undefined) {
+      (message as any).content = updates.content;
+    }
+    if (updates.reasoning !== undefined) {
+      (message as any).reasoning = updates.reasoning;
+    }
+    if (updates.tools !== undefined) {
+      (message as any).tools = updates.tools;
+    }
+  }
+};
+
 export const createSSEAgentEventHandler = (
   get: () => ChatStore,
   params: {
@@ -67,6 +123,8 @@ export const createSSEAgentEventHandler = (
 
   let accumulatedContent = '';
   let accumulatedReasoning = '';
+  /** Track if we've received tools_calling - once true, content updates go to children */
+  let hasTools = false;
 
   let processingChain: Promise<void> = Promise.resolve();
 
@@ -103,6 +161,7 @@ export const createSSEAgentEventHandler = (
         enqueue(async () => {
           accumulatedContent = '';
           accumulatedReasoning = '';
+          hasTools = false;
           void emitClientAgentSignalSourceEvent({
             payload: {
               agentId: context.agentId,
@@ -123,45 +182,32 @@ export const createSSEAgentEventHandler = (
           const data = event.data as StreamChunkData | undefined;
           if (!data) return;
 
+          // Handle text content - update display directly to avoid parse() recreating assistantGroup
           if (data.chunkType === 'text' && data.content) {
             accumulatedContent += data.content;
-            get().internal_dispatchMessage(
-              {
-                id: currentAssistantMessageId,
-                type: 'updateMessage',
-                value: { content: accumulatedContent },
-              },
-              dispatchContext,
-            );
+            // Once tools are present, content belongs to the last child block
+            // Update display directly without triggering parse()
+            updateDisplayMessageContent(get, currentAssistantMessageId, context, { content: accumulatedContent });
           }
 
+          // Handle reasoning content
           if (data.chunkType === 'reasoning' && data.reasoning) {
             accumulatedReasoning += data.reasoning;
-            get().internal_dispatchMessage(
-              {
-                id: currentAssistantMessageId,
-                type: 'updateMessage',
-                value: { reasoning: { content: accumulatedReasoning } },
-              },
-              dispatchContext,
-            );
+            updateDisplayMessageContent(get, currentAssistantMessageId, context, { reasoning: { content: accumulatedReasoning } });
           }
 
+          // Handle tools_calling - mark that we have tools
           if (data.chunkType === 'tools_calling' && data.toolsCalling) {
-            get().internal_dispatchMessage(
-              {
-                id: currentAssistantMessageId,
-                type: 'updateMessage',
-                value: { tools: data.toolsCalling },
-              },
-              dispatchContext,
-            );
+            hasTools = true;
+            updateDisplayMessageContent(get, currentAssistantMessageId, context, { tools: data.toolsCalling });
 
             get().internal_toggleToolCallingStreaming(
               currentAssistantMessageId,
               data.toolsCalling.map(() => true),
             );
 
+            // Only fetch from server when tool messages are created
+            // This refreshes the message structure but content updates continue locally
             if ((data as any).toolMessageIds) {
               fetchAndReplaceMessages(get, context).catch(console.error);
             }
@@ -182,15 +228,12 @@ export const createSSEAgentEventHandler = (
           `[SSE-Agent] Server requested reconnect for operation ${operationId}, ` +
           `stepIndex=${event.stepIndex ?? 'N/A'}, lastEventId=${state.lastEventId}`,
         );
-        // Signal to external SSE connection manager to reconnect
         state.reconnectRequested = true;
         break;
       }
 
       case 'tool_start': {
-        console.log(
-          `[SSE-Agent] Tool start: stepIndex=${event.stepIndex ?? 'N/A'}`,
-        );
+        console.log(`[SSE-Agent] Tool start: stepIndex=${event.stepIndex ?? 'N/A'}`);
         break;
       }
 
@@ -239,9 +282,7 @@ export const createSSEAgentEventHandler = (
           void emitClientAgentSignalSourceEvent({
             payload: {
               agentId: context.agentId,
-              ...(currentAssistantMessageId
-                ? { assistantMessageId: currentAssistantMessageId }
-                : {}),
+              ...(currentAssistantMessageId ? { assistantMessageId: currentAssistantMessageId } : {}),
               operationId,
               topicId: context.topicId ?? undefined,
             },
@@ -256,6 +297,7 @@ export const createSSEAgentEventHandler = (
             get().markUnreadCompleted(completedOp.context.agentId, completedOp.context.topicId);
           }
 
+          // Final sync with server - this creates the proper assistantGroup structure
           await fetchAndReplaceMessages(get, context).catch(console.error);
         });
         break;

@@ -401,11 +401,6 @@ export const generationSlice: StateCreator<
       // New branch index = current children count (since index is 0-based)
       const nextBranchIndex = childrenCount;
 
-      // Switch to the new branch so the UI shows the incoming response immediately
-      await chatStore.switchMessageBranch(messageId, nextBranchIndex, {
-        operationId,
-      });
-
       const agentConfig = agentSelectors.getAgentConfigById(context.agentId)(getAgentStoreState());
       const runtimeType = selectRuntimeType({
         heterogeneousProvider: agentConfig?.agencyConfig?.heterogeneousProvider,
@@ -415,8 +410,11 @@ export const generationSlice: StateCreator<
 
       // ── Gateway mode: trigger server-side regeneration ──
       if (runtimeType === 'gateway') {
-        // Keep the regenerate operation running until the gateway session completes,
-        // so isMessageRegenerating stays true and duplicate clicks are blocked.
+        // Do NOT switch branch before server execution - the branch will be set
+        // by the server when it creates the new assistant message.
+        // Switching now would cause optimistic update issues where activeBranchIndex
+        // points to a non-existent branch.
+
         await chatStore.executeGatewayAgent({
           context,
           message: item.content,
@@ -434,8 +432,9 @@ export const generationSlice: StateCreator<
 
       // ── ServerSse mode: trigger server-side regeneration via SSE ──
       if (runtimeType === 'serverSse') {
-        // Keep the regenerate operation running until the SSE stream completes,
-        // so isMessageRegenerating stays true and duplicate clicks are blocked.
+        // Do NOT switch branch before server execution - same reason as gateway mode.
+        // The server creates the branch, and we'll see it when messages refresh.
+
         await chatStore.executeServerSseAgent({
           context,
           message: item.content,
@@ -452,11 +451,11 @@ export const generationSlice: StateCreator<
       }
 
       // ── Client mode: run agent locally ──
-      // TODO(LOBE-8519 follow-up): hetero regenerate is not yet implemented and
-      // currently falls through to client mode (silently uses the agent's underlying
-      // LLM instead of routing back through the heterogeneous CLI). Implementing it
-      // requires the same persistence + executeHeterogeneousAgent setup as
-      // sendMessage's hetero branch.
+      // For client mode, switch branch BEFORE execution since messages are created locally
+      // and we need to show the new branch immediately.
+      await chatStore.switchMessageBranch(messageId, nextBranchIndex, {
+        operationId,
+      });
 
       // Execute agent runtime with full context from ConversationStore
       await chatStore.executeClientAgent({

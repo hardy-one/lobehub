@@ -69,7 +69,33 @@ const updateDisplayMessageContent = (
   });
   const displayMessages = get().messagesMap[key] || [];
   const index = displayMessages.findIndex((m: UIChatMessage) => m.id === messageId);
-  if (index < 0) return;
+  if (index < 0) {
+    // The message might be inside an assistantGroup's children rather than at
+    // the top level of the flatList. Search recursively.
+    for (const displayMsg of displayMessages) {
+      if (displayMsg.role === 'assistantGroup' && displayMsg.children) {
+        const childIndex = displayMsg.children.findIndex((c) => c.id === messageId);
+        if (childIndex >= 0 && displayMsg.children[childIndex]) {
+          const child = displayMsg.children[childIndex];
+          if (updates.content !== undefined) {
+            child.content = updates.content;
+          }
+          if (updates.reasoning !== undefined) {
+            child.reasoning = updates.reasoning;
+          }
+          if (updates.tools !== undefined) {
+            child.tools = updates.tools;
+          }
+          return;
+        }
+      }
+    }
+    console.log(
+      `[SSE-Agent] updateDisplayMessageContent: message ${messageId} not found in messagesMap[${key}] ` +
+      `(topLevel=${displayMessages.length}, searched inside assistantGroup children too)`,
+    );
+    return;
+  }
 
   // Find the message in displayMessages and update it directly
   const message = displayMessages[index];

@@ -190,6 +190,48 @@ export const dataSlice: StateCreator<
     // because the branch indicator is on the child message,
     // but the activeBranchIndex is stored on the parent
     await state.updateMessageMetadata(message.parentId, { activeBranchIndex: branchIndex });
+
+    // Walk the newly-active branch path and reset descendant branch points
+    // to their first child (activeBranchIndex = 0). This prevents stale
+    // branch selectors from showing the old selection after switching.
+    const dbMessages = state.dbMessages;
+
+    // Build a children map: parentId -> list of children sorted by createdAt
+    const childrenMap = new Map<string, UIChatMessage[]>();
+    for (const msg of dbMessages) {
+      if (msg.parentId) {
+        const siblings = childrenMap.get(msg.parentId) || [];
+        siblings.push(msg);
+        childrenMap.set(msg.parentId, siblings);
+      }
+    }
+    for (const [, siblings] of childrenMap) {
+      siblings.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+    }
+
+    // Walk down from the selected message, following the first child at
+    // each branch point. Reset activeBranchIndex to 0 (first branch) for
+    // any message with multiple children (branch point).
+    const descendantUpdates: Promise<void>[] = [];
+    let currentId: string | undefined = messageId;
+
+    while (currentId) {
+      const children = childrenMap.get(currentId);
+      if (!children || children.length === 0) break;
+
+      if (children.length > 1) {
+        // This message is a branch point — reset to first branch
+        descendantUpdates.push(
+          state.updateMessageMetadata(currentId, { activeBranchIndex: 0 }),
+        );
+      }
+
+      // Follow the first child (default/oldest branch)
+      currentId = children[0].id;
+    }
+
+    // Execute all descendant updates in parallel
+    await Promise.all(descendantUpdates);
   },
 
   useFetchMessages: (context, skipFetch) => {

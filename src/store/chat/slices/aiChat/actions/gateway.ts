@@ -548,6 +548,13 @@ export class GatewayActionImpl {
     const { handler: eventHandler, state: eventState } = createSSEAgentEventHandler(this.#get, {
       assistantMessageId,
       context,
+      onComplete: () => {
+        this.#get().completeOperation(sseOpId);
+        if (topicId) {
+          this.#get().internal_updateTopicLoading(topicId, false);
+          topicService.updateTopicMetadata(topicId, { runningOperation: null }).catch(() => {});
+        }
+      },
       operationId: sseOpId,
       terminalFlag,
     });
@@ -564,11 +571,12 @@ export class GatewayActionImpl {
 
     this.#get().internal_updateTopicLoading(topicId, true);
 
-    // For reconnect, start with lastEventId '0' to get all events from the beginning
+    // For reconnect, start with lastEventId '0-0' (stream ID format) to get all events from the beginning
     // The eventState will track and update lastEventId for subsequent reconnects
     abortRef.current = agentRuntimeClient.createStreamConnection(operationId, {
+      historyLimit: 200,
       includeHistory: true,
-      lastEventId: '0',
+      lastEventId: '0-0',
       onConnect: () => {
         console.log(`[SSE-Agent] Reconnected for operation ${operationId}`);
       },

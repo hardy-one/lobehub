@@ -2,6 +2,8 @@ import { type OpenAIChatMessage } from '@/types/openai/chat';
 
 export interface StreamEvent {
   data?: any;
+  /** Stream event ID from Redis or InMemory manager (format: "timestamp-sequence") */
+  id?: string;
   operationId?: string;
   stepIndex?: number;
   timestamp: number;
@@ -22,6 +24,7 @@ export interface StreamEvent {
 }
 
 export interface StreamConnectionOptions {
+  historyLimit?: number;
   includeHistory?: boolean;
   lastEventId?: string;
   onConnect?: () => void;

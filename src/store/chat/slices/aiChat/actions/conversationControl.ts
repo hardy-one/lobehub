@@ -228,6 +228,66 @@ export class ConversationControlActionImpl {
       { activeBranchIndex: branchIndex },
       context,
     );
+
+    // Reset descendant branch points along the newly-active path.
+    // When switching a branch, any child branch points should reset to
+    // their first branch so the UI shows a consistent path.
+    const message = dbMessageSelectors.getDbMessageById(messageId)(this.#get());
+    if (!message) return;
+
+    const store = this.#get();
+    const contextKey = message.parentId
+      ? (() => {
+          // Find the context key for the message's topic
+          const keys = Object.keys(store.dbMessagesMap);
+          return keys.find((k) => store.dbMessagesMap[k]?.some((m) => m.id === messageId)) || keys[0];
+        })()
+      : undefined;
+    const dbMessages = contextKey ? store.dbMessagesMap[contextKey] || [] : store.dbMessagesMap[Object.keys(store.dbMessagesMap)[0]] || [];
+
+    // Build children map: parentId -> list of children sorted by createdAt
+    const childrenMap = new Map<string, string[]>();
+    for (const msg of dbMessages) {
+      if (msg.parentId) {
+        const siblings = childrenMap.get(msg.parentId) || [];
+        siblings.push(msg.id);
+        childrenMap.set(msg.parentId, siblings);
+      }
+    }
+    // Sort by createdAt (already stored as string/number on messages)
+    for (const [parentId, childIds] of childrenMap) {
+      childIds.sort((a, b) => {
+        const msgA = dbMessages.find((m) => m.id === a);
+        const msgB = dbMessages.find((m) => m.id === b);
+        return (msgA?.createdAt ?? 0) - (msgB?.createdAt ?? 0);
+      });
+      childrenMap.set(parentId, childIds);
+    }
+
+    // Walk down from the selected message, reset branch points to first branch
+    const descendantUpdates: Promise<void>[] = [];
+    let currentId: string | undefined = messageId;
+
+    while (currentId) {
+      const childIds = childrenMap.get(currentId);
+      if (!childIds || childIds.length === 0) break;
+
+      if (childIds.length > 1) {
+        // This message is a branch point — reset to first branch
+        descendantUpdates.push(
+          this.#get().optimisticUpdateMessageMetadata(
+            currentId,
+            { activeBranchIndex: 0 },
+            context,
+          ),
+        );
+      }
+
+      // Follow the first child
+      currentId = childIds[0];
+    }
+
+    await Promise.all(descendantUpdates);
   };
 
   approveToolCalling = async (

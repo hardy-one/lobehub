@@ -80,7 +80,7 @@ export const createSSEAgentEventHandler = (
 
   // Track state for reconnect scenarios
   const state: SSEEventHandlerState = {
-    lastEventId: '0',
+    lastEventId: '0-0',
     reconnectRequested: false,
   };
 
@@ -88,8 +88,14 @@ export const createSSEAgentEventHandler = (
     handler: (event: StreamEvent) => {
       if (terminalState) return;
 
-      // Update lastEventId for reconnect (use timestamp as event ID)
-      if (event.timestamp && event.timestamp.toString() > state.lastEventId) {
+      // Update lastEventId for reconnect — prefer stream ID (Redis/InMemory entry ID)
+      // over timestamp for correct ordering and deduplication.
+      if (event.id) {
+        if (event.id > state.lastEventId) {
+          state.lastEventId = event.id;
+        }
+      } else if (event.timestamp && event.timestamp.toString() > state.lastEventId) {
+        // Fallback: use timestamp if server doesn't provide a stream ID
         state.lastEventId = event.timestamp.toString();
       }
 

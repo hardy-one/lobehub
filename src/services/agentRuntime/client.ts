@@ -19,6 +19,7 @@ class AgentRuntimeClient {
     options: StreamConnectionOptions = {},
   ): AbortController {
     const {
+      historyLimit,
       includeHistory = false,
       lastEventId = '0',
       onEvent,
@@ -31,6 +32,7 @@ class AgentRuntimeClient {
       includeHistory: includeHistory.toString(),
       lastEventId,
       operationId,
+      ...(historyLimit != null && { historyLimit: historyLimit.toString() }),
     });
 
     const controller = new AbortController();

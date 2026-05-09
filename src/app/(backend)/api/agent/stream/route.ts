@@ -3,31 +3,110 @@ import debug from 'debug';
 import { type NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
-import { createStreamEventManager } from '@/server/modules/AgentRuntime';
+import { createAgentStateManager, createStreamEventManager } from '@/server/modules/AgentRuntime';
+import { auth } from '@/auth';
+import { ApiKeyModel } from '@/database/models/apiKey';
+import { getServerDB } from '@/database/core/db-adaptor';
+import { validateApiKeyFormat } from '@/utils/apiKey';
+import { extractBearerToken } from '@/utils/server/auth';
 
 const log = debug('api-route:agent:stream');
 const timing = debug('lobe-server:agent-runtime:timing');
 
 /**
+ * Normalize a lastEventId that may be a legacy timestamp (pure digits) into
+ * a format compatible with Redis stream IDs ("timestamp-sequence").
+ * Pure numeric IDs like "1746123456789" become "1746123456789-0".
+ * Already-formatted stream IDs like "1746123456789-0" pass through unchanged.
+ */
+const normalizeEventId = (id: string): string => (id.includes('-') ? id : `${id}-0`);
+
+/**
+ * Authenticate an SSE request using Better Auth session or API Key.
+ * Returns the authenticated userId or null if unauthenticated.
+ */
+const authenticateRequest = async (request: NextRequest): Promise<string | null> => {
+  // 1. Try Better Auth session (cookie-based)
+  try {
+    const session = await auth.api.getSession({ headers: request.headers });
+    if (session?.user?.id) {
+      log('SSE auth: session user %s', session.user.id);
+      return session.user.id;
+    }
+  } catch {
+    // Session not found or invalid — fall through to API Key
+  }
+
+  // 2. Try API Key (Bearer token)
+  const authorizationHeader = request.headers.get('Authorization');
+  const bearerToken = extractBearerToken(authorizationHeader);
+  if (bearerToken && validateApiKeyFormat(bearerToken)) {
+    try {
+      const db = await getServerDB();
+      const apiKeyModel = new ApiKeyModel(db, '');
+      const record = await apiKeyModel.findByKey(bearerToken);
+      if (
+        record?.enabled &&
+        (!record.expiresAt || new Date() < new Date(record.expiresAt))
+      ) {
+        log('SSE auth: API key user %s', record.userId);
+        return record.userId;
+      }
+    } catch (error) {
+      log('SSE auth: API key lookup failed: %O', error);
+    }
+  }
+
+  return null;
+};
+
+/**
  * Server-Sent Events (SSE) endpoint
- * Provides real-time Agent execution event stream for clients
+ * Provides real-time Agent execution event stream for clients.
+ * Requires authentication via Better Auth session or API Key.
  */
 export async function GET(request: NextRequest) {
+  // Authenticate the request
+  const userId = await authenticateRequest(request);
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   // Initialize stream event manager (uses InMemory singleton in local dev, Redis in production)
   const streamManager = createStreamEventManager();
 
   const { searchParams } = new URL(request.url);
   const operationId = searchParams.get('operationId');
-  const lastEventId = searchParams.get('lastEventId') || '0';
+  const rawLastEventId = searchParams.get('lastEventId') || '0-0';
+  const lastEventId = normalizeEventId(rawLastEventId);
   const includeHistory = searchParams.get('includeHistory') === 'true';
+  const historyLimit = Math.min(
+    Math.max(parseInt(searchParams.get('historyLimit') || '200', 10) || 200, 1),
+    1000,
+  );
 
   if (!operationId) {
     return NextResponse.json(
-      {
-        error: 'operationId parameter is required',
-      },
+      { error: 'operationId parameter is required' },
       { status: 400 },
     );
+  }
+
+  // Authorize: verify the authenticated user owns this operation
+  try {
+    const stateManager = createAgentStateManager();
+    const metadata = await stateManager.getOperationMetadata(operationId);
+    if (!metadata) {
+      return NextResponse.json({ error: 'Operation not found' }, { status: 404 });
+    }
+    if (metadata.userId && metadata.userId !== userId) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+  } catch (error) {
+    log('SSE: failed to check operation metadata for %s: %O', operationId, error);
+    // In local dev (InMemory mode), getOperationMetadata may not be available.
+    // Allow the connection to proceed — the operationId is unguessable enough
+    // to serve as a basic access token in that context.
   }
 
   log(`Starting SSE connection for operation ${operationId} from eventId ${lastEventId}`);
@@ -53,14 +132,19 @@ export async function GET(request: NextRequest) {
       // If needed, send historical events first
       if (includeHistory) {
         streamManager
-          .getStreamHistory(operationId, 50)
+          .getStreamHistory(operationId, historyLimit)
           .then((history) => {
             // Send historical events in chronological order (earliest first)
             const sortedHistory = history.reverse();
 
             sortedHistory.forEach((event) => {
-              // Only send events newer than lastEventId
-              if (!lastEventId || lastEventId === '0' || event.timestamp.toString() > lastEventId) {
+              // Only send events newer than lastEventId using stream ID comparison
+              // Stream IDs (e.g. "1746123456789-0") are lexicographically ordered
+              const eventId = event.id || undefined;
+              const isNewer = !lastEventId || lastEventId === '0-0' ||
+                (eventId && eventId > lastEventId) ||
+                (!eventId && event.timestamp.toString() > lastEventId);
+              if (isNewer) {
                 try {
                   // Add SSE-specific fields, keeping format consistent with real-time events
                   const sseEvent = {
@@ -68,7 +152,7 @@ export async function GET(request: NextRequest) {
                     operationId,
                     timestamp: event.timestamp || Date.now(),
                   };
-                  writer.writeStreamEvent(sseEvent, operationId);
+                  writer.writeStreamEvent(sseEvent, eventId || operationId);
                 } catch (error) {
                   console.error('[Agent Stream] Error sending history event:', error);
                 }
@@ -139,7 +223,7 @@ export async function GET(request: NextRequest) {
                 }
 
                 try {
-                  // Add SSE-specific fields
+                  // Add SSE-specific fields, preserving stream ID for client reconnect
                   const sseEvent = {
                     ...event,
                     operationId,
@@ -148,7 +232,7 @@ export async function GET(request: NextRequest) {
 
                   const now = Date.now();
                   const totalLatency = now - sseEvent.timestamp;
-                  writer.writeStreamEvent(sseEvent, operationId);
+                  writer.writeStreamEvent(sseEvent, event.id || operationId);
                   timing(
                     '[%s:%d] SSE sent %s, original timestamp %d, sent at %d, total latency %dms',
                     operationId,

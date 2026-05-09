@@ -211,4 +211,12 @@ export const TOOL_API_DISPLAY_NAMES: Record<string, string> = {
   getTopicContext: 'workflow.toolDisplayName.getTopicContext',
   listOnlineDevices: 'workflow.toolDisplayName.listOnlineDevices',
   activateDevice: 'workflow.toolDisplayName.activateDevice',
+
+  // Web onboarding
+  saveUserQuestion: 'workflow.toolDisplayName.saveUserQuestion',
+  writeDocument: 'workflow.toolDisplayName.writeDocument',
+
+  // Agent marketplace
+  showAgentMarketplace: 'workflow.toolDisplayName.showAgentMarketplace',
+  submitAgentPick: 'workflow.toolDisplayName.submitAgentPick',
 };

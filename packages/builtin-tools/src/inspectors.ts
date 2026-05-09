@@ -52,6 +52,14 @@ import {
   WebBrowsingInspectors,
   WebBrowsingManifest,
 } from '@lobechat/builtin-tool-web-browsing/client';
+import {
+  AgentMarketplaceInspectors,
+  AgentMarketplaceManifest,
+} from '@lobechat/builtin-tool-web-onboarding/agentMarketplace/client';
+import {
+  WebOnboardingInspectors,
+  WebOnboardingManifest,
+} from '@lobechat/builtin-tool-web-onboarding/client';
 import { createRunCommandInspector } from '@lobechat/shared-tool-ui/inspectors';
 import { type BuiltinInspector } from '@lobechat/types';
 
@@ -69,6 +77,10 @@ const BuiltinToolInspectors: Record<string, Record<string, BuiltinInspector>> = 
   [AgentBuilderManifest.identifier]: AgentBuilderInspectors as Record<string, BuiltinInspector>,
   [AgentDocumentsManifest.identifier]: AgentDocumentsInspectors as Record<string, BuiltinInspector>,
   [AgentManagementManifest.identifier]: AgentManagementInspectors as Record<
+    string,
+    BuiltinInspector
+  >,
+  [AgentMarketplaceManifest.identifier]: AgentMarketplaceInspectors as Record<
     string,
     BuiltinInspector
   >,
@@ -93,6 +105,7 @@ const BuiltinToolInspectors: Record<string, Record<string, BuiltinInspector>> = 
   [SkillsManifest.identifier]: SkillsInspectors as Record<string, BuiltinInspector>,
   [TaskManifest.identifier]: TaskInspectors as Record<string, BuiltinInspector>,
   [WebBrowsingManifest.identifier]: WebBrowsingInspectors as Record<string, BuiltinInspector>,
+  [WebOnboardingManifest.identifier]: WebOnboardingInspectors as Record<string, BuiltinInspector>,
   codex: {
     ...CodexInspectors,
     command_execution: createRunCommandInspector('Run') as BuiltinInspector,

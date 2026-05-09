@@ -28,6 +28,15 @@ export interface TaskTemplate {
   requiresSkills?: TaskTemplateSkillRequirement[];
 }
 
+export type TaskTemplateRecommendationSource = 'matched' | 'fallback';
+
+export type TaskTemplateFallbackPool = 'preferred_category' | 'all_candidates';
+
+export interface RecommendedTaskTemplate extends TaskTemplate {
+  fallbackPool?: TaskTemplateFallbackPool;
+  source: TaskTemplateRecommendationSource;
+}
+
 export interface TaskTemplateSkillRequirement {
   /** Short identifier from `LOBEHUB_SKILL_PROVIDERS[i].id` or `KLAVIS_SERVER_TYPES[i].identifier`. */
   provider: string;
@@ -639,3 +648,5 @@ export const taskTemplates: TaskTemplate[] = [
     optionalSkills: [{ provider: 'notion', source: 'klavis' }],
   },
 ];
+
+export const KNOWN_TASK_TEMPLATE_IDS: ReadonlySet<string> = new Set(taskTemplates.map((t) => t.id));

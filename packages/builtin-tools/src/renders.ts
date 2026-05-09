@@ -34,6 +34,14 @@ import {
   WebBrowsingManifest,
   WebBrowsingRenders,
 } from '@lobechat/builtin-tool-web-browsing/client';
+import {
+  AgentMarketplaceManifest,
+  AgentMarketplaceRenders,
+} from '@lobechat/builtin-tool-web-onboarding/agentMarketplace/client';
+import {
+  WebOnboardingManifest,
+  WebOnboardingRenders,
+} from '@lobechat/builtin-tool-web-onboarding/client';
 import { RunCommandRender } from '@lobechat/shared-tool-ui/renders';
 import { type BuiltinRender } from '@lobechat/types';
 
@@ -55,6 +63,7 @@ const BuiltinToolsRenders: Record<string, Record<string, BuiltinRender>> = {
   [AgentBuilderManifest.identifier]: AgentBuilderRenders as Record<string, BuiltinRender>,
   [AgentDocumentsManifest.identifier]: AgentDocumentsRenders as Record<string, BuiltinRender>,
   [AgentManagementManifest.identifier]: AgentManagementRenders as Record<string, BuiltinRender>,
+  [AgentMarketplaceManifest.identifier]: AgentMarketplaceRenders as Record<string, BuiltinRender>,
   [ClaudeCodeIdentifier]: ClaudeCodeRenders as Record<string, BuiltinRender>,
   [CloudSandboxManifest.identifier]: CloudSandboxRenders as Record<string, BuiltinRender>,
   [GroupAgentBuilderManifest.identifier]: GroupAgentBuilderRenders as Record<string, BuiltinRender>,
@@ -71,6 +80,7 @@ const BuiltinToolsRenders: Record<string, Record<string, BuiltinRender>> = {
   [TaskManifest.identifier]: TaskRenders as Record<string, BuiltinRender>,
   [LobeActivatorManifest.identifier]: LobeActivatorRenders as Record<string, BuiltinRender>,
   [WebBrowsingManifest.identifier]: WebBrowsingRenders as Record<string, BuiltinRender>,
+  [WebOnboardingManifest.identifier]: WebOnboardingRenders as Record<string, BuiltinRender>,
   codex: {
     ...CodexRenders,
     command_execution: RunCommandRender as BuiltinRender,

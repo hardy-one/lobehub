@@ -160,6 +160,8 @@ export interface UIChatMessage {
    */
   compressedMessages?: UIChatMessage[];
   content: string;
+  /** Pre-computed token count for virtual messages (assistantGroup, compare, etc.) */
+  contentTokenCount?: number;
   createdAt: number;
   /** Lexical editor JSON state for rich text rendering */
   editorData?: Record<string, any> | null;

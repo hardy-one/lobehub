@@ -7,6 +7,9 @@
     "test": "vitest",
     "test:coverage": "vitest --coverage --silent='passed-only'"
   },
+  "dependencies": {
+    "tokenx": "^1.2.1"
+  },
   "devDependencies": {
     "@lobechat/types": "workspace:*"
   }

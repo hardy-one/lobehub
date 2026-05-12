@@ -15,7 +15,7 @@ const Token = memo<PropsWithChildren>(({ children }) => {
 });
 
 export const MainToken = memo(() => {
-  const total = useChatStore(displayMessageSelectors.mainAIChatsMessageString);
+  const total = useChatStore(displayMessageSelectors.mainAIChatsTokenCount);
 
   return (
     <Token>
@@ -25,7 +25,7 @@ export const MainToken = memo(() => {
 });
 
 export const PortalToken = memo(() => {
-  const total = useChatStore(threadSelectors.portalDisplayChatsString);
+  const total = useChatStore(threadSelectors.portalDisplayChatsTokenCount);
 
   return (
     <Token>

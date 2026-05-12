@@ -211,8 +211,8 @@ describe('displayMessageSelectors', () => {
     });
   });
 
-  describe('mainAIChatsMessageString', () => {
-    it('should concatenate the contents of all messages returned by mainAIChatsWithHistoryConfig', () => {
+  describe('mainAIChatsTokenCount', () => {
+    it('should compute token count from messages returned by mainAIChatsWithHistoryConfig', () => {
       // Prepare a state with a few messages
       const state = merge(initialStore, {
         messagesMap: {
@@ -221,15 +221,10 @@ describe('displayMessageSelectors', () => {
         activeAgentId: 'active-session',
       });
 
-      // Assume that the mainAIChatsWithHistoryConfig will return the last two messages
-      const expectedString = mockMessages
-        .slice(-2)
-        .map((m) => m.content)
-        .join('');
-
-      // Call the selector and verify the result
-      const concatenatedString = displayMessageSelectors.mainAIChatsMessageString(state);
-      expect(concatenatedString).toBe(expectedString);
+      // Call the selector and verify the result is a number > 0
+      const tokenCount = displayMessageSelectors.mainAIChatsTokenCount(state);
+      expect(typeof tokenCount).toBe('number');
+      expect(tokenCount).toBeGreaterThan(0);
 
       // Restore the mocks after the test
       vi.restoreAllMocks();

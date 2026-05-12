@@ -1,4 +1,5 @@
 import type { AssistantContentBlock, ChatToolPayloadWithResult } from '@lobechat/types';
+import { estimateTokenCount } from 'tokenx';
 
 import type { Message, MessageGroupMetadata } from '../types';
 import type { BranchResolver } from './BranchResolver';
@@ -523,6 +524,14 @@ export class FlatListBuilder {
   }
 
   /**
+   * Compute token count from an array of text parts
+   */
+  private computeContentTokens(parts: string[]): number {
+    const text = parts.filter(Boolean).join('\n');
+    return text ? estimateTokenCount(text) : 0;
+  }
+
+  /**
    * Check if message has compare mode in metadata
    */
   private isCompareMode(message: Message): boolean {
@@ -619,6 +628,12 @@ export class FlatListBuilder {
       activeColumnId,
       columns: columns as any,
       content: '',
+      contentTokenCount: columns
+        .flat()
+        .reduce(
+          (sum, msg) => sum + (msg.contentTokenCount ?? estimateTokenCount(msg.content || '')),
+          0,
+        ),
       createdAt,
       extra: {
         parentMessageId: parentMessage.id,
@@ -704,6 +719,10 @@ export class FlatListBuilder {
 
     return {
       content: '',
+      contentTokenCount: members.reduce(
+        (sum, m) => sum + (m.contentTokenCount ?? estimateTokenCount(m.content || '')),
+        0,
+      ),
       createdAt,
       extra: {
         parentMessageId: parentMessage.id,
@@ -730,6 +749,10 @@ export class FlatListBuilder {
       activeColumnId,
       columns: columns as any,
       content: '',
+      contentTokenCount: members.reduce(
+        (sum, m) => sum + (m.contentTokenCount ?? estimateTokenCount(m.content || '')),
+        0,
+      ),
       createdAt: Math.min(...members.map((m) => m.createdAt)),
       extra: {
         groupMode: group.mode,
@@ -880,10 +903,24 @@ export class FlatListBuilder {
     const isSupervisor = firstAssistant.metadata?.isSupervisor;
     const role = isSupervisor ? 'supervisor' : 'assistantGroup';
 
+    // Compute content token count from all parts in children
+    const contentParts: string[] = [];
+    for (const child of children) {
+      if (child.content && child.content !== '...') contentParts.push(child.content);
+      if (child.reasoning?.content) contentParts.push(child.reasoning.content);
+      if (child.tools?.length) {
+        for (const tool of child.tools) {
+          if (tool.arguments) contentParts.push(tool.arguments);
+          if (tool.result?.content) contentParts.push(tool.result.content);
+        }
+      }
+    }
+
     const result: Message = {
       ...firstAssistant,
       children,
       content: '',
+      contentTokenCount: this.computeContentTokens(contentParts),
       role: role as any,
     };
 
@@ -998,6 +1035,7 @@ export class FlatListBuilder {
       ...message,
       children: [childBlock],
       content: '',
+      contentTokenCount: this.computeContentTokens([message.content || '']),
       role: 'supervisor' as any,
     };
 
@@ -1055,6 +1093,7 @@ export class FlatListBuilder {
 
     return {
       content: '',
+      contentTokenCount: this.computeContentTokens(taskMessages.map((t) => t.content || '')),
       createdAt,
       extra: {
         parentMessageId: parentMessage.id,
@@ -1103,6 +1142,7 @@ export class FlatListBuilder {
 
     return {
       content: '',
+      contentTokenCount: this.computeContentTokens(taskMessages.map((t) => t.content || '')),
       createdAt,
       extra: {
         parentMessageId: parentMessage.id,

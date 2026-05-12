@@ -21,6 +21,8 @@ export const DEFAULT_THRESHOLD_RATIO = 0.5;
  */
 export interface TokenCountMessage {
   content?: string | unknown;
+  /** Pre-computed token count for virtual messages (assistantGroup, compare, etc.) */
+  contentTokenCount?: number;
   metadata?: {
     usage?: {
       totalOutputTokens?: number;
@@ -45,8 +47,10 @@ export function estimateTokens(content: string | unknown): number {
 
 /**
  * Calculate total token count for a list of messages
- * - Assistant messages: Use metadata.usage.totalOutputTokens if available (exact value)
- * - User/System messages: Use tokenx estimation
+ * Priority order per message:
+ * 1. Assistant messages: Use metadata.usage.totalOutputTokens if available (exact value)
+ * 2. All messages: Use contentTokenCount if pre-computed (for virtual messages)
+ * 3. Fallback: tokenx estimation from message content
  *
  * @param messages - List of messages to count tokens for
  * @returns Total token count
@@ -61,7 +65,12 @@ export function calculateMessageTokens(messages: TokenCountMessage[]): number {
       }
     }
 
-    // For user/system messages or assistant messages without usage data, estimate tokens
+    // Prefer pre-computed token count from virtual messages
+    if (msg.contentTokenCount != null) {
+      return total + msg.contentTokenCount;
+    }
+
+    // Fallback: estimate tokens from content
     return total + estimateTokens(msg.content);
   }, 0);
 }

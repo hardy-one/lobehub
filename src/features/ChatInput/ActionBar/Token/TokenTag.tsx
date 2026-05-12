@@ -27,9 +27,9 @@ import TokenProgress from './TokenProgress';
 const toolNameResolver = new ToolNameResolver();
 
 interface TokenTagProps {
-  total: string;
+  total: number;
 }
-const Token = memo<TokenTagProps>(({ total: messageString }) => {
+const Token = memo<TokenTagProps>(({ total: chatsTokenCount }) => {
   const { t } = useTranslation(['chat', 'components']);
 
   const [input, historySummary] = useChatStore((s) => [
@@ -89,9 +89,9 @@ const Token = memo<TokenTagProps>(({ total: messageString }) => {
   // Chat usage token
   const inputTokenCount = useTokenCount(input);
 
-  // Use messageString directly (from displayMessageSelectors.mainAIChatsMessageString)
-  // which correctly handles group chats via currentDisplayChatKey (includes groupId)
-  const chatsToken = useTokenCount(messageString) + inputTokenCount;
+  // Use pre-computed token count from selector
+  // which correctly handles virtual messages (assistantGroup, compare, etc.) via contentTokenCount
+  const chatsToken = chatsTokenCount + inputTokenCount;
 
   // SystemRole token
   const systemRoleToken = useTokenCount(systemRole);

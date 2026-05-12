@@ -1,4 +1,5 @@
 import { type ThreadItem, type UIChatMessage } from '@lobechat/types';
+import { estimateTokenCount } from 'tokenx';
 
 import { useAgentStore } from '@/store/agent';
 import { agentChatConfigSelectors } from '@/store/agent/selectors';
@@ -127,11 +128,15 @@ const portalAIChatsWithHistoryConfig = (s: ChatStoreState) => {
 };
 
 /**
- * Portal display chats string - used for Token calculation
+ * Portal display chats token count - used for Token calculation
+ * Uses contentTokenCount for virtual messages and falls back to estimateTokenCount
  */
-const portalDisplayChatsString = (s: ChatStoreState) => {
+const portalDisplayChatsTokenCount = (s: ChatStoreState) => {
   const messages = portalAIChats(s);
-  return messages.map((m) => m.content).join('');
+  return messages.reduce((sum, m) => {
+    if (m.contentTokenCount != null) return sum + m.contentTokenCount;
+    return sum + estimateTokenCount(m.content || '');
+  }, 0);
 };
 
 export const threadSelectors = {
@@ -144,7 +149,7 @@ export const threadSelectors = {
   isActiveThreadSubagent,
   portalAIChats,
   portalAIChatsWithHistoryConfig,
-  portalDisplayChatsString,
+  portalDisplayChatsTokenCount,
 };
 
 // Re-export utility function for use in action.ts

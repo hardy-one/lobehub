@@ -103,6 +103,23 @@ describe('tokenCounter', () => {
       // Should estimate since totalOutputTokens is 0
       expect(tokens).toBeGreaterThan(0);
     });
+
+    it('should use contentTokenCount when available (virtual messages)', () => {
+      const messages = [{ content: '', contentTokenCount: 500, role: 'assistantGroup' }];
+      expect(calculateMessageTokens(messages)).toBe(500);
+    });
+
+    it('should prefer contentTokenCount over content estimation', () => {
+      const messages = [
+        { content: 'this should be ignored', contentTokenCount: 42, role: 'assistantGroup' },
+      ];
+      expect(calculateMessageTokens(messages)).toBe(42);
+    });
+
+    it('should fall back to content estimation when contentTokenCount is null', () => {
+      const messages = [{ content: 'hello world', contentTokenCount: null, role: 'user' }];
+      expect(calculateMessageTokens(messages)).toBeGreaterThan(0);
+    });
   });
 
   describe('getCompressionThreshold', () => {

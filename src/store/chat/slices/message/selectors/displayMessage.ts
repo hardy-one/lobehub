@@ -1,4 +1,5 @@
 import { type AssistantContentBlock, type UIChatMessage } from '@lobechat/types';
+import { estimateTokenCount } from 'tokenx';
 
 import { INBOX_SESSION_ID } from '@/const/session';
 import { useAgentStore } from '@/store/agent';
@@ -119,11 +120,16 @@ const mainAIChatsWithHistoryConfig = (s: ChatStoreState): UIChatMessage[] => {
 };
 
 /**
- * Concatenated message string from AI chats with history config
+ * Pre-computed token count from AI chats with history config
+ * Uses contentTokenCount for virtual messages (assistantGroup, compare, etc.)
+ * and falls back to estimateTokenCount for regular messages
  */
-const mainAIChatsMessageString = (s: ChatStoreState): string => {
+const mainAIChatsTokenCount = (s: ChatStoreState): number => {
   const chats = mainAIChatsWithHistoryConfig(s);
-  return chats.map((m) => m.content).join('');
+  return chats.reduce((sum, m) => {
+    if (m.contentTokenCount != null) return sum + m.contentTokenCount;
+    return sum + estimateTokenCount(m.content || '');
+  }, 0);
 };
 
 /**
@@ -307,7 +313,7 @@ export const displayMessageSelectors = {
   isCurrentDisplayChatLoaded,
   lastDisplayMessageId,
   mainAIChats,
-  mainAIChatsMessageString,
+  mainAIChatsTokenCount,
   mainAIChatsWithHistoryConfig,
   mainAILatestMessageReasoningContent,
   mainDisplayChatIDs,

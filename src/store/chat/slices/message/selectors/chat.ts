@@ -92,7 +92,7 @@ export const chatSelectors = {
 
   mainAIChats: displayMessageSelectors.mainAIChats,
 
-  mainAIChatsMessageString: displayMessageSelectors.mainAIChatsMessageString,
+  mainAIChatsTokenCount: displayMessageSelectors.mainAIChatsTokenCount,
 
   mainAIChatsWithHistoryConfig: displayMessageSelectors.mainAIChatsWithHistoryConfig,
   mainAILatestMessageReasoningContent: displayMessageSelectors.mainAILatestMessageReasoningContent,

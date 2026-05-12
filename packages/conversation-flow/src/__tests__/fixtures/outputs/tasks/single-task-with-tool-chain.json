@@ -111,6 +111,7 @@
           }
         }
       ],
+      "contentTokenCount": 68,
       "performance": {
         "ttft": 3163,
         "duration": 5611,
@@ -211,6 +212,7 @@
           }
         }
       ],
+      "contentTokenCount": 77,
       "performance": {
         "ttft": 3135,
         "duration": 10399,

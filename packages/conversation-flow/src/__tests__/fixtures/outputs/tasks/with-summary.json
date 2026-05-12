@@ -5,19 +5,17 @@
       "type": "message"
     },
     {
-      "id": "msg-assistant-1",
-      "type": "assistantGroup",
       "children": [
         {
           "id": "msg-assistant-1",
           "type": "message",
           "tools": ["msg-tool-1"]
         }
-      ]
+      ],
+      "id": "msg-assistant-1",
+      "type": "assistantGroup"
     },
     {
-      "id": "tasks-msg-tool-1-msg-task-llm-msg-task-agents-msg-task-rag",
-      "type": "tasks",
       "children": [
         {
           "id": "msg-task-llm",
@@ -32,7 +30,9 @@
           "type": "message"
         }
       ],
-      "messageId": "msg-tool-1"
+      "id": "tasks-msg-tool-1-msg-task-llm-msg-task-agents-msg-task-rag",
+      "messageId": "msg-tool-1",
+      "type": "tasks"
     },
     {
       "id": "msg-assistant-summary",
@@ -59,8 +59,8 @@
       "provider": "openai",
       "children": [
         {
-          "id": "msg-assistant-1",
           "content": "Creating three parallel research tasks.",
+          "id": "msg-assistant-1",
           "tools": [
             {
               "id": "call_exec_tasks_1",
@@ -69,8 +69,8 @@
               "arguments": "{\"tasks\": [{\"description\": \"Research LLM architectures\"}, {\"description\": \"Research AI agents\"}, {\"description\": \"Research RAG systems\"}]}",
               "identifier": "lobe-gtd",
               "result": {
-                "id": "msg-tool-1",
                 "content": "Triggered 3 async tasks",
+                "id": "msg-tool-1",
                 "state": {
                   "type": "execTasks",
                   "tasks": [
@@ -91,17 +91,18 @@
             }
           ]
         }
-      ]
+      ],
+      "contentTokenCount": 52
     },
     {
-      "id": "tasks-msg-tool-1-msg-task-llm-msg-task-agents-msg-task-rag",
-      "role": "tasks",
       "content": "",
+      "contentTokenCount": 35,
       "createdAt": 1735526594643,
-      "updatedAt": 1735526800000,
       "extra": {
         "parentMessageId": "msg-tool-1"
       },
+      "id": "tasks-msg-tool-1-msg-task-llm-msg-task-agents-msg-task-rag",
+      "role": "tasks",
       "tasks": [
         {
           "id": "msg-task-llm",
@@ -154,7 +155,8 @@
             "totalTokens": 110000
           }
         }
-      ]
+      ],
+      "updatedAt": 1735526800000
     },
     {
       "id": "msg-assistant-summary",

@@ -99,6 +99,7 @@
           }
         }
       ],
+      "contentTokenCount": 105,
       "performance": {
         "ttft": 1490,
         "duration": 11935,
@@ -114,6 +115,7 @@
     },
     {
       "content": "",
+      "contentTokenCount": 111,
       "createdAt": 1735526594643,
       "extra": {
         "parentMessageId": "msg-tool-1"

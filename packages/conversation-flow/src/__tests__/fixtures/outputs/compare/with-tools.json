@@ -188,6 +188,7 @@
                 }
               }
             ],
+            "contentTokenCount": 221,
             "performance": {
               "ttft": 198,
               "duration": 3521,
@@ -204,6 +205,7 @@
         ]
       ],
       "content": "",
+      "contentTokenCount": 548,
       "createdAt": 1704067205000,
       "extra": {
         "parentMessageId": "msg-301"

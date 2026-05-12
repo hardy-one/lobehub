@@ -62,7 +62,8 @@
           "content": "The weather in New York is 72F and sunny.",
           "id": "msg-3"
         }
-      ]
+      ],
+      "contentTokenCount": 40
     },
     {
       "id": "msg-4",

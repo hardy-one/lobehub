@@ -116,8 +116,8 @@ describe('tokenCounter', () => {
       expect(calculateMessageTokens(messages)).toBe(42);
     });
 
-    it('should fall back to content estimation when contentTokenCount is null', () => {
-      const messages = [{ content: 'hello world', contentTokenCount: null, role: 'user' }];
+    it('should fall back to content estimation when contentTokenCount is undefined', () => {
+      const messages = [{ content: 'hello world', role: 'user' }];
       expect(calculateMessageTokens(messages)).toBeGreaterThan(0);
     });
   });

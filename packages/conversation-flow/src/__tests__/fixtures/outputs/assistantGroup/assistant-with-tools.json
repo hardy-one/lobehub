@@ -162,6 +162,7 @@
           }
         }
       ],
+      "contentTokenCount": 296,
       "performance": {
         "ttft": 245,
         "duration": 3877,

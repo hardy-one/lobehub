@@ -56,6 +56,15 @@
       "parentId": "msg-501",
       "createdAt": 1704067202000,
       "updatedAt": 1704067202000,
+      "usage": {
+        "totalInputTokens": 32,
+        "totalOutputTokens": 48,
+        "totalTokens": 80,
+        "cost": 0.00024
+      },
+      "performance": {
+        "tps": 45
+      },
       "children": [
         {
           "content": "I'll help you debug the code. Let me first check the syntax and run some analysis.",
@@ -88,12 +97,12 @@
               "result": {
                 "content": "{\"status\":\"failed\",\"error\":\"NameError: name 'result' is not defined\"}",
                 "id": "msg-504",
-                "state": {
-                  "cached": false
-                },
                 "error": {
                   "type": "NameError",
                   "message": "name 'result' is not defined"
+                },
+                "state": {
+                  "cached": false
                 }
               },
               "result_msg_id": "msg-504"
@@ -107,15 +116,7 @@
           }
         }
       ],
-      "performance": {
-        "tps": 45
-      },
-      "usage": {
-        "totalInputTokens": 32,
-        "totalOutputTokens": 48,
-        "totalTokens": 80,
-        "cost": 0.00024
-      }
+      "contentTokenCount": 76
     },
     {
       "id": "msg-505",

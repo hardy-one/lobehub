@@ -145,7 +145,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     description:
       'MiMo-V2.5-Pro by Xiaomi — a leap in agentic and long horizon coherence. Significant improvements in agentic performance, software engineering, and tasks spanning 1000+ tool calls.',
     displayName: 'MiMo-V2.5 Pro',
-    enabled: true,
+    enabled: false,
     id: 'mimo-v2.5-pro',
     maxOutput: 128_000,
     organization: 'Xiaomi',
@@ -239,7 +239,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     description:
       'Qwen3.6-Plus by Alibaba — latest Qwen coding model with strong reasoning and vision capabilities.',
     displayName: 'Qwen3.6 Plus',
-    enabled: true,
+    enabled: false,
     id: 'qwen3.6-plus',
     maxOutput: 65_536,
     organization: 'Alibaba',
@@ -263,7 +263,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     contextWindowTokens: 204_800,
     description: 'MiniMax M2.7 — latest MiniMax coding model with improved reasoning and tool use.',
     displayName: 'MiniMax M2.7',
-    enabled: true,
+    enabled: false,
     id: 'minimax-m2.7',
     maxOutput: 131_072,
     organization: 'MiniMax',

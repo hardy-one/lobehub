@@ -85,7 +85,7 @@ describe('LobeNvidiaAI - custom features', () => {
 
     it('should use enable_thinking and clear_thinking for GLM models', () => {
       const payload = {
-        model: 'z-ai/glm5',
+        model: 'z-ai/glm-5.1',
         messages: [{ role: 'user', content: 'test' }],
         thinking: { type: 'enabled' as const },
       };
@@ -97,7 +97,7 @@ describe('LobeNvidiaAI - custom features', () => {
 
     it('should use enable_thinking and clear_thinking for GLM models when disabled', () => {
       const payload = {
-        model: 'z-ai/glm5',
+        model: 'z-ai/glm-5.1',
         messages: [{ role: 'user', content: 'test' }],
         thinking: { type: 'disabled' as const },
       };
@@ -112,7 +112,7 @@ describe('LobeNvidiaAI - custom features', () => {
 
     it('should use thinking for non-GLM models', () => {
       const payload = {
-        model: 'deepseek-ai/deepseek-v3.2',
+        model: 'deepseek-ai/deepseek-v4-flash',
         messages: [{ role: 'user', content: 'test' }],
         thinking: { type: 'enabled' as const },
       };
@@ -142,7 +142,7 @@ describe('LobeNvidiaAI - custom features', () => {
 
     it('should convert reasoning to reasoning_content combined with thinking param', () => {
       const payload = {
-        model: 'z-ai/glm5',
+        model: 'z-ai/glm-5.1',
         messages: [
           { role: 'user', content: 'test' },
           { role: 'assistant', reasoning: { content: 'thinking process' }, content: 'response' },
@@ -178,6 +178,35 @@ describe('LobeNvidiaAI - custom features', () => {
         max_tokens: 1000,
         chat_template_kwargs: { thinking: true },
       });
+    });
+
+    it('should put reasoning_effort inside chat_template_kwargs for DeepSeek V4 models', () => {
+      const payload = {
+        model: 'deepseek-ai/deepseek-v4-flash',
+        messages: [{ role: 'user', content: 'test' }],
+        thinking: { type: 'enabled' as const },
+        reasoning_effort: 'max',
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.chat_template_kwargs).toEqual({
+        thinking: true,
+        reasoning_effort: 'max',
+      });
+    });
+
+    it('should not include reasoning_effort at top level for DeepSeek V4 models', () => {
+      const payload = {
+        model: 'deepseek-ai/deepseek-v4-pro',
+        messages: [{ role: 'user', content: 'test' }],
+        thinking: { type: 'enabled' as const },
+        reasoning_effort: 'high',
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result).not.toHaveProperty('reasoning_effort');
     });
   });
 

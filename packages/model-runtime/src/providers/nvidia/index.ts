@@ -6,11 +6,20 @@ import { processMultiProviderModelList } from '../../utils/modelParse';
 
 // Models that support preserved thinking (enable_thinking + clear_thinking parameters)
 // Ref: https://docs.z.ai/guides/capabilities/thinking-mode#preserved-thinking
-const supportPreservedThinkingModels = new Set(['z-ai/glm4.7', 'z-ai/glm5']);
+const supportPreservedThinkingModels = new Set(['z-ai/glm-5.1']);
 
 // Models that use enable_thinking parameter (without clear_thinking)
 // Ref: NVIDIA NIM
 const enableThinkingModels = new Set(['qwen/qwen3.5-397b-a17b']);
+
+// Models that require reasoning_content on all assistant messages when thinking is enabled.
+// Without this, multi-turn tool-call conversations return HTTP 400.
+const forceReasoningModels = new Set([
+  'z-ai/glm-5.1',
+  'deepseek-ai/deepseek-v4-flash',
+  'deepseek-ai/deepseek-v4-pro',
+  'moonshotai/kimi-k2.6',
+]);
 
 export interface NvidiaModelCard {
   id: string;
@@ -26,24 +35,39 @@ export const params = {
     // of a raw provider error. See LOBE-8974.
     contextPreFlight: { models: nvidiaChatModels },
     handlePayload: (payload) => {
-      const { model, thinking, messages, ...rest } = payload;
-
-      // Convert reasoning to reasoning_content for NVIDIA API format
-      // NVIDIA NIM requires reasoning_content instead of reasoning for all models
-      const processedMessages = messages?.map((message: any) => {
-        if (message.role === 'assistant' && message.reasoning?.content) {
-          const { reasoning, ...restMessage } = message;
-          return {
-            ...restMessage,
-            reasoning_content: reasoning.content,
-          };
-        }
-        return message;
-      });
+      const { model, reasoning_effort, thinking, messages, ...rest } = payload;
 
       // Convert thinking.type to boolean for API
       const thinkingFlag =
         thinking?.type === 'enabled' ? true : thinking?.type === 'disabled' ? false : undefined;
+
+      // When thinking is enabled, models like GLM-5.1, DeepSeek V4, and Kimi K2.6
+      // require reasoning_content on all assistant messages in history, or the API
+      // returns HTTP 400 on follow-up turns with tool calls.
+      const shouldForceAssistantReasoningContent =
+        thinkingFlag === true && typeof model === 'string' && forceReasoningModels.has(model);
+
+      const processedMessages = messages?.map((message: any) => {
+        if (message.role !== 'assistant') return message;
+
+        const { reasoning, ...rest } = message;
+        const reasoningContent =
+          typeof rest.reasoning_content === 'string'
+            ? rest.reasoning_content
+            : typeof reasoning?.content === 'string'
+              ? reasoning.content
+              : undefined;
+
+        if (shouldForceAssistantReasoningContent) {
+          return { ...rest, reasoning_content: reasoningContent ?? '' };
+        }
+
+        if (reasoningContent !== undefined) {
+          return { ...rest, reasoning_content: reasoningContent };
+        }
+
+        return rest;
+      });
 
       // Check if model uses preserved thinking (enable_thinking + clear_thinking)
       const usePreservedThinking = model && supportPreservedThinkingModels.has(model);
@@ -65,6 +89,11 @@ export const params = {
           // Other models: use thinking parameter
           chatTemplateKwargs.thinking = thinkingFlag;
         }
+      }
+
+      // DeepSeek V4 on NVIDIA NIM expects reasoning_effort inside chat_template_kwargs
+      if (reasoning_effort && typeof model === 'string' && model.startsWith('deepseek-ai/deepseek-v4')) {
+        chatTemplateKwargs.reasoning_effort = reasoning_effort;
       }
 
       return {

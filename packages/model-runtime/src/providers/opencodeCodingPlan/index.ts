@@ -148,7 +148,10 @@ const buildOpenAIPayload = (
   // Sanitize response_format schema for Kimi models only (opencode-go backend
   // rejects nullable Zod enums from Kimi K2.5/K2.6 with "could not translate the enum None").
   const response_format =
-    isKimi && restPayload.response_format?.json_schema?.schema
+    isKimi &&
+    restPayload.response_format &&
+    'json_schema' in restPayload.response_format &&
+    restPayload.response_format.json_schema?.schema
       ? {
           ...restPayload.response_format,
           json_schema: {

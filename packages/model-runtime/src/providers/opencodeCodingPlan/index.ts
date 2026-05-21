@@ -1,6 +1,7 @@
 import { ModelProvider } from 'model-bank';
 import type OpenAI from 'openai';
 
+import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
 import { createRouterRuntime } from '../../core/RouterRuntime';
 import type { CreateRouterRuntimeOptions } from '../../core/RouterRuntime/createRuntime';
 import type { ChatStreamPayload } from '../../types';
@@ -16,24 +17,24 @@ const minimaxModels = ['minimax-m2.5', 'minimax-m2.7'];
 // OpenAI-compatible route. Matches the official Moonshot provider's prefix logic.
 const isKimiThinkingToggleModel = (model: string) => model.startsWith('kimi-k2.');
 
-// Models that need reasoning → reasoning_content conversion.
-const reasoningConvertModels = [
+// Models with interleaved reasoning_content (from models.dev opencode-go)
+// that use openai-compatible SDK. All of these need:
+//   1. reason → reasoning_content conversion
+//   2. reasoning_content forced on all assistant messages (fill '' if missing)
+// Ref: https://models.dev/api.json → opencode-go
+const reasoningInterleavedModels = [
   'glm-5',
   'glm-5.1',
   'mimo-v2.5',
   'mimo-v2.5-pro',
+  'mimo-v2-omni',
+  'mimo-v2-pro',
   'deepseek-v4-pro',
   'deepseek-v4-flash',
-  'qwen3.6-plus',
 ];
 
-// Models that additionally require reasoning_content on all assistant messages
-// when thinking is enabled — the underlying API gateway rejects (HTTP 400)
-// follow-up turns that omit reasoning_content on assistant messages with tool calls.
-const reasoningForceModels = ['deepseek-v4-pro', 'deepseek-v4-flash', 'mimo-v2.5', 'mimo-v2.5-pro'];
-
 const hasValidReasoning = (reasoning: any) =>
-  typeof reasoning?.content === 'string' && typeof reasoning?.signature !== 'string';
+  typeof reasoning?.content === 'string';
 
 const isEmptyContent = (content: any) =>
   content === '' || content === null || content === undefined;
@@ -41,27 +42,23 @@ const isEmptyContent = (content: any) =>
 /**
  * Build OpenAI-compatible payload with reasoning_content handling.
  *
- * Applies to:
- *   - GLM-5/5.1, MiMo-V2.5/Pro, DeepSeek V4 Flash/Pro, Qwen3.6 Plus
- *     (reasoning → reasoning_content conversion)
- *   - Kimi K2.5/K2.6 (thinking mode reasoning_content, matching Moonshot official provider)
+ * Applies to all models with interleaved reasoning_content (models.dev opencode-go):
+ *   GLM-5/5.1, MiMo-V2.5/Pro, MiMo-V2-Omni/Pro, DeepSeek V4 Flash/Pro, Kimi K2.5/K2.6
  *
- * For DeepSeek V4 Flash/Pro and MiMo-V2.5/Pro: forces `reasoning_content`
- * on assistant messages when thinking is enabled (default for these models).
+ * All of these get reason → reasoning_content conversion AND forced
+ * reasoning_content on assistant messages when thinking is not explicitly disabled.
  */
 const buildOpenAIPayload = (
   payload: ChatStreamPayload,
 ): OpenAI.ChatCompletionCreateParamsStreaming => {
   const model = payload.model;
   const isKimi = isKimiThinkingToggleModel(model);
-  const isConvertModel = reasoningConvertModels.some((m) => model?.includes(m));
-  if (!isKimi && !isConvertModel) return payload as any;
+  const isInterleavedModel = reasoningInterleavedModels.some((m) => model?.includes(m));
+  if (!isKimi && !isInterleavedModel) return payload as any;
 
-  const isForcedReasoningModel = reasoningForceModels.some((m) => model?.includes(m));
-  const kimiThinkingEnabled = isKimi && (payload as any).thinking?.type !== 'disabled';
   const thinkingExplicitlyDisabled = (payload as any).thinking?.type === 'disabled';
   const shouldForceAssistantReasoningContent =
-    (isForcedReasoningModel && !thinkingExplicitlyDisabled) || kimiThinkingEnabled;
+    (isInterleavedModel || isKimi) && !thinkingExplicitlyDisabled;
 
   const messages = payload.messages.map((message: any) => {
     const { reasoning, ...rest } = message;
@@ -79,7 +76,7 @@ const buildOpenAIPayload = (
     if (message.role === 'assistant' && shouldForceAssistantReasoningContent) {
       return {
         ...normalized,
-        reasoning_content: reasoningContent ?? '',
+        reasoning_content: reasoningContent ?? ' ',
       };
     }
 
@@ -105,6 +102,20 @@ const buildOpenAIPayload = (
     stream: payload.stream ?? true,
   } as OpenAI.ChatCompletionCreateParamsStreaming;
 };
+
+// Dedicated OpenAI-compatible runtime with buildOpenAIPayload baked into the
+// factory closure. RouterRuntime creates instances of this class for all
+// non-MiniMax models, ensuring reasoning_content is properly set on messages.
+const LobeOpenCodeCodingPlanOpenAI = createOpenAICompatibleRuntime({
+  provider: ModelProvider.OpenCodeCodingPlan,
+  baseURL: GO_BASE_URL,
+  chatCompletion: {
+    handlePayload: buildOpenAIPayload,
+  },
+  debug: {
+    chatCompletion: () => process.env.DEBUG_OPENCODE_GO_CHAT_COMPLETION === '1',
+  },
+});
 
 // Anthropic SDK auto-appends /v1/messages to baseURL, so we need to strip trailing /v1
 const stripV1 = (url?: string) => url?.replace(/\/v1$/, '');
@@ -136,12 +147,10 @@ export const params = {
       // OpenAI-compatible fallback for all other models (GLM, Kimi, MiMo, Qwen, DeepSeek)
       {
         apiType: 'openai',
+        runtime: LobeOpenCodeCodingPlanOpenAI as any,
         options: {
           ...options,
           baseURL,
-          chatCompletion: {
-            handlePayload: buildOpenAIPayload,
-          },
         },
       },
     ];

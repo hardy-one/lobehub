@@ -23,6 +23,9 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-04-07',
+    settings: {
+      extendParams: ['reasoningEffort'],
+    },
     type: 'chat',
   },
   {
@@ -44,6 +47,9 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-02-11',
+    settings: {
+      extendParams: ['reasoningEffort'],
+    },
     type: 'chat',
   },
   {
@@ -65,6 +71,9 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-01-27',
+    settings: {
+      extendParams: ['reasoningEffort'],
+    },
     type: 'chat',
   },
   {
@@ -87,7 +96,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-04-21',
     settings: {
-      extendParams: ['enableReasoning'],
+      extendParams: ['reasoningEffort'],
     },
     type: 'chat',
   },
@@ -206,6 +215,9 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-02-12',
+    settings: {
+      extendParams: ['reasoningBudgetToken32k'],
+    },
     type: 'chat',
   },
   {
@@ -276,6 +288,9 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-03-18',
+    settings: {
+      extendParams: ['reasoningBudgetToken32k'],
+    },
     type: 'chat',
   },
   {
@@ -298,7 +313,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-04-24',
     settings: {
-      extendParams: ['reasoningEffort'],
+      extendParams: ['deepseekV4ReasoningEffort'],
     },
     type: 'chat',
   },
@@ -322,7 +337,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-04-24',
     settings: {
-      extendParams: ['reasoningEffort'],
+      extendParams: ['deepseekV4ReasoningEffort'],
     },
     type: 'chat',
   },

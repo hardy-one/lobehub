@@ -145,9 +145,10 @@ const buildOpenAIPayload = (
 
   const { reasoning_effort, thinking, ...restPayload } = payload;
 
-  // Sanitize response_format schema (nullable Zod enums break Go backend)
+  // Sanitize response_format schema for Kimi models only (opencode-go backend
+  // rejects nullable Zod enums from Kimi K2.5/K2.6 with "could not translate the enum None").
   const response_format =
-    restPayload.response_format?.json_schema?.schema
+    isKimi && restPayload.response_format?.json_schema?.schema
       ? {
           ...restPayload.response_format,
           json_schema: {
@@ -157,16 +158,19 @@ const buildOpenAIPayload = (
         }
       : restPayload.response_format;
 
-  // Sanitize tool parameters schemas
-  const tools = restPayload.tools?.map((tool: any) => ({
-    ...tool,
-    function: {
-      ...tool.function,
-      parameters: tool.function?.parameters
-        ? sanitizeJsonSchema(tool.function.parameters)
-        : tool.function?.parameters,
-    },
-  }));
+  // Sanitize tool parameters schemas for Kimi models only
+  const tools =
+    isKimi && restPayload.tools
+      ? restPayload.tools.map((tool: any) => ({
+          ...tool,
+          function: {
+            ...tool.function,
+            parameters: tool.function?.parameters
+              ? sanitizeJsonSchema(tool.function.parameters)
+              : tool.function?.parameters,
+          },
+        }))
+      : restPayload.tools;
 
   return {
     ...restPayload,

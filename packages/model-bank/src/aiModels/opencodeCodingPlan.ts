@@ -197,6 +197,78 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     type: 'chat',
   },
   {
+    abilities: { functionCall: true, reasoning: true, vision: true },
+    contextWindowTokens: 262_144,
+    description:
+      'MiMo-V2-Omni by Xiaomi — multimodal model integrating text, vision, and speech for complex agentic tasks.',
+    displayName: 'MiMo-V2 Omni',
+    enabled: false,
+    id: 'mimo-v2-omni',
+    maxOutput: 131_072,
+    organization: 'Xiaomi',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 0.8, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 4, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.16, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-03-18',
+    settings: {
+      extendParams: ['reasoningEffort'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: { functionCall: true, reasoning: true },
+    contextWindowTokens: 1_000_000,
+    description:
+      'MiMo-V2-Pro by Xiaomi — designed for high-intensity agent workflows with hybrid attention architecture and ultra-long context.',
+    displayName: 'MiMo-V2 Pro',
+    enabled: false,
+    id: 'mimo-v2-pro',
+    maxOutput: 131_072,
+    organization: 'Xiaomi',
+    pricing: {
+      currency: 'USD',
+      units: [
+        {
+          name: 'textInput',
+          strategy: 'tiered',
+          tiers: [
+            { rate: 2, upTo: 256_000 },
+            { rate: 4, upTo: 'infinity' },
+          ],
+          unit: 'millionTokens',
+        },
+        {
+          name: 'textOutput',
+          strategy: 'tiered',
+          tiers: [
+            { rate: 6, upTo: 256_000 },
+            { rate: 12, upTo: 'infinity' },
+          ],
+          unit: 'millionTokens',
+        },
+        {
+          name: 'textInput_cacheRead',
+          strategy: 'tiered',
+          tiers: [
+            { rate: 0.4, upTo: 256_000 },
+            { rate: 0.8, upTo: 'infinity' },
+          ],
+          unit: 'millionTokens',
+        },
+      ],
+    },
+    releasedAt: '2026-03-18',
+    settings: {
+      extendParams: ['reasoningEffort'],
+    },
+    type: 'chat',
+  },
+  {
     abilities: { functionCall: true, reasoning: true },
     contextWindowTokens: 204_800,
     description:

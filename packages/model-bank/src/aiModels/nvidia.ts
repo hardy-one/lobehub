@@ -10,9 +10,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
     displayName: 'MiniMax-M2.7',
     id: 'minimaxai/minimax-m2.7',
     maxOutput: 131_072,
-    settings: {
-      extendParams: ['enableReasoning'],
-    },
     type: 'chat',
   },
   {
@@ -24,9 +21,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
     displayName: 'MiniMax-M2.5',
     id: 'minimaxai/minimax-m2.5',
     maxOutput: 131_072,
-    settings: {
-      extendParams: ['enableReasoning'],
-    },
     type: 'chat',
   },
   {
@@ -97,7 +91,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
   {
     abilities: {
       functionCall: true,
-      reasoning: true,
       vision: true,
     },
     contextWindowTokens: 256_000,
@@ -106,9 +99,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
     displayName: 'Nemotron 3 Nano Omni',
     id: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
     maxOutput: 65_536,
-    settings: {
-      extendParams: ['enableReasoning'],
-    },
     type: 'chat',
   },
   {
@@ -147,7 +137,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
   {
     abilities: {
       functionCall: true,
-      reasoning: true,
       vision: true,
     },
     contextWindowTokens: 262_144,
@@ -156,9 +145,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
     displayName: 'Qwen3.5 397B-A17B',
     id: 'qwen/qwen3.5-397b-a17b',
     maxOutput: 8_192,
-    settings: {
-      extendParams: ['enableReasoning'],
-    },
     type: 'chat',
   },
   {
@@ -172,9 +158,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
     displayName: 'Step 3.5 Flash',
     id: 'stepfun-ai/step-3.5-flash',
     maxOutput: 16_384,
-    settings: {
-      extendParams: ['enableReasoning'],
-    },
     type: 'chat',
   },
   {
@@ -224,7 +207,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
   {
     abilities: {
       functionCall: true,
-      reasoning: true,
       vision: true,
     },
     contextWindowTokens: 131_072,
@@ -233,9 +215,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
     displayName: 'Nemotron Nano 12B v2 VL',
     id: 'nvidia/nemotron-nano-12b-v2-vl',
     maxOutput: 131_072,
-    settings: {
-      extendParams: ['enableReasoning'],
-    },
     type: 'chat',
   },
   {
@@ -263,15 +242,12 @@ const nvidiaChatModels: AIChatModelCard[] = [
     displayName: 'Qwen3-Next 80B-A3B Thinking',
     id: 'qwen/qwen3-next-80b-a3b-thinking',
     maxOutput: 16_384,
-    settings: {
-      extendParams: ['enableReasoning'],
-    },
     type: 'chat',
   },
   {
     abilities: {
       functionCall: true,
-      reasoning: false,
+      reasoning: true,
     },
     contextWindowTokens: 262_000,
     description:
@@ -284,7 +260,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
   {
     abilities: {
       functionCall: true,
-      reasoning: false,
     },
     contextWindowTokens: 262_144,
     description:
@@ -354,15 +329,12 @@ const nvidiaChatModels: AIChatModelCard[] = [
     displayName: 'Llama 3.3 Nemotron Super 49B v1.5',
     id: 'nvidia/llama-3.3-nemotron-super-49b-v1.5',
     maxOutput: 131_072,
-    settings: {
-      extendParams: ['enableReasoning'],
-    },
     type: 'chat',
   },
   {
     abilities: {
       functionCall: true,
-      reasoning: false,
+      reasoning: true,
     },
     contextWindowTokens: 128_000,
     description:
@@ -375,7 +347,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
   {
     abilities: {
       functionCall: false,
-      reasoning: false,
+      reasoning: true,
     },
     contextWindowTokens: 32_768,
     description:
@@ -388,7 +360,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
   {
     abilities: {
       functionCall: true,
-      reasoning: false,
       vision: true,
     },
     contextWindowTokens: 128_000,
@@ -465,15 +436,11 @@ const nvidiaChatModels: AIChatModelCard[] = [
     displayName: 'Llama 3.3 Nemotron Super 49B v1',
     id: 'nvidia/llama-3.3-nemotron-super-49b-v1',
     maxOutput: 131_072,
-    settings: {
-      extendParams: ['enableReasoning'],
-    },
     type: 'chat',
   },
   {
     abilities: {
       functionCall: true,
-      reasoning: true,
       vision: true,
     },
     contextWindowTokens: 131_072,
@@ -482,9 +449,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
     displayName: 'Phi-4 Mini Instruct',
     id: 'microsoft/phi-4-mini-instruct',
     maxOutput: 8_192,
-    settings: {
-      extendParams: ['enableReasoning'],
-    },
     type: 'chat',
   },
   {
@@ -555,7 +519,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
   {
     abilities: {
       functionCall: true,
-      reasoning: false,
+      reasoning: true,
     },
     contextWindowTokens: 65_536,
     description:
@@ -568,7 +532,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
   {
     abilities: {
       functionCall: true,
-      reasoning: false,
+      reasoning: true,
     },
     contextWindowTokens: 32_768,
     description:
@@ -581,7 +545,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
   {
     abilities: {
       functionCall: true,
-      reasoning: false,
+      reasoning: true,
     },
     contextWindowTokens: 128_000,
     description:
@@ -717,7 +681,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
   {
     abilities: {
       functionCall: true,
-      reasoning: false,
+      reasoning: true,
     },
     contextWindowTokens: 128_000,
     description:
@@ -729,15 +693,22 @@ const nvidiaChatModels: AIChatModelCard[] = [
   },
   {
     abilities: {
+      reasoning: true,
       vision: true,
     },
     description:
       'Open VLM for quantum computer calibration chart understanding across a range of qubit modalities.',
     displayName: 'Ising Calibration 1 35B A3B',
     id: 'nvidia/ising-calibration-1-35b-a3b',
+    settings: {
+      extendParams: ['enableReasoning'],
+    },
     type: 'chat',
   },
   {
+    abilities: {
+      reasoning: true,
+    },
     description:
       'A high performing model for text generation, coding and agentic use cases.',
     displayName: 'Mistral Medium 3.5 128B',
@@ -762,6 +733,9 @@ const nvidiaChatModels: AIChatModelCard[] = [
     type: 'chat',
   },
   {
+    abilities: {
+      reasoning: true,
+    },
     description:
       'Leading reasoning and agentic AI accuracy model for PC and edge.',
     displayName: 'Llama 3.1 Nemotron Nano 8B v1',

@@ -24,7 +24,7 @@ describe('LobeNvidiaAI - custom features', () => {
     // thinking parameter conversion
     it('should add chat_template_kwargs with thinking: true when thinking.type is enabled', () => {
       const payload = {
-        model: 'deepseek-ai/deepseek-v3.1',
+        model: 'moonshotai/kimi-k2.6',
         messages: [{ role: 'user', content: 'test' }],
         thinking: { type: 'enabled' as const },
       };
@@ -32,7 +32,7 @@ describe('LobeNvidiaAI - custom features', () => {
       const result = params.chatCompletion!.handlePayload!(payload as any);
 
       expect(result).toEqual({
-        model: 'deepseek-ai/deepseek-v3.1',
+        model: 'moonshotai/kimi-k2.6',
         messages: [{ role: 'user', content: 'test' }],
         chat_template_kwargs: { thinking: true },
       });
@@ -40,7 +40,7 @@ describe('LobeNvidiaAI - custom features', () => {
 
     it('should add chat_template_kwargs with thinking: false when thinking.type is disabled', () => {
       const payload = {
-        model: 'deepseek-ai/deepseek-v3.1',
+        model: 'moonshotai/kimi-k2.6',
         messages: [{ role: 'user', content: 'test' }],
         thinking: { type: 'disabled' as const },
       };
@@ -48,7 +48,7 @@ describe('LobeNvidiaAI - custom features', () => {
       const result = params.chatCompletion!.handlePayload!(payload as any);
 
       expect(result).toEqual({
-        model: 'deepseek-ai/deepseek-v3.1',
+        model: 'moonshotai/kimi-k2.6',
         messages: [{ role: 'user', content: 'test' }],
         chat_template_kwargs: { thinking: false },
       });
@@ -56,7 +56,7 @@ describe('LobeNvidiaAI - custom features', () => {
 
     it('should not add chat_template_kwargs when thinking type is not set', () => {
       const payload = {
-        model: 'deepseek-ai/deepseek-v3.1',
+        model: 'moonshotai/kimi-k2.6',
         messages: [{ role: 'user', content: 'test' }],
         thinking: {},
       };
@@ -64,7 +64,7 @@ describe('LobeNvidiaAI - custom features', () => {
       const result = params.chatCompletion!.handlePayload!(payload as any);
 
       expect(result).toEqual({
-        model: 'deepseek-ai/deepseek-v3.1',
+        model: 'moonshotai/kimi-k2.6',
         messages: [{ role: 'user', content: 'test' }],
       });
     });
@@ -110,9 +110,9 @@ describe('LobeNvidiaAI - custom features', () => {
       });
     });
 
-    it('should use thinking for non-GLM models', () => {
+    it('should use chat_template_kwargs.thinking for kimi-k2.6', () => {
       const payload = {
-        model: 'deepseek-ai/deepseek-v4-flash',
+        model: 'moonshotai/kimi-k2.6',
         messages: [{ role: 'user', content: 'test' }],
         thinking: { type: 'enabled' as const },
       };
@@ -162,7 +162,7 @@ describe('LobeNvidiaAI - custom features', () => {
 
     it('should preserve other payload properties', () => {
       const payload = {
-        model: 'deepseek-ai/deepseek-v3.1',
+        model: 'moonshotai/kimi-k2.6',
         messages: [{ role: 'user', content: 'test' }],
         thinking: { type: 'enabled' as const },
         temperature: 0.7,
@@ -172,7 +172,7 @@ describe('LobeNvidiaAI - custom features', () => {
       const result = params.chatCompletion!.handlePayload!(payload as any);
 
       expect(result).toEqual({
-        model: 'deepseek-ai/deepseek-v3.1',
+        model: 'moonshotai/kimi-k2.6',
         messages: [{ role: 'user', content: 'test' }],
         temperature: 0.7,
         max_tokens: 1000,

@@ -4,13 +4,32 @@ import { type OpenAICompatibleFactoryOptions } from '../../core/openaiCompatible
 import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
 import { processMultiProviderModelList } from '../../utils/modelParse';
 
-// Models that support preserved thinking (enable_thinking + clear_thinking parameters)
-// Ref: https://docs.z.ai/guides/capabilities/thinking-mode#preserved-thinking
-const supportPreservedThinkingModels = new Set(['z-ai/glm-5.1']);
+// Thinking param patterns derived from build.nvidia.com page templates
+// Ref: /tmp/NVIDIA_28_Models_Analysis.md
 
-// Models that use enable_thinking parameter (without clear_thinking)
-// Ref: NVIDIA NIM
-const enableThinkingModels = new Set(['qwen/qwen3.5-397b-a17b']);
+// Pattern A: chat_template_kwargs.thinking (boolean toggle)
+const chatTemplateKwargsThinkingModels = new Set([
+  'moonshotai/kimi-k2.6',
+]);
+
+// Pattern B: chat_template_kwargs.enable_thinking (boolean toggle)
+const enableThinkingModels = new Set([
+  'google/gemma-4-31b-it',
+  'nvidia/ising-calibration-1-35b-a3b',
+  'nvidia/nemotron-3-nano-30b-a3b',
+  'nvidia/nemotron-3-super-120b-a12b',
+  'qwen/qwen3.5-122b-a10b',
+]);
+
+// Pattern C: chat_template_kwargs.enable_thinking + clear_thinking (preserved thinking)
+// Ref: https://docs.z.ai/guides/capabilities/thinking-mode#preserved-thinking
+const preservedThinkingModels = new Set(['z-ai/glm-5.1']);
+
+// Pattern D: chat_template_kwargs.thinking + reasoning_effort (DeepSeek V4)
+const dsV4Models = new Set([
+  'deepseek-ai/deepseek-v4-flash',
+  'deepseek-ai/deepseek-v4-pro',
+]);
 
 // Models that require reasoning_content on all assistant messages when thinking is enabled.
 // Without this, multi-turn tool-call conversations return HTTP 400.
@@ -37,74 +56,69 @@ export const params = {
     handlePayload: (payload) => {
       const { model, reasoning_effort, thinking, messages, ...rest } = payload;
 
-      // Convert thinking.type to boolean for API
       const thinkingFlag =
         thinking?.type === 'enabled' ? true : thinking?.type === 'disabled' ? false : undefined;
 
-      // When thinking is enabled, models like GLM-5.1, DeepSeek V4, and Kimi K2.6
-      // require reasoning_content on all assistant messages in history, or the API
-      // returns HTTP 400 on follow-up turns with tool calls.
       const shouldForceAssistantReasoningContent =
         thinkingFlag === true && typeof model === 'string' && forceReasoningModels.has(model);
 
       const processedMessages = messages?.map((message: any) => {
         if (message.role !== 'assistant') return message;
 
-        const { reasoning, ...rest } = message;
+        const { reasoning, ...restMsg } = message;
         const reasoningContent =
-          typeof rest.reasoning_content === 'string'
-            ? rest.reasoning_content
+          typeof restMsg.reasoning_content === 'string'
+            ? restMsg.reasoning_content
             : typeof reasoning?.content === 'string'
               ? reasoning.content
               : undefined;
 
         if (shouldForceAssistantReasoningContent) {
-          return { ...rest, reasoning_content: reasoningContent ?? '' };
+          return { ...restMsg, reasoning_content: reasoningContent ?? '' };
         }
 
         if (reasoningContent !== undefined) {
-          return { ...rest, reasoning_content: reasoningContent };
+          return { ...restMsg, reasoning_content: reasoningContent };
         }
 
-        return rest;
+        return restMsg;
       });
-
-      // Check if model uses preserved thinking (enable_thinking + clear_thinking)
-      const usePreservedThinking = model && supportPreservedThinkingModels.has(model);
-      // Check if model uses enable_thinking parameter (without clear_thinking)
-      const useEnableThinking = model && enableThinkingModels.has(model);
 
       const chatTemplateKwargs: Record<string, any> = {};
 
-      if (thinkingFlag !== undefined) {
-        if (usePreservedThinking) {
-          // Models with preserved thinking: use enable_thinking + clear_thinking
-          // set clear_thinking to false to preserve reasoning content across turns
+      // DeepSeek V4: reasoning_effort drives thinking + effort in kwargs
+      // Template maps: "none" → {thinking:false}, "high"/"max" → {thinking:true, reasoning_effort}
+      if (typeof model === 'string' && dsV4Models.has(model)) {
+        if (reasoning_effort && reasoning_effort !== 'none') {
+          chatTemplateKwargs.thinking = true;
+          chatTemplateKwargs.reasoning_effort = reasoning_effort;
+        } else if (reasoning_effort === 'none') {
+          chatTemplateKwargs.thinking = false;
+        } else if (thinkingFlag !== undefined) {
+          chatTemplateKwargs.thinking = thinkingFlag;
+        }
+      } else if (thinkingFlag !== undefined) {
+        if (preservedThinkingModels.has(model)) {
           chatTemplateKwargs.enable_thinking = thinkingFlag;
           chatTemplateKwargs.clear_thinking = false;
-        } else if (useEnableThinking) {
-          // Models using enable_thinking: use enable_thinking only
+        } else if (enableThinkingModels.has(model)) {
           chatTemplateKwargs.enable_thinking = thinkingFlag;
-        } else {
-          // Other models: use thinking parameter
+        } else if (chatTemplateKwargsThinkingModels.has(model)) {
           chatTemplateKwargs.thinking = thinkingFlag;
         }
       }
 
-      // DeepSeek V4 on NVIDIA NIM expects reasoning_effort inside chat_template_kwargs
-      if (reasoning_effort && typeof model === 'string' && model.startsWith('deepseek-ai/deepseek-v4')) {
-        chatTemplateKwargs.reasoning_effort = reasoning_effort;
-      }
-
-      return {
+      const result: any = {
         ...rest,
         model,
         messages: processedMessages,
-        // Send chat_template_kwargs when thinking is explicitly set
-        ...(Object.keys(chatTemplateKwargs).length > 0
-          ? { chat_template_kwargs: chatTemplateKwargs }
-          : {}),
-      } as any;
+      };
+
+      if (Object.keys(chatTemplateKwargs).length > 0) {
+        result.chat_template_kwargs = chatTemplateKwargs;
+      }
+
+      return result;
     },
   },
   debug: {

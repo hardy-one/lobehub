@@ -44,7 +44,7 @@ const isEmptyContent = (content: any) =>
  * The opencode-go backend ("could not translate the enum None") rejects
  * nullable enums produced by Zod schema `.nullable()` / `.nullish()`.
  */
-const sanitizeJsonSchema = (schema: any): any => {
+export const sanitizeJsonSchema = (schema: any): any => {
   if (!schema || typeof schema !== 'object') return schema;
   if (Array.isArray(schema)) return schema.map(sanitizeJsonSchema);
 

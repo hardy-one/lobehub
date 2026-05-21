@@ -40,6 +40,59 @@ const isEmptyContent = (content: any) =>
   content === '' || content === null || content === undefined;
 
 /**
+ * Recursively remove `null` values from `enum` arrays in a JSON Schema.
+ * The opencode-go backend ("could not translate the enum None") rejects
+ * nullable enums produced by Zod schema `.nullable()` / `.nullish()`.
+ */
+const sanitizeJsonSchema = (schema: any): any => {
+  if (!schema || typeof schema !== 'object') return schema;
+  if (Array.isArray(schema)) return schema.map(sanitizeJsonSchema);
+
+  const result: any = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (key === 'enum' && Array.isArray(value)) {
+      const filtered = value.filter((v: any) => v !== null);
+      if (filtered.length > 0) result[key] = filtered;
+      continue;
+    }
+    // For `type: ['string', 'null']` → just `type: 'string'`
+    if (key === 'type' && Array.isArray(value) && value.includes('null') && value.length >= 2) {
+      const nonNullTypes = value.filter((v: any) => v !== 'null' && v !== null);
+      if (nonNullTypes.length === 1) result.type = nonNullTypes[0];
+      else if (nonNullTypes.length > 1) result.type = nonNullTypes;
+      continue;
+    }
+    // Recurse into schema traversals:
+    //   properties, additionalProperties, items, prefixItems
+    //   allOf, anyOf, oneOf, not
+    //   if/then/else
+    //   $defs, definitions
+    //   contains, unevaluatedItems, unevaluatedProperties
+    if (key === 'properties' || key === '$defs' || key === 'definitions') {
+      const nested: any = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        nested[k] = sanitizeJsonSchema(v);
+      }
+      result[key] = nested;
+    } else if (
+      ['allOf', 'anyOf', 'oneOf', 'prefixItems'].includes(key) &&
+      Array.isArray(value)
+    ) {
+      result[key] = value.map(sanitizeJsonSchema);
+    } else if (
+      ['items', 'additionalProperties', 'not', 'contains', 'if', 'then', 'else',
+       'unevaluatedItems', 'unevaluatedProperties']
+        .includes(key)
+    ) {
+      result[key] = sanitizeJsonSchema(value);
+    } else {
+      result[key] = sanitizeJsonSchema(value);
+    }
+  }
+  return result;
+};
+
+/**
  * Build OpenAI-compatible payload with reasoning_content handling.
  *
  * Applies to all models with interleaved reasoning_content (models.dev opencode-go):
@@ -92,9 +145,34 @@ const buildOpenAIPayload = (
 
   const { reasoning_effort, thinking, ...restPayload } = payload;
 
+  // Sanitize response_format schema (nullable Zod enums break Go backend)
+  const response_format =
+    restPayload.response_format?.json_schema?.schema
+      ? {
+          ...restPayload.response_format,
+          json_schema: {
+            ...restPayload.response_format.json_schema,
+            schema: sanitizeJsonSchema(restPayload.response_format.json_schema.schema),
+          },
+        }
+      : restPayload.response_format;
+
+  // Sanitize tool parameters schemas
+  const tools = restPayload.tools?.map((tool: any) => ({
+    ...tool,
+    function: {
+      ...tool.function,
+      parameters: tool.function?.parameters
+        ? sanitizeJsonSchema(tool.function.parameters)
+        : tool.function?.parameters,
+    },
+  }));
+
   return {
     ...restPayload,
     messages,
+    response_format,
+    tools,
     ...(!thinkingExplicitlyDisabled && reasoning_effort ? { reasoning_effort } : {}),
     ...(thinking?.type === 'enabled' || thinking?.type === 'disabled'
       ? { thinking: { type: thinking.type } }

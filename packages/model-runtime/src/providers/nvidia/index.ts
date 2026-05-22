@@ -31,6 +31,14 @@ const dsV4Models = new Set([
   'deepseek-ai/deepseek-v4-pro',
 ]);
 
+// Models that should use Responses API (gpt-oss on NVIDIA NIM)
+const responsesModels = new Set([
+  'openai/gpt-oss-120b',
+  'openai/gpt-oss-20b',
+]);
+
+const nemotron9bModel = 'nvidia/nvidia-nemotron-nano-9b-v2';
+
 // Models that require reasoning_content on all assistant messages when thinking is enabled.
 // Without this, multi-turn tool-call conversations return HTTP 400.
 const forceReasoningModels = new Set([
@@ -159,8 +167,40 @@ export const params = {
       const thinkingFlag =
         thinking?.type === 'enabled' ? true : thinking?.type === 'disabled' ? false : undefined;
 
+      // gpt-oss models use Responses API with reasoning_effort
+      if (typeof model === 'string' && responsesModels.has(model)) {
+        const effort = reasoning_effort ?? 'medium';
+        return { ...rest, reasoning_effort: effort, model, apiMode: 'responses' };
+      }
+
       const shouldForceAssistantReasoningContent =
         thinkingFlag === true && typeof model === 'string' && forceReasoningModels.has(model);
+
+      // nemotron-nano-9b: thinking via system message tag
+      if (model === nemotron9bModel && thinkingFlag !== undefined) {
+        const thinkTag = thinkingFlag ? '/think' : '/no_think';
+        const processed: any[] = [];
+        let hasSystem = false;
+        for (const msg of messages ?? []) {
+          if (msg.role === 'system') {
+            processed.push({ ...msg, content: String(msg.content ?? '') + thinkTag });
+            hasSystem = true;
+          } else {
+            processed.push(msg);
+          }
+        }
+        if (!hasSystem) {
+          processed.unshift({ role: 'system', content: thinkTag });
+        }
+
+        const result: any = { ...rest, model, messages: processed };
+
+        if (thinkingFlag) {
+          result.extra_body = { min_thinking_tokens: 1024, max_thinking_tokens: 4096 };
+        }
+
+        return result;
+      }
 
       const processedMessages = messages?.map((message: any) => {
         if (message.role !== 'assistant') return message;
@@ -208,7 +248,8 @@ export const params = {
         }
       }
 
-      const tools = rest.tools
+      // Schemas sanitization: only Kimi K2.6 needs renameTypeProperty et al.
+      const tools = model === 'moonshotai/kimi-k2.6' && rest.tools
         ? (rest.tools as any[]).map((tool: any) => {
             if (!tool.function?.parameters) return tool;
             let params = renameTypeProperty(tool.function.parameters);

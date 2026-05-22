@@ -118,7 +118,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
     id: 'nvidia/nemotron-3-super-120b-a12b',
     maxOutput: 262_144,
     settings: {
-      extendParams: ['enableReasoning'],
+      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
     },
     type: 'chat',
   },
@@ -320,7 +320,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
     id: 'openai/gpt-oss-20b',
     maxOutput: 131_072,
     settings: {
-      extendParams: ['enableReasoning'],
+      extendParams: ['reasoningEffort'],
     },
     type: 'chat',
   },
@@ -336,7 +336,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
     id: 'openai/gpt-oss-120b',
     maxOutput: 131_072,
     settings: {
-      extendParams: ['enableReasoning'],
+      extendParams: ['reasoningEffort'],
     },
     type: 'chat',
   },

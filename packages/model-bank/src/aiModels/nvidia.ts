@@ -185,6 +185,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
     abilities: {
       functionCall: false,
       reasoning: true,
+      vision: true,
     },
     contextWindowTokens: 256_000,
     description:
@@ -422,7 +423,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
     abilities: {
       functionCall: false,
       reasoning: false,
-      vision: true,
     },
     contextWindowTokens: 131_072,
     description:
@@ -687,6 +687,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
     abilities: {
       functionCall: true,
       reasoning: true,
+      vision: true,
     },
     contextWindowTokens: 128_000,
     description:
@@ -713,6 +714,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
   {
     abilities: {
       reasoning: true,
+      vision: true,
     },
     description:
       'A high performing model for text generation, coding and agentic use cases.',

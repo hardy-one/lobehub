@@ -368,46 +368,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
   },
   {
     abilities: {
-      functionCall: false,
-      reasoning: true,
-    },
-    contextWindowTokens: 32_768,
-    description:
-      'High performance reasoning model optimized for efficiency and edge deployment.',
-    displayName: 'Magistral Small 2506',
-    id: 'mistralai/magistral-small-2506',
-    maxOutput: 32_768,
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
-      vision: true,
-    },
-    contextWindowTokens: 128_000,
-    description:
-      'An edge computing AI model which accepts text, audio and image input, ideal for resource-constrained environments.',
-    displayName: 'Gemma 3n E4B',
-    id: 'google/gemma-3n-e4b-it',
-    maxOutput: 4_096,
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
-      reasoning: false,
-      vision: true,
-    },
-    contextWindowTokens: 128_000,
-    description:
-      'An edge computing AI model which accepts text, audio and image input, ideal for resource-constrained environments.',
-    displayName: 'Gemma 3n E2B',
-    id: 'google/gemma-3n-e2b-it',
-    maxOutput: 4_096,
-    type: 'chat',
-  },
-  {
-    abilities: {
       functionCall: true,
       reasoning: false,
     },
@@ -535,19 +495,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
       'This LLM follows instructions, completes requests, and generates creative text.',
     displayName: 'Mistral 7B Instruct v0.3',
     id: 'mistralai/mistral-7b-instruct-v0.3',
-    maxOutput: 65_536,
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
-      reasoning: true,
-    },
-    contextWindowTokens: 65_536,
-    description:
-      'An MOE LLM that follows instructions, completes requests, and generates creative text.',
-    displayName: 'Mixtral 8x22B Instruct',
-    id: 'mistralai/mixtral-8x22b-instruct-v0.1',
     maxOutput: 65_536,
     type: 'chat',
   },

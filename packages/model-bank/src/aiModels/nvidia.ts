@@ -7,7 +7,8 @@ const nvidiaChatModels: AIChatModelCard[] = [
       reasoning: true,
     },
     contextWindowTokens: 204_800,
-    displayName: 'MiniMax-M2.7',
+    displayName: 'MiniMax M2.7',
+    enabled: true,
     id: 'minimaxai/minimax-m2.7',
     maxOutput: 131_072,
     type: 'chat',
@@ -18,7 +19,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
       reasoning: true,
     },
     contextWindowTokens: 204_800,
-    displayName: 'MiniMax-M2.5',
+    displayName: 'MiniMax M2.5',
     id: 'minimaxai/minimax-m2.5',
     maxOutput: 131_072,
     type: 'chat',
@@ -33,6 +34,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
     description:
       'Kimi K2.6 is a 1T multimodal MoE for long-horizon coding, agentic tool use, and image/video understanding.',
     displayName: 'Kimi K2.6',
+    enabled: true,
     id: 'moonshotai/kimi-k2.6',
     maxOutput: 262_144,
     settings: {
@@ -49,6 +51,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
     description:
       'DeepSeek V4 Flash is a 284B MoE model with 1M-token context optimized for fast coding and agents.',
     displayName: 'DeepSeek V4 Flash',
+    enabled: true,
     id: 'deepseek-ai/deepseek-v4-flash',
     maxOutput: 393_216,
     settings: {
@@ -65,6 +68,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
     description:
       'DeepSeek V4 Pro scales to 1M-token context windows with efficient MoE architecture for coding tasks.',
     displayName: 'DeepSeek V4 Pro',
+    enabled: true,
     id: 'deepseek-ai/deepseek-v4-pro',
     maxOutput: 393_216,
     settings: {
@@ -81,6 +85,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
     description:
       'GLM-5.1 is a flagship LLM for agentic workflows, coding, and long-horizon reasoning tasks.',
     displayName: 'GLM-5.1',
+    enabled: true,
     id: 'z-ai/glm-5.1',
     maxOutput: 131_072,
     settings: {
@@ -126,7 +131,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
     contextWindowTokens: 262_144,
     description:
       'Qwen3.5 122B-A10B is a 122B MoE LLM (10B active) for coding, reasoning, multimodal chat.',
-    displayName: 'Qwen3.5 122B-A10B',
+    displayName: 'Qwen3.5 122B A10B',
     id: 'qwen/qwen3.5-122b-a10b',
     maxOutput: 65_536,
     settings: {
@@ -142,7 +147,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
     contextWindowTokens: 262_144,
     description:
       'Next-gen Qwen 3.5 VLM (400B MoE) brings advanced vision, chat, RAG, and agentic capabilities.',
-    displayName: 'Qwen3.5 397B-A17B',
+    displayName: 'Qwen3.5 397B A17B',
     id: 'qwen/qwen3.5-397b-a17b',
     maxOutput: 8_192,
     type: 'chat',
@@ -171,6 +176,23 @@ const nvidiaChatModels: AIChatModelCard[] = [
     displayName: 'Nemotron 3 Nano',
     id: 'nvidia/nemotron-3-nano-30b-a3b',
     maxOutput: 131_072,
+    settings: {
+      extendParams: ['enableReasoning'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: false,
+      reasoning: true,
+    },
+    contextWindowTokens: 256_000,
+    description:
+      'Dense 31B model delivering frontier reasoning for coding, agentic workflows, and fine-tuning.',
+    displayName: 'Gemma 4 31B',
+    enabled: true,
+    id: 'google/gemma-4-31b-it',
+    maxOutput: 16_384,
     settings: {
       extendParams: ['enableReasoning'],
     },
@@ -226,7 +248,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
     contextWindowTokens: 262_144,
     description:
       'Qwen3-Next Instruct blends hybrid attention, sparse MoE, and stability boosts for ultra-long context AI.',
-    displayName: 'Qwen3-Next 80B-A3B Instruct',
+    displayName: 'Qwen3 Next 80B A3B Instruct',
     id: 'qwen/qwen3-next-80b-a3b-instruct',
     maxOutput: 16_384,
     type: 'chat',
@@ -239,7 +261,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
     contextWindowTokens: 262_144,
     description:
       '80B parameter AI model with hybrid reasoning, MoE architecture, support for 119 languages.',
-    displayName: 'Qwen3-Next 80B-A3B Thinking',
+    displayName: 'Qwen3 Next 80B A3B Thinking',
     id: 'qwen/qwen3-next-80b-a3b-thinking',
     maxOutput: 16_384,
     type: 'chat',
@@ -264,7 +286,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
     contextWindowTokens: 262_144,
     description:
       'Excels in agentic coding and browser use and supports 256K context, delivering top results.',
-    displayName: 'Qwen3 Coder 480B-A35B',
+    displayName: 'Qwen3 Coder 480B A35B',
     id: 'qwen/qwen3-coder-480b-a35b-instruct',
     maxOutput: 66_536,
     type: 'chat',
@@ -303,9 +325,8 @@ const nvidiaChatModels: AIChatModelCard[] = [
   },
   {
     abilities: {
-      functionCall: false,
+      functionCall: true,
       reasoning: true,
-      vision: true,
     },
     contextWindowTokens: 131_072,
     description:
@@ -365,7 +386,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
     contextWindowTokens: 128_000,
     description:
       'An edge computing AI model which accepts text, audio and image input, ideal for resource-constrained environments.',
-    displayName: 'Gemma 3n E4B IT',
+    displayName: 'Gemma 3n E4B',
     id: 'google/gemma-3n-e4b-it',
     maxOutput: 4_096,
     type: 'chat',
@@ -379,7 +400,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
     contextWindowTokens: 128_000,
     description:
       'An edge computing AI model which accepts text, audio and image input, ideal for resource-constrained environments.',
-    displayName: 'Gemma 3n E2B IT',
+    displayName: 'Gemma 3n E2B',
     id: 'google/gemma-3n-e2b-it',
     maxOutput: 4_096,
     type: 'chat',
@@ -446,7 +467,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
     contextWindowTokens: 131_072,
     description:
       'Lightweight multilingual LLM powering AI applications in latency bound, memory/compute constrained environments.',
-    displayName: 'Phi-4 Mini Instruct',
+    displayName: 'Phi 4 Mini Instruct',
     id: 'microsoft/phi-4-mini-instruct',
     maxOutput: 8_192,
     type: 'chat',
@@ -455,11 +476,12 @@ const nvidiaChatModels: AIChatModelCard[] = [
     abilities: {
       functionCall: false,
       reasoning: false,
+      vision: true,
     },
     contextWindowTokens: 128_000,
     description:
       'Cutting-edge open multimodal model exceling in high-quality reasoning from image and audio inputs.',
-    displayName: 'Phi-4 Multimodal Instruct',
+    displayName: 'Phi 4 Multimodal Instruct',
     id: 'microsoft/phi-4-multimodal-instruct',
     maxOutput: 16_384,
     type: 'chat',
@@ -643,7 +665,7 @@ const nvidiaChatModels: AIChatModelCard[] = [
     contextWindowTokens: 128_000,
     description:
       'An advanced small language model designed for edge applications.',
-    displayName: 'Gemma 2 2B IT',
+    displayName: 'Gemma 2 2B',
     id: 'google/gemma-2-2b-it',
     maxOutput: 4_096,
     type: 'chat',
@@ -659,23 +681,6 @@ const nvidiaChatModels: AIChatModelCard[] = [
     displayName: 'Qwen2.5 Coder 32B',
     id: 'qwen/qwen2.5-coder-32b-instruct',
     maxOutput: 4_096,
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
-      reasoning: true,
-      vision: true,
-    },
-    contextWindowTokens: 256_000,
-    description:
-      'Dense 31B model delivering frontier reasoning for coding, agentic workflows, and fine-tuning.',
-    displayName: 'Gemma 4 31B IT',
-    id: 'google/gemma-4-31b-it',
-    maxOutput: 16_384,
-    settings: {
-      extendParams: ['enableReasoning'],
-    },
     type: 'chat',
   },
   {

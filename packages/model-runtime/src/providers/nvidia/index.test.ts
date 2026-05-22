@@ -208,6 +208,184 @@ describe('LobeNvidiaAI - custom features', () => {
 
       expect(result).not.toHaveProperty('reasoning_effort');
     });
+
+    // Responses API path for gpt-oss models
+    it('should set apiMode: responses for gpt-oss-120b', () => {
+      const payload = {
+        model: 'openai/gpt-oss-120b',
+        messages: [{ role: 'user', content: 'test' }],
+        reasoning_effort: 'high',
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result).toEqual({
+        model: 'openai/gpt-oss-120b',
+        reasoning_effort: 'high',
+        apiMode: 'responses',
+      });
+    });
+
+    it('should default reasoning_effort to medium for gpt-oss models', () => {
+      const payload = {
+        model: 'openai/gpt-oss-20b',
+        messages: [{ role: 'user', content: 'test' }],
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result).toMatchObject({
+        model: 'openai/gpt-oss-20b',
+        reasoning_effort: 'medium',
+        apiMode: 'responses',
+      });
+    });
+
+    it('should pass reasoning_effort as none for gpt-oss models when thinking is disabled', () => {
+      const payload = {
+        model: 'openai/gpt-oss-120b',
+        messages: [{ role: 'user', content: 'test' }],
+        thinking: { type: 'disabled' as const },
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result).toMatchObject({
+        reasoning_effort: 'medium',
+        apiMode: 'responses',
+      });
+    });
+
+    // nemotron-nano-9b thinking via system message tag
+    it('should append /think to system message for nemotron-nano-9b when thinking enabled', () => {
+      const payload = {
+        model: 'nvidia/nvidia-nemotron-nano-9b-v2',
+        messages: [{ role: 'system', content: 'You are helpful.' }, { role: 'user', content: 'hi' }],
+        thinking: { type: 'enabled' as const },
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.messages[0].content).toBe('You are helpful./think');
+      expect(result.extra_body).toEqual({ min_thinking_tokens: 1024, max_thinking_tokens: 4096 });
+    });
+
+    it('should append /no_think to system message for nemotron-nano-9b when thinking disabled', () => {
+      const payload = {
+        model: 'nvidia/nvidia-nemotron-nano-9b-v2',
+        messages: [{ role: 'system', content: 'You are helpful.' }, { role: 'user', content: 'hi' }],
+        thinking: { type: 'disabled' as const },
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.messages[0].content).toBe('You are helpful./no_think');
+      expect(result.extra_body).toBeUndefined();
+    });
+
+    it('should create system message for nemotron-nano-9b when none exists', () => {
+      const payload = {
+        model: 'nvidia/nvidia-nemotron-nano-9b-v2',
+        messages: [{ role: 'user', content: 'hi' }],
+        thinking: { type: 'enabled' as const },
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.messages[0]).toEqual({ role: 'system', content: '/think' });
+      expect(result.messages[1]).toEqual({ role: 'user', content: 'hi' });
+    });
+
+    it('should not modify messages for nemotron-nano-9b when thinking is not set', () => {
+      const payload = {
+        model: 'nvidia/nvidia-nemotron-nano-9b-v2',
+        messages: [{ role: 'user', content: 'hi' }],
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.messages).toEqual([{ role: 'user', content: 'hi' }]);
+    });
+
+    // Tool schema sanitization scoped to Kimi K2.6
+    it('should sanitize tool parameters for Kimi K2.6', () => {
+      const payload = {
+        model: 'moonshotai/kimi-k2.6',
+        messages: [{ role: 'user', content: 'test' }],
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'test',
+              parameters: {
+                type: 'object',
+                properties: {
+                  type: { type: 'string' },
+                  value: { type: 'string' },
+                },
+              },
+            },
+          },
+        ],
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      // The property 'type' should be renamed to '_type'
+      expect(result.tools[0].function.parameters.properties).toHaveProperty('_type');
+      expect(result.tools[0].function.parameters.properties).not.toHaveProperty('type');
+    });
+
+    it('should not sanitize tool parameters for non-Kimi models', () => {
+      const payload = {
+        model: 'meta/llama-3.1-8b-instruct',
+        messages: [{ role: 'user', content: 'test' }],
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'test',
+              parameters: {
+                type: 'object',
+                properties: {
+                  type: { type: 'string' },
+                },
+              },
+            },
+          },
+        ],
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      // Property 'type' should be preserved for non-Kimi models
+      expect(result.tools[0].function.parameters.properties).toHaveProperty('type');
+    });
+
+    // nemotron-3-nano-30b and nemotron-3-super-120b use enable_thinking (Pattern B)
+    it('should use enable_thinking for nemotron-3-nano-30b', () => {
+      const payload = {
+        model: 'nvidia/nemotron-3-nano-30b-a3b',
+        messages: [{ role: 'user', content: 'test' }],
+        thinking: { type: 'enabled' as const },
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.chat_template_kwargs).toEqual({ enable_thinking: true });
+    });
+
+    it('should use enable_thinking for nemotron-3-super-120b', () => {
+      const payload = {
+        model: 'nvidia/nemotron-3-super-120b-a12b',
+        messages: [{ role: 'user', content: 'test' }],
+        thinking: { type: 'enabled' as const },
+      };
+
+      const result = params.chatCompletion!.handlePayload!(payload as any);
+
+      expect(result.chat_template_kwargs).toEqual({ enable_thinking: true });
+    });
   });
 
   describe('models', () => {

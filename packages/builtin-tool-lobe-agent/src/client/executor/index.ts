@@ -311,6 +311,7 @@ class LobeAgentExecutor extends BaseExecutor<typeof LobeAgentApiName> {
       messages: [
         {
           content: buildAnalyzeVisualMediaContent(payloadItems, params.question, {
+            gridMode: params.gridMode,
             includeFallbackInstruction: true,
             includeFileSummary: true,
           }),

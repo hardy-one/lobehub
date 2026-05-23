@@ -13,6 +13,11 @@ export const LobeAgentManifest: BuiltinToolManifest = {
       parameters: {
         additionalProperties: false,
         properties: {
+          gridMode: {
+            default: true,
+            description: 'When true, analyze images using a 9x9 grid system for spatial detail. Defaults to true.',
+            type: 'boolean',
+          },
           question: {
             description: 'The visual question or task to answer.',
             type: 'string',

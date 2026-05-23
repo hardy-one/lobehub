@@ -1,7 +1,7 @@
 import type { WorkingDirEntry, WorkspaceInitResult } from '@lobechat/types';
 import { describe, expect, it } from 'vitest';
 
-import { preserveWorkspaceCache } from '../deviceWorkingDirs';
+import { addApprovedPreviewRoots, preserveWorkspaceCache } from '../deviceWorkingDirs';
 
 const workspace: WorkspaceInitResult = {
   instructions: [{ content: '# Rules', source: 'AGENTS.md' }],
@@ -71,5 +71,52 @@ describe('preserveWorkspaceCache', () => {
     preserveWorkspaceCache(incoming, stored);
 
     expect(incoming).toEqual(incomingSnapshot);
+  });
+});
+
+describe('addApprovedPreviewRoots', () => {
+  it('merges device-reported roots onto the working directory that contains the scope', () => {
+    const result = addApprovedPreviewRoots(
+      [
+        {
+          path: '/proj',
+          workspace: {
+            ...workspace,
+            approvedPreviewRoots: ['/home/me/.claude/skills'],
+          },
+        },
+      ],
+      '/proj/packages/app',
+      ['/home/me/.agents/skills', '/home/me/.agents/skills'],
+    );
+
+    expect(result).toEqual([
+      {
+        path: '/proj',
+        workspace: {
+          ...workspace,
+          approvedPreviewRoots: ['/home/me/.claude/skills', '/home/me/.agents/skills'],
+        },
+      },
+    ]);
+  });
+
+  it('creates a server-owned cache entry when an approved default cwd has no MRU entry', () => {
+    expect(
+      addApprovedPreviewRoots([], '/Users/me/default', ['/Users/me/.agents/skills']),
+    ).toEqual([
+      {
+        path: '/Users/me/default',
+        workspace: {
+          approvedPreviewRoots: ['/Users/me/.agents/skills'],
+          instructions: [],
+          skills: [],
+        },
+      },
+    ]);
+  });
+
+  it('does not write a cache entry when the device reports no preview roots', () => {
+    expect(addApprovedPreviewRoots([{ path: '/proj' }], '/proj', [])).toBeUndefined();
   });
 });

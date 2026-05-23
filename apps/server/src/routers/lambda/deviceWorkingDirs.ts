@@ -1,4 +1,6 @@
-import type { WorkingDirEntry } from '@lobechat/types';
+import { getWorkingDirEffectivePath, type WorkingDirEntry } from '@lobechat/types';
+
+import { isPathWithinRoot } from '@/server/services/deviceGateway';
 
 /**
  * Re-attach the server-owned workspace-init cache (`workspace` /
@@ -28,4 +30,53 @@ export const preserveWorkspaceCache = (
       ? { ...entry, workspace: cached.workspace, workspaceScannedAt: cached.workspaceScannedAt }
       : entry;
   });
+};
+
+/**
+ * Persist device-reported skill preview roots on the bound working-directory
+ * entry. The client update schema strips this server-owned cache and
+ * `preserveWorkspaceCache` restores it on later cwd saves.
+ */
+export const addApprovedPreviewRoots = (
+  workingDirs: readonly WorkingDirEntry[],
+  scope: string,
+  roots: readonly string[],
+): WorkingDirEntry[] | undefined => {
+  const approvedPreviewRoots = [...new Set(roots.filter(Boolean))];
+  if (approvedPreviewRoots.length === 0) return undefined;
+
+  let changed = false;
+  const nextWorkingDirs = workingDirs.map((entry) => {
+    const effectivePath = getWorkingDirEffectivePath(entry);
+    const matchesScope =
+      isPathWithinRoot(entry.path, scope) ||
+      (effectivePath !== entry.path && isPathWithinRoot(effectivePath, scope));
+    if (!matchesScope) return entry;
+
+    changed = true;
+    return {
+      ...entry,
+      workspace: {
+        ...entry.workspace,
+        approvedPreviewRoots: [
+          ...new Set([...(entry.workspace?.approvedPreviewRoots ?? []), ...approvedPreviewRoots]),
+        ],
+        instructions: entry.workspace?.instructions ?? [],
+        skills: entry.workspace?.skills ?? [],
+      },
+    };
+  });
+
+  if (changed) return nextWorkingDirs;
+
+  // `defaultCwd` is also an approved root but may not yet have a matching MRU
+  // entry. This request already passed the server-side root guard, so cache the
+  // device-reported roots against that approved scope for future previews.
+  return [
+    {
+      path: scope,
+      workspace: { approvedPreviewRoots, instructions: [], skills: [] },
+    },
+    ...workingDirs,
+  ].slice(0, 20);
 };

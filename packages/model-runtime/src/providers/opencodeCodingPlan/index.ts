@@ -9,9 +9,9 @@ import { processMultiProviderModelList } from '../../utils/modelParse';
 
 const GO_BASE_URL = 'https://opencode.ai/zen/go/v1';
 
-// MiniMax models in Go use @ai-sdk/anthropic (Anthropic Messages API format)
+// MiniMax and Qwen models in Go use @ai-sdk/anthropic (Anthropic Messages API format)
 // Endpoint: /go/v1/messages
-const minimaxModels = ['minimax-m2.5', 'minimax-m2.7'];
+const anthropicModels = ['minimax-m2.5', 'minimax-m2.7', 'qwen3.5-plus', 'qwen3.6-plus', 'qwen3.7-max'];
 
 // Moonshot Kimi thinking toggle models (kimi-k2.N) expose reasoning on the
 // OpenAI-compatible route. Matches the official Moonshot provider's prefix logic.
@@ -227,10 +227,10 @@ export const params = {
   routers: (options) => {
     const baseURL = options.baseURL || GO_BASE_URL;
     return [
-      // Anthropic router for MiniMax models (use Anthropic Messages API format)
+      // Anthropic router for MiniMax & Qwen models (use Anthropic Messages API format)
       {
         apiType: 'anthropic',
-        models: minimaxModels,
+        models: anthropicModels,
         options: {
           ...options,
           baseURL: stripV1(baseURL),

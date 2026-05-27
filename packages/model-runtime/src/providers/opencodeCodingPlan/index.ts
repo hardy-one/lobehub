@@ -211,12 +211,18 @@ export const params = {
     chatCompletion: () => process.env.DEBUG_OPENCODE_GO_CHAT_COMPLETION === '1',
   },
   id: ModelProvider.OpenCodeCodingPlan,
-  models: async () => {
-    const { opencodecodingplan } = await import('model-bank');
-    return processMultiProviderModelList(
-      opencodecodingplan.map((m: { id: string }) => ({ id: m.id })),
-      'opencodecodingplan',
-    );
+  models: async ({ client }) => {
+    try {
+      const modelsPage = await (client as any).models.list();
+      const modelList = modelsPage.data || [];
+      return processMultiProviderModelList(modelList, 'opencodecodingplan');
+    } catch {
+      const { opencodecodingplan } = await import('model-bank');
+      return processMultiProviderModelList(
+        opencodecodingplan.map((m: { id: string }) => ({ id: m.id })),
+        'opencodecodingplan',
+      );
+    }
   },
   routers: (options) => {
     const baseURL = options.baseURL || GO_BASE_URL;

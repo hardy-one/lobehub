@@ -9,10 +9,15 @@ const modalConfirm = vi.hoisted(() => vi.fn());
 const messageError = vi.hoisted(() => vi.fn());
 const messageSuccess = vi.hoisted(() => vi.fn());
 const removeDocumentMock = vi.hoisted(() => vi.fn());
-const useMatchMock = vi.hoisted(() => vi.fn());
-const useNavigateMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@lobehub/ui', () => ({
+  Accordion: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+  AccordionItem: ({ children, title }: { children?: ReactNode; title?: ReactNode }) => (
+    <div>
+      {title}
+      {children}
+    </div>
+  ),
   ActionIcon: ({ onClick, title }: { onClick?: (e: React.MouseEvent) => void; title?: string }) => (
     <button aria-label={title} onClick={onClick}>
       {title}
@@ -43,7 +48,10 @@ vi.mock('antd', () => ({
       modal: { confirm: modalConfirm },
     }),
   },
-  Spin: () => <div data-testid="spin" />,
+}));
+
+vi.mock('@/components/NeuralNetworkLoading', () => ({
+  default: () => <div data-testid="neural-network-loading" />,
 }));
 
 vi.mock('@/libs/swr', () => ({
@@ -62,14 +70,12 @@ vi.mock('react-i18next', () => ({
           'workingPanel.resources.filter.web': 'Web',
           'workingPanel.resources.updatedAt': `Updated ${options?.time}`,
           'workingPanel.skills.empty': 'No skills found',
+          'workingPanel.skills.section.agent': 'Agent skills',
+          'workingPanel.skills.section.project': 'Project skills',
+          'workingPanel.skills.section.user': 'User skills',
         }) as Record<string, string>
       )[key] || key,
   }),
-}));
-
-vi.mock('react-router-dom', () => ({
-  useMatch: () => useMatchMock(),
-  useNavigate: () => useNavigateMock,
 }));
 
 vi.mock('@/features/AgentDocumentsExplorer', () => ({
@@ -78,8 +84,8 @@ vi.mock('@/features/AgentDocumentsExplorer', () => ({
   ),
 }));
 
-vi.mock('@/features/AgentDocumentsExplorer/SkillsList', () => {
-  type Item = { fileCount: number; id: string; name: string };
+vi.mock('@/features/SkillsList', () => {
+  type Item = { fileCount?: number; id: string; name: string };
   const SkillsList = ({
     items,
     onOpenFile,
@@ -104,8 +110,53 @@ vi.mock('@/features/AgentDocumentsExplorer/SkillsList', () => {
       ))}
     </div>
   );
-  return { default: SkillsList };
+  // SkillSection is a thin presentational wrapper — the real one swaps the
+  // children for an empty placeholder when `isEmpty` is true. We mirror that
+  // here so co-located assertions (e.g. "skills-list does not render when no
+  // bundles are present") line up with production behavior.
+  const SkillSection = ({
+    children,
+    emptyText,
+    isEmpty,
+    sectionHeader,
+  }: {
+    children?: ReactNode;
+    emptyText?: string;
+    isEmpty?: boolean;
+    sectionHeader?: { count?: number; title: string };
+  }) => (
+    <div data-testid={sectionHeader ? `skill-section-${sectionHeader.title}` : 'skill-section'}>
+      {sectionHeader && (
+        <div data-testid="skill-section-header">
+          <span>{sectionHeader.title}</span>
+          {typeof sectionHeader.count === 'number' && <span>{sectionHeader.count}</span>}
+        </div>
+      )}
+      {isEmpty ? <div data-testid="skill-section-empty">{emptyText}</div> : children}
+    </div>
+  );
+  const useProjectSkills = () => ({
+    isLoading: false,
+    items: [],
+    onOpenFile: () => undefined,
+    onOpenSkill: () => undefined,
+    raw: undefined,
+  });
+  return { SkillSection, SkillsList, useProjectSkills };
 });
+
+// UserLevelSkills owns its own store wiring and is exercised separately. We
+// stub it (component + the lifted hook) so AgentDocumentsGroup's render logic
+// can be tested without dragging the tool store into the working-sidebar
+// tests. Default to an empty user-skill list so the empty-state branch is
+// reachable; individual tests can re-mock before render to override.
+vi.mock('./UserLevelSkills', () => ({
+  default: () => null,
+  useUserSkills: () => [],
+}));
+vi.mock('@/features/ChatInput/InputEditor/ActionTag/skillDragData', () => ({
+  startSkillDrag: () => undefined,
+}));
 
 vi.mock('@/services/agentDocument', () => ({
   agentDocumentSWRKeys: {
@@ -119,8 +170,8 @@ vi.mock('@/services/agentDocument', () => ({
 }));
 
 vi.mock('@/store/agent', () => ({
-  useAgentStore: (selector: (state: { activeAgentId: string }) => unknown) =>
-    selector({ activeAgentId: 'agent-1' }),
+  useAgentStore: (selector: (state: { activeAgentId: string; agentMap: object }) => unknown) =>
+    selector({ activeAgentId: 'agent-1', agentMap: {} }),
 }));
 
 const openDocument = vi.fn();
@@ -138,12 +189,16 @@ vi.mock('@/store/chat/selectors', () => ({
 }));
 
 const skillBundleRow = {
+  category: 'skill',
   createdAt: new Date('2026-05-09T00:00:00Z'),
   description: 'Use for YouTube comments',
   documentId: 'skill-bundle-doc',
   fileType: 'skills/bundle',
   filename: 'youtube-comment-retrieval-workflow',
   id: 'skill-bundle-row',
+  isFolder: true,
+  isSkillBundle: true,
+  isSkillIndex: false,
   parentId: null,
   sourceType: 'agent-signal',
   templateId: 'agent-skill',
@@ -152,12 +207,16 @@ const skillBundleRow = {
 };
 
 const skillIndexRow = {
+  category: 'skill',
   createdAt: new Date('2026-05-09T00:00:00Z'),
   description: 'Use for YouTube comments',
   documentId: 'skill-index-doc',
   fileType: 'skills/index',
   filename: 'SKILL.md',
   id: 'skill-index-row',
+  isFolder: false,
+  isSkillBundle: false,
+  isSkillIndex: true,
   parentId: 'skill-bundle-doc',
   sourceType: 'agent-signal',
   templateId: 'agent-skill',
@@ -166,12 +225,16 @@ const skillIndexRow = {
 };
 
 const fileDocRow = {
+  category: 'document',
   createdAt: new Date('2026-04-16T00:00:00Z'),
   description: 'A short brief',
   documentId: 'doc-content-1',
   fileType: 'agent/document',
   filename: 'brief.md',
   id: 'doc-1',
+  isFolder: false,
+  isSkillBundle: false,
+  isSkillIndex: false,
   parentId: null,
   sourceType: 'file',
   templateId: null,
@@ -180,12 +243,16 @@ const fileDocRow = {
 };
 
 const webDocRow = {
+  category: 'web',
   createdAt: new Date('2026-04-16T00:00:00Z'),
   description: 'Crawled page',
   documentId: 'doc-content-2',
   fileType: 'article',
   filename: 'example.com',
   id: 'doc-2',
+  isFolder: false,
+  isSkillBundle: false,
+  isSkillIndex: false,
   parentId: null,
   sourceType: 'web',
   templateId: null,
@@ -202,9 +269,6 @@ describe('AgentDocumentsGroup', () => {
     messageSuccess.mockReset();
     openDocument.mockReset();
     removeDocumentMock.mockReset();
-    useMatchMock.mockReset();
-    useNavigateMock.mockReset();
-    useMatchMock.mockReturnValue(null);
     removeDocumentMock.mockResolvedValue({ deleted: true, id: 'doc-1' });
   });
 
@@ -239,7 +303,7 @@ describe('AgentDocumentsGroup', () => {
     render(<AgentDocumentsGroup />);
 
     fireEvent.click(screen.getByText('YouTube Comment Retrieval Workflow'));
-    expect(openDocument).toHaveBeenCalledWith('skill-index-doc');
+    expect(openDocument).toHaveBeenCalledWith('skill-index-doc', 'skill-index-row');
   });
 
   it('falls back to the bundle id when opening an orphan skill bundle', () => {
@@ -253,7 +317,7 @@ describe('AgentDocumentsGroup', () => {
     render(<AgentDocumentsGroup />);
 
     fireEvent.click(screen.getByText('YouTube Comment Retrieval Workflow'));
-    expect(openDocument).toHaveBeenCalledWith('skill-bundle-doc');
+    expect(openDocument).toHaveBeenCalledWith('skill-bundle-doc', 'skill-bundle-row');
   });
 
   it('opens a child file by relative path through onOpenFile', () => {
@@ -267,7 +331,7 @@ describe('AgentDocumentsGroup', () => {
     render(<AgentDocumentsGroup />);
 
     fireEvent.click(screen.getByTestId('skill-skill-bundle-doc-open-skill-md'));
-    expect(openDocument).toHaveBeenCalledWith('skill-index-doc');
+    expect(openDocument).toHaveBeenCalledWith('skill-index-doc', 'skill-index-row');
   });
 
   it('renders the document tree when switching to the Documents tab', () => {
@@ -305,7 +369,7 @@ describe('AgentDocumentsGroup', () => {
     expect(screen.queryByText('Brief')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Example'));
-    expect(openDocument).toHaveBeenCalledWith('doc-content-2');
+    expect(openDocument).toHaveBeenCalledWith('doc-content-2', 'doc-2');
 
     fireEvent.click(screen.getByLabelText('delete'));
     const [firstConfirmCall] = modalConfirm.mock.calls;
@@ -316,30 +380,12 @@ describe('AgentDocumentsGroup', () => {
       agentId: 'agent-1',
       documentId: 'doc-content-2',
       id: 'doc-2',
-      topicId: undefined,
     });
     expect(mutate).toHaveBeenCalled();
     expect(messageSuccess).toHaveBeenCalledWith('workingPanel.resources.deleteSuccess');
   });
 
-  it('navigates to the page route when opening a web card from a topic page', () => {
-    useMatchMock.mockReturnValue({ params: { aid: 'agent-1', topicId: 'topic-1' } });
-    useClientDataSWR.mockReturnValue({
-      data: [webDocRow],
-      error: undefined,
-      isLoading: false,
-      mutate: vi.fn(),
-    });
-
-    render(<AgentDocumentsGroup />);
-    fireEvent.click(screen.getByText('Web'));
-    fireEvent.click(screen.getByText('Example'));
-
-    expect(useNavigateMock).toHaveBeenCalledWith('/agent/agent-1/topic-1/page/doc-content-2');
-    expect(openDocument).not.toHaveBeenCalled();
-  });
-
-  it('shows the skills empty state when no bundles are present', () => {
+  it('falls back to a single empty placeholder when every skill source is empty', () => {
     useClientDataSWR.mockReturnValue({
       data: [fileDocRow, webDocRow],
       error: undefined,
@@ -349,6 +395,9 @@ describe('AgentDocumentsGroup', () => {
 
     render(<AgentDocumentsGroup />);
 
+    // No agent bundles, no working dir (no Project section), no user-installed
+    // skills → renderSkills collapses to the global "No skills found"
+    // placeholder rather than rendering an empty section per source.
     expect(screen.getByText('No skills found')).toBeInTheDocument();
     expect(screen.queryByTestId('skills-list')).not.toBeInTheDocument();
   });
@@ -389,6 +438,6 @@ describe('AgentDocumentsGroup', () => {
     });
 
     render(<AgentDocumentsGroup />);
-    expect(screen.getByTestId('spin')).toBeInTheDocument();
+    expect(screen.getByTestId('neural-network-loading')).toBeInTheDocument();
   });
 });

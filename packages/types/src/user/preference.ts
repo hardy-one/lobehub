@@ -43,6 +43,11 @@ export const UserLabSchema = z.object({
    */
   enableAgentSelfIteration: z.boolean().optional(),
   /**
+   * surface the execution-device switcher for heterogeneous agents
+   * (lets users pick local / cloud sandbox / a bound device)
+   */
+  enableExecutionDeviceSwitcher: z.boolean().optional(),
+  /**
    * enable server-side agent execution via Gateway WebSocket
    */
   enableGatewayMode: z.boolean().optional(),
@@ -54,6 +59,10 @@ export const UserLabSchema = z.object({
    * enable markdown rendering in chat input editor
    */
   enableInputMarkdown: z.boolean().optional(),
+  /**
+   * show the "Add Platform Agent" entry in the create menu
+   */
+  enablePlatformAgent: z.boolean().optional(),
 });
 
 export type UserLab = z.infer<typeof UserLabSchema>;

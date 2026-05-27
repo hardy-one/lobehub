@@ -29,6 +29,7 @@ const reasoningInterleavedModels = [
   'mimo-v2.5-pro',
   'mimo-v2-omni',
   'mimo-v2-pro',
+  'qwen3.7-max',
   'deepseek-v4-pro',
   'deepseek-v4-flash',
 ];

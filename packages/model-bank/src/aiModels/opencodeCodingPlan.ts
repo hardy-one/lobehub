@@ -8,30 +8,6 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     abilities: { functionCall: true, reasoning: true },
     contextWindowTokens: 202_752,
     description:
-      'GLM-5.1 by Zhipu AI — latest generation coding model with enhanced reasoning and tool use capabilities.',
-    displayName: 'GLM-5.1',
-    enabled: true,
-    id: 'glm-5.1',
-    maxOutput: 32_768,
-    organization: 'Zhipu',
-    pricing: {
-      currency: 'USD',
-      units: [
-        { name: 'textInput', rate: 1.4, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textOutput', rate: 4.4, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textInput_cacheRead', rate: 0.26, strategy: 'fixed', unit: 'millionTokens' },
-      ],
-    },
-    releasedAt: '2026-04-07',
-    settings: {
-      extendParams: ['reasoningEffort'],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: { functionCall: true, reasoning: true },
-    contextWindowTokens: 202_752,
-    description:
       'GLM-5 by Zhipu AI — high-performance coding model with strong reasoning abilities.',
     displayName: 'GLM-5',
     enabled: false,
@@ -47,6 +23,30 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-02-11',
+    settings: {
+      extendParams: ['reasoningEffort'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: { functionCall: true, reasoning: true },
+    contextWindowTokens: 202_752,
+    description:
+      'GLM-5.1 by Zhipu AI — latest generation coding model with enhanced reasoning and tool use capabilities.',
+    displayName: 'GLM-5.1',
+    enabled: true,
+    id: 'glm-5.1',
+    maxOutput: 32_768,
+    organization: 'Zhipu',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 1.4, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 4.4, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.26, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-04-07',
     settings: {
       extendParams: ['reasoningEffort'],
     },
@@ -197,78 +197,6 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     type: 'chat',
   },
   {
-    abilities: { functionCall: true, reasoning: true, vision: true },
-    contextWindowTokens: 262_144,
-    description:
-      'MiMo-V2-Omni by Xiaomi — multimodal model integrating text, vision, and speech for complex agentic tasks.',
-    displayName: 'MiMo-V2 Omni',
-    enabled: false,
-    id: 'mimo-v2-omni',
-    maxOutput: 131_072,
-    organization: 'Xiaomi',
-    pricing: {
-      currency: 'USD',
-      units: [
-        { name: 'textInput', rate: 0.8, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textOutput', rate: 4, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textInput_cacheRead', rate: 0.16, strategy: 'fixed', unit: 'millionTokens' },
-      ],
-    },
-    releasedAt: '2026-03-18',
-    settings: {
-      extendParams: ['reasoningEffort'],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: { functionCall: true, reasoning: true },
-    contextWindowTokens: 1_000_000,
-    description:
-      'MiMo-V2-Pro by Xiaomi — designed for high-intensity agent workflows with hybrid attention architecture and ultra-long context.',
-    displayName: 'MiMo-V2 Pro',
-    enabled: false,
-    id: 'mimo-v2-pro',
-    maxOutput: 131_072,
-    organization: 'Xiaomi',
-    pricing: {
-      currency: 'USD',
-      units: [
-        {
-          name: 'textInput',
-          strategy: 'tiered',
-          tiers: [
-            { rate: 2, upTo: 256_000 },
-            { rate: 4, upTo: 'infinity' },
-          ],
-          unit: 'millionTokens',
-        },
-        {
-          name: 'textOutput',
-          strategy: 'tiered',
-          tiers: [
-            { rate: 6, upTo: 256_000 },
-            { rate: 12, upTo: 'infinity' },
-          ],
-          unit: 'millionTokens',
-        },
-        {
-          name: 'textInput_cacheRead',
-          strategy: 'tiered',
-          tiers: [
-            { rate: 0.4, upTo: 256_000 },
-            { rate: 0.8, upTo: 'infinity' },
-          ],
-          unit: 'millionTokens',
-        },
-      ],
-    },
-    releasedAt: '2026-03-18',
-    settings: {
-      extendParams: ['reasoningEffort'],
-    },
-    type: 'chat',
-  },
-  {
     abilities: { functionCall: true, reasoning: true },
     contextWindowTokens: 204_800,
     description:
@@ -287,6 +215,29 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-02-12',
+    settings: {
+      extendParams: ['reasoningBudgetToken32k'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: { functionCall: true, reasoning: true },
+    contextWindowTokens: 204_800,
+    description: 'MiniMax M2.7 — latest MiniMax coding model with improved reasoning and tool use.',
+    displayName: 'MiniMax M2.7',
+    enabled: false,
+    id: 'minimax-m2.7',
+    maxOutput: 131_072,
+    organization: 'MiniMax',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 0.3, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 1.2, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.06, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-03-18',
     settings: {
       extendParams: ['reasoningBudgetToken32k'],
     },
@@ -344,24 +295,25 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
   },
   {
     abilities: { functionCall: true, reasoning: true },
-    contextWindowTokens: 204_800,
-    description: 'MiniMax M2.7 — latest MiniMax coding model with improved reasoning and tool use.',
-    displayName: 'MiniMax M2.7',
-    enabled: false,
-    id: 'minimax-m2.7',
-    maxOutput: 131_072,
-    organization: 'MiniMax',
+    contextWindowTokens: 1_000_000,
+    description: 'Qwen3.7 Max by Alibaba — latest Max variant with 1M context, strong reasoning, and tool use capabilities.',
+    displayName: 'Qwen3.7 Max',
+    enabled: true,
+    id: 'qwen3.7-max',
+    maxOutput: 65_536,
+    organization: 'Alibaba',
     pricing: {
       currency: 'USD',
       units: [
-        { name: 'textInput', rate: 0.3, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textOutput', rate: 1.2, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textInput_cacheRead', rate: 0.06, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput', rate: 2.5, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 7.5, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.5, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheWrite', rate: 3.125, strategy: 'fixed', unit: 'millionTokens' },
       ],
     },
-    releasedAt: '2026-03-18',
+    releasedAt: '2026-05-21',
     settings: {
-      extendParams: ['reasoningBudgetToken32k'],
+      extendParams: ['reasoningEffort'],
     },
     type: 'chat',
   },

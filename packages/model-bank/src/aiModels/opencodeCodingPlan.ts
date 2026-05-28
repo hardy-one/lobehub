@@ -113,33 +113,9 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     pricing: {
       currency: 'USD',
       units: [
-        {
-          name: 'textInput',
-          strategy: 'tiered',
-          tiers: [
-            { rate: 0.4, upTo: 256_000 },
-            { rate: 0.8, upTo: 'infinity' },
-          ],
-          unit: 'millionTokens',
-        },
-        {
-          name: 'textOutput',
-          strategy: 'tiered',
-          tiers: [
-            { rate: 2, upTo: 256_000 },
-            { rate: 4, upTo: 'infinity' },
-          ],
-          unit: 'millionTokens',
-        },
-        {
-          name: 'textInput_cacheRead',
-          strategy: 'tiered',
-          tiers: [
-            { rate: 0.08, upTo: 256_000 },
-            { rate: 0.16, upTo: 'infinity' },
-          ],
-          unit: 'millionTokens',
-        },
+        { name: 'textInput', rate: 0.14, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 0.28, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.0028, strategy: 'fixed', unit: 'millionTokens' },
       ],
     },
     releasedAt: '2026-04-22',
@@ -161,33 +137,9 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     pricing: {
       currency: 'USD',
       units: [
-        {
-          name: 'textInput',
-          strategy: 'tiered',
-          tiers: [
-            { rate: 1, upTo: 256_000 },
-            { rate: 2, upTo: 'infinity' },
-          ],
-          unit: 'millionTokens',
-        },
-        {
-          name: 'textOutput',
-          strategy: 'tiered',
-          tiers: [
-            { rate: 3, upTo: 256_000 },
-            { rate: 6, upTo: 'infinity' },
-          ],
-          unit: 'millionTokens',
-        },
-        {
-          name: 'textInput_cacheRead',
-          strategy: 'tiered',
-          tiers: [
-            { rate: 0.2, upTo: 256_000 },
-            { rate: 0.4, upTo: 'infinity' },
-          ],
-          unit: 'millionTokens',
-        },
+        { name: 'textInput', rate: 1.74, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 3.48, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.0145, strategy: 'fixed', unit: 'millionTokens' },
       ],
     },
     releasedAt: '2026-04-22',

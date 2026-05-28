@@ -7,41 +7,122 @@ import type { CreateRouterRuntimeOptions } from '../../core/RouterRuntime/create
 import type { ChatStreamPayload } from '../../types';
 import { processMultiProviderModelList } from '../../utils/modelParse';
 
+// ============================================================================
+// Constants
+// ============================================================================
+
 const GO_BASE_URL = 'https://opencode.ai/zen/go/v1';
+const MODELS_DEV_URL = 'https://models.dev/api.json';
 
-// MiniMax and Qwen models in Go use @ai-sdk/anthropic (Anthropic Messages API format)
-// Endpoint: /go/v1/messages
-const anthropicModels = ['minimax-m2.5', 'minimax-m2.7', 'qwen3.5-plus', 'qwen3.6-plus', 'qwen3.7-max'];
+// ============================================================================
+// Models.dev Types & Cache
+// ============================================================================
 
-// Moonshot Kimi thinking toggle models (kimi-k2.N) expose reasoning on the
-// OpenAI-compatible route. Matches the official Moonshot provider's prefix logic.
+interface ModelsDevModel {
+  id: string;
+  family?: string;
+  provider?: { npm?: string };
+  cost?: { input?: number; output?: number; cache_read?: number };
+  [key: string]: any;
+}
+
+interface ModelsDevData {
+  [provider: string]: {
+    models?: Record<string, ModelsDevModel>;
+    npm?: string;
+  };
+}
+
+interface ModelsCache {
+  anthropicModels: string[];
+  modelsDev: Record<string, ModelsDevModel>;
+}
+
+// Fallback: models that need Anthropic SDK (used when models.dev is unavailable)
+const ANTHROPIC_MODEL_PREFIXES = ['minimax', 'qwen'];
+
+let cachedModelsData: ModelsCache | null = null;
+
+// ============================================================================
+// Models.dev Fetcher
+// ============================================================================
+
+/**
+ * Fetch models.dev data and extract SDK routing info.
+ * Uses provider.npm field to determine which models need Anthropic SDK.
+ */
+const fetchModelsDevData = async (): Promise<ModelsCache> => {
+  if (cachedModelsData) return cachedModelsData;
+
+  try {
+    const res = await fetch(MODELS_DEV_URL);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const data: ModelsDevData = await res.json();
+    const models = data?.['opencode-go']?.models;
+    if (!models || typeof models !== 'object') {
+      throw new Error('opencode-go provider not found in models.dev');
+    }
+
+    const anthropicModels = Object.values(models)
+      .filter((m) => m.provider?.npm === '@ai-sdk/anthropic')
+      .map((m) => m.id);
+
+    cachedModelsData = { anthropicModels, modelsDev: models };
+    return cachedModelsData;
+  } catch {
+    return { anthropicModels: [], modelsDev: {} };
+  }
+};
+
+/**
+ * Get anthropic models with fallback to prefix matching
+ */
+const getAnthropicModels = async (modelIds: string[]): Promise<string[]> => {
+  const { anthropicModels, modelsDev } = await fetchModelsDevData();
+
+  // If models.dev has data, use it
+  if (Object.keys(modelsDev).length > 0) {
+    return anthropicModels;
+  }
+
+  // Fallback: match by ID prefix
+  return modelIds.filter((id) => ANTHROPIC_MODEL_PREFIXES.some((p) => id.startsWith(p)));
+};
+
+// ============================================================================
+// Reasoning Content Helpers
+// ============================================================================
+
+// Kimi K2.x models expose reasoning on the OpenAI-compatible route
 const isKimiThinkingToggleModel = (model: string) => model.startsWith('kimi-k2.');
 
-// Models with interleaved reasoning_content (from models.dev opencode-go)
-// that use openai-compatible SDK. All of these need:
+// Models with interleaved reasoning_content that need:
 //   1. reason → reasoning_content conversion
-//   2. reasoning_content forced on all assistant messages (fill '' if missing)
+//   2. reasoning_content forced on all assistant messages
 // Ref: https://models.dev/api.json → opencode-go
 const reasoningInterleavedModels = [
+  'deepseek-v4-flash',
+  'deepseek-v4-pro',
   'glm-5',
   'glm-5.1',
   'mimo-v2.5',
   'mimo-v2.5-pro',
   'qwen3.7-max',
-  'deepseek-v4-pro',
-  'deepseek-v4-flash',
 ];
 
-const hasValidReasoning = (reasoning: any) =>
-  typeof reasoning?.content === 'string';
+const hasValidReasoning = (reasoning: any) => typeof reasoning?.content === 'string';
 
 const isEmptyContent = (content: any) =>
   content === '' || content === null || content === undefined;
 
+// ============================================================================
+// JSON Schema Sanitizer
+// ============================================================================
+
 /**
  * Recursively remove `null` values from `enum` arrays in a JSON Schema.
- * The opencode-go backend ("could not translate the enum None") rejects
- * nullable enums produced by Zod schema `.nullable()` / `.nullish()`.
+ * The opencode-go backend rejects nullable enums produced by Zod `.nullable()` / `.nullish()`.
  */
 export const sanitizeJsonSchema = (schema: any): any => {
   if (!schema || typeof schema !== 'object') return schema;
@@ -49,24 +130,22 @@ export const sanitizeJsonSchema = (schema: any): any => {
 
   const result: any = {};
   for (const [key, value] of Object.entries(schema)) {
+    // Filter null from enum arrays
     if (key === 'enum' && Array.isArray(value)) {
       const filtered = value.filter((v: any) => v !== null);
       if (filtered.length > 0) result[key] = filtered;
       continue;
     }
-    // For `type: ['string', 'null']` → just `type: 'string'`
+
+    // type: ['string', 'null'] → type: 'string'
     if (key === 'type' && Array.isArray(value) && value.includes('null') && value.length >= 2) {
       const nonNullTypes = value.filter((v: any) => v !== 'null' && v !== null);
       if (nonNullTypes.length === 1) result.type = nonNullTypes[0];
       else if (nonNullTypes.length > 1) result.type = nonNullTypes;
       continue;
     }
-    // Recurse into schema traversals:
-    //   properties, additionalProperties, items, prefixItems
-    //   allOf, anyOf, oneOf, not
-    //   if/then/else
-    //   $defs, definitions
-    //   contains, unevaluatedItems, unevaluatedProperties
+
+    // Recurse into nested structures
     if (key === 'properties' || key === '$defs' || key === 'definitions') {
       const nested: any = {};
       for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
@@ -80,8 +159,7 @@ export const sanitizeJsonSchema = (schema: any): any => {
       result[key] = value.map(sanitizeJsonSchema);
     } else if (
       ['items', 'additionalProperties', 'not', 'contains', 'if', 'then', 'else',
-       'unevaluatedItems', 'unevaluatedProperties']
-        .includes(key)
+       'unevaluatedItems', 'unevaluatedProperties'].includes(key)
     ) {
       result[key] = sanitizeJsonSchema(value);
     } else {
@@ -91,14 +169,13 @@ export const sanitizeJsonSchema = (schema: any): any => {
   return result;
 };
 
+// ============================================================================
+// Payload Builder
+// ============================================================================
+
 /**
  * Build OpenAI-compatible payload with reasoning_content handling.
- *
- * Applies to all models with interleaved reasoning_content (models.dev opencode-go):
- *   GLM-5/5.1, MiMo-V2.5/Pro, MiMo-V2-Omni/Pro, DeepSeek V4 Flash/Pro, Kimi K2.5/K2.6
- *
- * All of these get reason → reasoning_content conversion AND forced
- * reasoning_content on assistant messages when thinking is not explicitly disabled.
+ * Applies to models with interleaved reasoning_content and Kimi K2.x models.
  */
 const buildOpenAIPayload = (
   payload: ChatStreamPayload,
@@ -106,16 +183,14 @@ const buildOpenAIPayload = (
   const model = payload.model;
   const isKimi = isKimiThinkingToggleModel(model);
   const isInterleavedModel = reasoningInterleavedModels.some((m) => model?.includes(m));
+
   if (!isKimi && !isInterleavedModel) return payload as any;
 
   const thinkingExplicitlyDisabled = (payload as any).thinking?.type === 'disabled';
-  const shouldForceAssistantReasoningContent =
-    (isInterleavedModel || isKimi) && !thinkingExplicitlyDisabled;
+  const shouldForceReasoning = (isInterleavedModel || isKimi) && !thinkingExplicitlyDisabled;
 
   const messages = payload.messages.map((message: any) => {
     const { reasoning, ...rest } = message;
-
-    // Normalize empty content to space for Kimi (matching Moonshot provider)
     const normalized = isKimi && isEmptyContent(message.content) ? { ...rest, content: ' ' } : rest;
 
     const reasoningContent =
@@ -125,18 +200,12 @@ const buildOpenAIPayload = (
           ? reasoning.content
           : undefined;
 
-    if (message.role === 'assistant' && shouldForceAssistantReasoningContent) {
-      return {
-        ...normalized,
-        reasoning_content: reasoningContent ?? ' ',
-      };
+    if (message.role === 'assistant' && shouldForceReasoning) {
+      return { ...normalized, reasoning_content: reasoningContent ?? ' ' };
     }
 
     if (reasoningContent !== undefined) {
-      return {
-        ...normalized,
-        reasoning_content: reasoningContent,
-      };
+      return { ...normalized, reasoning_content: reasoningContent };
     }
 
     return normalized;
@@ -144,8 +213,7 @@ const buildOpenAIPayload = (
 
   const { reasoning_effort, thinking, ...restPayload } = payload;
 
-  // Sanitize response_format schema for Kimi models only (opencode-go backend
-  // rejects nullable Zod enums from Kimi K2.5/K2.6 with "could not translate the enum None").
+  // Sanitize response_format for Kimi models
   const response_format =
     isKimi &&
     restPayload.response_format &&
@@ -160,7 +228,7 @@ const buildOpenAIPayload = (
         }
       : restPayload.response_format;
 
-  // Sanitize tool parameters schemas for Kimi models only
+  // Sanitize tool parameters for Kimi models
   const tools =
     isKimi && restPayload.tools
       ? restPayload.tools.map((tool: any) => ({
@@ -187,22 +255,26 @@ const buildOpenAIPayload = (
   } as OpenAI.ChatCompletionCreateParamsStreaming;
 };
 
-// Dedicated OpenAI-compatible runtime with buildOpenAIPayload baked into the
-// factory closure. RouterRuntime creates instances of this class for all
-// non-MiniMax models, ensuring reasoning_content is properly set on messages.
+// ============================================================================
+// Runtime Instances
+// ============================================================================
+
+// OpenAI-compatible runtime for non-Anthropic models
 const LobeOpenCodeCodingPlanOpenAI = createOpenAICompatibleRuntime({
   provider: ModelProvider.OpenCodeCodingPlan,
   baseURL: GO_BASE_URL,
-  chatCompletion: {
-    handlePayload: buildOpenAIPayload,
-  },
+  chatCompletion: { handlePayload: buildOpenAIPayload },
   debug: {
     chatCompletion: () => process.env.DEBUG_OPENCODE_GO_CHAT_COMPLETION === '1',
   },
 });
 
-// Anthropic SDK auto-appends /v1/messages to baseURL, so we need to strip trailing /v1
+// Anthropic SDK auto-appends /v1/messages to baseURL, so strip trailing /v1
 const stripV1 = (url?: string) => url?.replace(/\/v1$/, '');
+
+// ============================================================================
+// Provider Export
+// ============================================================================
 
 export const params = {
   debug: {
@@ -211,37 +283,57 @@ export const params = {
   id: ModelProvider.OpenCodeCodingPlan,
   models: async ({ client }) => {
     try {
+      // 1. Try API first (real-time available models)
       const modelsPage = await (client as any).models.list();
-      const modelList = modelsPage.data || [];
-      return processMultiProviderModelList(modelList, 'opencodecodingplan');
+      const apiModels = modelsPage.data || [];
+      return processMultiProviderModelList(apiModels, 'opencodecodingplan');
     } catch {
+      // 2. Fallback to models.dev + model-bank
+      const { modelsDev } = await fetchModelsDevData();
+      const modelIds = Object.keys(modelsDev);
+
+      if (modelIds.length > 0) {
+        return processMultiProviderModelList(
+          modelIds.map((id) => ({ id })),
+          'opencodecodingplan',
+        );
+      }
+
+      // 3. Final fallback: static model bank
       const { opencodecodingplan } = await import('model-bank');
       return processMultiProviderModelList(
-        opencodecodingplan.map((m: { id: string }) => ({ id: m.id })),
+        opencodecodingplan.map((m) => ({ id: m.id })),
         'opencodecodingplan',
       );
     }
   },
-  routers: (options) => {
+  routers: async (options) => {
     const baseURL = options.baseURL || GO_BASE_URL;
+
+    // Get model IDs for SDK routing
+    let modelIds: string[] = [];
+    try {
+      const modelsPage = await (options as any).client?.models.list?.();
+      modelIds = (modelsPage?.data || []).map((m: any) => m.id);
+    } catch {
+      const { modelsDev } = await fetchModelsDevData();
+      modelIds = Object.keys(modelsDev);
+    }
+
+    const anthropicModels = await getAnthropicModels(modelIds);
+
     return [
-      // Anthropic router for MiniMax & Qwen models (use Anthropic Messages API format)
+      // Anthropic SDK for models with provider.npm === '@ai-sdk/anthropic'
       {
         apiType: 'anthropic',
         models: anthropicModels,
-        options: {
-          ...options,
-          baseURL: stripV1(baseURL),
-        },
+        options: { ...options, baseURL: stripV1(baseURL) },
       },
-      // OpenAI-compatible fallback for all other models (GLM, Kimi, MiMo, Qwen, DeepSeek)
+      // OpenAI-compatible fallback for all other models
       {
         apiType: 'openai',
         runtime: LobeOpenCodeCodingPlanOpenAI as any,
-        options: {
-          ...options,
-          baseURL,
-        },
+        options: { ...options, baseURL },
       },
     ];
   },

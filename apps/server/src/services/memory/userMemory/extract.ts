@@ -26,6 +26,7 @@ import {
   type OpenAIChatMessage,
 } from '@lobechat/model-runtime';
 import { ModelRuntime } from '@lobechat/model-runtime';
+import { getRateLimiter } from '@lobechat/model-runtime';
 import { SpanStatusCode } from '@lobechat/observability-otel/api';
 import {
   ATTR_GEN_AI_OPERATION_NAME,
@@ -488,6 +489,7 @@ export const resolveRuntimeAgentConfig = (
   keyVaults?: ProviderKeyVaultMap,
   options?: RuntimeResolveOptions,
   hooks?: ModelRuntimeHooks,
+  rateLimitRpm?: number,
 ) => {
   const normalizedPreferredProviders = (options?.preferred?.providerIds || [])
     .map(normalizeProvider)
@@ -502,22 +504,23 @@ export const resolveRuntimeAgentConfig = (
   );
 
   for (const provider of providerOrder) {
+    const limiterKey = `memory:${provider}`;
+    const limiter = rateLimitRpm ? getRateLimiter(limiterKey, { rpm: rateLimitRpm }) : undefined;
+
     if (provider === 'lobehub') {
       debugRuntimeInit(agent, {
         provider,
         source: 'user-vault' as const,
       });
 
-      return ModelRuntime.initializeWithProvider(provider, { userId: options?.userId }, hooks);
+      return ModelRuntime.initializeWithProvider(provider, { userId: options?.userId }, hooks, limiter);
     }
 
     const { apiKey: userApiKey, baseURL: userBaseURL } = extractCredentialsFromVault(
       keyVaults?.[provider],
     );
     if (!userApiKey) {
-      console.warn(
-        `[memory-extraction] skipping provider ${provider} due to missing API key in user vault`,
-      );
+      log('skipping provider %s due to missing API key in user vault', provider);
       continue;
     }
 
@@ -534,24 +537,29 @@ export const resolveRuntimeAgentConfig = (
       apiKey: userApiKey,
       baseURL: userBaseURL,
       userId: options?.userId,
-    });
+    }, undefined, limiter);
   }
+
+  const fallbackProvider = agent.provider || 'openai';
+  const fallbackLimiterKey = `memory:${fallbackProvider}`;
+  const limiter = rateLimitRpm ? getRateLimiter(fallbackLimiterKey, { rpm: rateLimitRpm }) : undefined;
 
   debugRuntimeInit(agent, {
     apiKey: agent.apiKey || options?.fallback?.apiKey,
     baseURL: agent.baseURL || options?.fallback?.baseURL,
-    provider: agent.provider || 'openai',
+    provider: fallbackProvider,
     source: 'system-config' as const,
   });
 
-  return ModelRuntime.initializeWithProvider(agent.provider || 'openai', {
+  return ModelRuntime.initializeWithProvider(fallbackProvider, {
     apiKey: agent.apiKey || options?.fallback?.apiKey,
     baseURL: agent.baseURL || options?.fallback?.baseURL,
     userId: options?.userId,
-  });
+  }, undefined, limiter);
 };
 
 const logRuntime = debug('lobe-server:memory:user-memory:runtime');
+const log = debug('lobe-server:memory:user-memory:extract');
 
 const debugRuntimeInit = (
   agent: MemoryAgentConfig,
@@ -628,6 +636,7 @@ export interface TopicExtractionJob {
   from?: Date;
   layers: LayersEnum[];
   reportProgress?: boolean;
+  skipTaskStatusUpdate?: boolean;
   source: MemorySourceType;
   to?: Date;
   topicId: string;
@@ -811,7 +820,8 @@ export class MemoryExtractionExecutor {
     const normalized = text.trim();
     if (!normalized) return 0;
 
-    return await encodeAsync(normalized);
+    const result = await encodeAsync(normalized);
+    return result;
   }
 
   private async trimTextToTokenLimit(text: string, tokenLimit?: number) {
@@ -822,13 +832,16 @@ export class MemoryExtractionExecutor {
     conversations: (T & { createdAt: Date })[],
     tokenLimit?: number,
   ) {
-    if (!tokenLimit || tokenLimit <= 0) return conversations;
+    if (!tokenLimit || tokenLimit <= 0) {
+      return conversations;
+    }
 
     let remaining = tokenLimit;
     const trimmed: (T & { createdAt: Date })[] = [];
 
     for (let i = conversations.length - 1; i >= 0 && remaining > 0; i -= 1) {
       const conversation = conversations[i];
+      
       // TODO: we might need to think about how to deal with non-string contents
       // as multi-modal models become more prevalent
       const content =
@@ -837,6 +850,7 @@ export class MemoryExtractionExecutor {
           : JSON.stringify(conversation.content);
 
       const tokenCount = await this.countTokens(content);
+      
       if (tokenCount <= remaining) {
         trimmed.push(conversation);
         remaining -= tokenCount;
@@ -854,7 +868,6 @@ export class MemoryExtractionExecutor {
 
       break;
     }
-
     return trimmed.reverse();
   }
 
@@ -920,7 +933,7 @@ export class MemoryExtractionExecutor {
           message: error instanceof Error ? error.message : 'Failed to generate embeddings',
         });
         span.recordException(error as Error);
-        console.error('[memory-extraction] failed to generate embeddings', error, 'model:', model);
+        log('failed to generate embeddings %O, model: %s', error, model);
 
         return texts.map(() => null);
       } finally {
@@ -1513,9 +1526,7 @@ export class MemoryExtractionExecutor {
           });
 
           if (!topic) {
-            console.warn(
-              `[memory-extraction] topic ${job.topicId} not found for user ${job.userId}`,
-            );
+            log('topic %s not found for user %s', job.topicId, job.userId);
             span.setStatus({ code: SpanStatusCode.OK, message: 'topic_not_found' });
             topicProcessed = true;
             return {
@@ -1526,6 +1537,7 @@ export class MemoryExtractionExecutor {
             };
           }
           if ((job.from && topic.createdAt < job.from) || (job.to && topic.createdAt > job.to)) {
+            log('topic is out of date range, skipping');
             span.setStatus({ code: SpanStatusCode.OK, message: 'topic_out_of_range' });
             topicProcessed = true;
             return {
@@ -1536,6 +1548,7 @@ export class MemoryExtractionExecutor {
             };
           }
           if (!job.forceAll && !job.forceTopics && isTopicExtracted(topic.metadata)) {
+            log('topic already extracted, skipping');
             span.setStatus({ code: SpanStatusCode.OK, message: 'already_extracted' });
             topicProcessed = true;
             return {
@@ -1560,13 +1573,16 @@ export class MemoryExtractionExecutor {
             userModel.getUserState(KeyVaultsGateKeeper.getUserKeyVaults),
             this.getAiProviderRuntimeState(job.userId, job.workspaceId),
           ]);
+          
           const memoryServiceConfig = this.resolveUserMemoryServiceConfig(
             userState.settings?.systemAgent as Partial<UserServiceModelConfig> | undefined,
           );
+          
           const keyVaults = await this.resolveRuntimeKeyVaults(
             aiProviderRuntimeState,
             memoryServiceConfig,
           );
+          
           const language = userState.settings?.general?.responseLanguage;
 
           const runtimes = await this.getRuntime(job.userId, memoryServiceConfig, keyVaults);
@@ -1593,10 +1609,12 @@ export class MemoryExtractionExecutor {
           const extractorContextLimit = memoryServiceConfig.extractorContextLimit;
           const embeddingContextLimit =
             memoryServiceConfig.embeddingContextLimit ?? extractorContextLimit;
+          
           const extractorConversations = await this.trimConversationsToTokenLimit(
             conversations,
             extractorContextLimit,
           );
+          
           const embeddingConversations = await this.trimConversationsToTokenLimit(
             conversations,
             embeddingContextLimit,
@@ -1651,6 +1669,7 @@ export class MemoryExtractionExecutor {
               embeddingContextLimit,
             );
           } catch (error) {
+            log('failed to list relevant user memories: %O', error);
             retrievalErrors.push(
               makeTaskErrorItem('retrieval', error, {
                 preview: embeddingConversations.map((item) => item.content).join('\n\n'),
@@ -1659,6 +1678,7 @@ export class MemoryExtractionExecutor {
               }),
             );
           }
+          
           const retrievedMemoryContextProvider = new RetrievalUserMemoryContextProvider({
             retrievedMemories: {
               activities: searchResult.activities,
@@ -1678,6 +1698,7 @@ export class MemoryExtractionExecutor {
             extractionJob,
             job.userId,
           );
+          
           const retrievedMemoryIdentitiesContextProvider =
             new RetrievalUserMemoryIdentitiesProvider({
               retrievedIdentities: retrievedMemoryIdentities,
@@ -1687,15 +1708,18 @@ export class MemoryExtractionExecutor {
               extractionJob.userId,
               extractionJob.sourceId,
             );
+          
           const trimmedRetrievedContexts = await Promise.all(
             [topicContext.context, retrievalMemoryContext.context].map((context) =>
               this.trimTextToTokenLimit(context, extractorContextLimit),
             ),
           );
+          
           const trimmedRetrievedIdentitiesContext = await this.trimTextToTokenLimit(
             retrievedIdentityContext.context,
             extractorContextLimit,
           );
+          
           const taxonomyOptions = await new UserMemoryModel(db, job.userId).queryTaxonomyOptions({
             include: ['categories', 'labels', 'tags'],
             limit: 20,
@@ -1796,6 +1820,7 @@ export class MemoryExtractionExecutor {
             username:
               userState.fullName || `${userState.firstName} ${userState.lastName}`.trim() || 'User',
           });
+          
           if (!extraction) {
             this.recordJobMetrics(extractionJob, 'completed', Date.now() - startTime);
             span.setStatus({ code: SpanStatusCode.OK, message: 'no_extraction' });
@@ -1816,6 +1841,8 @@ export class MemoryExtractionExecutor {
             memoryServiceConfig,
             db,
           );
+          log('extraction persisted, createdIds: %d', persistedRes.createdIds.length);
+          
           if (retrievalErrors.length > 0) {
             throw new MemoryExtractionAggregateError(
               'Memory extraction completed with retrieval errors',
@@ -1864,7 +1891,9 @@ export class MemoryExtractionExecutor {
           if (tracePayload) {
             tracePayload.error = serializeError(error);
           }
-          if (job.asyncTaskId && job.userInitiated) {
+          // Only update async task status if NOT using in-process scheduler
+          // In-process scheduler manages task status externally
+          if (job.asyncTaskId && job.userInitiated && !job.skipTaskStatusUpdate) {
             try {
               const asyncTaskModel = new AsyncTaskModel(await this.db, job.userId, job.workspaceId);
               await asyncTaskModel.update(job.asyncTaskId, {
@@ -2160,7 +2189,33 @@ export class MemoryExtractionExecutor {
   }
 
   private normalizeLayerError(layer: LayersEnum, stage: 'extract' | 'persist', error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
+    const extractMessage = (err: unknown): string => {
+      if (err instanceof Error) {
+        return err.message;
+      }
+      if (typeof err === 'object' && err !== null) {
+        const obj = err as Record<string, unknown>;
+        // Try common error message fields
+        if (obj.message) {
+          return typeof obj.message === 'string' ? obj.message : JSON.stringify(obj.message);
+        }
+        if (obj.error) {
+          return typeof obj.error === 'string' ? obj.error : JSON.stringify(obj.error);
+        }
+        if (obj.detail) {
+          return typeof obj.detail === 'string' ? obj.detail : JSON.stringify(obj.detail);
+        }
+        // Fallback to JSON
+        try {
+          return JSON.stringify(obj);
+        } catch {
+          return String(obj);
+        }
+      }
+      return String(err);
+    };
+    
+    const message = extractMessage(error);
     return new Error(`[${stage}] ${LAYER_LABEL_MAP[layer]}: ${message}`);
   }
 
@@ -2432,7 +2487,7 @@ export class MemoryExtractionExecutor {
   ): Promise<RuntimeBundle> {
     // TODO: implement a better cache eviction strategy
     // TODO: make cache size configurable
-    if (this.runtimeCache.keys.length > 200) {
+    if (this.runtimeCache.size > 200) {
       this.runtimeCache.clear();
     }
 
@@ -2485,6 +2540,7 @@ export class MemoryExtractionExecutor {
     };
 
     const hooks = getBusinessModelRuntimeHooks(userId, 'lobehub');
+    const rateLimitRpm = this.privateConfig.rateLimit?.rpm;
 
     const runtimes: RuntimeBundle = {
       embeddings: await resolveRuntimeAgentConfig(
@@ -2492,18 +2548,21 @@ export class MemoryExtractionExecutor {
         keyVaults,
         embeddingOptions,
         hooks,
+        rateLimitRpm,
       ),
       gatekeeper: await resolveRuntimeAgentConfig(
         memoryServiceConfig.agents.gatekeeper,
         keyVaults,
         gatekeeperOptions,
         hooks,
+        rateLimitRpm,
       ),
       layerExtractor: await resolveRuntimeAgentConfig(
         memoryServiceConfig.agents.layerExtractor,
         keyVaults,
         layerExtractorOptions,
         hooks,
+        rateLimitRpm,
       ),
     };
 
@@ -2733,6 +2792,33 @@ const getWorkflowClient = () => {
 
 export class MemoryExtractionWorkflowService {
   private static client: Client;
+  private static _useInProcessScheduler?: boolean;
+  private static initialized = false;
+
+  /**
+   * Initialize the workflow service with configuration.
+   * Can be called explicitly or will auto-initialize on first use.
+   */
+  static initialize(config?: { useInProcessScheduler?: boolean }) {
+    if (config) {
+      this._useInProcessScheduler = config.useInProcessScheduler ?? false;
+    }
+    this.initialized = true;
+  }
+
+  /**
+   * Check if in-process scheduler should be used.
+   * Auto-initializes from environment if not explicitly set.
+   */
+  private static get useInProcessScheduler(): boolean {
+    if (!this.initialized) {
+      // Auto-initialize from environment
+      const config = parseMemoryExtractionConfig();
+      this._useInProcessScheduler = config.useInProcessScheduler ?? false;
+      this.initialized = true;
+    }
+    return this._useInProcessScheduler ?? false;
+  }
 
   private static getClient() {
     if (!this.client) {
@@ -2742,7 +2828,7 @@ export class MemoryExtractionWorkflowService {
     return this.client;
   }
 
-  static triggerProcessUsers(
+  static async triggerProcessUsers(
     payload: MemoryExtractionPayloadInput,
     options?: { extraHeaders?: Record<string, string> },
   ) {
@@ -2750,10 +2836,25 @@ export class MemoryExtractionWorkflowService {
       throw new Error('Missing baseUrl for workflow trigger');
     }
 
+    // Use in-process scheduler if configured
+    if (this.useInProcessScheduler) {
+      log('triggerProcessUsers called with payload: %O', {
+        asyncTaskId: payload.asyncTaskId,
+        sources: payload.sources,
+        userIds: payload.userIds,
+      });
+
+      const { getInProcessScheduler } = await import('./inProcessScheduler');
+      const { processUsersInProcess } = await import('./inProcessExtractor');
+      const scheduler = getInProcessScheduler();
+      const taskId = `process-users:${payload.userIds?.join(',') || 'unknown'}`;
+      scheduler.schedule(taskId, () => processUsersInProcess(payload));
+      return { workflowRunId: `in-process:${taskId}` };
+    }
+
     const url = getWorkflowUrl(WORKFLOW_PATHS.users, payload.baseUrl);
     return this.getClient().trigger({ body: payload, headers: options?.extraHeaders, url });
   }
-
   static triggerHourly(
     payload: MemoryExtractionHourlyWorkflowPayload,
     options?: { extraHeaders?: Record<string, string> },
@@ -2782,13 +2883,27 @@ export class MemoryExtractionWorkflowService {
     });
   }
 
-  static triggerProcessTopics(
+  static async triggerProcessTopics(
     userId: string,
     payload: MemoryExtractionPayloadInput,
     options?: { extraHeaders?: Record<string, string> },
   ) {
     if (!payload.baseUrl) {
       throw new Error('Missing baseUrl for workflow trigger');
+    }
+
+    const baseUrl = payload.baseUrl;
+
+    // Use in-process scheduler if configured
+    if (this.useInProcessScheduler) {
+      const { getInProcessScheduler } = await import('./inProcessScheduler');
+      const { processTopicsInProcess } = await import('./inProcessExtractor');
+      const scheduler = getInProcessScheduler();
+      const taskId = `process-topics:${userId}:${payload.topicIds?.join(',') || 'all'}`;
+      scheduler.schedule(taskId, () =>
+        processTopicsInProcess(userId, payload, () => this.triggerPersonaUpdate(userId, baseUrl)),
+      );
+      return { workflowRunId: `in-process:${taskId}` };
     }
 
     const url = getWorkflowUrl(WORKFLOW_PATHS.topicBatch, payload.baseUrl);
@@ -2828,5 +2943,64 @@ export class MemoryExtractionWorkflowService {
       headers: options?.extraHeaders,
       url,
     });
+  }
+
+  /**
+   * Recover pending memory extraction tasks on application startup.
+   * This should be called during server initialization when using in-process scheduler.
+   */
+  static async recoverPendingTasks(): Promise<void> {
+    if (!this.useInProcessScheduler) {
+      return;
+    }
+
+    try {
+      const { AsyncTaskModel } = await import('@/database/models/asyncTask');
+      const { getServerDB } = await import('@/database/server');
+      const { AsyncTaskStatus, AsyncTaskType } = await import('@lobechat/types');
+
+      const db = await getServerDB();
+
+      // Find all pending/processing memory extraction tasks
+      const pendingTasks = await db.query.asyncTasks.findMany({
+        where: (tasks, { and, eq, or }) =>
+          and(
+            eq(tasks.type, AsyncTaskType.UserMemoryExtractionWithChatTopic),
+            or(
+              eq(tasks.status, AsyncTaskStatus.Pending),
+              eq(tasks.status, AsyncTaskStatus.Processing),
+            ),
+          ),
+      });
+
+      log('found %d pending tasks', pendingTasks.length);
+
+      for (const task of pendingTasks) {
+        // Re-trigger the task with force flags disabled.
+        // forceAll=false and forceTopics=false ensure idempotency: topics that
+        // were already extracted before the crash will be skipped by the
+        // isTopicExtracted check inside extractTopic, so only genuinely
+        // pending topics are re-processed.
+        try {
+          await this.triggerProcessUsers(
+            {
+              asyncTaskId: task.id,
+              baseUrl: process.env.INTERNAL_APP_URL || process.env.APP_URL || 'http://localhost:3210',
+              forceAll: false,
+              forceTopics: false,
+              sources: ['chat_topic'],
+              userIds: [task.userId],
+              userInitiated: true,
+            },
+          );
+          log('task recovered: %s', task.id);
+        } catch (error) {
+          log('failed to recover task: %s %O', task.id, error);
+        }
+      }
+
+    } catch (error) {
+      log('failed to recover tasks: %O', error);
+    }
   }
 }

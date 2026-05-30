@@ -61,6 +61,7 @@ export interface MemoryExtractionPrivateConfig {
   featureFlags: {
     enableBenchmarkLoCoMo: boolean;
   };
+  maxQueueSize?: number;
   observabilityS3?: {
     accessKeyId?: string;
     bucketName?: string;
@@ -71,12 +72,18 @@ export interface MemoryExtractionPrivateConfig {
     region?: string;
     secretAccessKey?: string;
   };
+  rateLimit?: {
+    rpm?: number;
+    tpm?: number;
+  };
   upstashWorkflowExtraHeaders?: Record<string, string>;
+  useInProcessScheduler?: boolean;
   webhook: {
     baseUrl?: string;
     headers?: Record<string, string>;
   };
   whitelistUsers?: string[];
+  workflowParallelism?: number;
 }
 
 const parseGateKeeperAgent = (): MemoryAgentConfig => {
@@ -251,6 +258,46 @@ export const parseMemoryExtractionConfig = (): MemoryExtractionPrivateConfig => 
         : undefined
       : undefined;
 
+  // Parse rate limiting configuration (API request RPM/TPM control)
+  const rpmRaw = process.env.MEMORY_USER_MEMORY_RPM;
+  const tpmRaw = process.env.MEMORY_USER_MEMORY_TPM;
+  const rateLimit =
+    rpmRaw || tpmRaw
+      ? {
+          rpm: rpmRaw
+            ? Number.isFinite(Number(rpmRaw)) && Number(rpmRaw) > 0
+              ? Number(rpmRaw)
+              : undefined
+            : undefined,
+          tpm: tpmRaw
+            ? Number.isFinite(Number(tpmRaw)) && Number(tpmRaw) > 0
+              ? Number(tpmRaw)
+              : undefined
+            : undefined,
+        }
+      : undefined;
+
+  // Parse workflow parallelism (topic concurrency for in-process scheduler)
+  const workflowParallelismRaw = process.env.MEMORY_USER_MEMORY_WORKFLOW_PARALLELISM;
+  const workflowParallelism =
+    workflowParallelismRaw !== undefined
+      ? Number.isInteger(Number(workflowParallelismRaw)) && Number(workflowParallelismRaw) > 0
+        ? Number(workflowParallelismRaw)
+        : undefined
+      : undefined;
+
+  // Parse in-process scheduler configuration
+  const useInProcessScheduler =
+    process.env.MEMORY_USER_MEMORY_USE_IN_PROCESS_SCHEDULER === 'true';
+
+  const maxQueueSizeRaw = process.env.MEMORY_USER_MEMORY_MAX_QUEUE_SIZE;
+  const maxQueueSize =
+    maxQueueSizeRaw !== undefined
+      ? Number.isInteger(Number(maxQueueSizeRaw)) && Number(maxQueueSizeRaw) > 0
+        ? Number(maxQueueSizeRaw)
+        : undefined
+      : undefined;
+
   const whitelistUsers = process.env.MEMORY_USER_MEMORY_WHITELIST_USERS?.split(',')
     .filter(Boolean)
     .map((s) => s.trim());
@@ -310,13 +357,17 @@ export const parseMemoryExtractionConfig = (): MemoryExtractionPrivateConfig => 
     embeddingPreferredModels,
     embeddingPreferredProviders,
     featureFlags,
+    maxQueueSize,
     observabilityS3: extractorObservabilityS3,
+    rateLimit,
     upstashWorkflowExtraHeaders,
+    useInProcessScheduler,
     webhook: {
       baseUrl: process.env.MEMORY_USER_MEMORY_WEBHOOK_BASE_URL,
       headers: webhookHeaders,
     },
     whitelistUsers,
+    workflowParallelism,
   };
 };
 

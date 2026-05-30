@@ -85,4 +85,10 @@ export {
   type ModelExtendParams,
   resolveDefaultThinkingLevelForModel,
 } from './utils/modelExtendParams';
+export {
+  type RateLimiterOptions,
+  RateLimiter,
+  clearRateLimiters,
+  getRateLimiter,
+} from './utils/rateLimiter';
 export { parseDataUri } from './utils/uriParser';

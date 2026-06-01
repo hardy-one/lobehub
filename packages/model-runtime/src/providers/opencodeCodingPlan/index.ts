@@ -48,11 +48,32 @@ interface ModelsDevData {
 
 interface ModelsCache {
   anthropicModels: string[];
+  /**
+   * Model IDs whose `interleaved.field` is set in models.dev. These need
+   * special reasoning_content handling in the OpenAI-compatible payload.
+   * Populated by `fetchModelsDevData` so it stays in sync with models.dev.
+   */
+  interleavedIds: Set<string>;
   modelsDev: Record<string, ModelsDevModel>;
 }
 
 // Fallback: models that need Anthropic SDK (used when models.dev is unavailable)
 const ANTHROPIC_MODEL_PREFIXES = ['minimax', 'qwen'];
+
+// Fallback: models with interleaved reasoning_content (used when models.dev
+// is unreachable). Mirrors the last-known state of models.dev.
+const FALLBACK_INTERLEAVED_IDS: ReadonlySet<string> = new Set([
+  'deepseek-v4-flash',
+  'deepseek-v4-pro',
+  'glm-5',
+  'glm-5.1',
+  'kimi-k2.5',
+  'kimi-k2.6',
+  'mimo-v2-omni',
+  'mimo-v2-pro',
+  'mimo-v2.5',
+  'mimo-v2.5-pro',
+]);
 
 let cachedModelsData: ModelsCache | null = null;
 
@@ -61,8 +82,14 @@ let cachedModelsData: ModelsCache | null = null;
 // ============================================================================
 
 /**
- * Fetch models.dev data and extract SDK routing info.
- * Uses provider.npm field to determine which models need Anthropic SDK.
+ * Fetch models.dev data and derive all per-provider fields from it:
+ *   - `anthropicModels`  (models whose `provider.npm` is the Anthropic SDK)
+ *   - `interleavedIds`   (models with `interleaved.field` set, needing
+ *                         special reasoning_content handling)
+ *   - `modelsDev`        (raw model map for enrichment)
+ *
+ * The result is cached for the process lifetime, so a single successful
+ * fetch keeps every derived field in sync with models.dev.
  */
 const fetchModelsDevData = async (): Promise<ModelsCache> => {
   if (cachedModelsData) return cachedModelsData;
@@ -81,11 +108,34 @@ const fetchModelsDevData = async (): Promise<ModelsCache> => {
       .filter((m) => m.provider?.npm === '@ai-sdk/anthropic')
       .map((m) => m.id);
 
-    cachedModelsData = { anthropicModels, modelsDev: models };
+    const interleavedIds = new Set<string>();
+    for (const m of Object.values(models)) {
+      if (m?.interleaved?.field) interleavedIds.add(m.id);
+    }
+
+    cachedModelsData = { anthropicModels, interleavedIds, modelsDev: models };
     return cachedModelsData;
   } catch {
-    return { anthropicModels: [], modelsDev: {} };
+    cachedModelsData = {
+      anthropicModels: [],
+      interleavedIds: new Set(),
+      modelsDev: {},
+    };
+    return cachedModelsData;
   }
+};
+
+/**
+ * Sync accessor for the interleaved model set. Returns the cached value
+ * populated by `fetchModelsDevData`; falls back to a hardcoded snapshot of
+ * models.dev's last-known state when the cache hasn't been populated yet
+ * (e.g. the very first chat request before any models.dev fetch has run).
+ */
+const getInterleavedModelIds = (): ReadonlySet<string> => {
+  if (cachedModelsData && cachedModelsData.interleavedIds.size > 0) {
+    return cachedModelsData.interleavedIds;
+  }
+  return FALLBACK_INTERLEAVED_IDS;
 };
 
 /**
@@ -168,19 +218,18 @@ const enrichWithModelsDev = (
 // Kimi K2.x models expose reasoning on the OpenAI-compatible route
 const isKimiThinkingToggleModel = (model: string) => model.startsWith('kimi-k2.');
 
-// Models with interleaved reasoning_content that need:
+// Models in `interleavedIds` need:
 //   1. reason → reasoning_content conversion
 //   2. reasoning_content forced on all assistant messages
-// Ref: https://models.dev/api.json → opencode-go
-const reasoningInterleavedModels = [
-  'deepseek-v4-flash',
-  'deepseek-v4-pro',
-  'glm-5',
-  'glm-5.1',
-  'mimo-v2.5',
-  'mimo-v2.5-pro',
-  'qwen3.7-max',
-];
+// The set is populated from models.dev by `fetchModelsDevData`; the fallback
+// is used when models.dev hasn't been fetched yet.
+// Ref: https://models.dev/api.json → opencode-go.interleaved
+const isInterleavedModel = (model: string) => {
+  for (const id of getInterleavedModelIds()) {
+    if (model?.includes(id)) return true;
+  }
+  return false;
+};
 
 const hasValidReasoning = (reasoning: any) => typeof reasoning?.content === 'string';
 
@@ -253,12 +302,12 @@ const buildOpenAIPayload = (
 ): OpenAI.ChatCompletionCreateParamsStreaming => {
   const model = payload.model;
   const isKimi = isKimiThinkingToggleModel(model);
-  const isInterleavedModel = reasoningInterleavedModels.some((m) => model?.includes(m));
+  const interleaved = isInterleavedModel(model);
 
-  if (!isKimi && !isInterleavedModel) return payload as any;
+  if (!isKimi && !interleaved) return payload as any;
 
   const thinkingExplicitlyDisabled = (payload as any).thinking?.type === 'disabled';
-  const shouldForceReasoning = (isInterleavedModel || isKimi) && !thinkingExplicitlyDisabled;
+  const shouldForceReasoning = (interleaved || isKimi) && !thinkingExplicitlyDisabled;
 
   const messages = payload.messages.map((message: any) => {
     const { reasoning, ...rest } = message;

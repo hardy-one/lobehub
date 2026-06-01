@@ -76,18 +76,31 @@ const fetchModelsDevData = async (): Promise<ModelsCache> => {
 };
 
 /**
- * Get anthropic models with fallback to prefix matching
+ * Get anthropic models with self-contained fallback chain:
+ *   1. models.dev (authoritative `provider.npm` field)
+ *   2. static model-bank prefix match (used when models.dev is unreachable)
+ *
+ * Self-contained: does not depend on a runtime `client` object, so it's safe
+ * to call from `routers` (which receives `ClientOptions` only and has no
+ * `client` property during normal chat routing).
  */
-const getAnthropicModels = async (modelIds: string[]): Promise<string[]> => {
+const getAnthropicModels = async (): Promise<string[]> => {
   const { anthropicModels, modelsDev } = await fetchModelsDevData();
 
-  // If models.dev has data, use it
   if (Object.keys(modelsDev).length > 0) {
     return anthropicModels;
   }
 
-  // Fallback: match by ID prefix
-  return modelIds.filter((id) => ANTHROPIC_MODEL_PREFIXES.some((p) => id.startsWith(p)));
+  // Fallback: prefix-match the static model-bank list. Equivalent to the
+  // pre-refactor hard-coded behavior when models.dev is unreachable.
+  try {
+    const { opencodecodingplan } = await import('model-bank');
+    return opencodecodingplan
+      .map((m) => m.id)
+      .filter((id) => ANTHROPIC_MODEL_PREFIXES.some((p) => id.startsWith(p)));
+  } catch {
+    return [];
+  }
 };
 
 // ============================================================================
@@ -310,17 +323,7 @@ export const params = {
   routers: async (options) => {
     const baseURL = options.baseURL || GO_BASE_URL;
 
-    // Get model IDs for SDK routing
-    let modelIds: string[] = [];
-    try {
-      const modelsPage = await (options as any).client?.models.list?.();
-      modelIds = (modelsPage?.data || []).map((m: any) => m.id);
-    } catch {
-      const { modelsDev } = await fetchModelsDevData();
-      modelIds = Object.keys(modelsDev);
-    }
-
-    const anthropicModels = await getAnthropicModels(modelIds);
+    const anthropicModels = await getAnthropicModels();
 
     return [
       // Anthropic SDK for models with provider.npm === '@ai-sdk/anthropic'

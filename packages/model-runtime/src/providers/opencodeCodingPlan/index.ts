@@ -20,9 +20,22 @@ const MODELS_DEV_URL = 'https://models.dev/api.json';
 
 interface ModelsDevModel {
   id: string;
+  name?: string;
   family?: string;
   provider?: { npm?: string };
-  cost?: { input?: number; output?: number; cache_read?: number };
+  release_date?: string;
+  attachment?: boolean;
+  reasoning?: boolean;
+  tool_call?: boolean;
+  structured_output?: boolean;
+  modalities?: { input?: string[]; output?: string[] };
+  limit?: { context?: number; output?: number };
+  cost?: {
+    input?: number;
+    output?: number;
+    cache_read?: number;
+    cache_write?: number;
+  };
   [key: string]: any;
 }
 
@@ -101,6 +114,51 @@ const getAnthropicModels = async (): Promise<string[]> => {
   } catch {
     return [];
   }
+};
+
+// ============================================================================
+// Models.dev → Model Card Enrichment
+// ============================================================================
+
+/**
+ * Map a models.dev model entry to the flat fields understood by
+ * `processModelCard`. Fields not provided by models.dev (description,
+ * organization, settings, etc.) are filled in from the static model-bank
+ * entry via the knownModel fallback in processModelCard.
+ *
+ * Pricing is passed in the flat `input` / `output` / `cachedInput` /
+ * `writeCacheInput` shape; processModelCard's `formatPricing` converts it
+ * into the new `units` array.
+ */
+const enrichWithModelsDev = (
+  id: string,
+  dev?: ModelsDevModel,
+): { id: string; [key: string]: any } => {
+  if (!dev) return { id };
+
+  const inputModalities = dev.modalities?.input ?? [];
+  const cost = dev.cost;
+  const limit = dev.limit;
+
+  return {
+    id,
+    displayName: dev.name,
+    contextWindowTokens: limit?.context,
+    maxOutput: limit?.output,
+    releasedAt: dev.release_date,
+    functionCall: dev.tool_call || undefined,
+    reasoning: dev.reasoning || undefined,
+    vision: inputModalities.includes('image') || undefined,
+    structuredOutput: dev.structured_output || undefined,
+    pricing: cost
+      ? {
+          input: cost.input,
+          output: cost.output,
+          cachedInput: cost.cache_read,
+          writeCacheInput: cost.cache_write,
+        }
+      : undefined,
+  };
 };
 
 // ============================================================================
@@ -295,24 +353,28 @@ export const params = {
   },
   id: ModelProvider.OpenCodeCodingPlan,
   models: async ({ client }) => {
+    // Always pull models.dev for enrichment (cached after first call).
+    const { modelsDev } = await fetchModelsDevData();
+
     try {
-      // 1. Try API first (real-time available models)
+      // 1. Try API first (real-time available models), enriched with models.dev.
       const modelsPage = await (client as any).models.list();
       const apiModels = modelsPage.data || [];
-      return processMultiProviderModelList(apiModels, 'opencodecodingplan');
+      return processMultiProviderModelList(
+        apiModels.map((m: { id: string }) => enrichWithModelsDev(m.id, modelsDev[m.id])),
+        'opencodecodingplan',
+      );
     } catch {
-      // 2. Fallback to models.dev + model-bank
-      const { modelsDev } = await fetchModelsDevData();
+      // 2. Fallback to models.dev (if we got data) enriched with itself.
       const modelIds = Object.keys(modelsDev);
-
       if (modelIds.length > 0) {
         return processMultiProviderModelList(
-          modelIds.map((id) => ({ id })),
+          modelIds.map((id) => enrichWithModelsDev(id, modelsDev[id])),
           'opencodecodingplan',
         );
       }
 
-      // 3. Final fallback: static model bank
+      // 3. Final fallback: static model bank.
       const { opencodecodingplan } = await import('model-bank');
       return processMultiProviderModelList(
         opencodecodingplan.map((m) => ({ id: m.id })),

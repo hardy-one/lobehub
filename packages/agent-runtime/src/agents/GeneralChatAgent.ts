@@ -379,6 +379,7 @@ export class GeneralChatAgent implements Agent {
     // we'd burn an extra summarization pass on tool tokens that won't be sent.
     const compressionOptions = {
       maxWindowToken: this.config.compressionConfig?.maxWindowToken,
+      smartThreshold: this.config.compressionConfig?.smartThreshold,
       thresholdRatio: this.config.compressionConfig?.thresholdRatio,
       tools: state.forceFinish ? undefined : payload.tools,
     };
@@ -452,6 +453,7 @@ export class GeneralChatAgent implements Agent {
         // so they must not count against the compression budget here either.
         const compressionOptions = {
           maxWindowToken: this.config.compressionConfig?.maxWindowToken,
+          smartThreshold: this.config.compressionConfig?.smartThreshold,
           thresholdRatio: this.config.compressionConfig?.thresholdRatio,
           tools: state.forceFinish ? undefined : state.tools,
         };

@@ -50,6 +50,7 @@ const ANTHROPIC_CLIENT_TIMEOUT_ENV = 'ANTHROPIC_CLIENT_TIMEOUT';
  * duration limit while provider/router options can still override it.
  */
 export const DEFAULT_ANTHROPIC_TIMEOUT = 295_000;
+export const DEFAULT_AUTH_METHOD = 'apiKey';
 const ANTHROPIC_SDK_MESSAGES_PATH_PATTERN = /\/v1(?:\/messages)?\/?$/;
 
 const normalizeAnthropicCompatibleBaseURL = (baseURL?: string | null) =>
@@ -67,6 +68,7 @@ export interface CustomClientOptions<T extends Record<string, any> = any> {
 
 export interface AnthropicCompatibleFactoryOptions<T extends Record<string, any> = any> {
   apiKey?: string;
+  authMethod?: string;
   baseURL?: string;
   chatCompletion?: {
     /**
@@ -112,6 +114,7 @@ export interface AnthropicCompatibleFactoryOptions<T extends Record<string, any>
   ) => Promise<any>;
   models?: (params: {
     apiKey?: string;
+    authMethod?: string;
     baseURL: string;
     client: Anthropic;
   }) => Promise<ChatModelCard[]>;
@@ -361,9 +364,11 @@ export const handleDefaultAnthropicError = <T extends Record<string, any> = any>
  */
 export const createDefaultAnthropicModels = async ({
   apiKey,
+  authMethod = DEFAULT_AUTH_METHOD,
   baseURL,
 }: {
   apiKey?: string;
+  authMethod?: string;
   baseURL: string;
   client?: Anthropic;
 }): Promise<ChatModelCard[]> => {
@@ -371,11 +376,18 @@ export const createDefaultAnthropicModels = async ({
     throw new Error('Missing Anthropic API key for model listing');
   }
 
+  const headers: Record<string, string> = {
+    'anthropic-version': '2023-06-01',
+  };
+
+  if (authMethod === 'authToken') {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  } else {
+    headers['x-api-key'] = apiKey;
+  }
+
   const response = await fetch(`${baseURL}/v1/models`, {
-    headers: {
-      'anthropic-version': '2023-06-01',
-      'x-api-key': `${apiKey}`,
-    },
+    headers,
     method: 'GET',
   });
 
@@ -433,6 +445,7 @@ export const createAnthropicCompatibleRuntime = <T extends Record<string, any> =
   provider,
   baseURL: DEFAULT_BASE_URL = DEFAULT_ANTHROPIC_BASE_URL,
   apiKey: DEFAULT_API_KEY,
+  authMethod: DEFAULT_AUTH_METHOD_PARAM = DEFAULT_AUTH_METHOD,
   errorType,
   debug: debugParams,
   constructorOptions,
@@ -454,6 +467,7 @@ export const createAnthropicCompatibleRuntime = <T extends Record<string, any> =
 
     baseURL!: string;
     protected _options: ConstructorOptions<T>;
+    protected resolvedAuthMethod: string;
 
     constructor(options: ClientOptions & Record<string, any> = {}) {
       const apiKey = typeof options.apiKey === 'string' ? options.apiKey.trim() : options.apiKey;
@@ -464,8 +478,11 @@ export const createAnthropicCompatibleRuntime = <T extends Record<string, any> =
       const baseURL = normalizeAnthropicCompatibleBaseURL(inputBaseURL);
       const defaultBaseURL = normalizeAnthropicCompatibleBaseURL(DEFAULT_BASE_URL);
 
+      // Extract authMethod before it leaks into ...rest (not a valid SDK ClientOptions key)
+      const { authMethod: inputAuthMethod, ...optionsClean } = options;
+
       const resolvedOptions = {
-        ...options,
+        ...optionsClean,
         apiKey: apiKey || DEFAULT_API_KEY,
         baseURL: baseURL || defaultBaseURL,
       };
@@ -478,8 +495,15 @@ export const createAnthropicCompatibleRuntime = <T extends Record<string, any> =
 
       if (!finalApiKey) throw AgentRuntimeError.createError(ErrorType.invalidAPIKey);
 
+      // Resolve which SDK auth field to set based on authMethod
+      this.resolvedAuthMethod = inputAuthMethod || DEFAULT_AUTH_METHOD_PARAM;
+      const sdkAuthParams =
+        this.resolvedAuthMethod === 'authToken'
+          ? { authToken: finalApiKey }
+          : { apiKey: finalApiKey };
+
       const initOptions = {
-        apiKey: finalApiKey,
+        ...sdkAuthParams,
         baseURL: finalBaseURL,
         ...constructorOptions,
         ...rest,
@@ -674,6 +698,7 @@ export const createAnthropicCompatibleRuntime = <T extends Record<string, any> =
       if (!models) return [];
       return models({
         apiKey: (this._options.apiKey as string) ?? undefined,
+        authMethod: this.resolvedAuthMethod,
         baseURL: this.baseURL,
         client: this.client,
       });

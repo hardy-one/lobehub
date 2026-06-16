@@ -82,8 +82,11 @@ export { getModelPricing } from './utils/getModelPricing';
 export {
   applyModelExtendParams,
   type ApplyModelExtendParamsContext,
+  isThinkingLevelExtendParam,
   type ModelExtendParams,
   resolveDefaultThinkingLevelForModel,
+  resolveEnableReasoningValue,
+  resolveThinkingLevelDefault,
 } from './utils/modelExtendParams';
 export {
   type RateLimiterOptions,

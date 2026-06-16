@@ -398,6 +398,173 @@ const ollamaCloudModels: AIChatModelCard[] = [
     releasedAt: '2025-12-02',
     type: 'chat',
   },
+
+  // === Added models (not in upstream canary) ===
+    {
+      abilities: {
+        functionCall: true,
+        reasoning: true,
+      },
+      contextWindowTokens: 1_048_576,
+      description:
+        'DeepSeek-V4-Flash is a preview of the DeepSeek-V4 series, a Mixture-of-Experts model with 284B total parameters and 13B activated, built for efficient reasoning across a 1M-token context window.',
+      displayName: 'DeepSeek V4 Flash',
+      enabled: true,
+
+      id: 'deepseek-v4-flash',
+      releasedAt: '2026-04-24',
+      settings: {
+        extendParamOptions: {
+          enableReasoning: {
+            defaultValue: true,
+            includeBudget: false,
+          },
+        },
+        extendParams: ['enableReasoning', 'deepseekV4ReasoningEffort'],
+      },
+      type: 'chat',
+    },
+    {
+      abilities: {
+        functionCall: true,
+        reasoning: true,
+      },
+      contextWindowTokens: 1_048_576,
+      description:
+        'DeepSeek-V4-Pro is a frontier Mixture-of-Experts model with a 1M-token context window and three reasoning modes.',
+      displayName: 'DeepSeek V4 Pro',
+      enabled: true,
+
+      id: 'deepseek-v4-pro',
+      releasedAt: '2026-04-24',
+      settings: {
+        extendParamOptions: {
+          enableReasoning: {
+            defaultValue: true,
+            includeBudget: false,
+          },
+        },
+        extendParams: ['enableReasoning', 'deepseekV4ReasoningEffort'],
+      },
+      type: 'chat',
+    },
+    {
+      abilities: {
+        functionCall: true,
+        reasoning: true,
+      },
+      contextWindowTokens: 163_840,
+      description:
+        'DeepSeek V3.2 is a next-generation reasoning model with improved complex reasoning and chain-of-thought.',
+      displayName: 'DeepSeek V3.2',
+
+      id: 'deepseek-v3.2',
+      settings: {
+        extendParams: ['enableReasoning', 'reasoningEffort'],
+      },
+      type: 'chat',
+    },
+    {
+      abilities: {
+        functionCall: true,
+        vision: true,
+      },
+      contextWindowTokens: 131_072,
+      description:
+        'Gemma 3 4B is a lightweight multimodal model from Google, optimized for efficient vision and language tasks.',
+      displayName: 'Gemma 3 4B',
+
+      id: 'gemma3:4b',
+      releasedAt: '2025-03-12',
+      type: 'chat',
+    },
+    {
+      abilities: {
+        functionCall: true,
+        vision: true,
+      },
+      contextWindowTokens: 131_072,
+      description:
+        'Gemma 3 12B is a multimodal model from Google with strong vision and language capabilities.',
+      displayName: 'Gemma 3 12B',
+
+      id: 'gemma3:12b',
+      releasedAt: '2025-03-12',
+      type: 'chat',
+    },
+    {
+      abilities: {
+        functionCall: true,
+        vision: true,
+      },
+      contextWindowTokens: 131_072,
+      description:
+        'Gemma 3 27B is the largest Gemma 3 model, delivering frontier-level multimodal performance.',
+      displayName: 'Gemma 3 27B',
+
+      id: 'gemma3:27b',
+      releasedAt: '2025-03-12',
+      type: 'chat',
+    },
+    {
+      abilities: {
+        functionCall: true,
+      },
+      contextWindowTokens: 128_000,
+      description:
+        'Devstral Small 2 24B is a smaller variant for local deployment with strong coding capabilities.',
+      displayName: 'Devstral Small 2',
+      id: 'devstral-small-2:24b',
+      type: 'chat',
+    },
+    {
+      abilities: {
+        functionCall: true,
+      },
+      contextWindowTokens: 262_144,
+      description:
+        'The first installment in the Qwen3-Next series with strong performance.',
+      displayName: 'Qwen3 Next 80B',
+      id: 'qwen3-next:80b',
+      type: 'chat',
+    },
+    {
+      abilities: {
+        functionCall: true,
+        reasoning: true,
+      },
+      contextWindowTokens: 131_072,
+      description:
+        'NVIDIA Nemotron 3 Super is a 120B open MoE model for complex multi-agent applications.',
+      displayName: 'Nemotron 3 Super',
+      id: 'nemotron-3-super',
+      settings: {
+        extendParams: ['enableReasoning', 'reasoningEffort'],
+      },
+      type: 'chat',
+    },
+    {
+      abilities: {
+        functionCall: true,
+      },
+      contextWindowTokens: 131_072,
+      description:
+        'Nemotron 3 Nano 30B is an efficient agentic model.',
+      displayName: 'Nemotron 3 Nano 30B',
+      id: 'nemotron-3-nano:30b',
+      type: 'chat',
+    },
+    {
+      abilities: {
+        functionCall: true,
+      },
+      contextWindowTokens: 128_000,
+      description:
+        'RNJ-1 8B is a lightweight model for various tasks.',
+      displayName: 'RNJ-1 8B',
+      id: 'rnj-1:8b',
+      type: 'chat',
+    },
 ];
 
 export const allModels = [...ollamaCloudModels];

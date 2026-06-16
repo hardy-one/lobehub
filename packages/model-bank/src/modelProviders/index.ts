@@ -65,6 +65,7 @@ import SenseNovaProvider from './sensenova';
 import SiliconCloudProvider from './siliconcloud';
 import SparkProvider from './spark';
 import StepfunProvider from './stepfun';
+import StepFunCodingPlanProvider from './stepfunCodingPlan';
 import StraicoProvider from './straico';
 import StreamLakeProvider from './streamlake';
 import TaichuProvider from './taichu';
@@ -196,6 +197,7 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
   SparkProvider,
   SenseNovaProvider,
   StepfunProvider,
+  StepFunCodingPlanProvider,
   BaichuanProvider,
   VolcengineProvider,
   VolcengineCodingPlanProvider,
@@ -300,6 +302,7 @@ export { default as SenseNovaProviderCard } from './sensenova';
 export { default as SiliconCloudProviderCard } from './siliconcloud';
 export { default as SparkProviderCard } from './spark';
 export { default as StepfunProviderCard } from './stepfun';
+export { default as StepFunCodingPlanProviderCard } from './stepfunCodingPlan';
 export { default as StraicoProviderCard } from './straico';
 export { default as StreamLakeProviderCard } from './streamlake';
 export { default as TaichuProviderCard } from './taichu';

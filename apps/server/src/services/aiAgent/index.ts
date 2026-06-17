@@ -111,6 +111,7 @@ import { resolveAttachmentsByFileIds } from '@/server/services/file/resolveAttac
 import { HeterogeneousAgentService } from '@/server/services/heterogeneousAgent';
 import type { ConversationHistoryEntry } from '@/server/services/heterogeneousAgent/cloudHeteroContext';
 import { MarketService } from '@/server/services/market';
+import { SystemAgentService } from '@/server/services/systemAgent';
 import { markdownToTxt } from '@/utils/markdownToTxt';
 
 import { resolveDeviceAccessPolicy } from './deviceAccessPolicy';
@@ -445,6 +446,22 @@ export class AiAgentService {
    */
   executeStep(params: AgentExecutionParams): Promise<AgentExecutionResult> {
     return this.agentRuntimeService.executeStep(params);
+  }
+
+  /**
+   * Generate a concise topic title via LLM fire-and-forget, matching non-gateway behavior.
+   * Falls back gracefully (noop) on failure — the 50-char prompt slice from topic creation persists.
+   */
+  private async generateTopicTitleForTopic(topicId: string, userPrompt: string): Promise<void> {
+    try {
+      const systemAgent = new SystemAgentService(this.db, this.userId, this.workspaceId);
+      const title = await systemAgent.generateTopicTitle({ userPrompt, lastAssistantContent: '' });
+      if (title) {
+        await this.topicModel.update(topicId, { title });
+      }
+    } catch (error) {
+      console.error('[generateTopicTitleForTopic] LLM title generation failed:', error);
+    }
   }
 
   /**
@@ -1050,6 +1067,11 @@ export class AiAgentService {
         trigger || 'default',
         cronJobId || 'none',
       );
+
+      // Fire-and-forget: generate a concise LLM title (matches non-gateway behavior)
+      if (title === undefined) {
+        this.generateTopicTitleForTopic(topicId, prompt).catch(console.error);
+      }
     } else {
       log('execAgent: reusing existing topic %s', topicId);
     }

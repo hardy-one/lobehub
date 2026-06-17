@@ -1169,7 +1169,13 @@ export const createRuntimeExecutors = (
         if (ctx.userId) {
           try {
             const { MarketService } = await import('@/server/services/market');
-            const marketService = new MarketService({ userInfo: { userId: ctx.userId } });
+            const userModel = new UserModel(ctx.serverDB, ctx.userId);
+            const settings = await userModel.getUserSettings();
+            const accessToken = (settings?.market as any)?.accessToken;
+            const marketService = new MarketService({
+              accessToken,
+              userInfo: { userId: ctx.userId },
+            });
             const credsResult = await marketService.market.creds.list();
             const userCreds = (credsResult as any)?.data ?? [];
             credsListStr = generateCredsList(

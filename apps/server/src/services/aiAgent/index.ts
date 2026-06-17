@@ -307,7 +307,11 @@ export class AiAgentService {
   constructor(
     db: LobeChatDatabase,
     userId: string,
-    options?: { runtimeOptions?: AgentRuntimeServiceOptions; workspaceId?: string },
+    options?: {
+      marketAccessToken?: string;
+      runtimeOptions?: AgentRuntimeServiceOptions;
+      workspaceId?: string;
+    },
   ) {
     this.userId = userId;
     this.db = db;
@@ -340,7 +344,10 @@ export class AiAgentService {
       },
       workspaceId: wsId,
     });
-    this.marketService = new MarketService({ userInfo: { userId } });
+    this.marketService = new MarketService({
+      accessToken: options?.marketAccessToken,
+      userInfo: { userId },
+    });
     this.composioService = new ComposioService({ db, userId });
   }
 

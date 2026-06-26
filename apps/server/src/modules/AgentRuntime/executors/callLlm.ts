@@ -587,7 +587,20 @@ export const callLlm =
         let credsListStr = '';
         if (ctx.userId) {
           try {
-            const marketService = new MarketService({ userInfo: { userId: ctx.userId } });
+            let marketAccessToken: string | undefined;
+            if (ctx.serverDB) {
+              try {
+                const userModel = new UserModel(ctx.serverDB, ctx.userId);
+                const settings = await userModel.getUserSettings();
+                marketAccessToken = (settings?.market as any)?.accessToken;
+              } catch {
+                // non-fatal — MarketService will fall back to trustedClientToken
+              }
+            }
+            const marketService = new MarketService({
+              accessToken: marketAccessToken,
+              userInfo: { userId: ctx.userId },
+            });
             const credsResult = await marketService.market.creds.list();
             const userCreds = (credsResult as any)?.data ?? [];
             credsListStr = generateCredsList(

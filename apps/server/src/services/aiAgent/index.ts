@@ -432,7 +432,7 @@ export class AiAgentService {
   private readonly threadModel: ThreadModel;
   private readonly topicModel: TopicModel;
   private readonly agentRuntimeService: AgentRuntimeService;
-  private readonly marketService: MarketService;
+  private _marketService?: MarketService;
   private readonly composioService: ComposioService;
 
   private readonly workspaceId?: string;
@@ -478,11 +478,35 @@ export class AiAgentService {
       },
       workspaceId: wsId,
     });
-    this.marketService = new MarketService({
-      accessToken: options?.marketAccessToken,
-      userInfo: { userId },
-    });
+
+    // marketService is used for creds, sandbox, skills etc.
+    // Read accessToken from DB; if options.marketAccessToken is provided, use it as override.
+    if (options?.marketAccessToken) {
+      this._marketService = new MarketService({
+        accessToken: options.marketAccessToken,
+        userInfo: { userId },
+      });
+    }
     this.composioService = new ComposioService({ db, userId });
+  }
+
+  private async getMarketService(): Promise<MarketService> {
+    if (this._marketService) return this._marketService;
+
+    let accessToken: string | undefined;
+    try {
+      const userModel = new UserModel(this.db, this.userId);
+      const settings = await userModel.getUserSettings();
+      accessToken = (settings?.market as any)?.accessToken;
+    } catch {
+      // non-fatal — MarketService will fall back to trustedClientToken
+    }
+
+    this._marketService = new MarketService({
+      accessToken,
+      userInfo: { userId: this.userId },
+    });
+    return this._marketService;
   }
 
   private async resolveOperationTaskId(
@@ -1634,10 +1658,11 @@ export class AiAgentService {
       const githubCredKey =
         agentConfig.agencyConfig?.heterogeneousProvider?.env?.GITHUB_CRED_KEY ?? 'github';
       try {
-        const list = await this.marketService.market.creds.list();
+        const marketService = await this.getMarketService();
+        const list = await marketService.market.creds.list();
         const cred = list.data?.find((c: { key: string }) => c.key === githubCredKey);
         if (cred) {
-          const full = await this.marketService.market.creds.get(cred.id, { decrypt: true });
+          const full = await marketService.market.creds.get(cred.id, { decrypt: true });
           const vals = (full as any).plaintext ?? (full as any).values ?? {};
           githubToken = vals.access_token ?? vals.token;
         }
@@ -2038,6 +2063,7 @@ export class AiAgentService {
           // `aiAgent` import. Only this cloud-CLI branch needs it.
           const { spawnHeteroSandbox } =
             await import('@/server/services/heterogeneousAgent/sandboxRunner');
+          const marketService = await this.getMarketService();
           // The sandbox authenticates its nested `lh` calls with this JWT. The
           // narrow `hetero-operation` token (used for the device-dispatch path
           // above) is rejected by `oidcAuth`, so CC capabilities that hit
@@ -2052,7 +2078,7 @@ export class AiAgentService {
             agentType: heteroType as 'claude-code' | 'codex',
             args: heteroExecArgs,
             jwt: sandboxJwt,
-            marketService: this.marketService,
+            marketService,
           }).catch(async (err) => {
             // Fire-and-forget: execAgent has already returned `autoStarted`, and
             // the sandbox never reached the point of calling heteroFinish. Drive
@@ -2306,7 +2332,8 @@ export class AiAgentService {
 
       // 5c. Fetch LobeHub Skills manifests
       try {
-        lobehubSkillManifests = await this.marketService.getLobehubSkillManifests();
+        const marketService = await this.getMarketService();
+        lobehubSkillManifests = await marketService.getLobehubSkillManifests();
       } catch (error) {
         log('execAgent: failed to fetch lobehub skill manifests: %O', error);
       }

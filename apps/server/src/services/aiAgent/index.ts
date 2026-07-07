@@ -525,7 +525,7 @@ export class AiAgentService {
   private readonly threadModel: ThreadModel;
   private readonly topicModel: TopicModel;
   private readonly agentRuntimeService: AgentRuntimeService;
-  private readonly marketService: MarketService;
+  private _marketService?: MarketService;
   private readonly composioService: ComposioService;
 
   private readonly workspaceId?: string;
@@ -533,7 +533,11 @@ export class AiAgentService {
   constructor(
     db: LobeChatDatabase,
     userId: string,
-    options?: { runtimeOptions?: AgentRuntimeServiceOptions; workspaceId?: string },
+    options?: {
+      marketAccessToken?: string;
+      runtimeOptions?: AgentRuntimeServiceOptions;
+      workspaceId?: string;
+    },
   ) {
     this.userId = userId;
     this.db = db;
@@ -568,8 +572,35 @@ export class AiAgentService {
       },
       workspaceId: wsId,
     });
-    this.marketService = new MarketService({ userInfo: { userId } });
+
+    // marketService is used for creds, sandbox, skills etc.
+    // Read accessToken from DB; if options.marketAccessToken is provided, use it as override.
+    if (options?.marketAccessToken) {
+      this._marketService = new MarketService({
+        accessToken: options.marketAccessToken,
+        userInfo: { userId },
+      });
+    }
     this.composioService = new ComposioService({ db, userId, workspaceId: wsId });
+  }
+
+  private async getMarketService(): Promise<MarketService> {
+    if (this._marketService) return this._marketService;
+
+    let accessToken: string | undefined;
+    try {
+      const userModel = new UserModel(this.db, this.userId);
+      const settings = await userModel.getUserSettings();
+      accessToken = (settings?.market as any)?.accessToken;
+    } catch {
+      // non-fatal — MarketService will fall back to trustedClientToken
+    }
+
+    this._marketService = new MarketService({
+      accessToken,
+      userInfo: { userId: this.userId },
+    });
+    return this._marketService;
   }
 
   private async resolveOperationTaskId(
@@ -1983,9 +2014,10 @@ export class AiAgentService {
       try {
         // Inside a workspace, the GitHub cred must come from the workspace's shared
         // organization credentials, not the operator's personal creds.
+        const marketService = await this.getMarketService();
         const credsAccessor = this.workspaceId
-          ? this.marketService.market.organizations.creds({ workspaceId: this.workspaceId })
-          : this.marketService.market.creds;
+          ? marketService.market.organizations.creds({ workspaceId: this.workspaceId })
+          : marketService.market.creds;
         const list = await credsAccessor.list();
         const cred = list.data?.find((c: { key: string }) => c.key === githubCredKey);
         if (cred) {
@@ -2435,12 +2467,13 @@ export class AiAgentService {
           // ownership-gated on heteroIngest/heteroFinish) with a run-length TTL
           // so it outlives a multi-hour run.
           const sandboxJwt = await signUserJWT(this.userId, '4h');
+          const marketService = await this.getMarketService();
           spawnHeteroSandbox({
             ...heteroParams,
             agentType: heteroType as 'claude-code' | 'codex',
             args: heteroExecArgs,
             jwt: sandboxJwt,
-            marketService: this.marketService,
+            marketService,
           }).catch(async (err) => {
             // Fire-and-forget: execAgent has already returned `autoStarted`, and
             // the sandbox never reached the point of calling heteroFinish. Drive
@@ -2790,7 +2823,8 @@ export class AiAgentService {
 
       // 5c. Fetch LobeHub Skills manifests
       try {
-        lobehubSkillManifests = await this.marketService.getLobehubSkillManifests();
+        const marketService = await this.getMarketService();
+        lobehubSkillManifests = await marketService.getLobehubSkillManifests();
       } catch (error) {
         log('execAgent: failed to fetch lobehub skill manifests: %O', error);
       }

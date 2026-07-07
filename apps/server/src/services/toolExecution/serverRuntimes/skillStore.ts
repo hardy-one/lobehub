@@ -12,13 +12,13 @@ import { RBAC_PERMISSIONS } from '@lobechat/const/rbac';
 import debug from 'debug';
 
 import { RbacModel } from '@/database/models/rbac';
-import { UserModel } from '@/database/models/user';
 import {
   emitToolOutcomeSafely,
   resolveToolOutcomeScope,
 } from '@/server/services/agentSignal/procedure';
 import { redisPolicyStateStore } from '@/server/services/agentSignal/store/adapters/redis/policyStateStore';
 import { MarketService } from '@/server/services/market';
+import { getMarketAccessToken } from '@/server/services/market/getMarketAccessToken';
 import { SkillImporter } from '@/server/services/skill/importer';
 
 import { type ServerRuntimeRegistration } from './types';
@@ -243,20 +243,12 @@ export const skillStoreRuntime: ServerRuntimeRegistration = {
       throw new Error('userId is required for Skill Store execution');
     }
 
-    // Fetch market access token from user settings
-    let marketAccessToken: string | undefined;
-    try {
-      const userModel = new UserModel(context.serverDB, context.userId);
-      const userSettings = await userModel.getUserSettings();
-      marketAccessToken = (userSettings?.market as any)?.accessToken;
-      log(
-        'Fetched market accessToken for user %s: %s',
-        context.userId,
-        marketAccessToken ? 'exists' : 'not found',
-      );
-    } catch (error) {
-      log('Failed to fetch market accessToken for user %s: %O', context.userId, error);
-    }
+    const marketAccessToken = await getMarketAccessToken(context.serverDB, context.userId);
+    log(
+      'Fetched market accessToken for user %s: %s',
+      context.userId,
+      marketAccessToken ? 'exists' : 'not found',
+    );
 
     // Importing inside a workspace writes the SHARED workspace skill catalog.
     // This server-runtime path is reached via aiAgentWriteProcedure

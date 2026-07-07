@@ -26,13 +26,13 @@ import debug from 'debug';
 import { AgentModel } from '@/database/models/agent';
 import { AgentSkillModel } from '@/database/models/agentSkill';
 import { FileModel } from '@/database/models/file';
-import { UserModel } from '@/database/models/user';
 import type { LobeChatDatabase } from '@/database/type';
 import { filterBuiltinSkills } from '@/helpers/skillFilters';
 import { AgentDocumentsService } from '@/server/services/agentDocuments';
 import { deviceGateway } from '@/server/services/deviceGateway';
 import { FileService } from '@/server/services/file';
 import { MarketService } from '@/server/services/market';
+import { getMarketAccessToken } from '@/server/services/market/getMarketAccessToken';
 import { createSandboxService, normalizeSandboxCommandResult } from '@/server/services/sandbox';
 import { SkillResourceService } from '@/server/services/skill/resource';
 import {
@@ -45,12 +45,6 @@ import { resolveContentWorkspaceId, resolveRunWorkspaceId } from './resolveWorks
 import { type ServerRuntimeRegistration } from './types';
 
 const log = debug('lobe-server:skills-runtime');
-
-interface UserSettingsWithMarketToken {
-  market?: {
-    accessToken?: string;
-  };
-}
 
 /**
  * Device-execution wiring for the exec APIs, present only when the run's
@@ -644,21 +638,12 @@ export const skillsRuntime: ServerRuntimeRegistration = {
       throw new Error('userId is required for Skills execution');
     }
 
-    // Fetch market access token from user settings
-    let marketAccessToken: string | undefined;
-    try {
-      const userModel = new UserModel(context.serverDB, context.userId);
-      const userSettings = await userModel.getUserSettings();
-      marketAccessToken = (userSettings as UserSettingsWithMarketToken | undefined)?.market
-        ?.accessToken;
-      log(
-        'Fetched market accessToken for user %s: %s',
-        context.userId,
-        marketAccessToken ? 'exists' : 'not found',
-      );
-    } catch (error) {
-      log('Failed to fetch market accessToken for user %s: %O', context.userId, error);
-    }
+    const marketAccessToken = await getMarketAccessToken(context.serverDB, context.userId);
+    log(
+      'Fetched market accessToken for user %s: %s',
+      context.userId,
+      marketAccessToken ? 'exists' : 'not found',
+    );
 
     // Independent of `<available_skills>` (built once, earlier, in
     // aiAgent/index.ts) — this runtime resolves skills fresh by name/id, so a

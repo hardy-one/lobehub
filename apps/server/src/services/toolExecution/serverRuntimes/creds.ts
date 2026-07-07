@@ -4,6 +4,7 @@ import debug from 'debug';
 
 import { WorkspaceMemberModel } from '@/database/models/workspaceMember';
 import { MarketService } from '@/server/services/market';
+import { getMarketAccessToken } from '@/server/services/market/getMarketAccessToken';
 
 import { type ServerRuntimeRegistration } from './types';
 
@@ -183,7 +184,12 @@ export const credsRuntime: ServerRuntimeRegistration = {
       context.workspaceId,
     );
 
+    const accessToken = context.serverDB
+      ? await getMarketAccessToken(context.serverDB, context.userId)
+      : undefined;
+
     const marketService = new MarketService({
+      accessToken,
       userInfo: { userId: context.userId, workspaceId: context.workspaceId },
     });
     const credsService = new ServerCredsService(marketService, context.workspaceId);

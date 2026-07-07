@@ -10,6 +10,7 @@ import { FileModel } from '@/database/models/file';
 import { router } from '@/libs/trpc/lambda';
 import { serverDatabase } from '@/libs/trpc/lambda/middleware';
 import { FileService } from '@/server/services/file';
+import { getMarketAccessToken } from '@/server/services/market/getMarketAccessToken';
 import { MarketService } from '@/server/services/market';
 import {
   SkillImporter,
@@ -68,11 +69,16 @@ const skillProcedure = wsCompatProcedure.use(serverDatabase).use(async (opts) =>
   const workspaceId = ctx.workspaceId ?? undefined;
   const skillModel = new AgentSkillModel(ctx.serverDB, ctx.userId, workspaceId);
 
+  const marketAccessToken = await getMarketAccessToken(ctx.serverDB, ctx.userId);
+
   return opts.next({
     ctx: {
       fileModel: new FileModel(ctx.serverDB, ctx.userId, workspaceId),
       fileService: new FileService(ctx.serverDB, ctx.userId, workspaceId),
-      marketService: new MarketService({ userInfo: { userId: ctx.userId } }),
+      marketService: new MarketService({
+        accessToken: marketAccessToken,
+        userInfo: { userId: ctx.userId },
+      }),
       skillImporter: new SkillImporter(ctx.serverDB, ctx.userId, workspaceId),
       skillModel,
     },

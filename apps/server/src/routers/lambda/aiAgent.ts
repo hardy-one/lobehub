@@ -37,6 +37,7 @@ import { AiAgentService } from '@/server/services/aiAgent';
 import { AiChatService } from '@/server/services/aiChat';
 import { getFileProxyUrl } from '@/server/services/file';
 import { HeterogeneousAgentService } from '@/server/services/heterogeneousAgent';
+import { getMarketAccessToken } from '@/server/services/market/getMarketAccessToken';
 
 const log = debug('lobe-server:ai-agent-router');
 
@@ -628,12 +629,17 @@ const aiAgentProcedure = wsCompatProcedure.use(serverDatabase).use(async (opts) 
   const { ctx } = opts;
   const wsId = ctx.workspaceId ?? undefined;
 
+  const marketAccessToken = await getMarketAccessToken(ctx.serverDB, ctx.userId);
+
   return opts.next({
     ctx: {
       agentRuntimeService: new AgentRuntimeService(ctx.serverDB, ctx.userId, {
         workspaceId: wsId,
       }),
-      aiAgentService: new AiAgentService(ctx.serverDB, ctx.userId, { workspaceId: wsId }),
+      aiAgentService: new AiAgentService(ctx.serverDB, ctx.userId, {
+        marketAccessToken,
+        workspaceId: wsId,
+      }),
       aiChatService: new AiChatService(ctx.serverDB, ctx.userId, wsId),
       heterogeneousAgentService: new HeterogeneousAgentService(ctx.serverDB, ctx.userId, {
         workspaceId: wsId,

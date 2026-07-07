@@ -10,6 +10,7 @@ import debug from 'debug';
 
 import { ComposioService } from '@/server/services/composio';
 import { MarketService } from '@/server/services/market';
+import { getMarketAccessToken } from '@/server/services/market/getMarketAccessToken';
 
 import { getServerRuntime, hasServerRuntime } from './serverRuntimes';
 import { type IToolExecutor, type ToolExecutionContext, type ToolExecutionResult } from './types';
@@ -49,14 +50,27 @@ const collectRuntimeApiNames = (runtime: Record<string, any>): string[] => {
 };
 
 export class BuiltinToolsExecutor implements IToolExecutor {
-  private marketService: MarketService;
   private db: LobeChatDatabase;
   private userId: string;
+  private composioService: ComposioService;
+  private _marketService?: MarketService;
 
   constructor(db: LobeChatDatabase, userId: string) {
     this.db = db;
     this.userId = userId;
-    this.marketService = new MarketService({ userInfo: { userId } });
+    this.composioService = new ComposioService({ db, userId });
+  }
+
+  private async getMarketService(): Promise<MarketService> {
+    if (this._marketService) return this._marketService;
+
+    const accessToken = await getMarketAccessToken(this.db, this.userId);
+
+    this._marketService = new MarketService({
+      accessToken,
+      userInfo: { userId: this.userId },
+    });
+    return this._marketService;
   }
 
   async execute(
@@ -107,7 +121,8 @@ export class BuiltinToolsExecutor implements IToolExecutor {
 
     // Route LobeHub Skills to MarketService
     if (source === 'lobehubSkill') {
-      const result = await this.marketService.executeLobehubSkill({
+      const marketService = await this.getMarketService();
+      const result = await marketService.executeLobehubSkill({
         args,
         context: {
           topicId: context.topicId,

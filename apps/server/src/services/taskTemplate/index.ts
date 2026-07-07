@@ -10,11 +10,13 @@ import {
   TASK_TEMPLATE_RECOMMEND_COUNT,
   TASK_TEMPLATE_RECOMMEND_MAX_COUNT,
 } from '@lobechat/const';
+import type { LobeChatDatabase } from '@lobechat/database';
 import { z } from 'zod';
 
 import { appEnv } from '@/envs/app';
 import { isTrustedClientEnabled } from '@/libs/trusted-client';
 import { MarketService } from '@/server/services/market';
+import { getMarketAccessToken } from '@/server/services/market/getMarketAccessToken';
 
 const clampRecommendationCount = (count?: number) =>
   Math.min(Math.max(1, count ?? TASK_TEMPLATE_RECOMMEND_COUNT), TASK_TEMPLATE_RECOMMEND_MAX_COUNT);
@@ -111,10 +113,25 @@ const parseTaskTemplateRecommendations = (value: unknown): TaskTemplate[] => {
 };
 
 export class TaskTemplateService {
-  private marketService: MarketService;
+  private marketService?: MarketService;
 
-  constructor(private userId: string) {
-    this.marketService = new MarketService({ userInfo: { userId } });
+  constructor(
+    private userId: string,
+    private db?: LobeChatDatabase,
+  ) {}
+
+  private async getMarketService(): Promise<MarketService> {
+    if (this.marketService) return this.marketService;
+
+    const accessToken = this.db
+      ? await getMarketAccessToken(this.db, this.userId)
+      : undefined;
+
+    this.marketService = new MarketService({
+      accessToken,
+      userInfo: { userId: this.userId },
+    });
+    return this.marketService;
   }
 
   async listDailyRecommend(
@@ -127,7 +144,8 @@ export class TaskTemplateService {
     } = {},
   ): Promise<TaskTemplate[]> {
     try {
-      const result = await this.marketService.market.taskTemplates.getTaskTemplateRecommendations({
+      const marketService = await this.getMarketService();
+      const result = await marketService.market.taskTemplates.getTaskTemplateRecommendations({
         count: clampRecommendationCount(options.count),
         excludeIds: options.excludeIds,
         interestKeys,

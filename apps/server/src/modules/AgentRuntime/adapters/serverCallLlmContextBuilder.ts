@@ -39,6 +39,7 @@ import { UserPersonaModel } from '@/database/models/userMemory/persona';
 import { serverMessagesEngine } from '@/server/modules/Mecha/ContextEngineering';
 import { AgentDocumentsService } from '@/server/services/agentDocuments';
 import { MarketService } from '@/server/services/market';
+import { getMarketAccessToken } from '@/server/services/market/getMarketAccessToken';
 import { OnboardingService } from '@/server/services/onboarding';
 import { toAgentContextDocuments } from '@/utils/agentDocumentContextMapping';
 
@@ -316,8 +317,14 @@ export const buildServerCallLlmContext = async ({
 
   let credsListStr = '';
   if (ctx.userId) {
+    const marketAccessToken = ctx.serverDB
+      ? await getMarketAccessToken(ctx.serverDB, ctx.userId)
+      : undefined;
     try {
-      const marketService = new MarketService({ userInfo: { userId: ctx.userId } });
+      const marketService = new MarketService({
+        accessToken: marketAccessToken,
+        userInfo: { userId: ctx.userId },
+      });
       // Inside a workspace, the agent must only see the workspace's shared
       // organization credentials — personal creds are not visible here.
       const credsResult = ctx.workspaceId

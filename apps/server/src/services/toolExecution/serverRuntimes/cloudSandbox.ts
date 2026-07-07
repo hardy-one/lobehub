@@ -3,6 +3,7 @@ import { CloudSandboxExecutionRuntime } from '@lobechat/builtin-tool-cloud-sandb
 
 import { FileService } from '@/server/services/file';
 import { MarketService } from '@/server/services/market';
+import { getMarketAccessToken } from '@/server/services/market/getMarketAccessToken';
 import { createSandboxService } from '@/server/services/sandbox';
 import {
   isLhCommand,
@@ -61,7 +62,7 @@ const withLhPreprocessing = (
  * Per-request runtime (needs topicId, userId)
  */
 export const cloudSandboxRuntime: ServerRuntimeRegistration = {
-  factory: (context) => {
+  factory: async (context) => {
     if (!context.userId || !context.topicId) {
       throw new Error('userId and topicId are required for Cloud Sandbox execution');
     }
@@ -70,7 +71,12 @@ export const cloudSandboxRuntime: ServerRuntimeRegistration = {
       throw new Error('serverDB is required for Cloud Sandbox execution');
     }
 
-    const marketService = new MarketService({ userInfo: { userId: context.userId } });
+    const accessToken = await getMarketAccessToken(context.serverDB, context.userId);
+
+    const marketService = new MarketService({
+      accessToken,
+      userInfo: { userId: context.userId },
+    });
     const fileService = new FileService(context.serverDB, context.userId, context.workspaceId);
     const sandboxService = createSandboxService({
       fileService,

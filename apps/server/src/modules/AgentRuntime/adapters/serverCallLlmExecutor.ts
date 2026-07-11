@@ -8,7 +8,6 @@ import {
   resolveLLMMaxAttempts,
   resolveLLMRetryBudget,
   shouldRetryLLM,
-  UsageCounter,
 } from '@lobechat/agent-runtime';
 import { BRANDING_PROVIDER } from '@lobechat/business-const';
 import { ToolNameResolver } from '@lobechat/context-engine';
@@ -30,21 +29,28 @@ import {
   chatSpanName,
   tracer as agentRuntimeTracer,
 } from '@lobechat/observability-otel/modules/agent-runtime';
-import { type ChatToolPayload, type MessageToolCall } from '@lobechat/types';
-import { sanitizeToolCallArguments, serializePartsForStorage } from '@lobechat/utils';
+import type {
+  ChatImageItem,
+  ChatToolPayload,
+  GroundingSearch,
+  MessageToolCall,
+  ModelPerformance,
+  ModelUsage,
+} from '@lobechat/types';
 
-import { fileEnv } from '@/envs/file';
 import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
-import { FileService } from '@/server/services/file';
-import { nanoid } from '@/utils/uuid';
 
 import { type RuntimeExecutorContext } from '../context';
 import { isOperationInterrupted, log, sleep, timing } from '../executorHelpers';
 import { formatErrorEventData } from '../formatErrorEventData';
 import { classifyLLMError } from '../llmErrorClassification';
 import { createConversationParentMissingError } from '../messagePersistErrors';
-import { VISIBLE_OUTPUT_END_PUBLISHED_STEP_INDEX_METADATA_KEY } from '../visibleOutputEnd';
 import { buildServerCallLlmContext } from './serverCallLlmContextBuilder';
+import {
+  finalizeServerCallLlmResult,
+  persistInterruptedServerCallLlmResult,
+} from './serverCallLlmFinalizer';
+import { createServerCallLlmStreamSink } from './serverCallLlmStreamSink';
 import { resolveServerCallLlmTooling, type ServerCallLlmTooling } from './serverCallLlmTooling';
 
 interface PreparedCallLLMContext {
@@ -74,7 +80,8 @@ export const callLlm =
     const model = prepared?.model ?? llmPayload.model ?? state.modelRuntimeConfig?.model;
     const provider =
       prepared?.provider ?? llmPayload.provider ?? state.modelRuntimeConfig?.provider;
-    const tooling = prepared?.tooling ?? resolveServerCallLlmTooling(ctx, state);
+    const tooling =
+      prepared?.tooling ?? resolveServerCallLlmTooling(ctx, state, llmPayload.allowedToolNames);
     const { resolved, tools } = tooling;
 
     if (!model || !provider) {
@@ -176,7 +183,6 @@ export const callLlm =
     }
 
     try {
-      type ContentPart = { text: string; type: 'text' } | { image: string; type: 'image' };
       const {
         preserveThinkingForPayload,
         processedMessages,
@@ -230,114 +236,6 @@ export const callLlm =
         }),
       };
 
-      // Buffer: accumulate text and reasoning, send every 50ms
-      const BUFFER_INTERVAL = 50;
-      let textBuffer = '';
-      let reasoningBuffer = '';
-
-      let textBufferTimer: NodeJS.Timeout | null = null;
-      let reasoningBufferTimer: NodeJS.Timeout | null = null;
-
-      const flushTextBuffer = async () => {
-        const delta = textBuffer;
-        textBuffer = '';
-
-        if (!!delta) {
-          log(`[${operationLogId}] flushTextBuffer:`, delta);
-
-          // Build standard Agent Runtime event
-          events.push({
-            chunk: { text: delta, type: 'text' },
-            type: 'llm_stream',
-          });
-
-          const publishStart = Date.now();
-          await streamManager.publishStreamChunk(operationId, stepIndex, {
-            chunkType: 'text',
-            content: delta,
-          });
-          timing(
-            '[%s] flushTextBuffer published at %d, took %dms, length: %d',
-            operationLogId,
-            publishStart,
-            Date.now() - publishStart,
-            delta.length,
-          );
-        }
-      };
-
-      const flushReasoningBuffer = async () => {
-        const delta = reasoningBuffer;
-
-        reasoningBuffer = '';
-
-        if (!!delta) {
-          log(`[${operationLogId}] flushReasoningBuffer:`, delta);
-
-          events.push({
-            chunk: { text: delta, type: 'reasoning' },
-            type: 'llm_stream',
-          });
-
-          const publishStart = Date.now();
-          await streamManager.publishStreamChunk(operationId, stepIndex, {
-            chunkType: 'reasoning',
-            reasoning: delta,
-          });
-          timing(
-            '[%s] flushReasoningBuffer published at %d, took %dms, length: %d',
-            operationLogId,
-            publishStart,
-            Date.now() - publishStart,
-            delta.length,
-          );
-        }
-      };
-
-      // File service + date shard used to persist model-generated images
-      // (Gemini multimodal `content_part`/`reasoning_part` images) to object
-      // storage, built once and reused across parts. The `userId` check only
-      // satisfies its optional type — it is always present in this executor.
-      // A missing-S3-config failure surfaces later at uploadBase64 (caught per
-      // image in uploadPartImage), never at construction.
-      const imageUploadService = ctx.userId ? new FileService(ctx.serverDB, ctx.userId) : undefined;
-      const imageUploadDate = new Date().toISOString().split('T')[0];
-
-      // Coalesce a streamed text chunk into the trailing text part (mirrors the
-      // client StreamingHandler) so serialized multimodal content stays compact
-      // and preserves text/image ordering.
-      const appendTextPart = (parts: ContentPart[], text: string) => {
-        const last = parts.at(-1);
-        if (last && last.type === 'text') {
-          parts[parts.length - 1] = { text: last.text + text, type: 'text' };
-        } else {
-          parts.push({ text, type: 'text' });
-        }
-      };
-
-      // Persist a base64 image part to object storage and swap the placeholder
-      // part for one referencing the uploaded URL. Runs concurrently with the
-      // rest of the stream; a failed upload leaves the inline data-URI so the
-      // image still renders. Never stores raw base64 in the message on success.
-      const uploadPartImage = (
-        parts: ContentPart[],
-        partIndex: number,
-        base64: string,
-        mimeType: string | undefined,
-      ): Promise<void> => {
-        if (!imageUploadService) return Promise.resolve();
-        const ext = mimeType?.split('/')[1] || 'png';
-        const pathname = `${fileEnv.NEXT_PUBLIC_S3_FILE_PATH}/generations/${imageUploadDate}/${nanoid()}.${ext}`;
-        return imageUploadService
-          .uploadBase64(base64, pathname)
-          .then(({ url }) => {
-            parts[partIndex] = { image: url, type: 'image' };
-          })
-          .catch((error) => {
-            console.error(`[${operationLogId}][content_part] image upload failed:`, error);
-          });
-      };
-
       const maxAttempts = resolveLLMMaxAttempts(provider, SERVER_LLM_RETRY_POLICY);
 
       // OTel chat span — wraps all retry attempts; TTFT recorded on the first
@@ -361,43 +259,23 @@ export const callLlm =
       try {
         return await otelContext.with(chatCtx, async () => {
           for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            let content = '';
+            const streamSink = createServerCallLlmStreamSink({
+              ctx,
+              events,
+              operationLogId,
+            });
             let toolsCalling: ChatToolPayload[] = [];
             let tool_calls: MessageToolCall[] = [];
-            let thinkingContent = '';
-            const imageList: any[] = [];
-            let grounding: any = null;
-            let currentStepUsage: any = undefined;
-            let currentStepSpeed: any = undefined;
+            const imageList: ChatImageItem[] = [];
+            let grounding: GroundingSearch | null = null;
+            let currentStepUsage: ModelUsage | undefined;
+            let currentStepSpeed: ModelPerformance | undefined;
             let currentStepFinishReason: string | undefined = undefined;
             let streamError: any = undefined;
-            const contentParts: ContentPart[] = [];
-            const reasoningParts: ContentPart[] = [];
-            const contentImageUploads: Promise<void>[] = [];
-            const reasoningImageUploads: Promise<void>[] = [];
-            let hasContentImages = false;
-            let hasReasoningImages = false;
             // Set when a terminal turn's answer was salvaged from the reasoning
             // channel (see the answer-in-thinking guard below) — surfaced in
             // message metadata for observability.
             let answerSalvagedFromReasoning = false;
-            textBuffer = '';
-            reasoningBuffer = '';
-
-            const clearAttemptBuffers = () => {
-              if (textBufferTimer) {
-                clearTimeout(textBufferTimer);
-                textBufferTimer = null;
-              }
-
-              if (reasoningBufferTimer) {
-                clearTimeout(reasoningBufferTimer);
-                reasoningBufferTimer = null;
-              }
-
-              textBuffer = '';
-              reasoningBuffer = '';
-            };
 
             try {
               log(
@@ -447,17 +325,7 @@ export const callLlm =
                       Date.now(),
                       text.length,
                     );
-                    content += text;
-
-                    textBuffer += text;
-
-                    // If no timer exists, create one
-                    if (!textBufferTimer) {
-                      textBufferTimer = setTimeout(async () => {
-                        await flushTextBuffer();
-                        textBufferTimer = null;
-                      }, BUFFER_INTERVAL);
-                    }
+                    await streamSink.appendText(text);
                   },
                   onThinking: async (reasoning) => {
                     if (firstChunkAt === undefined) {
@@ -469,18 +337,7 @@ export const callLlm =
                       Date.now(),
                       reasoning.length,
                     );
-                    thinkingContent += reasoning;
-
-                    // Buffer reasoning content
-                    reasoningBuffer += reasoning;
-
-                    // If no timer exists, create one
-                    if (!reasoningBufferTimer) {
-                      reasoningBufferTimer = setTimeout(async () => {
-                        await flushReasoningBuffer();
-                        reasoningBufferTimer = null;
-                      }, BUFFER_INTERVAL);
-                    }
+                    await streamSink.appendThinking(reasoning);
                   },
                   // Gemini 2.5+/3 multimodal streams deliver assistant text and
                   // reasoning as `content_part`/`reasoning_part` events (triggered by
@@ -497,29 +354,7 @@ export const callLlm =
                       firstChunkAt = Date.now() - llmStartTime;
                     }
 
-                    if (part.partType === 'image') {
-                      const partIndex = contentParts.length;
-                      contentParts.push({
-                        image: `data:${part.mimeType || 'image/png'};base64,${part.content}`,
-                        type: 'image',
-                      });
-                      hasContentImages = true;
-                      contentImageUploads.push(
-                        uploadPartImage(contentParts, partIndex, part.content, part.mimeType),
-                      );
-                      return;
-                    }
-
-                    content += part.content;
-                    appendTextPart(contentParts, part.content);
-                    textBuffer += part.content;
-
-                    if (!textBufferTimer) {
-                      textBufferTimer = setTimeout(async () => {
-                        await flushTextBuffer();
-                        textBufferTimer = null;
-                      }, BUFFER_INTERVAL);
-                    }
+                    await streamSink.appendContentPart(part);
                   },
                   // Some Gemini / Nano Banana image responses arrive via the
                   // legacy single-image `base64_image` event instead of
@@ -536,46 +371,21 @@ export const callLlm =
                       firstChunkAt = Date.now() - llmStartTime;
                     }
 
-                    // `image.data` is a full data URI (`data:<mime>;base64,<...>`).
-                    const mimeType = /^data:([^;]+);/.exec(image.data)?.[1];
-                    const partIndex = contentParts.length;
-                    contentParts.push({ image: image.data, type: 'image' });
-                    hasContentImages = true;
-                    contentImageUploads.push(
-                      uploadPartImage(contentParts, partIndex, image.data, mimeType),
-                    );
+                    await streamSink.appendBase64Image(image);
                   },
                   onReasoningPart: async (part) => {
                     if (firstChunkAt === undefined) {
                       firstChunkAt = Date.now() - llmStartTime;
                     }
 
-                    if (part.partType === 'image') {
-                      const partIndex = reasoningParts.length;
-                      reasoningParts.push({
-                        image: `data:${part.mimeType || 'image/png'};base64,${part.content}`,
-                        type: 'image',
-                      });
-                      hasReasoningImages = true;
-                      reasoningImageUploads.push(
-                        uploadPartImage(reasoningParts, partIndex, part.content, part.mimeType),
-                      );
-                      return;
-                    }
-
-                    thinkingContent += part.content;
-                    appendTextPart(reasoningParts, part.content);
-                    reasoningBuffer += part.content;
-
-                    if (!reasoningBufferTimer) {
-                      reasoningBufferTimer = setTimeout(async () => {
-                        await flushReasoningBuffer();
-                        reasoningBufferTimer = null;
-                      }, BUFFER_INTERVAL);
-                    }
+                    await streamSink.appendReasoningPart(part);
                   },
                   onToolsCalling: async ({ toolsCalling: raw }) => {
-                    const resolvedCalls = new ToolNameResolver().resolve(raw, resolved.manifestMap);
+                    const resolvedCalls = new ToolNameResolver().resolve(
+                      raw,
+                      resolved.promptManifestMap,
+                      resolved.tools.map((tool) => tool.function.name),
+                    );
                     // Attach source (origin) and executor (dispatch target) for routing.
                     // `arguments` are kept RAW here on purpose so the tool executor can
                     // still detect malformed JSON and return an `INVALID_JSON_ARGUMENTS`
@@ -593,10 +403,7 @@ export const callLlm =
                     toolsCalling = payload;
                     tool_calls = raw;
 
-                    // If textBuffer exists, flush it first
-                    if (!!textBuffer) {
-                      await flushTextBuffer();
-                    }
+                    await streamSink.flushTextBuffer();
 
                     await streamManager.publishStreamChunk(operationId, stepIndex, {
                       chunkType: 'tools_calling',
@@ -634,15 +441,13 @@ export const callLlm =
                 throw streamExecutionError;
               }
 
-              await flushTextBuffer();
-              await flushReasoningBuffer();
-              clearAttemptBuffers();
+              await streamSink.flushTextBuffer();
+              await streamSink.flushReasoningBuffer();
+              streamSink.clearBuffers();
 
               // Wait for any model-generated image uploads to finish so the
               // persisted multimodal content references S3 URLs, not base64.
-              if (contentImageUploads.length > 0 || reasoningImageUploads.length > 0) {
-                await Promise.allSettled([...contentImageUploads, ...reasoningImageUploads]);
-              }
+              await streamSink.waitForImageUploads();
 
               // Empty-completion guard: if the model produced
               // nothing actionable — no content, reasoning, tool calls, images,
@@ -657,11 +462,11 @@ export const callLlm =
 
               if (
                 isEmptyModelCompletion({
-                  content,
+                  content: streamSink.content,
                   imageCount: imageList.length,
                   outputTokens:
                     typeof reportedOutputTokens === 'number' ? reportedOutputTokens : undefined,
-                  reasoning: thinkingContent,
+                  reasoning: streamSink.thinkingContent,
                   toolCallCount: toolsCalling.length + tool_calls.length,
                 }) &&
                 !(await isOperationInterrupted(ctx))
@@ -674,7 +479,7 @@ export const callLlm =
                 );
                 throw new ModelEmptyError(undefined, {
                   attempt,
-                  contentLength: content.length,
+                  contentLength: streamSink.content.length,
                   finishReason: currentStepFinishReason,
                   imageCount: imageList.length,
                   maxAttempts,
@@ -682,7 +487,7 @@ export const callLlm =
                   outputTokens:
                     typeof reportedOutputTokens === 'number' ? reportedOutputTokens : undefined,
                   provider,
-                  reasoningLength: thinkingContent.length,
+                  reasoningLength: streamSink.thinkingContent.length,
                   toolCallCount: toolsCalling.length + tool_calls.length,
                 });
               }
@@ -703,33 +508,33 @@ export const callLlm =
                 isTerminalNaturalStop &&
                 toolsCalling.length === 0 &&
                 tool_calls.length === 0 &&
-                content.trim().length === 0 &&
-                thinkingContent.trim().length > 0 &&
-                !hasReasoningImages
+                streamSink.content.trim().length === 0 &&
+                streamSink.thinkingContent.trim().length > 0 &&
+                !streamSink.hasReasoningImages
               ) {
                 log(
                   '[%s] answer-in-thinking salvage: promoting %d chars of reasoning to content',
                   operationLogId,
-                  thinkingContent.length,
+                  streamSink.thinkingContent.length,
                 );
-                content = thinkingContent;
-                thinkingContent = '';
+                streamSink.content = streamSink.thinkingContent;
+                streamSink.thinkingContent = '';
                 answerSalvagedFromReasoning = true;
               }
 
               log(
                 `[${operationLogId}] finish model-runtime calling | content: %d chars | reasoning: %d chars | tools: %d | usage: %s`,
-                content.length,
-                thinkingContent.length,
+                streamSink.content.length,
+                streamSink.thinkingContent.length,
                 toolsCalling.length,
                 currentStepUsage ? 'yes' : 'none',
               );
 
-              if (thinkingContent) {
-                log(`[${operationLogId}][reasoning]`, thinkingContent);
+              if (streamSink.thinkingContent) {
+                log(`[${operationLogId}][reasoning]`, streamSink.thinkingContent);
               }
-              if (content) {
-                log(`[${operationLogId}][content]`, content);
+              if (streamSink.content) {
+                log(`[${operationLogId}][content]`, streamSink.content);
               }
               if (toolsCalling.length > 0) {
                 log(`[${operationLogId}][toolsCalling] `, toolsCalling);
@@ -743,9 +548,9 @@ export const callLlm =
               // Add a complete llm_stream event (including all streaming chunks)
               events.push({
                 result: {
-                  content,
+                  content: streamSink.content,
                   finishReason: currentStepFinishReason,
-                  reasoning: thinkingContent,
+                  reasoning: streamSink.thinkingContent,
                   tool_calls,
                   usage: currentStepUsage,
                 },
@@ -755,11 +560,11 @@ export const callLlm =
               // Publish stream end event
               await streamManager.publishStreamEvent(operationId, {
                 data: {
-                  finalContent: content,
+                  finalContent: streamSink.content,
                   grounding,
                   ...(stepLabel && { stepLabel }),
                   imageList: imageList.length > 0 ? imageList : undefined,
-                  reasoning: thinkingContent || undefined,
+                  reasoning: streamSink.thinkingContent || undefined,
                   toolsCalling,
                   usage: currentStepUsage,
                 },
@@ -792,146 +597,33 @@ export const callLlm =
 
               log('[%s:%d] call_llm completed', operationId, stepIndex);
 
-              // ===== 1. First save original usage to message.metadata =====
-              // Determine final content - use serialized parts if has images, otherwise plain text
-              const finalContent = hasContentImages
-                ? serializePartsForStorage(contentParts)
-                : content;
-
-              // Determine final reasoning - handle multimodal reasoning
-              let finalReasoning: any = undefined;
-              if (hasReasoningImages) {
-                // Has images, use multimodal format
-                finalReasoning = {
-                  content: serializePartsForStorage(reasoningParts),
-                  isMultimodal: true,
-                };
-              } else if (thinkingContent) {
-                // Has text from reasoning but no images
-                finalReasoning = {
-                  content: thinkingContent,
-                };
-              }
-
-              // preserveThinking only gates whether reasoning is replayed into the
-              // next LLM payload (state.messages); the DB copy powers UI display
-              // after refresh and must always be saved.
-              const replayedReasoning = shouldReplayAssistantReasoning ? finalReasoning : undefined;
-
-              try {
-                // Build metadata object
-                const metadata: Record<string, any> = {};
-                if (currentStepUsage && typeof currentStepUsage === 'object') {
-                  // Flat fields are kept for backward-compatible readers; `usage`
-                  // is the canonical nested shape new readers should consume.
-                  Object.assign(metadata, currentStepUsage);
-                  metadata.usage = currentStepUsage;
-                }
-                if (currentStepSpeed && typeof currentStepSpeed === 'object') {
-                  Object.assign(metadata, currentStepSpeed);
-                  metadata.performance = currentStepSpeed;
-                }
-                if (hasContentImages) {
-                  metadata.isMultimodal = true;
-                }
-                if (answerSalvagedFromReasoning) {
-                  metadata.answerSalvagedFromReasoning = true;
-                }
-
-                // Sanitize tool_call `arguments` before persisting to DB so malformed
-                // JSON (e.g. Qwen emitting `{, ...}`) can't poison future context
-                // builds and 400 strict providers like NVIDIA NIM. See .
-                const persistedTools =
-                  toolsCalling.length > 0
-                    ? toolsCalling.map((t) => ({
-                        ...t,
-                        arguments: sanitizeToolCallArguments(t.arguments),
-                      }))
-                    : undefined;
-
-                await ctx.messageModel.update(assistantMessageItem.id, {
-                  content: finalContent,
-                  imageList: imageList.length > 0 ? imageList : undefined,
-                  metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
-                  reasoning: finalReasoning,
-                  search: grounding,
-                  tools: persistedTools,
-                });
-              } catch (error) {
-                console.error('[call_llm] Failed to update message:', error);
-              }
-
-              // ===== 2. Then accumulate to AgentState =====
-              const newState = structuredClone(state);
-
-              // state.messages flows into the next LLM call payload, so entries
-              // must be safe for strict-provider history replay:
-              //   - drop tool_calls with empty name (undispatchable, and strict
-              //     providers 400 on nameless entries)
-              //   - coerce malformed JSON `arguments` to valid JSON
-              const sanitizedToolCalls =
-                tool_calls.length > 0
-                  ? tool_calls
-                      .filter((tc) => !!tc.function.name)
-                      .map((tc) => ({
-                        ...tc,
-                        function: {
-                          ...tc.function,
-                          arguments: sanitizeToolCallArguments(tc.function.arguments),
-                        },
-                      }))
-                  : [];
-              const stateToolCalls = sanitizedToolCalls.length > 0 ? sanitizedToolCalls : undefined;
-
-              newState.messages.push({
-                content,
-                id: assistantMessageItem.id,
-                reasoning: replayedReasoning,
-                role: 'assistant',
-                tool_calls: stateToolCalls,
+              const newState = await finalizeServerCallLlmResult({
+                answerSalvagedFromReasoning,
+                assistantMessageId: assistantMessageItem.id,
+                currentStepSpeed,
+                currentStepUsage,
+                grounding,
+                imageList,
+                messageModel: ctx.messageModel,
+                model,
+                provider,
+                shouldReplayAssistantReasoning,
+                state,
+                stepLabel,
+                streamOutput: streamSink,
+                toolCalls: tool_calls,
+                toolsCalling,
+                visibleOutputEndPublishedStepIndex,
               });
 
-              if (currentStepUsage) {
-                // Use UsageCounter to uniformly accumulate usage and cost
-                const { usage, cost } = UsageCounter.accumulateLLM({
-                  cost: newState.cost,
-                  model: llmPayload.model,
-                  modelUsage: currentStepUsage,
-                  provider: llmPayload.provider,
-                  usage: newState.usage,
-                });
-
-                newState.usage = usage;
-                if (cost) newState.cost = cost;
-              }
-
-              // Propagate stepLabel from instruction to state metadata for hook consumers
-              if (stepLabel || visibleOutputEndPublishedStepIndex !== undefined) {
-                const stateMetadata = { ...newState.metadata };
-                if (stepLabel) stateMetadata._stepLabel = stepLabel;
-                if (visibleOutputEndPublishedStepIndex !== undefined) {
-                  stateMetadata[VISIBLE_OUTPUT_END_PUBLISHED_STEP_INDEX_METADATA_KEY] =
-                    visibleOutputEndPublishedStepIndex;
-                }
-                newState.metadata = stateMetadata;
-              }
-
               // Record chat response attributes on the OTel span.
-              const usageRecord = currentStepUsage as
-                | {
-                    inputCachedTokens?: number;
-                    outputReasoningTokens?: number;
-                    totalInputTokens?: number;
-                    totalOutputTokens?: number;
-                  }
-                | undefined;
               chatSpan.setAttributes(
                 buildChatResponseAttributes({
-                  cacheReadInputTokens: usageRecord?.inputCachedTokens,
+                  cacheReadInputTokens: currentStepUsage?.inputCachedTokens,
                   finishReasons: currentStepFinishReason ? [currentStepFinishReason] : undefined,
-                  inputTokens: usageRecord?.totalInputTokens,
-                  outputTokens: usageRecord?.totalOutputTokens,
-                  reasoningOutputTokens: usageRecord?.outputReasoningTokens,
+                  inputTokens: currentStepUsage?.totalInputTokens,
+                  outputTokens: currentStepUsage?.totalOutputTokens,
+                  reasoningOutputTokens: currentStepUsage?.outputReasoningTokens,
                   timeToFirstChunkMs: firstChunkAt,
                 }),
               );
@@ -944,7 +636,7 @@ export const callLlm =
                     hasToolsCalling: toolsCalling.length > 0,
                     // Pass assistant message ID as parentMessageId for tool calls
                     parentMessageId: assistantMessageItem.id,
-                    result: { content, tool_calls },
+                    result: { content: streamSink.content, tool_calls },
                     toolsCalling,
                   } as GeneralAgentCallLLMResultPayload,
                   phase: 'llm_result' as const,
@@ -959,7 +651,7 @@ export const callLlm =
                 },
               };
             } catch (error) {
-              clearAttemptBuffers();
+              streamSink.clearBuffers();
 
               const classified = classifyLLMError(error);
               const interrupted = await isOperationInterrupted(ctx);
@@ -1013,49 +705,22 @@ export const callLlm =
               }
 
               // Cancel/interrupt path: when the user stops mid-stream, the model-runtime
-              // stream is aborted before reaching the post-stream finalize (line ~1078),
+              // stream is aborted before reaching the post-stream finalize,
               // so the DB row remains a LOADING_FLAT placeholder. Without this fix,
               // agent_runtime_end would push the placeholder as the source-of-truth
               // to the client, clobbering the streamed content accumulated in memory.
               // We persist whatever partial content the stream callbacks already
               // accumulated so that reload/end snapshots reflect actual progress.
-              if (interrupted && (content || thinkingContent || toolsCalling.length > 0)) {
-                try {
-                  const persistedTools =
-                    toolsCalling.length > 0
-                      ? toolsCalling.map((t) => ({
-                          ...t,
-                          arguments: sanitizeToolCallArguments(t.arguments),
-                        }))
-                      : undefined;
-                  const interruptedReasoning = thinkingContent
-                    ? { content: thinkingContent }
-                    : undefined;
-                  const interruptedMetadata: Record<string, any> = { interruptedMidStream: true };
-                  if (currentStepUsage && typeof currentStepUsage === 'object') {
-                    Object.assign(interruptedMetadata, currentStepUsage);
-                    interruptedMetadata.usage = currentStepUsage;
-                  }
-                  if (currentStepSpeed && typeof currentStepSpeed === 'object') {
-                    Object.assign(interruptedMetadata, currentStepSpeed);
-                    interruptedMetadata.performance = currentStepSpeed;
-                  }
-                  await ctx.messageModel.update(assistantMessageItem.id, {
-                    content,
-                    metadata: interruptedMetadata,
-                    reasoning: interruptedReasoning,
-                    tools: persistedTools,
-                  });
-                  log(
-                    '[%s] Interrupted finalize: persisted partial content (c=%d r=%d tools=%d)',
-                    operationLogId,
-                    content.length,
-                    thinkingContent.length,
-                    toolsCalling.length,
-                  );
-                } catch (persistErr) {
-                  log('[%s] Interrupted finalize update failed: %O', operationLogId, persistErr);
-                }
+              if (interrupted) {
+                await persistInterruptedServerCallLlmResult({
+                  assistantMessageId: assistantMessageItem.id,
+                  currentStepSpeed,
+                  currentStepUsage,
+                  messageModel: ctx.messageModel,
+                  operationLogId,
+                  streamOutput: streamSink,
+                  toolsCalling,
+                });
               }
 
               throw error;

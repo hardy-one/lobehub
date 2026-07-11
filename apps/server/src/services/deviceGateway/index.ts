@@ -38,7 +38,7 @@ import type {
   WorkspaceInitResult,
 } from '@lobechat/types';
 import debug from 'debug';
-import { isAbsolute, resolve } from 'pathe';
+import { isAbsolute, relative, resolve } from 'pathe';
 
 import { gatewayEnv } from '@/envs/gateway';
 
@@ -55,8 +55,8 @@ const log = debug('lobe-server:device-gateway');
  */
 export const isPathWithinRoot = (root: string, target: string): boolean => {
   if (!isAbsolute(root) || !isAbsolute(target)) return false;
-  const relative = relative(resolve(root), resolve(target));
-  return relative === '' || (!relative.startsWith('..') && !isAbsolute(relative));
+  const rel = relative(resolve(root), resolve(target));
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
 };
 
 /**

@@ -480,6 +480,11 @@ const ChatInput = memo<ChatInputProps>(
             onEditorReady?.(instance);
           }
         }}
+        topicModelContext={{
+          groupId: context.groupId,
+          scope: context.scope,
+          topicId: context.topicId,
+        }}
         onMarkdownContentChange={updateInputMessage}
         onSend={handleSend}
       >

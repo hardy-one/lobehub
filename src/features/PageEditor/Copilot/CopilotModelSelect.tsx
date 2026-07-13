@@ -4,12 +4,11 @@ import { ChevronDownIcon, Settings2Icon } from 'lucide-react';
 import { memo, useCallback, useState } from 'react';
 
 import ActionPopover from '@/features/ChatInput/ActionBar/components/ActionPopover';
-import { conversationSelectors, useConversationStore } from '@/features/Conversation';
+import { useTopicModel } from '@/features/ChatInput/hooks/useTopicModel';
+import { useConversationStore } from '@/features/Conversation';
 import ModelSwitchPanel from '@/features/ModelSwitchPanel';
 import ControlsForm from '@/features/ModelSwitchPanel/components/ControlsForm';
 import { usePermission } from '@/hooks/usePermission';
-import { useAgentStore } from '@/store/agent';
-import { agentByIdSelectors } from '@/store/agent/selectors';
 import { aiModelSelectors, useAiInfraStore } from '@/store/aiInfra';
 
 const styles = createStaticStyles(({ css, cssVar }) => ({
@@ -40,13 +39,8 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
 const CopilotModelSelect = memo(() => {
   const { allowed: canEdit } = usePermission('edit_own_content');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const agentId = useConversationStore(conversationSelectors.agentId);
-
-  const [model, provider, updateAgentConfigById] = useAgentStore((s) => [
-    agentByIdSelectors.getAgentModelById(agentId)(s),
-    agentByIdSelectors.getAgentModelProviderById(agentId)(s),
-    s.updateAgentConfigById,
-  ]);
+  const context = useConversationStore((s) => s.context);
+  const { model, provider, setModel } = useTopicModel(context);
 
   const enabledModel = useAiInfraStore(aiModelSelectors.getEnabledModelById(model, provider));
   const isModelHasExtendParams = useAiInfraStore(
@@ -59,9 +53,9 @@ const CopilotModelSelect = memo(() => {
     async (params: { model: string; provider: string }) => {
       if (!canEdit) return;
 
-      await updateAgentConfigById(agentId, params);
+      await setModel(params);
     },
-    [canEdit, agentId, updateAgentConfigById],
+    [canEdit, setModel],
   );
 
   return (

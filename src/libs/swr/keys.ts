@@ -108,6 +108,7 @@ export const topicKeys = {
     containerKey,
     opts,
   ]),
+  modelOverride: def('topic:modelOverride', (topicId: string) => ['topic:modelOverride', topicId]),
   search: def('topic:search', (keywords: string, agentId?: string, groupId?: string) => [
     'topic:search',
     keywords,

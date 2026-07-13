@@ -1,7 +1,12 @@
 // Note: To make the code more logic and readable, we just disable the auto sort key eslint rule
 // DON'T REMOVE THE FIRST LINE
 import { chainSummaryTitle } from '@lobechat/prompts';
-import { type ChatTopicMetadata, type MessageMapScope, type UIChatMessage } from '@lobechat/types';
+import {
+  type ChatTopicMetadata,
+  type MessageMapScope,
+  type TopicModelOverride,
+  type UIChatMessage,
+} from '@lobechat/types';
 import { TraceNameMap } from '@lobechat/types';
 import isEqual from 'fast-deep-equal';
 import { t } from 'i18next';
@@ -371,22 +376,80 @@ export class ChatTopicActionImpl {
     );
   };
 
-  updateTopicMetadata = async (id: string, metadata: Partial<ChatTopicMetadata>): Promise<void> => {
-    const topic = topicSelectors.getTopicById(id)(this.#get());
-    if (!topic) return;
-
-    // Optimistic update with merged metadata
-    const mergedMetadata = { ...topic.metadata, ...metadata };
-    this.#get().internal_dispatchTopic({
-      type: 'updateTopic',
-      id,
-      value: { metadata: mergedMetadata },
+  updateTopicMetadata = async (
+    id: string,
+    metadata: Partial<ChatTopicMetadata>,
+    topicScope?: TopicPatchScope,
+  ): Promise<void> => {
+    const state = this.#get();
+    const agentId = topicScope?.scope === 'group' ? undefined : topicScope?.agentId;
+    const key = topicMapKey({
+      agentId: topicScope ? agentId : state.activeAgentId,
+      groupId: topicScope ? topicScope.groupId : state.activeGroupId,
+      scope: topicScope?.scope,
     });
+    const topic = topicScope
+      ? state.topicDataMap[key]?.items?.find((item) => item.id === id)
+      : topicSelectors.getTopicById(id)(state);
+    const previousModelOverride = state.topicModelOverrideMap[id];
+    const nextModelOverride = metadata.modelOverride;
 
-    this.#get().internal_updateTopicLoading(id, true);
-    await topicService.updateTopicMetadata(id, metadata);
-    await this.#get().refreshTopic();
-    this.#get().internal_updateTopicLoading(id, false);
+    if (!topic && !nextModelOverride) return;
+
+    if (topic) {
+      state.internal_dispatchTopic({
+        agentId,
+        groupId: topicScope?.groupId,
+        id,
+        scope: topicScope?.scope,
+        type: 'updateTopic',
+        value: { metadata: { ...topic.metadata, ...metadata } },
+      });
+    }
+    if (nextModelOverride && !topic) {
+      this.#set(
+        {
+          topicModelOverrideMap: {
+            ...state.topicModelOverrideMap,
+            [id]: nextModelOverride,
+          },
+        },
+        false,
+        n('updateTopicMetadata/modelOverride'),
+      );
+    } else if (topic && previousModelOverride !== undefined) {
+      const topicModelOverrideMap = { ...state.topicModelOverrideMap };
+      delete topicModelOverrideMap[id];
+      this.#set({ topicModelOverrideMap }, false, n('updateTopicMetadata/modelOverrideCleanup'));
+    }
+
+    state.internal_updateTopicLoading(id, true);
+    let persisted = false;
+    try {
+      await topicService.updateTopicMetadata(id, metadata);
+      persisted = true;
+      await state.refreshTopic(topicScope);
+    } catch (error) {
+      if (!persisted && topic) {
+        state.internal_dispatchTopic({
+          agentId,
+          groupId: topicScope?.groupId,
+          id,
+          scope: topicScope?.scope,
+          type: 'updateTopic',
+          value: { metadata: topic.metadata },
+        });
+      }
+      if (!persisted && nextModelOverride && !topic) {
+        const topicModelOverrideMap = { ...this.#get().topicModelOverrideMap };
+        if (previousModelOverride === undefined) delete topicModelOverrideMap[id];
+        else topicModelOverrideMap[id] = previousModelOverride;
+        this.#set({ topicModelOverrideMap }, false, n('updateTopicMetadata/modelOverrideRollback'));
+      }
+      throw error;
+    } finally {
+      state.internal_updateTopicLoading(id, false);
+    }
   };
 
   updateTopicTitle = async (id: string, title: string): Promise<void> => {
@@ -660,6 +723,34 @@ export class ChatTopicActionImpl {
     await summaryTopicTitle(id, messages);
     internal_updateTopicLoading(id, false);
   };
+
+  internal_fetchTopicModelOverride = async (
+    topicId: string,
+  ): Promise<TopicModelOverride | null> => {
+    const modelOverrideAtStart = this.#get().topicModelOverrideMap[topicId];
+    const modelOverride = await topicService.getTopicModelOverride(topicId);
+    const currentModelOverride = this.#get().topicModelOverrideMap[topicId];
+
+    if (currentModelOverride !== modelOverrideAtStart) return currentModelOverride ?? null;
+
+    this.#set(
+      {
+        topicModelOverrideMap: {
+          ...this.#get().topicModelOverrideMap,
+          [topicId]: modelOverride,
+        },
+      },
+      false,
+      n('internal_fetchTopicModelOverride'),
+    );
+
+    return modelOverride;
+  };
+
+  useFetchTopicModelOverride = (topicId?: string): SWRResponse<TopicModelOverride | null> =>
+    useClientDataSWRWithSync(topicId ? topicKeys.modelOverride(topicId) : null, () =>
+      this.internal_fetchTopicModelOverride(topicId!),
+    );
 
   useFetchTopics = (
     enable: boolean,
@@ -1259,12 +1350,15 @@ export class ChatTopicActionImpl {
     );
   };
 
-  refreshTopic = async (): Promise<void> => {
+  refreshTopic = async (topicScope?: TopicPatchScope): Promise<void> => {
     const { activeAgentId, activeGroupId } = this.#get();
+    const agentId =
+      topicScope?.scope === 'group' ? undefined : (topicScope?.agentId ?? activeAgentId);
+    const groupId = topicScope ? topicScope.groupId : activeGroupId;
     // Use topicMapKey to generate the same key used in useFetchTopics
     // Key format: topicKeys.list(containerKey, { isInbox, pageSize })
-    const containerKey = topicMapKey({ agentId: activeAgentId, groupId: activeGroupId });
-    const agentViewKey = activeAgentId ? topicMapKey({ agentId: activeAgentId }) : null;
+    const containerKey = topicMapKey({ agentId, groupId, scope: topicScope?.scope });
+    const agentViewKey = agentId && !groupId ? topicMapKey({ agentId }) : null;
     await mutate(
       (key) =>
         Array.isArray(key) &&

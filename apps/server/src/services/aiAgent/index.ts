@@ -164,6 +164,7 @@ import {
 import { isWorkspaceCacheFresh, upsertWorkspaceScan } from './workspaceInitCache';
 
 const log = debug('lobe-server:ai-agent-service');
+const HETERO_AGENT_MODELS = new Set<string>(['claude-code', 'codex']);
 
 const createGraphAwareAgentFactory =
   (
@@ -1213,9 +1214,35 @@ export class AiAgentService {
     // documents stay keyed on `resolvedAgentId`.
     const persistAgentId = appContext?.agentSignal?.agentId ?? resolvedAgentId;
 
-    // Apply per-call model/provider overrides (e.g. from task.config)
-    if (modelOverride) agentConfig.model = modelOverride;
-    if (providerOverride) agentConfig.provider = providerOverride;
+    const heteroProviderType = agentConfig.agencyConfig?.heterogeneousProvider?.type;
+    const isHeteroAgent = !!heteroProviderType || HETERO_AGENT_MODELS.has(agentConfig.model ?? '');
+    const shouldUseTopicModel =
+      !!appContext?.topicId &&
+      appContext.isSubAgent !== true &&
+      appContext.scope !== 'sub_agent' &&
+      appContext.orchestrationRole !== 'member' &&
+      !isHeteroAgent;
+
+    if (shouldUseTopicModel) {
+      const topic = await this.topicModel.findById(appContext.topicId!);
+      const topicModelOverride = topic?.metadata?.modelOverride;
+
+      // Only the Topic's owning Agent (the Supervisor for Group topics) consumes
+      // the override. Group members and unrelated background/builtin runs keep
+      // their own Agent model even when they share the same topicId.
+      if (topic?.agentId === resolvedAgentId && topicModelOverride) {
+        agentConfig.model = topicModelOverride.model;
+        agentConfig.provider = topicModelOverride.provider;
+      }
+    }
+
+    // Apply per-call model/provider overrides (e.g. task config or parent-run
+    // inheritance) only to normal LLM agents. Heterogeneous agents keep their
+    // CLI/agency routing configuration intact.
+    if (!isHeteroAgent) {
+      if (modelOverride) agentConfig.model = modelOverride;
+      if (providerOverride) agentConfig.provider = providerOverride;
+    }
 
     log(
       'execAgent: got agent config for %s (id: %s), model: %s, provider: %s',
@@ -1603,11 +1630,8 @@ export class AiAgentService {
     // back via `heteroIngest` / `heteroFinish` (claude-code / codex) or
     // `agentNotify.notify` (openclaw / hermes).
     //
-    // Detection: prefer agencyConfig.heterogeneousProvider.type (set by the UI),
-    // fall back to model field for backwards compatibility.
-    const HETERO_AGENT_MODELS = new Set<string>(['claude-code', 'codex']);
-    const heteroProviderType = agentConfig.agencyConfig?.heterogeneousProvider?.type;
-    const isHeteroAgent = !!heteroProviderType || HETERO_AGENT_MODELS.has(model);
+    // Detection was resolved before normal model overrides so a child run
+    // cannot accidentally turn a heterogeneous Agent into a regular LLM run.
     const heteroType = (heteroProviderType ?? model) as
       'claude-code' | 'codex' | 'hermes' | 'openclaw';
 
@@ -4253,8 +4277,17 @@ export class AiAgentService {
       resumeParentOnComplete?: boolean;
     },
   ): Promise<ExecSubAgentResult> {
-    const { groupId, topicId, parentMessageId, agentId, instruction, title, parentOperationId } =
-      params;
+    const {
+      agentId,
+      groupId,
+      instruction,
+      model,
+      parentMessageId,
+      parentOperationId,
+      provider,
+      title,
+      topicId,
+    } = params;
 
     log(
       '%s: agentId=%s, groupId=%s, topicId=%s, instruction=%s',
@@ -4360,8 +4393,10 @@ export class AiAgentService {
       appContext,
       autoStart: true,
       hooks,
+      ...(model ? { model } : {}),
       parentOperationId,
       prompt: instruction,
+      ...(provider ? { provider } : {}),
       trigger: inheritedTrigger,
       userInterventionConfig: { approvalMode: 'headless' },
     });

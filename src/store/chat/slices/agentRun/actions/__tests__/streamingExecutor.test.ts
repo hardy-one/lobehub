@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as toolEngineering from '@/helpers/toolEngineering';
 import { chatService } from '@/services/chat';
 import * as agentConfigResolver from '@/services/chat/mecha/agentConfigResolver';
+import { topicService } from '@/services/topic';
 import { useAgentStore } from '@/store/agent';
 import { useAiInfraStore } from '@/store/aiInfra';
 import { pageAgentRuntime } from '@/store/tool/slices/builtin/executors/lobe-page-agent';
@@ -183,6 +184,7 @@ beforeEach(() => {
   resetTestEnvironment();
   setupMockSelectors();
   spyOnMessageService();
+  vi.spyOn(topicService, 'getTopicModelOverride').mockResolvedValue(null);
   serverConfigMock.enableVisualUnderstanding = false;
 
   act(() => {
@@ -194,6 +196,7 @@ beforeEach(() => {
       refreshMessages: vi.fn(),
       executeClientAgent: vi.fn(),
       internal_createAgentState: realCreateAgentState,
+      topicModelOverrideMap: {},
     });
   });
 });
@@ -2386,6 +2389,72 @@ describe('StreamingExecutor actions', () => {
 
       // Operation should be failed
       expect(result.current.operations[operationId!].status).toBe('failed');
+    });
+  });
+
+  describe('topic model resolution', () => {
+    it('applies a Topic override to the parent run but not a Group member', () => {
+      const { result } = renderHook(() => useChatStore());
+      let parentOperationId = '';
+      let memberOperationId = '';
+
+      act(() => {
+        useChatStore.setState({
+          topicModelOverrideMap: {
+            [TEST_IDS.TOPIC_ID]: { model: 'topic-model', provider: 'topic-provider' },
+          },
+        });
+        parentOperationId = result.current.startOperation({
+          context: { agentId: TEST_IDS.SESSION_ID, topicId: TEST_IDS.TOPIC_ID },
+          type: 'execAgentRuntime',
+        }).operationId;
+        memberOperationId = result.current.startOperation({
+          context: {
+            agentId: TEST_IDS.SESSION_ID,
+            groupId: 'group-1',
+            scope: 'group',
+            subAgentId: 'member-agent',
+            topicId: TEST_IDS.TOPIC_ID,
+          },
+          type: 'execAgentRuntime',
+        }).operationId;
+      });
+
+      const parent = result.current.internal_createAgentState({
+        messages: [createMockMessage({ role: 'user' })],
+        operationId: parentOperationId,
+        parentMessageId: TEST_IDS.USER_MESSAGE_ID,
+      });
+      const member = result.current.internal_createAgentState({
+        messages: [createMockMessage({ role: 'user' })],
+        operationId: memberOperationId,
+        parentMessageId: TEST_IDS.USER_MESSAGE_ID,
+        subAgentId: 'member-agent',
+      });
+
+      expect(parent.agentConfig.agentConfig).toMatchObject({
+        model: 'topic-model',
+        provider: 'topic-provider',
+      });
+      expect(member.agentConfig.agentConfig.model).not.toBe('topic-model');
+    });
+
+    it('uses an inherited parent model for a client sub-agent', () => {
+      const { result } = renderHook(() => useChatStore());
+
+      const resolved = result.current.internal_createAgentState({
+        agentId: TEST_IDS.SESSION_ID,
+        messages: [createMockMessage({ role: 'user' })],
+        modelOverride: { model: 'parent-model', provider: 'parent-provider' },
+        parentMessageId: TEST_IDS.USER_MESSAGE_ID,
+        subAgentId: 'child-agent',
+        topicId: TEST_IDS.TOPIC_ID,
+      });
+
+      expect(resolved.agentConfig.agentConfig).toMatchObject({
+        model: 'parent-model',
+        provider: 'parent-provider',
+      });
     });
   });
 

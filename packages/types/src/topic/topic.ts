@@ -106,6 +106,11 @@ export interface OnboardingSessionSnapshot {
   version: number;
 }
 
+export interface TopicModelOverride {
+  model: string;
+  provider: string;
+}
+
 export interface ChatTopicMetadata {
   bot?: ChatTopicBotContext;
   boundDeviceId?: string;
@@ -154,6 +159,8 @@ export interface ChatTopicMetadata {
   /** origin marker for imported topics, e.g. `claude-code-local` / `codex-local` */
   importedFrom?: string;
   model?: string;
+  /** Model selected for this topic. Falls back to the owning Agent when absent. */
+  modelOverride?: TopicModelOverride;
   /**
    * Free-form feedback collected after agent onboarding completion.
    * Comment text is stored only here (not analytics) and is length-capped server-side.
@@ -380,6 +387,12 @@ export const chatTopicMetadataUpdateSchema = z.object({
   heteroSessionId: z.string().optional(),
   heteroSessionIdByWorkingDirectory: z.record(z.string(), z.string()).optional(),
   model: z.string().optional(),
+  modelOverride: z
+    .object({
+      model: z.string(),
+      provider: z.string(),
+    })
+    .optional(),
   onboardingFeedback: z
     .object({
       comment: z.string().max(500).optional(),

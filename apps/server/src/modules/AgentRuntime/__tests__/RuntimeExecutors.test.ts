@@ -5491,8 +5491,10 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
         expect.objectContaining({
           agentId: 'target-agent-id',
           instruction: 'Do something useful',
+          model: 'gpt-4',
           parentMessageId: 'tool-msg-id',
           parentOperationId: 'op-123',
+          provider: 'openai',
           title: 'Call agent target-agent',
           topicId: 'topic-123',
         }),
@@ -5550,8 +5552,10 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
         expect.objectContaining({
           agentId: 'target-agent-id',
           instruction: 'Do something useful',
+          model: 'gpt-4',
           parentOperationId: 'op-123',
           parentMessageId: 'tool-msg-id',
+          provider: 'openai',
           topicId: 'topic-123',
         }),
       );

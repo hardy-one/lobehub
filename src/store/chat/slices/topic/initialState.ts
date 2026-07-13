@@ -1,4 +1,4 @@
-import { type ChatTopic } from '@/types/topic';
+import { type ChatTopic, type TopicModelOverride } from '@/types/topic';
 
 /**
  * Unified topic data structure for each agent
@@ -63,6 +63,8 @@ export interface ChatTopicState {
    */
   topicLoadingIdCounts: Record<string, number>;
   topicLoadingIds: string[];
+  /** Topic model overrides loaded independently from the paginated topic list. */
+  topicModelOverrideMap: Record<string, TopicModelOverride | null>;
   topicRenamingId?: string;
   topicSearchKeywords: string;
 }
@@ -75,6 +77,7 @@ export const initialTopicState: ChatTopicState = {
   isSearchingTopic: false,
   searchTopics: [],
   topicDataMap: {},
+  topicModelOverrideMap: {},
   topicLoadingIdCounts: {},
   topicLoadingIds: [],
   topicSearchKeywords: '',

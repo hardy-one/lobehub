@@ -1,3 +1,5 @@
+import type { MessageMapScope } from '@lobechat/types';
+
 /**
  * Topic scope types
  * - 'agent': Agent main topic list (default when only agentId)
@@ -20,6 +22,28 @@ export interface TopicMapKeyInput {
    */
   scope?: TopicMapScope;
 }
+
+export interface TopicContextKeyInput {
+  agentId?: string;
+  groupId?: string;
+  scope?: MessageMapScope;
+}
+
+export const topicMapScopeFromMessageScope = (scope?: MessageMapScope): TopicMapScope => {
+  if (scope === 'group') return 'group';
+  if (scope === 'group_agent') return 'group_agent';
+  return 'agent';
+};
+
+export const topicMapKeyFromContext = (context: TopicContextKeyInput): string => {
+  const scope = topicMapScopeFromMessageScope(context.scope);
+
+  return topicMapKey({
+    agentId: scope === 'group' ? undefined : context.agentId,
+    groupId: context.groupId,
+    scope,
+  });
+};
 
 /**
  * Generate a unique key for topic data map based on session context

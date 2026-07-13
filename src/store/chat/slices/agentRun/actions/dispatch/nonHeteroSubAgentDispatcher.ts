@@ -1,6 +1,7 @@
 import type {
   ConversationContext,
   HeterogeneousProviderConfig,
+  TopicModelOverride,
   UIChatMessage,
 } from '@lobechat/types';
 
@@ -39,6 +40,8 @@ export interface NonHeteroSubAgentDispatchContext {
    * message prepended by the caller. Only consumed when runtime = 'client'.
    */
   messages?: UIChatMessage[];
+  /** Effective model inherited from the parent run. */
+  modelOverride?: TopicModelOverride;
   /**
    * Parent operation ID to link the sub-agent operation as a child.
    * Optional — only provided when the caller has an active operation to chain.
@@ -96,6 +99,7 @@ export async function dispatchNonHeteroSubAgent(
         },
         inPortalThread: ctx.inPortalThread,
         messages: ctx.messages ?? [],
+        modelOverride: ctx.modelOverride,
         parentMessageId: intent.parentMessageId,
         parentMessageType: 'tool',
         parentOperationId: ctx.parentOperationId,
@@ -116,6 +120,7 @@ export async function dispatchNonHeteroSubAgent(
           subAgentId: intent.targetAgentId,
         },
         message: intent.instruction,
+        modelOverride: ctx.modelOverride,
         parentOperationId: ctx.parentOperationId,
       });
       break;

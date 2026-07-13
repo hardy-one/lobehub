@@ -7,6 +7,7 @@ import {
   type CreateTopicParams,
   type QueryTopicParams,
   type RecentTopic,
+  type TopicModelOverride,
   type TopicRankItem,
 } from '@/types/topic';
 
@@ -58,6 +59,12 @@ export class TopicService {
       triggers: params.triggers,
       withDetails: params.withDetails,
     }) as any;
+  };
+
+  getTopicModelOverride = async (id: string): Promise<TopicModelOverride | null> => {
+    const topic = await lambdaClient.topic.getTopicDetail.query({ id });
+
+    return topic?.metadata?.modelOverride ?? null;
   };
 
   queryTopics = (params?: { pageSize?: number; statuses?: string[] }): Promise<ChatTopic[]> => {

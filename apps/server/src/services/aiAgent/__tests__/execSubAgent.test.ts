@@ -251,8 +251,10 @@ describe('AiAgentService.execSubAgent', () => {
       await service.execVirtualSubAgent({
         agentId: 'agent-1',
         instruction: 'Nested research task',
+        model: 'parent-model',
         parentMessageId: 'tool-msg-1',
         parentOperationId: 'parent-op-1',
+        provider: 'parent-provider',
         topicId: 'topic-1',
       });
 
@@ -266,7 +268,9 @@ describe('AiAgentService.execSubAgent', () => {
           hooks: expect.arrayContaining([
             expect.objectContaining({ id: 'sub-agent-bridge', type: 'onComplete' }),
           ]),
+          model: 'parent-model',
           parentOperationId: 'parent-op-1',
+          provider: 'parent-provider',
           trigger: 'cli',
         }),
       );

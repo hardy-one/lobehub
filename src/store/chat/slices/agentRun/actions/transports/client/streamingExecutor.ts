@@ -23,6 +23,7 @@ import {
   type MessageMetadata,
   type RunSubAgentResult,
   type RuntimeInitialContext,
+  type TopicModelOverride,
   type UIChatMessage,
 } from '@lobechat/types';
 import debug from 'debug';
@@ -49,6 +50,7 @@ import {
 import { type ChatStore } from '@/store/chat/store';
 import { notifyDesktopHumanApprovalRequired } from '@/store/chat/utils/desktopNotification';
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
+import { topicMapKeyFromContext } from '@/store/chat/utils/topicMapKey';
 import { getElectronStoreState } from '@/store/electron';
 import { getServerConfigStoreState, serverConfigSelectors } from '@/store/serverConfig';
 import { getTaskStoreState } from '@/store/task';
@@ -106,6 +108,22 @@ export class StreamingExecutorActionImpl {
     this.#get = get;
   }
 
+  #readTopicModelOverride = (
+    context: Pick<ConversationContext, 'agentId' | 'groupId' | 'scope' | 'topicId'>,
+    effectiveAgentId?: string,
+  ): readonly [TopicModelOverride | undefined, boolean] => {
+    if (!context.topicId || effectiveAgentId !== context.agentId) return [undefined, true];
+
+    const state = this.#get();
+    const topic = state.topicDataMap[topicMapKeyFromContext(context)]?.items?.find(
+      (item) => item.id === context.topicId,
+    );
+    if (topic) return [topic.metadata?.modelOverride, true];
+
+    const cachedOverride = state.topicModelOverrideMap[context.topicId];
+    return [cachedOverride ?? undefined, cachedOverride !== undefined];
+  };
+
   internal_createAgentState = ({
     messages,
     parentMessageId,
@@ -118,6 +136,7 @@ export class StreamingExecutorActionImpl {
     operationId,
     subAgentId: paramSubAgentId,
     isSubAgent,
+    modelOverride,
   }: {
     messages: UIChatMessage[];
     parentMessageId: string;
@@ -135,6 +154,7 @@ export class StreamingExecutorActionImpl {
      */
     subAgentId?: string;
     isSubAgent?: boolean;
+    modelOverride?: TopicModelOverride;
   }): {
     state: AgentState;
     context: AgentRuntimeContext;
@@ -169,7 +189,15 @@ export class StreamingExecutorActionImpl {
       scope, // Pass scope from operation context
     });
 
-    const { agentConfig: agentConfigData, plugins: pluginIds } = agentConfig;
+    const { agentConfig: baseAgentConfig, plugins: pluginIds } = agentConfig;
+    const [storedTopicOverride] = this.#readTopicModelOverride(
+      { agentId, groupId, scope, topicId },
+      effectiveAgentId,
+    );
+    const effectiveModelOverride = modelOverride ?? storedTopicOverride;
+    const agentConfigData = effectiveModelOverride
+      ? { ...baseAgentConfig, ...effectiveModelOverride }
+      : baseAgentConfig;
     const selectedToolIds = initialContext?.initialContext?.selectedTools?.map(
       (tool) => tool.identifier,
     );
@@ -259,6 +287,7 @@ export class StreamingExecutorActionImpl {
     // Merge tools generation result into agentConfig for chatService to use
     const agentConfigWithTools = {
       ...agentConfig,
+      agentConfig: agentConfigData,
       enabledManifests,
       enabledToolIds,
       tools,
@@ -450,6 +479,7 @@ export class StreamingExecutorActionImpl {
     initialState?: AgentState;
     inPortalThread?: boolean;
     metadata?: Pick<MessageMetadata, 'trigger'>;
+    modelOverride?: TopicModelOverride;
     messages: UIChatMessage[];
     operationId?: string;
     parentMessageId: string;
@@ -465,6 +495,7 @@ export class StreamingExecutorActionImpl {
       parentMessageType,
       context,
       isSubAgent,
+      modelOverride,
     } = params;
 
     // Extract values from context
@@ -542,6 +573,16 @@ export class StreamingExecutorActionImpl {
     // send after reload never attaches tools to a model that can't use them.
     await getAiInfraStoreState().ensureAiProviderRuntimeStateReady();
 
+    const [storedTopicOverride, isTopicModelOverrideLoaded] = this.#readTopicModelOverride(
+      context,
+      effectiveAgentId,
+    );
+    let resolvedModelOverride = modelOverride ?? storedTopicOverride;
+    if (!modelOverride && !isTopicModelOverrideLoaded && topicId) {
+      resolvedModelOverride =
+        (await this.#get().internal_fetchTopicModelOverride(topicId)) ?? undefined;
+    }
+
     // ===========================================
     // Step 1: Create Agent State (resolves config once)
     // ===========================================
@@ -563,6 +604,7 @@ export class StreamingExecutorActionImpl {
       operationId,
       subAgentId, // Pass subAgentId for agent config retrieval (behavior depends on scope)
       isSubAgent, // Pass isSubAgent to filter out lobe-agent tool in sub-agent context
+      modelOverride: resolvedModelOverride,
     });
 
     if (params.skipCreateFirstMessage) {
@@ -577,6 +619,8 @@ export class StreamingExecutorActionImpl {
     const { agentConfig: agentConfigData } = agentConfig;
     const model = agentConfigData.model;
     const provider = agentConfigData.provider;
+
+    this.#get().updateOperationMetadata(operationId, { model, provider });
 
     const modelRuntimeConfig = {
       model,
@@ -874,6 +918,7 @@ export class StreamingExecutorActionImpl {
     inheritMessages?: boolean;
     instruction: string;
     parentOperationId?: string;
+    modelOverride?: TopicModelOverride;
     toolMessageId: string;
     topicId: string;
   }): Promise<RunSubAgentResult> => {
@@ -885,6 +930,7 @@ export class StreamingExecutorActionImpl {
       inheritMessages,
       toolMessageId,
       parentOperationId,
+      modelOverride,
     } = params;
 
     const logId = `runClientSubAgent:${toolMessageId}`;
@@ -960,6 +1006,7 @@ export class StreamingExecutorActionImpl {
         parentMessageId: userMessageId,
         parentMessageType: 'user',
         parentOperationId,
+        modelOverride,
       });
 
       // 7. Extract the sub-agent's final assistant output as the tool result

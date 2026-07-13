@@ -3,6 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { chatTopicMetadataUpdateSchema, parseTopicScheduledRun } from './topic';
 
 describe('chatTopicMetadataUpdateSchema', () => {
+  it('parses a topic model override as an atomic model/provider pair', () => {
+    const metadata = {
+      modelOverride: { model: 'claude-sonnet-4-6', provider: 'anthropic' },
+    };
+
+    expect(chatTopicMetadataUpdateSchema.parse(metadata)).toEqual(metadata);
+  });
+
   it('parses a scheduled heterogeneous continuation patch', () => {
     const metadata = {
       scheduledRun: {

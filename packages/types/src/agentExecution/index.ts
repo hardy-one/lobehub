@@ -339,10 +339,14 @@ export interface ExecSubAgentParams {
   groupId?: string;
   /** Instruction/prompt for the agent */
   instruction: string;
+  /** Model inherited from the parent run. */
+  model?: string;
   /** The parent message ID that anchors the isolated thread */
   parentMessageId: string;
   /** Parent operation ID for dispatching callAgent hooks */
   parentOperationId?: string;
+  /** Provider inherited from the parent run. */
+  provider?: string;
   /** Timeout in milliseconds (optional) */
   timeout?: number;
   /** Thread title shown in UI */
@@ -367,10 +371,14 @@ export interface ExecVirtualSubAgentParams {
   groupId?: string;
   /** Instruction/prompt for the virtual sub-agent */
   instruction: string;
+  /** Model inherited from the parent run. */
+  model?: string;
   /** The parent placeholder tool message ID */
   parentMessageId: string;
   /** Parent operation ID to bridge and resume on completion */
   parentOperationId: string;
+  /** Provider inherited from the parent run. */
+  provider?: string;
   /** Timeout in milliseconds (optional) */
   timeout?: number;
   /** Thread title shown in UI */

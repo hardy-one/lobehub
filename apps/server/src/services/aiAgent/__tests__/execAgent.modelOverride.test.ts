@@ -3,11 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AiAgentService } from '../index';
 
-const { mockCreateOperation, mockGetAgentConfig, mockMessageCreate } = vi.hoisted(() => ({
-  mockCreateOperation: vi.fn(),
-  mockGetAgentConfig: vi.fn(),
-  mockMessageCreate: vi.fn(),
-}));
+const { mockCreateOperation, mockFindTopic, mockGetAgentConfig, mockMessageCreate } = vi.hoisted(
+  () => ({
+    mockCreateOperation: vi.fn(),
+    mockFindTopic: vi.fn(),
+    mockGetAgentConfig: vi.fn(),
+    mockMessageCreate: vi.fn(),
+  }),
+);
 
 vi.mock('@/libs/trusted-client', () => ({
   generateTrustedClientToken: vi.fn().mockReturnValue(undefined),
@@ -47,6 +50,7 @@ vi.mock('@/database/models/plugin', () => ({
 vi.mock('@/database/models/topic', () => ({
   TopicModel: vi.fn().mockImplementation(() => ({
     create: vi.fn().mockResolvedValue({ id: 'topic-1' }),
+    findById: mockFindTopic,
   })),
 }));
 
@@ -130,6 +134,15 @@ describe('AiAgentService.execAgent - model/provider override', () => {
     slug: 'my-agent',
     systemRole: 'You are a helpful assistant.',
   };
+  const mockTopicModelOverride = (agentId = 'agent-1') =>
+    mockFindTopic.mockResolvedValue({
+      agentId,
+      id: 'topic-1',
+      metadata: {
+        modelOverride: { model: 'claude-sonnet-4-6', provider: 'anthropic' },
+      },
+    });
+  const operationAgentConfig = () => mockCreateOperation.mock.calls[0][0].agentConfig;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -140,6 +153,7 @@ describe('AiAgentService.execAgent - model/provider override', () => {
       operationId: 'op-123',
       success: true,
     });
+    mockFindTopic.mockResolvedValue(undefined);
     service = new AiAgentService(mockDb, userId);
   });
 
@@ -201,5 +215,73 @@ describe('AiAgentService.execAgent - model/provider override', () => {
     const callArgs = mockCreateOperation.mock.calls[0][0];
     expect(callArgs.agentConfig.model).toBe('claude-sonnet-4-6');
     expect(callArgs.agentConfig.provider).toBe('anthropic');
+  });
+
+  it('uses the owning Topic model override for a normal run', async () => {
+    mockGetAgentConfig.mockResolvedValue({ ...defaultAgentConfig });
+    mockTopicModelOverride();
+
+    await service.execAgent({
+      agentId: 'agent-1',
+      appContext: { topicId: 'topic-1' },
+      prompt: 'Hello',
+    });
+
+    expect(operationAgentConfig()).toMatchObject({
+      model: 'claude-sonnet-4-6',
+      provider: 'anthropic',
+    });
+  });
+
+  it('keeps explicit run parameters above the Topic override', async () => {
+    mockGetAgentConfig.mockResolvedValue({ ...defaultAgentConfig });
+    mockTopicModelOverride();
+
+    await service.execAgent({
+      agentId: 'agent-1',
+      appContext: { topicId: 'topic-1' },
+      model: 'gpt-4',
+      prompt: 'Hello',
+      provider: 'openai',
+    });
+
+    expect(operationAgentConfig()).toMatchObject({ model: 'gpt-4', provider: 'openai' });
+  });
+
+  it('does not apply the Group Topic override to a member run', async () => {
+    mockGetAgentConfig.mockResolvedValue({ ...defaultAgentConfig, id: 'member-1' });
+    mockTopicModelOverride('supervisor-1');
+
+    await service.execAgent({
+      agentId: 'member-1',
+      appContext: { orchestrationRole: 'member', topicId: 'topic-1' },
+      prompt: 'Hello',
+    });
+
+    expect(operationAgentConfig()).toMatchObject({ model: 'gpt-4', provider: 'openai' });
+    expect(mockFindTopic).not.toHaveBeenCalled();
+  });
+
+  it('keeps Topic and inherited model overrides out of a heterogeneous Agent', async () => {
+    mockGetAgentConfig.mockResolvedValue({
+      ...defaultAgentConfig,
+      model: 'claude-code',
+      provider: 'claude-code',
+    });
+    mockTopicModelOverride();
+
+    await expect(
+      service.execAgent({
+        agentId: 'agent-1',
+        appContext: { topicId: 'topic-1' },
+        model: 'parent-model',
+        prompt: 'Hello',
+        provider: 'parent-provider',
+      }),
+    ).rejects.toThrow('Failed to sign operation JWT for hetero agent');
+
+    // The heterogeneous dispatch path performs its own later topic read. One
+    // call proves the normal LLM override branch was skipped (otherwise two).
+    expect(mockFindTopic).toHaveBeenCalledTimes(1);
   });
 });

@@ -41,6 +41,7 @@ vi.mock('@/services/topic', () => ({
     updateTopicTitle: vi.fn(),
     updateTopic: vi.fn(),
     batchRemoveTopics: vi.fn(),
+    getTopicModelOverride: vi.fn(),
     getTopics: vi.fn(),
     queryTopics: vi.fn(),
     searchTopics: vi.fn(),
@@ -79,6 +80,7 @@ beforeEach(() => {
       agentTopicsViewMap: {},
       searchTopics: [],
       topicDataMap: {},
+      topicModelOverrideMap: {},
       topicLoadingIdCounts: {},
       topicLoadingIds: [],
       // ... initial state
@@ -2201,6 +2203,149 @@ describe('topic action', () => {
 
       expect(getMessagesSpy).toHaveBeenCalledWith({ agentId: activeAgentId, topicId });
       expect(summaryTopicTitleSpy).toHaveBeenCalledWith(topicId, messages);
+    });
+  });
+
+  describe('useFetchTopicModelOverride', () => {
+    it('loads and updates an override outside the paginated topic list', async () => {
+      const modelOverride = { model: 'topic-model', provider: 'topic-provider' };
+      (topicService.getTopicModelOverride as Mock).mockResolvedValue(modelOverride);
+      vi.spyOn(topicService, 'updateTopicMetadata').mockResolvedValue([] as never);
+
+      const { result } = renderHook(() =>
+        useChatStore().useFetchTopicModelOverride('topic-outside-list'),
+      );
+
+      await waitFor(() => expect(result.current.data).toEqual(modelOverride));
+      await act(() =>
+        useChatStore
+          .getState()
+          .updateTopicMetadata(
+            'topic-outside-list',
+            { modelOverride: { model: 'next-model', provider: 'next-provider' } },
+            { agentId: 'agent-1', scope: 'agent' },
+          ),
+      );
+
+      expect(useChatStore.getState().topicModelOverrideMap['topic-outside-list']).toEqual({
+        model: 'next-model',
+        provider: 'next-provider',
+      });
+      expect(topicService.updateTopicMetadata).toHaveBeenCalledWith('topic-outside-list', {
+        modelOverride: { model: 'next-model', provider: 'next-provider' },
+      });
+    });
+
+    it('keeps a newer override when an older detail request finishes later', async () => {
+      const topicId = 'topic-outside-list';
+      const staleOverride = { model: 'stale-model', provider: 'stale-provider' };
+      const nextOverride = { model: 'next-model', provider: 'next-provider' };
+      let resolveRequest!: (value: typeof staleOverride) => void;
+      const request = new Promise<typeof staleOverride>((resolve) => {
+        resolveRequest = resolve;
+      });
+      (topicService.getTopicModelOverride as Mock).mockReturnValue(request);
+      vi.spyOn(topicService, 'updateTopicMetadata').mockResolvedValue([] as never);
+
+      const fetchPromise = useChatStore.getState().internal_fetchTopicModelOverride(topicId);
+
+      await act(async () => {
+        await useChatStore
+          .getState()
+          .updateTopicMetadata(
+            topicId,
+            { modelOverride: nextOverride },
+            { agentId: 'agent-1', scope: 'agent' },
+          );
+      });
+
+      resolveRequest(staleOverride);
+      const resolvedOverride = await fetchPromise;
+
+      expect(resolvedOverride).toEqual(nextOverride);
+      expect(useChatStore.getState().topicModelOverrideMap[topicId]).toEqual(nextOverride);
+    });
+  });
+
+  describe('updateTopicMetadata', () => {
+    it('updates the explicitly scoped Group topic without using the active Agent bucket', async () => {
+      const groupKey = topicMapKey({ groupId: 'group-1', scope: 'group' });
+      const topic = { id: 'topic-1', metadata: { repos: ['repo-1'] }, title: 'Topic' } as ChatTopic;
+      vi.spyOn(topicService, 'updateTopicMetadata').mockResolvedValue([] as never);
+
+      act(() => {
+        useChatStore.setState({
+          activeAgentId: 'other-agent',
+          topicDataMap: {
+            [groupKey]: {
+              currentPage: 0,
+              hasMore: false,
+              items: [topic],
+              pageSize: 20,
+              total: 1,
+            },
+          },
+          topicModelOverrideMap: {
+            'topic-1': { model: 'cached-model', provider: 'cached-provider' },
+          },
+        });
+      });
+
+      await act(async () => {
+        await useChatStore
+          .getState()
+          .updateTopicMetadata(
+            'topic-1',
+            { modelOverride: { model: 'topic-model', provider: 'topic-provider' } },
+            { groupId: 'group-1', scope: 'group' },
+          );
+      });
+
+      expect(useChatStore.getState().topicDataMap[groupKey].items[0].metadata).toEqual({
+        modelOverride: { model: 'topic-model', provider: 'topic-provider' },
+        repos: ['repo-1'],
+      });
+      expect(topicService.updateTopicMetadata).toHaveBeenCalledWith('topic-1', {
+        modelOverride: { model: 'topic-model', provider: 'topic-provider' },
+      });
+      expect(useChatStore.getState().topicModelOverrideMap['topic-1']).toBeUndefined();
+    });
+
+    it('rolls back an optimistic override when persistence fails', async () => {
+      const key = topicMapKey({ agentId: 'agent-1' });
+      const previousOverride = { model: 'old-model', provider: 'old-provider' };
+      const topic = {
+        id: 'topic-1',
+        metadata: { modelOverride: previousOverride, repos: ['repo-1'] },
+        title: 'Topic',
+      } as ChatTopic;
+      vi.spyOn(topicService, 'updateTopicMetadata').mockRejectedValue(new Error('persist failed'));
+
+      act(() => {
+        useChatStore.setState({
+          topicDataMap: {
+            [key]: {
+              currentPage: 0,
+              hasMore: false,
+              items: [topic],
+              pageSize: 20,
+              total: 1,
+            },
+          },
+        });
+      });
+
+      await expect(
+        useChatStore
+          .getState()
+          .updateTopicMetadata(
+            'topic-1',
+            { modelOverride: { model: 'next-model', provider: 'next-provider' } },
+            { agentId: 'agent-1', scope: 'agent' },
+          ),
+      ).rejects.toThrow('persist failed');
+
+      expect(useChatStore.getState().topicDataMap[key].items[0].metadata).toEqual(topic.metadata);
     });
   });
 

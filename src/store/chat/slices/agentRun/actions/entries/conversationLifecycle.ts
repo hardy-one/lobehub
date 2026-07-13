@@ -76,7 +76,7 @@ import {
   hasRunningCompressionOperation,
 } from '@/store/chat/utils/compression';
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
-import { topicMapKey } from '@/store/chat/utils/topicMapKey';
+import { topicMapKey, topicMapKeyFromContext } from '@/store/chat/utils/topicMapKey';
 import { getElectronStoreState } from '@/store/electron';
 import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors';
@@ -1642,6 +1642,22 @@ export class ConversationLifecycleActionImpl {
       const parentAgentConfig = context.agentId
         ? agentSelectors.getAgentConfigById(context.agentId)(getAgentStoreState())
         : undefined;
+      const chatState = this.#get();
+      const parentTopic = context.topicId
+        ? chatState.topicDataMap[topicMapKeyFromContext(context)]?.items?.find(
+            (topic) => topic.id === context.topicId,
+          )
+        : undefined;
+      const parentTopicOverride = context.topicId
+        ? parentTopic
+          ? parentTopic.metadata?.modelOverride
+          : (chatState.topicModelOverrideMap[context.topicId] ?? undefined)
+        : undefined;
+      const parentModel =
+        parentTopicOverride ??
+        (parentAgentConfig?.model && parentAgentConfig.provider
+          ? { model: parentAgentConfig.model, provider: parentAgentConfig.provider }
+          : undefined);
 
       await dispatchNonHeteroSubAgent(
         { kind: 'mention', targetAgentId, instruction, parentMessageId: toolMessage.id },
@@ -1655,6 +1671,7 @@ export class ConversationLifecycleActionImpl {
             ? agentByIdSelectors.isWorkspaceAgentById(context.agentId)(getAgentStoreState())
             : false,
           messages: messagesWithInstruction,
+          modelOverride: parentModel,
           parentOperationId: operationId,
         },
         this.#get(),

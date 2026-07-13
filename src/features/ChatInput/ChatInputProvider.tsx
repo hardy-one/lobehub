@@ -30,6 +30,7 @@ export const ChatInputProvider = memo<ChatInputProviderProps>(
     allowExpand = true,
     slashPlacement,
     getMessages,
+    topicModelContext,
   }) => {
     const editor = useEditor();
     const slashMenuRef = useRef<HTMLDivElement>(null);
@@ -38,6 +39,7 @@ export const ChatInputProvider = memo<ChatInputProviderProps>(
       <Provider
         createStore={() =>
           createStore({
+            agentId,
             allowExpand,
             contextWindowMessages,
             draftKey,
@@ -51,6 +53,7 @@ export const ChatInputProvider = memo<ChatInputProviderProps>(
             sendMenu,
             slashMenuRef,
             slashPlacement,
+            topicModelContext,
           })
         }
       >
@@ -69,6 +72,7 @@ export const ChatInputProvider = memo<ChatInputProviderProps>(
           sendButtonProps={sendButtonProps}
           sendMenu={sendMenu}
           slashPlacement={slashPlacement}
+          topicModelContext={topicModelContext}
           onMarkdownContentChange={onMarkdownContentChange}
           onSend={onSend}
         />

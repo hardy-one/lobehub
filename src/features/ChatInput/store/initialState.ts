@@ -1,4 +1,4 @@
-import { type OpenAIChatMessage } from '@lobechat/types';
+import { type ConversationContext, type OpenAIChatMessage } from '@lobechat/types';
 import { type IEditor, type SlashOptions } from '@lobehub/editor';
 import { type ChatInputProps } from '@lobehub/editor/react';
 import { type MenuProps } from '@lobehub/ui';
@@ -74,6 +74,7 @@ export interface PublicState {
    * Slash menu placement: 'bottom' for home page (input in center), 'top' for page input (at bottom)
    */
   slashPlacement?: SlashPlacement;
+  topicModelContext?: Pick<ConversationContext, 'groupId' | 'scope' | 'topicId'>;
 }
 
 export interface State extends PublicState {

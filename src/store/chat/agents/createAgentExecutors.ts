@@ -210,7 +210,9 @@ export const createAgentExecutors = (context: {
         const createResult = await aiAgentService.execSubAgentTask({
           agentId: executionAgentId, // Use targetAgentId for callAgent, or current agentId for sub-agent dispatch
           instruction: task.instruction,
+          model: state.modelRuntimeConfig?.model,
           parentMessageId: resultMessageId,
+          provider: state.modelRuntimeConfig?.provider,
           title: task.description,
           topicId,
         });
@@ -556,7 +558,9 @@ export const createAgentExecutors = (context: {
             const createResult = await aiAgentService.execSubAgentTask({
               agentId,
               instruction: task.instruction,
+              model: state.modelRuntimeConfig?.model,
               parentMessageId: resultMessageId,
+              provider: state.modelRuntimeConfig?.provider,
               title: task.description,
               topicId,
             });

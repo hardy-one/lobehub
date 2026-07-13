@@ -13,6 +13,8 @@ import { eq } from 'drizzle-orm';
 import type * as ModelBankModule from 'model-bank';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { AiAgentService } from '@/server/services/aiAgent';
+
 import { aiAgentRouter } from '../aiAgent';
 import { cleanupTestUser, createTestUser } from './integration/setup';
 
@@ -130,6 +132,26 @@ describe('AI Agent Router Integration Tests', () => {
   });
 
   describe('execAgent', () => {
+    it('forwards a run-only model inherited by a Gateway sub-agent', async () => {
+      const execAgentSpy = vi
+        .spyOn(AiAgentService.prototype, 'execAgent')
+        .mockResolvedValue({ success: true } as never);
+      const caller = aiAgentRouter.createCaller(createTestContext());
+
+      await caller.execAgent({
+        agentId: testAgentId,
+        appContext: { scope: 'sub_agent' },
+        model: 'parent-model',
+        prompt: 'Run inherited model',
+        provider: 'parent-provider',
+      });
+
+      expect(execAgentSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ model: 'parent-model', provider: 'parent-provider' }),
+      );
+      execAgentSpy.mockRestore();
+    });
+
     it('should create a new topic when topicId is not provided', async () => {
       const caller = aiAgentRouter.createCaller(createTestContext());
 

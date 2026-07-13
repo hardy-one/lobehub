@@ -144,6 +144,9 @@ export class PluginTypesActionImpl {
       // Runs the sub-agent in an isolated thread using the current client runtime
       // and resolves with its output, so the tool returns a normal tool result.
       const subAgentParentOperationId = rootRuntimeOperationId ?? operationId;
+      const parentRuntimeMetadata = subAgentParentOperationId
+        ? this.#get().operations[subAgentParentOperationId]?.metadata
+        : undefined;
       const subAgent: SubAgentCallbacks = {
         run: (runParams) => {
           if (!agentId || !topicId) {
@@ -157,6 +160,13 @@ export class PluginTypesActionImpl {
           return this.#get().runClientSubAgent({
             ...runParams,
             agentId,
+            modelOverride:
+              parentRuntimeMetadata?.model && parentRuntimeMetadata?.provider
+                ? {
+                    model: parentRuntimeMetadata.model,
+                    provider: parentRuntimeMetadata.provider,
+                  }
+                : undefined,
             parentOperationId: subAgentParentOperationId,
             topicId,
           });

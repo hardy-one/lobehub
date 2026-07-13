@@ -25,6 +25,7 @@ const createState = (overrides?: Partial<AgentState>): AgentState => ({
     threadId: 'thread-1',
     topicId: 'topic-1',
   },
+  modelRuntimeConfig: { model: 'parent-model', provider: 'parent-provider' },
   operationId: 'op-1',
   status: 'running',
   stepCount: 0,
@@ -106,8 +107,10 @@ describe('sub-agent executors', () => {
       expect.objectContaining({
         agentId: 'target-agent',
         instruction: 'Do useful work',
+        model: 'parent-model',
         parentMessageId: 'tool-msg-1',
         parentOperationId: 'op-1',
+        provider: 'parent-provider',
         timeout: 1_800_000,
         title: 'Call target',
         topicId: 'topic-1',
@@ -232,7 +235,9 @@ describe('sub-agent executors', () => {
     expect(execSubAgentTransport).toHaveBeenLastCalledWith(
       expect.objectContaining({
         agentId: 'target-b',
+        model: 'parent-model',
         parentMessageId: 'tool-msg-1',
+        provider: 'parent-provider',
       }),
     );
     expect(result.nextContext?.phase).toBe('sub_agents_batch_result');

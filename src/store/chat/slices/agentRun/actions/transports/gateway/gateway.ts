@@ -10,6 +10,7 @@ import type {
   ExecAgentResult,
   MessageMetadata,
   RuntimeMentionedAgent,
+  TopicModelOverride,
 } from '@lobechat/types';
 
 import { isDesktop } from '@/const/version';
@@ -374,6 +375,8 @@ export class GatewayActionImpl {
     message: string;
     /** Request metadata carried from the originating user message. */
     metadata?: Pick<MessageMetadata, 'trigger'>;
+    /** Run-only model inherited by a sub-agent. */
+    modelOverride?: TopicModelOverride;
     /** Called when the gateway session completes (agent finished running) */
     onComplete?: () => void;
     /** Temporary sidebar topic inserted by sendMessage before the server creates the real topic. */
@@ -433,6 +436,7 @@ export class GatewayActionImpl {
       fileIds,
       message,
       metadata,
+      modelOverride,
       onComplete,
       optimisticTopic,
       parentMessageId,
@@ -523,8 +527,10 @@ export class GatewayActionImpl {
         deviceId: localDeviceId,
         fileIds,
         mentionedAgents,
+        model: modelOverride?.model,
         parentMessageId,
         prompt: message,
+        provider: modelOverride?.provider,
         resumeApproval,
         resumeToolResult,
         selectedToolIds,

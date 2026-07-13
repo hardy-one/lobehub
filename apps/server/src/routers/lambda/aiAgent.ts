@@ -171,8 +171,12 @@ const ExecAgentSchema = z
     existingMessageIds: z.array(z.string()).optional().default([]),
     /** File IDs of already-uploaded attachments to attach to the new user message */
     fileIds: z.array(z.string()).optional(),
+    /** Run-only model inherited by a normal sub-agent */
+    model: z.string().optional(),
     /** Parent message ID for regeneration/continue (skip user message creation, branch from this message) */
     parentMessageId: z.string().optional(),
+    /** Run-only provider inherited by a normal sub-agent */
+    provider: z.string().optional(),
     /** The user input/prompt */
     prompt: z.string(),
     /**
@@ -322,8 +326,12 @@ const ExecSubAgentTaskSchema = z.object({
   groupId: z.string().optional(),
   /** Task instruction/prompt for the SubAgent */
   instruction: z.string(),
+  /** Model inherited from the parent run */
+  model: z.string().optional(),
   /** The parent message ID (Supervisor's tool call message or task message) */
   parentMessageId: z.string(),
+  /** Provider inherited from the parent run */
+  provider: z.string().optional(),
   /** Timeout in milliseconds (optional) */
   timeout: z.number().optional(),
   /** Task title (shown in UI, used as thread title) */
@@ -746,7 +754,9 @@ export const aiAgentRouter = router({
       existingMessageIds = [],
       fileIds,
       mentionedAgents,
+      model,
       parentMessageId,
+      provider,
       resumeApproval,
       resumeToolResult,
       selectedToolIds,
@@ -757,6 +767,9 @@ export const aiAgentRouter = router({
     log('execAgent: identifier=%s, prompt=%s', agentId || slug, prompt.slice(0, 50));
 
     try {
+      const inheritedModel = appContext?.scope === 'sub_agent' ? model : undefined;
+      const inheritedProvider = appContext?.scope === 'sub_agent' ? provider : undefined;
+
       return await ctx.aiAgentService.execAgent({
         agentId,
         appContext,
@@ -765,8 +778,10 @@ export const aiAgentRouter = router({
         existingMessageIds,
         fileIds,
         mentionedAgents,
+        model: inheritedModel,
         parentMessageId,
         prompt,
+        provider: inheritedProvider,
         // When parentMessageId is provided, this is a regeneration/continue or a
         // human-approval resume — either way, skip user message creation.
         resume: !!parentMessageId,
@@ -974,7 +989,17 @@ export const aiAgentRouter = router({
   execSubAgentTask: aiAgentWriteProcedure
     .input(ExecSubAgentTaskSchema)
     .mutation(async ({ input, ctx }) => {
-      const { agentId, groupId, instruction, parentMessageId, title, topicId, timeout } = input;
+      const {
+        agentId,
+        groupId,
+        instruction,
+        model,
+        parentMessageId,
+        provider,
+        title,
+        topicId,
+        timeout,
+      } = input;
 
       log('execSubAgentTask: agentId=%s, groupId=%s', agentId, groupId);
 
@@ -984,7 +1009,9 @@ export const aiAgentRouter = router({
           agentId,
           groupId,
           instruction,
+          model,
           parentMessageId,
+          provider,
           timeout,
           title,
           topicId,

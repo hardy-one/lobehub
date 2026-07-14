@@ -193,10 +193,12 @@ export class MessageOptimisticUpdateActionImpl {
     id: string,
     error: ChatMessageError | null,
     context?: OptimisticUpdateContext,
+    modelConfig?: { model: string; provider: string },
   ): Promise<void> => {
-    this.#get().internal_dispatchMessage({ id, type: 'updateMessage', value: { error } }, context);
+    const value = { error, ...modelConfig };
+    this.#get().internal_dispatchMessage({ id, type: 'updateMessage', value }, context);
     const ctx = this.#get().internal_getConversationContext(context);
-    const result = await messageService.updateMessage(id, { error }, ctx);
+    const result = await messageService.updateMessage(id, value, ctx);
     if (result?.success && result.messages) {
       this.#get().replaceMessages(result.messages, { context: ctx });
     } else {

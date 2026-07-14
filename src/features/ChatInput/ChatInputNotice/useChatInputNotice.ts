@@ -5,6 +5,8 @@ import { agentByIdSelectors } from '@/store/agent/selectors';
 import { aiProviderSelectors, useAiInfraStore } from '@/store/aiInfra';
 import { type EnabledProviderWithModels } from '@/types/aiProvider';
 
+import { useChatInputTopicModel } from '../hooks/useTopicModel';
+
 interface ResolveChatInputNoticeParams {
   currentChatModel?: unknown;
   isHeterogeneousAgent: boolean;
@@ -43,11 +45,8 @@ export type ChatInputNotice = NonNullable<ReturnType<typeof resolveChatInputNoti
 export const useChatInputNotice = (): ChatInputNotice | undefined => {
   const agentId = useAgentId();
 
-  const [isHeterogeneousAgent, model, provider] = useAgentStore((s) => [
-    agentByIdSelectors.isAgentHeterogeneousById(agentId)(s),
-    agentByIdSelectors.getAgentModelById(agentId)(s),
-    agentByIdSelectors.getAgentModelProviderById(agentId)(s),
-  ]);
+  const isHeterogeneousAgent = useAgentStore(agentByIdSelectors.isAgentHeterogeneousById(agentId));
+  const { model, provider } = useChatInputTopicModel();
 
   const enabledChatModelList = useEnabledChatModels();
   const isModelConfigReady = useAiInfraStore((s) =>

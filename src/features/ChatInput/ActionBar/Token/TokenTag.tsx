@@ -23,6 +23,7 @@ import { useUserStore } from '@/store/user';
 import { settingsSelectors, userGeneralSettingsSelectors } from '@/store/user/selectors';
 
 import { useAgentId } from '../../hooks/useAgentId';
+import { useChatInputTopicModel } from '../../hooks/useTopicModel';
 import { useChatInputStore } from '../../store';
 import ActionPopover from '../components/ActionPopover';
 import TokenProgress from './TokenProgress';
@@ -45,8 +46,6 @@ const Token = memo(() => {
   const [
     activeAgentId,
     systemRole,
-    model,
-    provider,
     enableAgentMode,
     searchMode,
     useModelBuiltinSearch,
@@ -60,8 +59,6 @@ const Token = memo(() => {
     return [
       s.activeAgentId,
       agentByIdSelectors.getAgentSystemRoleById(agentId)(s),
-      agentByIdSelectors.getAgentModelById(agentId)(s),
-      agentByIdSelectors.getAgentModelProviderById(agentId)(s),
       chatConfig.enableAgentMode,
       chatConfig.searchMode,
       chatConfig.useModelBuiltinSearch,
@@ -73,6 +70,7 @@ const Token = memo(() => {
         .some((item) => item.enabled),
     ];
   });
+  const { model, provider } = useChatInputTopicModel();
   const globalMemoryEnabled = useUserStore(settingsSelectors.memoryEnabled);
   const effectiveMemoryEnabled = agentMemoryEnabled ?? globalMemoryEnabled;
   const [isProviderHasBuiltinSearch, isModelHasBuiltinSearch, isModelBuiltinSearchInternal] =

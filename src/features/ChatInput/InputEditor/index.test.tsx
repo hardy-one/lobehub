@@ -144,9 +144,17 @@ vi.mock('@/services/aiChat', () => ({
   },
 }));
 vi.mock('@/store/chat', () => ({
-  useChatStore: Object.assign(<T,>(selector: StoreSelector<T>) => selector({}), {
-    getState: () => ({ activeTopicId: undefined }),
-  }),
+  useChatStore: Object.assign(
+    <T,>(selector: StoreSelector<T>) =>
+      selector({
+        topicDataMap: {},
+        topicModelOverrideMap: {},
+        useFetchTopicModelOverride: () => ({ data: undefined }),
+      }),
+    {
+      getState: () => ({ activeTopicId: undefined }),
+    },
+  ),
 }));
 vi.mock('../hooks/useChatInputDraft', () => ({
   useChatInputDraft: () => ({ restoreDraft: vi.fn(), saveDraftDebounced: vi.fn() }),

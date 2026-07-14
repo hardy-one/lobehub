@@ -342,6 +342,8 @@ export class ConversationControlActionImpl {
     const toolMessage = dbMessageSelectors.getDbMessageById(toolMessageId)(this.#get());
     if (!toolMessage) return;
 
+    const shouldUseGatewayResume = await this.#shouldUseGatewayResume(effectiveContext);
+
     // Create an operation to carry the context for optimistic updates
     // This ensures optimistic updates use the correct agentId/topicId
     const { operationId } = startOperation({
@@ -358,7 +360,6 @@ export class ConversationControlActionImpl {
     });
 
     const optimisticContext = { operationId };
-    const shouldUseGatewayResume = await this.#shouldUseGatewayResume(effectiveContext);
 
     if (!shouldUseGatewayResume) this.#writeTopicStatus(effectiveContext, 'active');
 
@@ -505,6 +506,8 @@ export class ConversationControlActionImpl {
     const toolMessage = dbMessageSelectors.getDbMessageById(toolMessageId)(this.#get());
     if (!toolMessage) return;
 
+    const shouldUseGatewayResume = await this.#shouldUseGatewayResume(effectiveContext);
+
     const { operationId } = startOperation({
       type: 'submitToolInteraction',
       // Carry the full effective context so the interim op is bucketed under the
@@ -519,7 +522,6 @@ export class ConversationControlActionImpl {
 
     const optimisticContext: OptimisticUpdateContext = { operationId };
     const shouldCreateUserMessage = options?.createUserMessage !== false;
-    const shouldUseGatewayResume = await this.#shouldUseGatewayResume(effectiveContext);
 
     if (!shouldUseGatewayResume) this.#writeTopicStatus(effectiveContext, 'active');
 
@@ -1147,6 +1149,8 @@ export class ConversationControlActionImpl {
     const toolMessage = dbMessageSelectors.getDbMessageById(messageId)(this.#get());
     if (!toolMessage) return;
 
+    const shouldUseGatewayResume = await this.#shouldUseGatewayResume(effectiveContext);
+
     // Create an operation to carry the context for optimistic updates
     const { operationId } = startOperation({
       type: 'rejectToolCalling',
@@ -1160,7 +1164,6 @@ export class ConversationControlActionImpl {
     });
 
     const optimisticContext = { operationId };
-    const shouldUseGatewayResume = await this.#shouldUseGatewayResume(effectiveContext);
 
     if (!shouldUseGatewayResume) this.#writeTopicStatus(effectiveContext, 'active');
 

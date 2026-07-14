@@ -906,7 +906,7 @@ describe('chatMessage actions', () => {
       );
     });
 
-    it('optimisticUpdateMessageError should use context operationId', async () => {
+    it('optimisticUpdateMessageError should persist the resolved model in context', async () => {
       const { result } = renderHook(() => useChatStore());
       const messageId = 'message-id';
       const error = { message: 'Error occurred', type: 'error' as any };
@@ -924,14 +924,17 @@ describe('chatMessage actions', () => {
         });
         operationId = op.operationId;
 
-        await result.current.optimisticUpdateMessageError(messageId, error, {
-          operationId,
-        });
+        await result.current.optimisticUpdateMessageError(
+          messageId,
+          error,
+          { operationId },
+          { model: 'topic-model', provider: 'topic-provider' },
+        );
       });
 
       expect(updateMessageSpy).toHaveBeenCalledWith(
         messageId,
-        { error },
+        { error, model: 'topic-model', provider: 'topic-provider' },
         { agentId: contextSessionId, topicId: contextTopicId },
       );
     });

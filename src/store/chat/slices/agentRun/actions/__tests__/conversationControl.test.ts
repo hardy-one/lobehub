@@ -463,6 +463,41 @@ describe('ConversationControl actions', () => {
   });
 
   describe('approveToolCalling', () => {
+    it.each([
+      ['approve', 'approveToolCalling'],
+      ['submit', 'submitToolInteraction'],
+      ['reject', 'rejectToolCalling'],
+    ] as const)(
+      'does not start an interim operation when %s routing lookup fails',
+      async (_, type) => {
+        const { result } = renderHook(() => useChatStore());
+        const agentId = 'agent-id';
+        const topicId = 'topic-id';
+        const toolMessage = createMockMessage({ id: 'tool-msg-1', role: 'tool' });
+
+        act(() => {
+          useChatStore.setState({
+            activeAgentId: agentId,
+            activeTopicId: topicId,
+            dbMessagesMap: { [messageMapKey({ agentId, topicId })]: [toolMessage] },
+          });
+          useUserStore.setState({
+            ensureExecutionTargetPreference: vi.fn().mockRejectedValue(new Error('lookup failed')),
+          });
+        });
+
+        const action =
+          type === 'approveToolCalling'
+            ? result.current.approveToolCalling('tool-msg-1', '')
+            : type === 'submitToolInteraction'
+              ? result.current.submitToolInteraction('tool-msg-1', { answer: 'yes' })
+              : result.current.rejectToolCalling('tool-msg-1', 'no');
+
+        await expect(action).rejects.toThrow('lookup failed');
+        expect(Object.values(result.current.operations)).toHaveLength(0);
+      },
+    );
+
     it('should use provided context instead of global state', async () => {
       const { result } = renderHook(() => useChatStore());
 

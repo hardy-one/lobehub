@@ -27,6 +27,7 @@ const testState = vi.hoisted(() => ({
     isInitAiProviderRuntimeState: false,
   },
   isDesktop: false,
+  topicModel: { model: 'gpt-4o', provider: 'openai' },
 }));
 
 type StoreSelector<T = unknown, S = Record<PropertyKey, unknown>> = (state: S) => T;
@@ -39,6 +40,10 @@ vi.mock('@lobechat/const', () => ({
 
 vi.mock('@/features/ChatInput/hooks/useAgentId', () => ({
   useAgentId: () => 'agent-id',
+}));
+
+vi.mock('@/features/ChatInput/hooks/useTopicModel', () => ({
+  useChatInputTopicModel: () => testState.topicModel,
 }));
 
 vi.mock('@/hooks/useEnabledChatModels', () => ({
@@ -76,6 +81,7 @@ describe('useChatInputNotice', () => {
     testState.aiInfra.enabledChatModelList = [];
     testState.aiInfra.isInitAiProviderRuntimeState = false;
     testState.isDesktop = false;
+    testState.topicModel = { model: 'gpt-4o', provider: 'openai' };
   });
 
   it('does not return a notice before the model runtime config is ready', () => {
@@ -118,6 +124,21 @@ describe('useChatInputNotice', () => {
     testState.aiInfra.isInitAiProviderRuntimeState = true;
     testState.aiInfra.enabledChatModelList = [
       { children: [{ abilities: { functionCall: true }, id: 'gpt-4o' }], id: 'openai' },
+    ];
+
+    const { result } = renderHook(() => useChatInputNotice());
+
+    expect(result.current).toBeUndefined();
+  });
+
+  it('checks the Topic model instead of the Agent default', () => {
+    testState.aiInfra.isInitAiProviderRuntimeState = true;
+    testState.topicModel = { model: 'topic-model', provider: 'topic-provider' };
+    testState.aiInfra.enabledChatModelList = [
+      {
+        children: [{ abilities: { functionCall: true }, id: 'topic-model' }],
+        id: 'topic-provider',
+      },
     ];
 
     const { result } = renderHook(() => useChatInputNotice());

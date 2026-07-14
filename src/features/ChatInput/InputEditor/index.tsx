@@ -37,6 +37,7 @@ import {
 import { useAgentId } from '../hooks/useAgentId';
 import { useChatInputDraft } from '../hooks/useChatInputDraft';
 import { useChatInputHistory } from '../hooks/useChatInputHistory';
+import { useChatInputTopicModel } from '../hooks/useTopicModel';
 import { useChatInputStore, useStoreApi } from '../store';
 import {
   INSERT_ACTION_TAG_COMMAND,
@@ -132,9 +133,8 @@ const InputEditor = memo<{
   // --- Category-based mention system ---
   const categories = useMentionCategories();
 
-  // Get agent's model info for vision support check and handle paste upload
-  const model = useAgentStore((s) => agentByIdSelectors.getAgentModelById(agentId)(s));
-  const provider = useAgentStore((s) => agentByIdSelectors.getAgentModelProviderById(agentId)(s));
+  // Get the effective Topic model for vision support checks and paste uploads.
+  const { model, provider } = useChatInputTopicModel();
   const heterogeneousType = useAgentStore(
     (s) => agentByIdSelectors.getAgencyConfigById(agentId)(s)?.heterogeneousProvider?.type,
   );

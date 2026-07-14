@@ -23,6 +23,7 @@ import { systemAgentSelectors } from '@/store/user/selectors';
 import type { LobeAgentConfig } from '@/types/agent';
 
 import { useAgentId } from '../../hooks/useAgentId';
+import { useChatInputTopicModel } from '../../hooks/useTopicModel';
 import { useUpdateAgentConfig } from '../../hooks/useUpdateAgentConfig';
 
 interface ControlsProps {
@@ -527,13 +528,10 @@ const Controls = memo<ControlsProps>(({ setUpdating, updating, variant = 'popove
     (s) => agentByIdSelectors.getAgentConfigById(agentId)(s) || DEFAULT_AGENT_CONFIG,
     isEqual,
   );
-  const agentModel = useAgentStore((s) => agentByIdSelectors.getAgentModelById(agentId)(s));
-  const agentProvider = useAgentStore((s) =>
-    agentByIdSelectors.getAgentModelProviderById(agentId)(s),
-  );
+  const { model, provider } = useChatInputTopicModel();
   const enableAgentMode = useAgentStore(agentByIdSelectors.getAgentEnableModeById(agentId));
   const hasModelConfig = useAiInfraStore(
-    aiModelSelectors.isModelHasExtendParams(agentModel ?? '', agentProvider ?? ''),
+    aiModelSelectors.isModelHasExtendParams(model ?? '', provider ?? ''),
   );
   const [form] = AntdForm.useForm();
   const [advancedOpen, setAdvancedOpen] = useState(() => getStoredOpen(ADVANCED_OPEN_STORAGE_KEY));
@@ -561,7 +559,7 @@ const Controls = memo<ControlsProps>(({ setUpdating, updating, variant = 'popove
   const enableReasoningEffort = form.getFieldValue(['chatConfig', 'enableReasoningEffort']);
   const reasoningEffortValue = form.getFieldValue(['params', 'reasoning_effort']);
   const disabledParams = useAiInfraStore(
-    aiModelSelectors.modelDisabledParams(agentModel ?? '', agentProvider ?? ''),
+    aiModelSelectors.modelDisabledParams(model ?? '', provider ?? ''),
   );
   const { frequency_penalty, presence_penalty, temperature, top_p } = config.params ?? {};
 
@@ -860,8 +858,8 @@ const Controls = memo<ControlsProps>(({ setUpdating, updating, variant = 'popove
                 <div className={styles.modelConfigSection}>
                   <ControlsForm
                     disabled={!canCreate}
-                    model={agentModel}
-                    provider={agentProvider}
+                    model={model}
+                    provider={provider}
                     onUpdatingChange={setUpdating}
                   />
                 </div>

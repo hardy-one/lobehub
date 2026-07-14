@@ -7,6 +7,7 @@ import { agentService } from '@/services/agent';
 import { aiChatService } from '@/services/aiChat';
 import { chatService } from '@/services/chat';
 import { messageService } from '@/services/message';
+import { agentByIdSelectors } from '@/store/agent/selectors';
 import * as agentGroupStore from '@/store/agentGroup';
 import { setPendingTopicRepos } from '@/store/chat/pendingTopicRepos';
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
@@ -14,6 +15,7 @@ import { topicMapKey } from '@/store/chat/utils/topicMapKey';
 import { getSessionStoreState } from '@/store/session';
 import * as toolStoreModule from '@/store/tool';
 import { pageAgentRuntime } from '@/store/tool/slices/builtin/executors/lobe-page-agent';
+import { useUserStore } from '@/store/user';
 
 import { useChatStore } from '../../../../store';
 import { createMockAgentConfig, createMockMessage, TEST_CONTENT, TEST_IDS } from './fixtures';
@@ -65,6 +67,10 @@ beforeEach(() => {
   const sessionStore = getSessionStoreState();
   vi.spyOn(sessionStore, 'triggerSessionUpdate').mockResolvedValue(undefined);
   vi.spyOn(agentService, 'getAgentConfigById').mockResolvedValue(createMockAgentConfig() as any);
+  useUserStore.setState({
+    ensureExecutionTargetPreference: vi.fn().mockResolvedValue({ agent: null, topic: null }),
+    executionTargetPreferenceMap: {},
+  });
 
   act(() => {
     useChatStore.setState({
@@ -1958,6 +1964,15 @@ describe('ConversationLifecycle actions', () => {
         setupMockSelectors({
           agentConfig: {
             plugins: ['lobe-local-system'],
+          },
+        });
+        vi.spyOn(agentByIdSelectors, 'isWorkspaceAgentById').mockReturnValue(() => true);
+        useUserStore.setState({
+          executionTargetPreferenceMap: {
+            [`agent:${TEST_IDS.SESSION_ID}`]: {
+              boundDeviceId: 'local-device',
+              executionTarget: 'local',
+            },
           },
         });
         mockLocalFileService.readLocalFile.mockResolvedValue({

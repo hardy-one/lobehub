@@ -300,7 +300,7 @@ table agent_eval_runs {
   updated_at "timestamp with time zone" [not null, default: `now()`]
 
   indexes {
-    
+
     dataset_id [name: 'agent_eval_runs_dataset_id_idx']
     experiment_id [name: 'agent_eval_runs_experiment_id_idx']
     parent_run_id [name: 'agent_eval_runs_parent_run_id_idx']
@@ -2076,7 +2076,7 @@ table tasks {
   updated_at "timestamp with time zone" [not null, default: `now()`]
 
   indexes {
-    
+
     (identifier, created_by_user_id) [name: 'tasks_identifier_idx', unique]
     created_by_user_id [name: 'tasks_created_by_user_id_idx']
     created_by_agent_id [name: 'tasks_created_by_agent_id_idx']
@@ -2260,6 +2260,24 @@ table users {
     username [name: 'users_username_idx']
     created_at [name: 'users_created_at_idx']
     created_at [name: 'users_banned_true_created_at_idx']
+  }
+}
+
+table user_execution_target_preferences {
+  id uuid [pk, not null, default: `gen_random_uuid()`]
+  user_id text [not null]
+  source_client_id uuid [not null]
+  agent_id text
+  topic_id text
+  execution_target text [not null]
+  bound_device_id text
+  accessed_at "timestamp with time zone" [not null, default: `now()`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  updated_at "timestamp with time zone" [not null, default: `now()`]
+
+  indexes {
+    (user_id, source_client_id, agent_id) [name: 'user_execution_target_preferences_agent_scope_unique', unique]
+    (user_id, source_client_id, topic_id) [name: 'user_execution_target_preferences_topic_scope_unique', unique]
   }
 }
 

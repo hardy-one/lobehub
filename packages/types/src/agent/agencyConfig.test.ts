@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  applyExecutionTargetSelection,
   buildHeteroExecArgs,
   buildHeteroSpawnArgs,
   codexModelSupportsFastSpeed,
@@ -378,6 +379,34 @@ describe('codex speed mode', () => {
       }),
     ).toEqual(['--agent-arg=-c', '--agent-arg=service_tier="priority"']);
     expect(buildHeteroExecArgs({ speed: 'fast', type: 'claude-code' })).toBeUndefined();
+  });
+});
+
+describe('applyExecutionTargetSelection', () => {
+  it('replaces the execution target and device binding while preserving unrelated config', () => {
+    expect(
+      applyExecutionTargetSelection(
+        {
+          boundDeviceId: 'shared-device',
+          executionTarget: 'device',
+          heterogeneousProvider: { type: 'claude-code' },
+        },
+        { boundDeviceId: 'source-device', executionTarget: 'local' },
+      ),
+    ).toEqual({
+      boundDeviceId: 'source-device',
+      executionTarget: 'local',
+      heterogeneousProvider: { type: 'claude-code' },
+    });
+  });
+
+  it('clears a stale device binding for non-device targets', () => {
+    expect(
+      applyExecutionTargetSelection(
+        { boundDeviceId: 'old-device', executionTarget: 'device' },
+        { executionTarget: 'sandbox' },
+      ),
+    ).toEqual({ executionTarget: 'sandbox' });
   });
 });
 

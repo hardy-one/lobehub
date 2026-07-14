@@ -38,6 +38,8 @@ export interface AgentOperationMetadata {
    */
   mirrorToOperationId?: string;
   modelRuntimeConfig?: any;
+  /** Source client used to restore per-client execution target preferences in queued steps. */
+  sourceClientId?: string;
   status: AgentState['status'];
   totalCost: number;
   totalSteps: number;
@@ -255,6 +257,7 @@ export class AgentStateManager {
           ? JSON.parse(metadata.modelRuntimeConfig)
           : undefined,
         mirrorToOperationId: metadata.mirrorToOperationId || undefined,
+        sourceClientId: metadata.sourceClientId || undefined,
         status: metadata.status as AgentState['status'],
         totalCost: parseFloat(metadata.totalCost) || 0,
         totalSteps: parseInt(metadata.totalSteps) || 0,
@@ -276,6 +279,7 @@ export class AgentStateManager {
       agentConfig?: any;
       mirrorToOperationId?: string;
       modelRuntimeConfig?: any;
+      sourceClientId?: string;
       userId?: string;
       workspaceId?: string;
     },
@@ -289,6 +293,7 @@ export class AgentStateManager {
         lastActiveAt: new Date().toISOString(),
         mirrorToOperationId: data.mirrorToOperationId,
         modelRuntimeConfig: data.modelRuntimeConfig,
+        sourceClientId: data.sourceClientId,
         status: 'idle',
         totalCost: 0,
         totalSteps: 0,
@@ -306,6 +311,7 @@ export class AgentStateManager {
       };
 
       if (metadata.userId) redisData.userId = metadata.userId;
+      if (metadata.sourceClientId) redisData.sourceClientId = metadata.sourceClientId;
       if (metadata.workspaceId) redisData.workspaceId = metadata.workspaceId;
       if (metadata.mirrorToOperationId)
         redisData.mirrorToOperationId = metadata.mirrorToOperationId;

@@ -226,6 +226,7 @@ describe('AiAgentService.execSubAgent', () => {
           expect.objectContaining({ id: 'thread-completion', type: 'onComplete' }),
         ]),
         prompt: 'Test instruction',
+        skipSourceExecutionPreference: true,
         userInterventionConfig: {
           approvalMode: 'headless',
         },

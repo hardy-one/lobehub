@@ -1,4 +1,4 @@
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useSelectExecutionTarget } from './useSelectExecutionTarget';
@@ -6,23 +6,25 @@ import { useSelectExecutionTarget } from './useSelectExecutionTarget';
 const testState = vi.hoisted(() => ({
   agent: {
     agencyConfig: undefined as
-      | {
-          boundDeviceId?: string;
-          executionTarget?: string;
-          heterogeneousProvider?: { type: string };
-        }
-      | undefined,
-    agentMap: {} as Record<string, { workspaceId?: string | null }>,
-    isHetero: false,
-    updateAgentConfigById: vi.fn(),
+      { boundDeviceId?: string; executionTarget?: string; workingDirByDevice?: object } | undefined,
+    isWorkspaceAgent: false,
   },
-  electron: {
-    gatewayDeviceInfo: undefined as { deviceId?: string } | undefined,
-  },
+  chatInput: { topicModelContext: undefined as { topicId?: string | null } | undefined },
+  electron: { gatewayDeviceInfo: undefined as { deviceId?: string } | undefined },
   getDeviceInfo: vi.fn(),
   isDesktop: false,
   user: {
-    updateWorkspaceUserPreference: vi.fn(),
+    executionTargetPreferenceMap: {} as Record<string, any>,
+    updateExecutionTargetPreference: vi.fn(),
+    useFetchExecutionTargetPreference: vi.fn(() => ({
+      error: undefined,
+      isLoading: false,
+      mutate: vi.fn(),
+    })),
+    useFetchWorkspaceUserPreference: vi.fn(() => ({
+      error: undefined,
+      isLoading: false,
+    })),
     workspaceUserPreference: {} as {
       agentDeviceOverrides?: Record<string, { boundDeviceId?: string; executionTarget?: string }>;
     },
@@ -35,10 +37,13 @@ vi.mock('@lobechat/const', () => ({
   },
 }));
 
+vi.mock('@/features/ChatInput/store', () => ({
+  useChatInputStore: (selector: (s: typeof testState.chatInput) => unknown) =>
+    selector(testState.chatInput),
+}));
+
 vi.mock('@/services/electron/gatewayConnection', () => ({
-  gatewayConnectionService: {
-    getDeviceInfo: () => testState.getDeviceInfo(),
-  },
+  gatewayConnectionService: { getDeviceInfo: () => testState.getDeviceInfo() },
 }));
 
 vi.mock('@/store/agent', () => ({
@@ -48,7 +53,7 @@ vi.mock('@/store/agent', () => ({
 vi.mock('@/store/agent/selectors', () => ({
   agentByIdSelectors: {
     getAgencyConfigById: () => (s: typeof testState.agent) => s.agencyConfig,
-    isAgentHeterogeneousById: () => (s: typeof testState.agent) => s.isHetero,
+    isWorkspaceAgentById: () => (s: typeof testState.agent) => s.isWorkspaceAgent,
   },
 }));
 
@@ -64,149 +69,79 @@ vi.mock('@/store/user', () => ({
 describe('useSelectExecutionTarget', () => {
   beforeEach(() => {
     testState.agent.agencyConfig = undefined;
-    testState.agent.agentMap = {};
-    testState.agent.isHetero = false;
-    testState.agent.updateAgentConfigById = vi.fn();
+    testState.agent.isWorkspaceAgent = false;
+    testState.chatInput.topicModelContext = undefined;
     testState.electron.gatewayDeviceInfo = undefined;
     testState.getDeviceInfo = vi.fn();
     testState.isDesktop = false;
+    testState.user.executionTargetPreferenceMap = {};
+    testState.user.updateExecutionTargetPreference = vi.fn().mockResolvedValue(undefined);
     testState.user.workspaceUserPreference = {};
-    testState.user.updateWorkspaceUserPreference = vi.fn();
   });
 
-  describe('personal agent — writes to the shared agencyConfig', () => {
-    it('persists the target as-is when switching to sandbox, keeping any existing boundDeviceId', async () => {
-      testState.agent.agencyConfig = { boundDeviceId: 'device-1', executionTarget: 'local' };
-      const { result } = renderHook(() => useSelectExecutionTarget('agent-id'));
+  it('stores a no-topic selection as the source-client Agent default', async () => {
+    const { result } = renderHook(() => useSelectExecutionTarget('agent-id'));
 
-      await result.current('sandbox');
+    await act(() => result.current.selectExecutionTarget('sandbox'));
 
-      expect(testState.agent.updateAgentConfigById).toHaveBeenCalledWith('agent-id', {
-        agencyConfig: { boundDeviceId: 'device-1', executionTarget: 'sandbox' },
-      });
-      expect(testState.user.updateWorkspaceUserPreference).not.toHaveBeenCalled();
-    });
-
-    it('pins the given deviceId when switching to a specific device', async () => {
-      const { result } = renderHook(() => useSelectExecutionTarget('agent-id'));
-
-      await result.current('device', 'device-2');
-
-      expect(testState.agent.updateAgentConfigById).toHaveBeenCalledWith('agent-id', {
-        agencyConfig: { boundDeviceId: 'device-2', executionTarget: 'device' },
-      });
-    });
-
-    it("stores 'local' verbatim (not pre-resolved to 'device') to preserve the in-process IPC path", async () => {
-      testState.isDesktop = true;
-      testState.electron.gatewayDeviceInfo = { deviceId: 'this-machine' };
-      const { result } = renderHook(() => useSelectExecutionTarget('agent-id'));
-
-      await result.current('local');
-
-      expect(testState.getDeviceInfo).not.toHaveBeenCalled();
-      expect(testState.agent.updateAgentConfigById).toHaveBeenCalledWith('agent-id', {
-        agencyConfig: { boundDeviceId: 'this-machine', executionTarget: 'local' },
-      });
-    });
-
-    it('falls back to the gateway connection service when no gateway deviceId is cached yet', async () => {
-      testState.isDesktop = true;
-      testState.getDeviceInfo.mockResolvedValue({ deviceId: 'resolved-device' });
-      const { result } = renderHook(() => useSelectExecutionTarget('agent-id'));
-
-      await result.current('local');
-
-      expect(testState.getDeviceInfo).toHaveBeenCalled();
-      expect(testState.agent.updateAgentConfigById).toHaveBeenCalledWith('agent-id', {
-        agencyConfig: { boundDeviceId: 'resolved-device', executionTarget: 'local' },
-      });
-    });
-
-    it('keeps the previous boundDeviceId when the local device cannot be resolved for a non-hetero agent', async () => {
-      testState.agent.agencyConfig = { boundDeviceId: 'stale-device', executionTarget: 'sandbox' };
-      testState.getDeviceInfo.mockRejectedValue(new Error('no gateway'));
-      const { result } = renderHook(() => useSelectExecutionTarget('agent-id'));
-
-      await result.current('local');
-
-      expect(testState.agent.updateAgentConfigById).toHaveBeenCalledWith('agent-id', {
-        agencyConfig: { boundDeviceId: 'stale-device', executionTarget: 'local' },
-      });
-    });
-
-    it('does not switch a heterogeneous agent to local when no device can be resolved', async () => {
-      testState.agent.isHetero = true;
-      testState.getDeviceInfo.mockRejectedValue(new Error('no gateway'));
-      const { result } = renderHook(() => useSelectExecutionTarget('agent-id'));
-
-      await result.current('local');
-
-      expect(testState.agent.updateAgentConfigById).not.toHaveBeenCalled();
-      expect(testState.user.updateWorkspaceUserPreference).not.toHaveBeenCalled();
+    expect(testState.user.updateExecutionTargetPreference).toHaveBeenCalledWith({
+      agentId: 'agent-id',
+      selection: { executionTarget: 'sandbox' },
     });
   });
 
-  describe('workspace agent — writes to workspace_user_settings.preference.agentDeviceOverrides (LOBE-11689)', () => {
-    beforeEach(() => {
-      testState.agent.agentMap = { 'agent-id': { workspaceId: 'ws-1' } };
+  it('stores an existing-topic selection in Topic scope', async () => {
+    testState.chatInput.topicModelContext = { topicId: 'topic-id' };
+    const { result } = renderHook(() => useSelectExecutionTarget('agent-id'));
+
+    await act(() => result.current.selectExecutionTarget('device', 'device-id'));
+
+    expect(testState.user.updateExecutionTargetPreference).toHaveBeenCalledWith({
+      agentId: 'agent-id',
+      selection: { boundDeviceId: 'device-id', executionTarget: 'device' },
+      topicId: 'topic-id',
     });
+  });
 
-    it('routes a workspace device pick into the workspace-scoped caller preference, never the shared config', async () => {
-      const { result } = renderHook(() => useSelectExecutionTarget('agent-id'));
+  it('resolves and stores this desktop for local execution', async () => {
+    testState.isDesktop = true;
+    testState.electron.gatewayDeviceInfo = { deviceId: 'this-device' };
+    const { result } = renderHook(() => useSelectExecutionTarget('agent-id'));
 
-      await result.current('device', 'ws-device-1');
+    await act(() => result.current.selectExecutionTarget('local'));
 
-      expect(testState.user.updateWorkspaceUserPreference).toHaveBeenCalledWith({
-        agentDeviceOverrides: {
-          'agent-id': { boundDeviceId: 'ws-device-1', executionTarget: 'device' },
-        },
-      });
-      expect(testState.agent.updateAgentConfigById).not.toHaveBeenCalled();
+    expect(testState.user.updateExecutionTargetPreference).toHaveBeenCalledWith({
+      agentId: 'agent-id',
+      selection: { boundDeviceId: 'this-device', executionTarget: 'local' },
     });
+  });
 
-    it("accepts 'local' for a workspace agent and stores it in the workspace-scoped preference", async () => {
-      testState.isDesktop = true;
-      testState.electron.gatewayDeviceInfo = { deviceId: 'this-machine' };
-      const { result } = renderHook(() => useSelectExecutionTarget('agent-id'));
+  it('deletes the Topic preference when following the Agent default', async () => {
+    testState.chatInput.topicModelContext = { topicId: 'topic-id' };
+    const { result } = renderHook(() => useSelectExecutionTarget('agent-id'));
 
-      await result.current('local');
+    await act(() => result.current.followAgentDefault());
 
-      expect(testState.user.updateWorkspaceUserPreference).toHaveBeenCalledWith({
-        agentDeviceOverrides: {
-          'agent-id': { boundDeviceId: 'this-machine', executionTarget: 'local' },
-        },
-      });
-      expect(testState.agent.updateAgentConfigById).not.toHaveBeenCalled();
+    expect(testState.user.updateExecutionTargetPreference).toHaveBeenCalledWith({
+      agentId: 'agent-id',
+      selection: null,
+      topicId: 'topic-id',
     });
+  });
 
-    it('preserves other agents overrides in the same workspace when writing this one', async () => {
-      testState.user.workspaceUserPreference = {
-        agentDeviceOverrides: {
-          'other-agent': { boundDeviceId: 'other-device', executionTarget: 'device' },
-        },
-      };
-      const { result } = renderHook(() => useSelectExecutionTarget('agent-id'));
+  it('applies Topic preference over Agent and shared configuration', () => {
+    testState.agent.agencyConfig = { boundDeviceId: 'shared', executionTarget: 'device' };
+    testState.chatInput.topicModelContext = { topicId: 'topic-id' };
+    testState.user.executionTargetPreferenceMap = {
+      'agent:agent-id': { executionTarget: 'sandbox' },
+      'topic:topic-id': { boundDeviceId: 'topic-device', executionTarget: 'device' },
+    };
 
-      await result.current('sandbox');
+    const { result } = renderHook(() => useSelectExecutionTarget('agent-id'));
 
-      expect(testState.user.updateWorkspaceUserPreference).toHaveBeenCalledWith({
-        agentDeviceOverrides: {
-          'other-agent': { boundDeviceId: 'other-device', executionTarget: 'device' },
-          'agent-id': { executionTarget: 'sandbox' },
-        },
-      });
-    });
-
-    it('drops boundDeviceId when it cannot be resolved (e.g. web caller picks local)', async () => {
-      testState.isDesktop = false;
-      const { result } = renderHook(() => useSelectExecutionTarget('agent-id'));
-
-      await result.current('sandbox');
-
-      expect(testState.user.updateWorkspaceUserPreference).toHaveBeenCalledWith({
-        agentDeviceOverrides: { 'agent-id': { executionTarget: 'sandbox' } },
-      });
+    expect(result.current.agencyConfig).toMatchObject({
+      boundDeviceId: 'topic-device',
+      executionTarget: 'device',
     });
   });
 });

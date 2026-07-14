@@ -6,6 +6,7 @@ import { isRemoteHeterogeneousType } from '@lobechat/heterogeneous-agents';
 import type { DeviceExecutionTarget } from '@lobechat/types';
 import { Microsoft } from '@lobehub/icons';
 import { Flexbox, Icon, Popover, Tooltip } from '@lobehub/ui';
+import { toast } from '@lobehub/ui/base-ui';
 import { createStaticStyles, cssVar, cx } from 'antd-style';
 import {
   BoxIcon,
@@ -19,8 +20,9 @@ import {
   MonitorOffIcon,
   SettingsIcon,
   SparklesIcon,
+  Undo2Icon,
 } from 'lucide-react';
-import { memo, type ReactNode, useCallback, useEffect, useState } from 'react';
+import { memo, type ReactNode, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { DOWNLOAD_URL } from '@/const/url';
@@ -29,7 +31,6 @@ import { useDeviceList } from '@/features/DeviceManager/useDeviceList';
 import { useWorkspaceAwareNavigate } from '@/features/Workspace/useWorkspaceAwareNavigate';
 import { resolveExecutionTarget } from '@/helpers/executionTarget';
 import { useIsGatewayModeEnabled } from '@/helpers/gatewayMode';
-import { useEffectiveAgencyConfig } from '@/hooks/useEffectiveAgencyConfig';
 import { useAgentStore } from '@/store/agent';
 import { useElectronStore } from '@/store/electron';
 
@@ -339,18 +340,22 @@ interface HeteroDeviceSwitcherProps {
 }
 
 const HeteroDeviceSwitcher = memo<HeteroDeviceSwitcherProps>(({ agentId }) => {
-  const { t } = useTranslation('chat');
+  const { t } = useTranslation(['chat', 'common']);
   const [open, setOpen] = useState(false);
   const navigate = useWorkspaceAwareNavigate();
 
   const agentWorkspaceId = useAgentStore((s) => s.agentMap[agentId]?.workspaceId);
   const isWorkspaceAgent = Boolean(agentWorkspaceId);
-
-  // Shared config merged with the caller's per-agent override (LOBE-11689) —
-  // the hook eagerly fetches the `workspaceUserSettings` bucket on mount so
-  // what the picker shows and what dispatch will actually do always agree.
-  const { agencyConfig, isPreferenceLoading: isWorkspacePreferenceLoading } =
-    useEffectiveAgencyConfig(agentId);
+  const {
+    agencyConfig,
+    error: preferenceError,
+    followAgentDefault,
+    hasTopicOverride,
+    isLoading: isPreferenceLoading,
+    retry: retryPreference,
+    selectExecutionTarget,
+    topicId,
+  } = useSelectExecutionTarget(agentId);
 
   const heteroType = agencyConfig?.heterogeneousProvider?.type;
   const boundDeviceId = agencyConfig?.boundDeviceId;
@@ -364,7 +369,7 @@ const HeteroDeviceSwitcher = memo<HeteroDeviceSwitcherProps>(({ agentId }) => {
   // Workspace-keyed SWR fetch — the raw lambdaQuery key has no workspace
   // dimension, so the picker kept showing the previous workspace's pool after
   // a switch (LOBE-11904).
-  const { data: devices, isLoading } = useDeviceList();
+  const { data: devices, isLoading: isDeviceListLoading } = useDeviceList();
 
   // The current machine's own gateway deviceId (desktop only), used to badge the
   // matching device row with a "This device" tag and show the local-process
@@ -373,14 +378,8 @@ const HeteroDeviceSwitcher = memo<HeteroDeviceSwitcherProps>(({ agentId }) => {
   const gatewayDeviceInfo = useElectronStore((s) => s.gatewayDeviceInfo);
   const currentDeviceId = isDesktop ? gatewayDeviceInfo?.deviceId : undefined;
 
-  // Effective target: `resolveExecutionTarget` runs over the *merged*
-  // `agencyConfig` (shared + this user's LOBE-11689 override), so what the
-  // chip shows and what the server dispatches always agree.
-  //
-  // `workspaceScoped: false`: with per-user overrides, workspace agents can
-  // resolve `local` again — the pre-11689 coercion was only there because
-  // sharing the choice across members made a personal-scope `local` pick
-  // dangerous.
+  // The hook returns the effective shared → workspace → source Agent → Topic
+  // config, so the chip and runtime dispatch resolve the same target.
   const deviceRoutingAvailable = useIsGatewayModeEnabled(agentId);
   const executionTarget = resolveExecutionTarget(agencyConfig, {
     clientExecutionAvailable: isDesktop,
@@ -388,42 +387,17 @@ const HeteroDeviceSwitcher = memo<HeteroDeviceSwitcherProps>(({ agentId }) => {
     isHetero,
   });
 
-  const selectExecutionTarget = useSelectExecutionTarget(agentId);
   const handleSelect = useCallback(
     async (target: DeviceExecutionTarget, deviceId?: string) => {
-      setOpen(false);
-      await selectExecutionTarget(target, deviceId);
+      try {
+        await selectExecutionTarget(target, deviceId);
+        setOpen(false);
+      } catch {
+        toast.error(t('heteroAgent.executionTarget.saveFailed'));
+      }
     },
-    [selectExecutionTarget],
+    [selectExecutionTarget, t],
   );
-
-  // Auto-default to THIS desktop's local execution on first open, for both
-  // personal and workspace agents (workspace behaviour used to be a hostname
-  // lookup against the workspace device pool — see LOBE-11647 — but with
-  // per-user overrides that lookup is unnecessary: `useSelectExecutionTarget`
-  // resolves `'local'` to this desktop's personal gateway `deviceId` and, for
-  // a workspace agent, persists it into `users.preference.agentDeviceOverrides`,
-  // so it never touches other members' choices).
-  //
-  // Fires only when the effective (merged) target and bound device are both
-  // unset — an explicit prior selection, mine or (for personal) shared,
-  // is preserved. Waits for the workspace preference fetch to settle first:
-  // before it returns, an existing per-user override looks unset and the
-  // default would clobber it.
-  useEffect(() => {
-    if (!isDesktop) return;
-    if (isWorkspacePreferenceLoading) return;
-    if (agencyConfig?.executionTarget !== undefined) return;
-    if (agencyConfig?.boundDeviceId !== undefined) return;
-    if (!currentDeviceId) return;
-    void selectExecutionTarget('local');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    agencyConfig?.executionTarget,
-    agencyConfig?.boundDeviceId,
-    currentDeviceId,
-    isWorkspacePreferenceLoading,
-  ]);
 
   // Don't render for remote hetero agents — they use RemoteAgentConfigCard in profile.
   if (heteroType && isRemoteHeterogeneousType(heteroType)) return null;
@@ -475,8 +449,9 @@ const HeteroDeviceSwitcher = memo<HeteroDeviceSwitcherProps>(({ agentId }) => {
   // header link — avoid showing the same CTA twice. Workspace agents get the
   // enroll hint instead: downloading the desktop app wouldn't help until the
   // machine is enrolled into the workspace pool.
-  const showWebDownloadCard = !isDesktop && !isWorkspaceAgent && hasNoDevices && !isLoading;
-  const showWorkspaceEnrollHint = isWorkspaceAgent && hasNoDevices && !isLoading;
+  const showWebDownloadCard =
+    !isDesktop && !isWorkspaceAgent && hasNoDevices && !isDeviceListLoading;
+  const showWorkspaceEnrollHint = isWorkspaceAgent && hasNoDevices && !isDeviceListLoading;
 
   // Compute chip
   let chipIcon: ReactNode = <Icon icon={BoxIcon} size={14} />;
@@ -500,9 +475,12 @@ const HeteroDeviceSwitcher = memo<HeteroDeviceSwitcherProps>(({ agentId }) => {
   }
 
   const isActive = (target: DeviceExecutionTarget, deviceId?: string) => {
+    if (topicId && !hasTopicOverride) return false;
     if (target === 'device') return executionTarget === 'device' && boundDeviceId === deviceId;
     return executionTarget === target;
   };
+
+  const preferenceUnavailable = isPreferenceLoading || !!preferenceError;
 
   const renderDeviceStatus = (d: NonNullable<typeof devices>[number]) => (
     <>
@@ -520,7 +498,7 @@ const HeteroDeviceSwitcher = memo<HeteroDeviceSwitcherProps>(({ agentId }) => {
     return (
       <OptionRow
         active={isActive('device', d.deviceId)}
-        disabled={!d.online}
+        disabled={!d.online || preferenceUnavailable}
         icon={getDeviceIcon(d.platform)}
         key={d.deviceId}
         label={d.friendlyName || d.hostname || d.deviceId}
@@ -568,10 +546,36 @@ const HeteroDeviceSwitcher = memo<HeteroDeviceSwitcherProps>(({ agentId }) => {
           </a>
         )}
       </div>
+      {preferenceError ? (
+        <button
+          className={styles.manageButton}
+          type="button"
+          onClick={() => void retryPreference()}
+        >
+          {t('heteroAgent.executionTarget.loadFailed')} · {t('common:retry')}
+        </button>
+      ) : isPreferenceLoading ? (
+        <div className={styles.empty}>{t('heteroAgent.executionTarget.loading')}</div>
+      ) : null}
+      {topicId ? (
+        <OptionRow
+          active={!hasTopicOverride}
+          desc={t('heteroAgent.executionTarget.followAgentDesc')}
+          disabled={preferenceUnavailable}
+          icon={<Icon icon={Undo2Icon} size={14} />}
+          label={t('heteroAgent.executionTarget.followAgent')}
+          onClick={() => {
+            void followAgentDefault()
+              .then(() => setOpen(false))
+              .catch(() => toast.error(t('heteroAgent.executionTarget.saveFailed')));
+          }}
+        />
+      ) : null}
       {isHetero ? null : (
         <OptionRow
           active={isActive('none')}
           desc={t('heteroAgent.executionTarget.noneDesc')}
+          disabled={preferenceUnavailable}
           icon={<Icon icon={MonitorOffIcon} size={14} />}
           label={t('heteroAgent.executionTarget.none')}
           onClick={() => void handleSelect('none')}
@@ -581,20 +585,19 @@ const HeteroDeviceSwitcher = memo<HeteroDeviceSwitcherProps>(({ agentId }) => {
         <OptionRow
           active={isActive('auto')}
           desc={t('heteroAgent.executionTarget.autoDesc')}
+          disabled={preferenceUnavailable}
           icon={<Icon icon={SparklesIcon} size={14} />}
           label={t('heteroAgent.executionTarget.auto')}
           onClick={() => void handleSelect('auto')}
         />
       )}
-      {/* `local` pins this desktop's personal `deviceId`. Available in both
-          personal and workspace modes now (LOBE-11689): a workspace-agent
-          `local` pick lands in `users.preference.agentDeviceOverrides` — my
-          per-user override — so it never binds the workspace-shared
-          `agencyConfig` or coerces any other member's dispatch. */}
+      {/* `local` pins this desktop's personal device id in the current
+          source-client preference; it never mutates the shared Agent row. */}
       {isDesktop ? (
         <OptionRow
           active={isActive('local')}
           desc={t('heteroAgent.executionTarget.localDesc')}
+          disabled={preferenceUnavailable}
           icon={<Icon icon={LaptopIcon} size={14} />}
           // 本机统一显示「本地设备」，不再带具体设备名称
           label={t('heteroAgent.executionTarget.local')}
@@ -604,6 +607,7 @@ const HeteroDeviceSwitcher = memo<HeteroDeviceSwitcherProps>(({ agentId }) => {
       <OptionRow
         active={isActive('sandbox')}
         desc={t('heteroAgent.executionTarget.sandboxDesc')}
+        disabled={preferenceUnavailable}
         icon={<Icon icon={BoxIcon} size={14} />}
         label={t('heteroAgent.executionTarget.sandbox')}
         onClick={() => void handleSelect('sandbox')}
@@ -634,7 +638,7 @@ const HeteroDeviceSwitcher = memo<HeteroDeviceSwitcherProps>(({ agentId }) => {
           )}
         </div>
       ) : null}
-      {hasNoDevices && isLoading ? (
+      {hasNoDevices && isDeviceListLoading ? (
         <div className={styles.empty}>{t('heteroAgent.executionTarget.loading')}</div>
       ) : null}
       {/* Workspace agent with no workspace device: personal machines are
@@ -670,7 +674,7 @@ const HeteroDeviceSwitcher = memo<HeteroDeviceSwitcherProps>(({ agentId }) => {
           <Icon className={styles.downloadCardArrow} icon={ExternalLinkIcon} size={13} />
         </a>
       ) : null}
-      {hasNoDevices && !isLoading && isDesktop && !isWorkspaceAgent ? (
+      {hasNoDevices && !isDeviceListLoading && isDesktop && !isWorkspaceAgent ? (
         <div className={styles.empty}>{t('heteroAgent.executionTarget.noDevices')}</div>
       ) : null}
     </Flexbox>

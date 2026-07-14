@@ -13,6 +13,8 @@ import { assertOIDCUserActive, isOIDCUserInactiveError } from '@/libs/oidc-provi
 import { validateOIDCJWT } from '@/libs/oidc-provider/jwt';
 import { isApiKeyExpired, validateApiKeyFormat } from '@/utils/apiKey';
 
+import { parseSourceClientId, SOURCE_CLIENT_ID_HEADER } from '../sourceClientId';
+
 // Create context logger namespace
 const log = debug('lobe-trpc:lambda:context');
 const LOBE_CHAT_API_KEY_HEADER = 'X-API-Key';
@@ -75,6 +77,7 @@ export interface AuthContext {
   // Add OIDC authentication information
   oidcAuth?: OIDCAuth | null;
   resHeaders?: Headers;
+  sourceClientId?: string;
   traceContext?: OtContext;
   userAgent?: string;
   userId?: string | null;
@@ -89,12 +92,14 @@ export const createContextInner = async (params?: {
   clientIp?: string | null;
   marketAccessToken?: string;
   oidcAuth?: OIDCAuth | null;
+  sourceClientId?: string;
   traceContext?: OtContext;
   userAgent?: string;
   userId?: string | null;
   workspaceId?: string | null;
 }): Promise<AuthContext> => {
-  log('createContextInner called with params: %O', params);
+  const { sourceClientId, ...debugParams } = params ?? {};
+  log('createContextInner called with params: %O', debugParams);
   const responseHeaders = new Headers();
 
   return {
@@ -102,6 +107,7 @@ export const createContextInner = async (params?: {
     marketAccessToken: params?.marketAccessToken,
     oidcAuth: params?.oidcAuth,
     resHeaders: responseHeaders,
+    sourceClientId,
     traceContext: params?.traceContext,
     userAgent: params?.userAgent,
     userId: params?.userId,
@@ -116,6 +122,8 @@ export type LambdaContext = Awaited<ReturnType<typeof createContextInner>>;
  * @link https://trpc.io/docs/v11/context
  */
 export const createLambdaContext = async (request: NextRequest): Promise<LambdaContext> => {
+  const sourceClientId = parseSourceClientId(request.headers.get(SOURCE_CLIENT_ID_HEADER));
+
   // we have a special header to debug the api endpoint in development mode
   // IT WON'T GO INTO PRODUCTION ANYMORE
   const isDebugApi = request.headers.get('lobe-auth-dev-backend-api') === '1';
@@ -123,6 +131,7 @@ export const createLambdaContext = async (request: NextRequest): Promise<LambdaC
 
   if (process.env.NODE_ENV === 'development' && (isDebugApi || isMockUser)) {
     return createContextInner({
+      sourceClientId,
       userId: process.env.MOCK_DEV_USER_ID,
     });
   }
@@ -146,6 +155,7 @@ export const createLambdaContext = async (request: NextRequest): Promise<LambdaC
   const commonContext = {
     clientIp,
     marketAccessToken,
+    sourceClientId,
     userAgent,
     workspaceId,
   };

@@ -460,6 +460,7 @@ export class AgentRuntimeService {
       operationSkillSet,
       parentOperationId,
       signal,
+      sourceClientId,
       userTimezone,
       initialStepCount = 0,
       workspaceId,
@@ -591,6 +592,7 @@ export class AgentRuntimeService {
         agentConfig,
         mirrorToOperationId,
         modelRuntimeConfig,
+        ...(sourceClientId ? { sourceClientId } : {}),
         userId,
         workspaceId: this.workspaceId,
       });
@@ -1525,17 +1527,6 @@ export class AgentRuntimeService {
         }
       }
 
-      // Get recent stream events (for debugging)
-      let recentEvents;
-      if (includeHistory) {
-        try {
-          recentEvents = await this.streamManager.getStreamHistory(operationId, 20);
-        } catch (error) {
-          log('Failed to load recent events: %O', error);
-          recentEvents = [];
-        }
-      }
-
       // Calculate operation statistics
       const stats = {
         lastActiveTime: operationMetadata.lastActiveAt
@@ -1548,6 +1539,11 @@ export class AgentRuntimeService {
           ? Date.now() - new Date(operationMetadata.createdAt).getTime()
           : 0,
       };
+      const {
+        agentConfig: _agentConfig,
+        sourceClientId: _sourceClientId,
+        ...publicMetadata
+      } = operationMetadata;
 
       return {
         currentState: {
@@ -1568,10 +1564,9 @@ export class AgentRuntimeService {
         hasError: currentState.status === 'error',
         isActive: currentState.status === 'running' || isParkedStatus(currentState.status),
         isCompleted: currentState.status === 'done',
-        metadata: operationMetadata,
+        metadata: publicMetadata,
         needsHumanInput: currentState.status === 'waiting_for_human',
         operationId,
-        recentEvents: recentEvents?.slice(0, 10),
         stats,
       };
     } catch (error) {

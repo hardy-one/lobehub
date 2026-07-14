@@ -1,10 +1,30 @@
 import type {
   DeviceExecutionTarget,
+  ExecutionTargetSelection,
   LobeAgentAgencyConfig,
   LobeAgentChatConfig,
   RuntimeEnvMode,
 } from '@lobechat/types';
-import { RequestTrigger } from '@lobechat/types';
+import {
+  applyExecutionTargetSelection,
+  RequestTrigger,
+  resolveAgencyConfig,
+} from '@lobechat/types';
+
+export const resolveEffectiveExecutionTargetConfig = (
+  sharedConfig: LobeAgentAgencyConfig | null | undefined,
+  workspaceOverride:
+    Pick<LobeAgentAgencyConfig, 'boundDeviceId' | 'executionTarget'> | null | undefined,
+  agentPreference: ExecutionTargetSelection | null | undefined,
+  topicPreference: ExecutionTargetSelection | null | undefined,
+) =>
+  applyExecutionTargetSelection(
+    applyExecutionTargetSelection(
+      resolveAgencyConfig(sharedConfig, workspaceOverride),
+      agentPreference,
+    ),
+    topicPreference,
+  );
 
 /**
  * The agent's tool mode — explicit `chatConfig.toolMode` wins; otherwise derive

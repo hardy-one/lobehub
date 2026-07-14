@@ -94,6 +94,7 @@ export class AgentRuntimeCoordinator {
       agentConfig?: any;
       mirrorToOperationId?: string;
       modelRuntimeConfig?: any;
+      sourceClientId?: string;
       userId?: string;
       workspaceId?: string;
     },
@@ -106,8 +107,13 @@ export class AgentRuntimeCoordinator {
       const metadata = await this.stateManager.getOperationMetadata(operationId);
 
       if (metadata) {
+        const {
+          agentConfig: _agentConfig,
+          sourceClientId: _sourceClientId,
+          ...publicMetadata
+        } = metadata;
         // Send agent runtime init event
-        await this.streamEventManager.publishAgentRuntimeInit(operationId, metadata);
+        await this.streamEventManager.publishAgentRuntimeInit(operationId, publicMetadata);
         log('[%s] Agent operation created and initialized', operationId);
       }
     } catch (error) {

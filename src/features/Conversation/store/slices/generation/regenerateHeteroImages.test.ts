@@ -19,7 +19,7 @@ vi.mock(
 );
 
 vi.mock('@/store/chat/slices/agentRun/actions/dispatch/agentDispatcher', () => ({
-  selectRuntimeType: () => 'hetero',
+  resolveRuntimeType: () => 'hetero',
 }));
 
 vi.mock('@/store/chat/slices/agentRun/actions/transports/hetero/heteroResume', () => ({

@@ -45,15 +45,17 @@ describe('InMemoryAgentStateManager', () => {
       expect(typeof meta!.lastActiveAt).toBe('string');
     });
 
-    it('should store provided userId, agentConfig and modelRuntimeConfig', async () => {
+    it('should store provided userId, sourceClientId, agentConfig and modelRuntimeConfig', async () => {
       await manager.createOperationMetadata('op-2', {
         agentConfig: { maxSteps: 10 },
         modelRuntimeConfig: { model: 'gpt-4' },
+        sourceClientId: '91a303c8-70b0-4e45-b05f-9df235574121',
         userId: 'user-42',
       });
 
       const meta = await manager.getOperationMetadata('op-2');
       expect(meta!.userId).toBe('user-42');
+      expect(meta!.sourceClientId).toBe('91a303c8-70b0-4e45-b05f-9df235574121');
       expect(meta!.agentConfig).toEqual({ maxSteps: 10 });
       expect(meta!.modelRuntimeConfig).toEqual({ model: 'gpt-4' });
     });

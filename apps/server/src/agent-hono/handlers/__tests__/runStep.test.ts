@@ -171,7 +171,11 @@ describe('runStep handler', () => {
     //    AgentRuntimeService), because only AiAgentService's runtime carries the
     //    in-process `execSubAgent` fork callback. A bare runtime here makes
     //    `lobe-agent.callSubAgent` fail with SUB_AGENT_UNAVAILABLE.
-    mockGetOperationMetadata.mockResolvedValue({ userId: 'user-1', workspaceId: 'ws-1' });
+    mockGetOperationMetadata.mockResolvedValue({
+      sourceClientId: '91a303c8-70b0-4e45-b05f-9df235574121',
+      userId: 'user-1',
+      workspaceId: 'ws-1',
+    });
     mockExecuteStep.mockResolvedValue({
       nextStepScheduled: false,
       state: { cost: { total: 0 }, status: 'done', stepCount: 1 },
@@ -184,7 +188,10 @@ describe('runStep handler', () => {
     expect(AiAgentService).toHaveBeenCalledWith(
       expect.anything(),
       'user-1',
-      expect.objectContaining({ workspaceId: 'ws-1' }),
+      expect.objectContaining({
+        sourceClientId: '91a303c8-70b0-4e45-b05f-9df235574121',
+        workspaceId: 'ws-1',
+      }),
     );
     expect(mockExecuteStep).toHaveBeenCalledWith(
       expect.objectContaining({ operationId: 'op-1', stepIndex: 2 }),

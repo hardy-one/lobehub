@@ -131,6 +131,68 @@ describe('AI Agent Router Integration Tests', () => {
     jwtPayload: { userId },
   });
 
+  describe('execution target preference', () => {
+    const sourceClientId = '91a303c8-70b0-4e45-b05f-9df235574121';
+
+    it('persists Agent and Topic choices independently for the source client', async () => {
+      const [topic] = await serverDB
+        .insert(topics)
+        .values({ agentId: testAgentId, sessionId: testSessionId, userId })
+        .returning();
+      const caller = aiAgentRouter.createCaller({ ...createTestContext(), sourceClientId });
+
+      await caller.setExecutionTargetPreference({
+        agentId: testAgentId,
+        selection: { executionTarget: 'sandbox' },
+      });
+      await caller.setExecutionTargetPreference({
+        agentId: testAgentId,
+        selection: { boundDeviceId: 'topic-device', executionTarget: 'device' },
+        topicId: topic.id,
+      });
+
+      await expect(
+        caller.getExecutionTargetPreference({ agentId: testAgentId, topicId: topic.id }),
+      ).resolves.toEqual({
+        agent: { executionTarget: 'sandbox' },
+        topic: { boundDeviceId: 'topic-device', executionTarget: 'device' },
+      });
+
+      await expect(
+        caller.setExecutionTargetPreference({
+          agentId: testAgentId,
+          selection: null,
+          topicId: topic.id,
+        }),
+      ).resolves.toEqual({ agent: { executionTarget: 'sandbox' }, topic: null });
+    });
+
+    it('requires a valid source client id', async () => {
+      const caller = aiAgentRouter.createCaller(createTestContext());
+
+      await expect(
+        caller.getExecutionTargetPreference({ agentId: testAgentId }),
+      ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    });
+
+    it('rejects a Topic that does not belong to the selected Agent', async () => {
+      const [otherAgent] = await serverDB.insert(agents).values({ userId }).returning();
+      const [topic] = await serverDB
+        .insert(topics)
+        .values({ agentId: otherAgent.id, userId })
+        .returning();
+      const caller = aiAgentRouter.createCaller({ ...createTestContext(), sourceClientId });
+
+      await expect(
+        caller.setExecutionTargetPreference({
+          agentId: testAgentId,
+          selection: { executionTarget: 'sandbox' },
+          topicId: topic.id,
+        }),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    });
+  });
+
   describe('execAgent', () => {
     it('forwards a run-only model inherited by a Gateway sub-agent', async () => {
       const execAgentSpy = vi

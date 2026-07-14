@@ -68,6 +68,15 @@ const mockAgentStore = vi.hoisted(() => ({
   state: { activeAgentId: undefined, agentMap: {} } as any,
 }));
 
+vi.mock('@/store/chat/slices/agentRun/actions/dispatch/agentDispatcher', () => ({
+  getCachedExecutionTargetConfig: () => ({
+    agencyConfig: { executionTarget: mockRuntime.isLocal ? 'local' : 'sandbox' },
+    hasSourcePreference: true,
+    heterogeneousProvider: undefined,
+    isWorkspaceAgent: false,
+  }),
+}));
+
 vi.mock('@/const/version', async (importOriginal) => {
   const actual = await importOriginal<typeof ConstVersion>();
   return {

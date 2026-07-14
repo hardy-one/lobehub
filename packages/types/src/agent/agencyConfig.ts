@@ -513,6 +513,16 @@ export const buildHeteroExecArgs = (
 export type DeviceExecutionTarget = 'auto' | 'device' | 'local' | 'none' | 'sandbox';
 
 /**
+ * A concrete execution-target choice persisted for one user/source scope.
+ * The target is required; a bound device is required at validation time for
+ * `local` and `device`, and omitted for the other targets.
+ */
+export interface ExecutionTargetSelection {
+  boundDeviceId?: string;
+  executionTarget: DeviceExecutionTarget;
+}
+
+/**
  * Agent agency configuration.
  * Contains settings for agent execution modes and device binding.
  */
@@ -594,6 +604,30 @@ export const resolveAgencyConfig = (
     ...base,
     ...(hasTarget ? { executionTarget: override.executionTarget } : {}),
     ...(hasDevice ? { boundDeviceId: override.boundDeviceId } : {}),
+  };
+};
+
+/**
+ * Apply a complete source-scoped execution selection. Unlike
+ * {@link resolveAgencyConfig}, absence of `boundDeviceId` means clear the
+ * previous binding so sandbox/chat/auto choices cannot retain a stale device.
+ */
+export const applyExecutionTargetSelection = (
+  agencyConfig: LobeAgentAgencyConfig | null | undefined,
+  selection: ExecutionTargetSelection | null | undefined,
+): LobeAgentAgencyConfig | undefined => {
+  if (!selection) return agencyConfig ?? undefined;
+
+  const {
+    boundDeviceId: _boundDeviceId,
+    executionTarget: _executionTarget,
+    ...rest
+  } = agencyConfig ?? {};
+
+  return {
+    ...rest,
+    ...(selection.boundDeviceId ? { boundDeviceId: selection.boundDeviceId } : {}),
+    executionTarget: selection.executionTarget,
   };
 };
 

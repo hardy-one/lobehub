@@ -1,8 +1,23 @@
 import { isDesktop as defaultIsDesktop } from '@lobechat/const';
 import { isRemoteHeterogeneousType } from '@lobechat/heterogeneous-agents';
-import { type DeviceExecutionTarget, type HeterogeneousProviderConfig } from '@lobechat/types';
+import type {
+  DeviceExecutionTarget,
+  HeterogeneousProviderConfig,
+  LobeAgentAgencyConfig,
+} from '@lobechat/types';
 
-import { resolveExecutionTarget } from '@/helpers/executionTarget';
+import {
+  resolveEffectiveExecutionTargetConfig,
+  resolveExecutionTarget,
+} from '@/helpers/executionTarget';
+import { getAgentStoreState } from '@/store/agent';
+import { agentByIdSelectors, agentSelectors } from '@/store/agent/selectors';
+import { getUserStoreState } from '@/store/user';
+import { workspaceUserSettingsSelectors } from '@/store/user/selectors';
+import {
+  agentExecutionTargetPreferenceKey,
+  topicExecutionTargetPreferenceKey,
+} from '@/store/user/slices/executionTargetPreference/initialState';
 
 /**
  * Which agent runtime should handle an operation.
@@ -130,3 +145,91 @@ export const selectRuntimeType = (
   if (ctx.isGatewayMode) return 'gateway';
   return 'client';
 };
+
+interface ResolvedRuntimeConfig {
+  agencyConfig?: LobeAgentAgencyConfig;
+  hasSourcePreference: boolean;
+  runtimeType: AgentRuntimeType;
+}
+
+export interface CachedExecutionTargetConfig {
+  agencyConfig?: LobeAgentAgencyConfig;
+  hasSourcePreference: boolean;
+  heterogeneousProvider?: HeterogeneousProviderConfig;
+  isWorkspaceAgent: boolean;
+}
+
+export const getCachedExecutionTargetConfig = (params: {
+  agentId: string;
+  topicId?: string | null;
+}): CachedExecutionTargetConfig => {
+  const agentState = getAgentStoreState();
+  const agentConfig = agentSelectors.getAgentConfigById(params.agentId)(agentState);
+  const userState = getUserStoreState();
+  const agentPreference =
+    userState.executionTargetPreferenceMap[agentExecutionTargetPreferenceKey(params.agentId)];
+  const topicPreference = params.topicId
+    ? userState.executionTargetPreferenceMap[topicExecutionTargetPreferenceKey(params.topicId)]
+    : undefined;
+
+  return {
+    agencyConfig: resolveEffectiveExecutionTargetConfig(
+      agentConfig?.agencyConfig,
+      workspaceUserSettingsSelectors.agentDeviceOverrideById(params.agentId)(userState),
+      agentPreference,
+      topicPreference,
+    ),
+    hasSourcePreference: agentPreference != null || topicPreference != null,
+    heterogeneousProvider: agentConfig?.agencyConfig?.heterogeneousProvider,
+    isWorkspaceAgent: agentByIdSelectors.isWorkspaceAgentById(params.agentId)(agentState),
+  };
+};
+
+export const resolveRuntimeConfig = async (params: {
+  agentId: string;
+  isGatewayMode: boolean;
+  parentRuntime?: AgentRuntimeType;
+  topicId?: string | null;
+}): Promise<ResolvedRuntimeConfig> => {
+  const agentState = getAgentStoreState();
+  const agentConfig = agentSelectors.getAgentConfigById(params.agentId)(agentState);
+  const heterogeneousProvider = agentConfig?.agencyConfig?.heterogeneousProvider;
+
+  if (
+    params.parentRuntime ||
+    (heterogeneousProvider && isRemoteHeterogeneousType(heterogeneousProvider.type))
+  ) {
+    return {
+      agencyConfig: agentConfig?.agencyConfig,
+      hasSourcePreference: false,
+      runtimeType: selectRuntimeType({
+        heterogeneousProvider,
+        isGatewayMode: params.isGatewayMode,
+        parentRuntime: params.parentRuntime,
+      }),
+    };
+  }
+
+  const userState = getUserStoreState();
+  await userState.ensureExecutionTargetPreference({
+    agentId: params.agentId,
+    ...(params.topicId ? { topicId: params.topicId } : {}),
+  });
+  const cached = getCachedExecutionTargetConfig(params);
+
+  return {
+    agencyConfig: cached.agencyConfig,
+    hasSourcePreference: cached.hasSourcePreference,
+    runtimeType: selectRuntimeType({
+      boundDeviceId: cached.agencyConfig?.boundDeviceId,
+      executionTarget: cached.agencyConfig?.executionTarget,
+      heterogeneousProvider: cached.heterogeneousProvider,
+      isGatewayMode: params.isGatewayMode,
+      isWorkspaceAgent: cached.isWorkspaceAgent && !cached.hasSourcePreference,
+    }),
+  };
+};
+
+export const resolveRuntimeType = async (
+  params: Parameters<typeof resolveRuntimeConfig>[0],
+): Promise<AgentRuntimeType> => (await resolveRuntimeConfig(params)).runtimeType;

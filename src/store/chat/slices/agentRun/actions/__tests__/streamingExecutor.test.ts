@@ -13,6 +13,7 @@ import { topicService } from '@/services/topic';
 import { useAgentStore } from '@/store/agent';
 import { useAiInfraStore } from '@/store/aiInfra';
 import { pageAgentRuntime } from '@/store/tool/slices/builtin/executors/lobe-page-agent';
+import { useUserStore } from '@/store/user';
 
 import { useChatStore } from '../../../../store';
 import { messageMapKey } from '../../../../utils/messageMapKey';
@@ -192,6 +193,10 @@ beforeEach(() => {
     // executeClientAgent waits for the aiProvider runtime-state before building
     // tools; mark it ready so that guard is a no-op in these tests.
     useAiInfraStore.setState({ isInitAiProviderRuntimeState: true });
+    useUserStore.setState({
+      ensureExecutionTargetPreference: vi.fn().mockResolvedValue({ agent: null, topic: null }),
+      executionTargetPreferenceMap: {},
+    });
     useChatStore.setState({
       refreshMessages: vi.fn(),
       executeClientAgent: vi.fn(),
@@ -207,6 +212,105 @@ afterEach(() => {
 });
 
 describe('StreamingExecutor actions', () => {
+  describe('source-client execution preference', () => {
+    it('applies the Topic target to client runtime config and tool gating', () => {
+      vi.spyOn(agentConfigResolver, 'resolveAgentConfig').mockReturnValue(
+        createMockResolvedAgentConfig({
+          agentConfig: {
+            ...createMockAgentConfig(),
+            agencyConfig: { boundDeviceId: 'shared-device', executionTarget: 'local' },
+          },
+        }),
+      );
+      useUserStore.setState({
+        executionTargetPreferenceMap: {
+          [`topic:${TEST_IDS.TOPIC_ID}`]: { executionTarget: 'sandbox' },
+        },
+      });
+      const toolsEngineSpy = vi.spyOn(toolEngineering, 'createAgentToolsEngine');
+
+      const { agentConfig } = useChatStore.getState().internal_createAgentState({
+        agentId: TEST_IDS.SESSION_ID,
+        messages: [],
+        parentMessageId: TEST_IDS.USER_MESSAGE_ID,
+        topicId: TEST_IDS.TOPIC_ID,
+      });
+
+      expect(agentConfig.agentConfig?.agencyConfig).toMatchObject({
+        executionTarget: 'sandbox',
+      });
+      expect(agentConfig.agentConfig?.agencyConfig?.boundDeviceId).toBeUndefined();
+      expect(toolsEngineSpy).toHaveBeenLastCalledWith(
+        expect.anything(),
+        undefined,
+        expect.anything(),
+        'cloud',
+      );
+    });
+
+    it('loads an isolated Group member Agent preference before building its runtime', async () => {
+      const memberAgentId = 'member-agent';
+      const selection = { executionTarget: 'sandbox' as const };
+      const ensureExecutionTargetPreference = vi.fn(async () => {
+        useUserStore.setState({
+          executionTargetPreferenceMap: { [`agent:${memberAgentId}`]: selection },
+        });
+        return { agent: selection, topic: null };
+      });
+      useUserStore.setState({ ensureExecutionTargetPreference });
+      vi.spyOn(agentConfigResolver, 'resolveAgentConfig').mockReturnValue(
+        createMockResolvedAgentConfig({
+          agentConfig: {
+            ...createMockAgentConfig(),
+            agencyConfig: { boundDeviceId: 'shared-device', executionTarget: 'local' },
+          },
+        }),
+      );
+      const toolsEngineSpy = vi.spyOn(toolEngineering, 'createAgentToolsEngine');
+      vi.spyOn(chatService, 'createAssistantMessageStream').mockImplementation(
+        async ({ onFinish }) => {
+          await onFinish?.(TEST_CONTENT.AI_RESPONSE, {} as any);
+        },
+      );
+
+      act(() => {
+        useChatStore.setState({ executeClientAgent: realExecAgentRuntime });
+      });
+      const { result } = renderHook(() => useChatStore());
+      const context = {
+        agentId: memberAgentId,
+        groupId: 'group-1',
+        orchestrationRole: 'member' as const,
+        scope: 'thread' as const,
+        threadId: 'thread-1',
+        topicId: TEST_IDS.TOPIC_ID,
+      };
+      const { operationId } = result.current.startOperation({
+        context,
+        type: 'execClientSubAgent',
+      });
+
+      await act(async () => {
+        await result.current.executeClientAgent({
+          context,
+          isSubAgent: true,
+          messages: [createMockMessage({ role: 'user' })],
+          operationId,
+          parentMessageId: TEST_IDS.USER_MESSAGE_ID,
+          parentMessageType: 'user',
+        });
+      });
+
+      expect(ensureExecutionTargetPreference).toHaveBeenCalledWith({ agentId: memberAgentId });
+      expect(toolsEngineSpy).toHaveBeenLastCalledWith(
+        expect.anything(),
+        undefined,
+        expect.anything(),
+        'cloud',
+      );
+    });
+  });
+
   describe('executeClientAgent', () => {
     it('should handle the core AI message processing', async () => {
       act(() => {

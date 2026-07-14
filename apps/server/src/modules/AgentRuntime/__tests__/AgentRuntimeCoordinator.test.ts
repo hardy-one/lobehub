@@ -53,6 +53,7 @@ describe('AgentRuntimeCoordinator', () => {
       const data = {
         agentConfig: { test: true },
         modelRuntimeConfig: { model: 'gpt-4' },
+        sourceClientId: '91a303c8-70b0-4e45-b05f-9df235574121',
         userId: 'user-123',
       };
       const metadata = {
@@ -69,7 +70,15 @@ describe('AgentRuntimeCoordinator', () => {
 
       expect(mockStateManager.createOperationMetadata).toHaveBeenCalledWith(operationId, data);
       expect(mockStateManager.getOperationMetadata).toHaveBeenCalledWith(operationId);
-      expect(mockStreamManager.publishAgentRuntimeInit).toHaveBeenCalledWith(operationId, metadata);
+      const {
+        agentConfig: _agentConfig,
+        sourceClientId: _sourceClientId,
+        ...publicMetadata
+      } = metadata;
+      expect(mockStreamManager.publishAgentRuntimeInit).toHaveBeenCalledWith(
+        operationId,
+        publicMetadata,
+      );
     });
 
     it('should not publish init event if metadata creation fails', async () => {

@@ -291,6 +291,17 @@ describe('AgentRuntimeService', () => {
       expect(mockQueueService.scheduleMessage).not.toHaveBeenCalled();
     });
 
+    it('should persist sourceClientId in operation metadata', async () => {
+      const sourceClientId = '91a303c8-70b0-4e45-b05f-9df235574121';
+
+      await service.createOperation({ ...mockParams, autoStart: false, sourceClientId });
+
+      expect(mockCoordinator.createAgentOperation).toHaveBeenCalledWith(
+        'test-operation-1',
+        expect.objectContaining({ sourceClientId }),
+      );
+    });
+
     it('should handle errors during operation creation', async () => {
       mockCoordinator.saveAgentState.mockRejectedValueOnce(new Error('Database error'));
 
@@ -1054,9 +1065,13 @@ describe('AgentRuntimeService', () => {
     };
 
     const mockMetadata = {
-      userId: 'user-123',
+      agentConfig: {
+        agencyConfig: { boundDeviceId: 'private-device', executionTarget: 'device' },
+      },
       createdAt: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
       lastActiveAt: new Date(Date.now() - 1800000).toISOString(), // 30 minutes ago
+      sourceClientId: '91a303c8-70b0-4e45-b05f-9df235574121',
+      userId: 'user-123',
     };
 
     beforeEach(() => {
@@ -1078,7 +1093,11 @@ describe('AgentRuntimeService', () => {
           cost: { total: 0.1 },
           usage: { tokens: 100 },
         }),
-        metadata: mockMetadata,
+        metadata: {
+          createdAt: mockMetadata.createdAt,
+          lastActiveAt: mockMetadata.lastActiveAt,
+          userId: mockMetadata.userId,
+        },
         isActive: true,
         isCompleted: false,
         hasError: false,
@@ -1095,10 +1114,8 @@ describe('AgentRuntimeService', () => {
 
     it('should include history when requested', async () => {
       const mockHistory = [{ stepIndex: 1, timestamp: Date.now() }];
-      const mockEvents = [{ type: 'step_start', timestamp: Date.now() }];
 
       mockCoordinator.getExecutionHistory.mockResolvedValue(mockHistory);
-      mockStreamManager.getStreamHistory.mockResolvedValue(mockEvents);
 
       const result = await service.getOperationStatus({
         operationId: 'test-operation-1',
@@ -1107,7 +1124,6 @@ describe('AgentRuntimeService', () => {
       });
 
       expect(result?.executionHistory).toEqual(mockHistory);
-      expect(result?.recentEvents).toEqual(mockEvents.slice(0, 10));
     });
 
     it('should return null for missing operation', async () => {

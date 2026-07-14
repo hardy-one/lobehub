@@ -38,6 +38,7 @@ export interface IAgentStateManager {
       agentConfig?: any;
       mirrorToOperationId?: string;
       modelRuntimeConfig?: any;
+      sourceClientId?: string;
       userId?: string;
       workspaceId?: string;
     },

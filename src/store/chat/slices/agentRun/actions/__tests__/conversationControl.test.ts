@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { lambdaClient } from '@/libs/trpc/client';
 import { heterogeneousAgentService } from '@/services/electron/heterogeneousAgent';
+import { useUserStore } from '@/store/user';
 
 import { useChatStore } from '../../../../store';
 import { messageMapKey } from '../../../../utils/messageMapKey';
@@ -46,6 +47,10 @@ vi.mock('@/utils/localStorage', () => {
 
 beforeEach(() => {
   resetTestEnvironment();
+  useUserStore.setState({
+    ensureExecutionTargetPreference: vi.fn().mockResolvedValue({ agent: null, topic: null }),
+    executionTargetPreferenceMap: {},
+  });
   useChatStore.setState({
     updateTopicStatus: vi.fn().mockResolvedValue(undefined),
   });

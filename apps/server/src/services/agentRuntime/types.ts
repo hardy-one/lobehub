@@ -10,6 +10,7 @@ import type {
 import type { ChatTopicBotContext, UserInterventionConfig } from '@lobechat/types';
 
 import type { ExecutionPlan } from '@/helpers/executionTarget';
+import type { AgentOperationMetadata } from '@/server/modules/AgentRuntime/AgentStateManager';
 import { type ServerUserMemoryConfig } from '@/server/modules/Mecha/ContextEngineering/types';
 import type { AgentSignalOperationMarker } from '@/server/services/agentSignal/operationMarker';
 import type { DeviceAccessReason } from '@/server/services/aiAgent/deviceAccessPolicy';
@@ -427,6 +428,8 @@ export interface OperationCreationParams {
   queueRetryDelay?: string;
   /** Abort startup before the first step is scheduled */
   signal?: AbortSignal;
+  /** Source client used to restore per-client execution target preferences in queued steps. */
+  sourceClientId?: string;
   /**
    * Whether the LLM call should use streaming.
    * Defaults to true. Set to false for non-streaming scenarios (e.g., bot integrations).
@@ -478,10 +481,9 @@ export interface OperationStatusResult {
   hasError: boolean;
   isActive: boolean;
   isCompleted: boolean;
-  metadata: any;
+  metadata: Omit<AgentOperationMetadata, 'agentConfig' | 'sourceClientId'>;
   needsHumanInput: boolean;
   operationId: string;
-  recentEvents?: any[];
   stats: {
     lastActiveTime: number;
     totalCost: number;

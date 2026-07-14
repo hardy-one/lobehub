@@ -9,6 +9,8 @@ import superjson from 'superjson';
 import { isDesktop } from '@/const/version';
 import { type LambdaRouter } from '@/server/routers/lambda';
 
+import { getSourceClientId, SOURCE_CLIENT_ID_HEADER } from '../sourceClientId';
+
 const log = debug('lobe-image:lambda-client');
 
 // 401 error debouncing: prevent showing multiple login notifications in short time
@@ -131,6 +133,10 @@ const linkOptions = {
     Object.assign(headers as Record<string, string>, await getBusinessTrpcHeaders());
 
     log('Headers: %O', headers);
+    Object.assign(headers as Record<string, string>, {
+      [SOURCE_CLIENT_ID_HEADER]: getSourceClientId(),
+    });
+
     return headers;
   },
   transformer: superjson,

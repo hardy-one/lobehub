@@ -17,7 +17,7 @@ import { getAgentStoreState } from '@/store/agent';
 import { agentByIdSelectors, agentSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
 import { topicSelectors } from '@/store/chat/selectors';
-import { selectRuntimeType } from '@/store/chat/slices/agentRun/actions/dispatch/agentDispatcher';
+import { resolveRuntimeType } from '@/store/chat/slices/agentRun/actions/dispatch/agentDispatcher';
 import {
   parseMentionedAgentsFromEditorData,
   parseSelectedSkillsFromEditorData,
@@ -498,15 +498,10 @@ export const generationSlice: StateCreator<
       if (shouldProceed === false) return;
     }
 
-    const agentConfig = agentSelectors.getAgentConfigById(context.agentId)(getAgentStoreState());
-    const runtimeType = selectRuntimeType({
-      boundDeviceId: agentConfig?.agencyConfig?.boundDeviceId,
-      executionTarget: agentConfig?.agencyConfig?.executionTarget,
-      heterogeneousProvider: agentConfig?.agencyConfig?.heterogeneousProvider,
+    const runtimeType = await resolveRuntimeType({
+      agentId: context.agentId,
       isGatewayMode: chatStore.isGatewayModeEnabled(context.agentId),
-      isWorkspaceAgent: agentByIdSelectors.isWorkspaceAgentById(context.agentId)(
-        getAgentStoreState(),
-      ),
+      topicId: context.topicId,
     });
 
     // Hetero CLIs (CC / Codex) have no "continue a cut-off response" primitive
@@ -575,18 +570,10 @@ export const generationSlice: StateCreator<
 
     const agentConfig = agentSelectors.getAgentConfigById(context.agentId)(getAgentStoreState());
     const heterogeneousProvider = agentConfig?.agencyConfig?.heterogeneousProvider;
-    const runtimeType = selectRuntimeType({
-      boundDeviceId: agentConfig?.agencyConfig?.boundDeviceId,
-      executionTarget: agentConfig?.agencyConfig?.executionTarget,
-      heterogeneousProvider,
+    const runtimeType = await resolveRuntimeType({
+      agentId: context.agentId,
       isGatewayMode: chatStore.isGatewayModeEnabled(context.agentId),
-      // Workspace agents never run in-process on this member's desktop — a
-      // local/unset target coerces to sandbox/device. Omitting this would
-      // classify the retry as local hetero and spawn the CLI on the wrong
-      // machine; with it, gateway-routed runs take the whole-turn fallback.
-      isWorkspaceAgent: agentByIdSelectors.isWorkspaceAgentById(context.agentId)(
-        getAgentStoreState(),
-      ),
+      topicId: context.topicId,
     });
     const agentId = context.agentId;
 
@@ -961,14 +948,10 @@ export const generationSlice: StateCreator<
 
       const agentConfig = agentSelectors.getAgentConfigById(context.agentId)(getAgentStoreState());
       const heterogeneousProvider = agentConfig?.agencyConfig?.heterogeneousProvider;
-      const runtimeType = selectRuntimeType({
-        boundDeviceId: agentConfig?.agencyConfig?.boundDeviceId,
-        executionTarget: agentConfig?.agencyConfig?.executionTarget,
-        heterogeneousProvider,
+      const runtimeType = await resolveRuntimeType({
+        agentId: context.agentId,
         isGatewayMode: chatStore.isGatewayModeEnabled(context.agentId),
-        isWorkspaceAgent: agentByIdSelectors.isWorkspaceAgentById(context.agentId)(
-          getAgentStoreState(),
-        ),
+        topicId: context.topicId,
       });
 
       // ── Gateway mode: trigger server-side regeneration ──

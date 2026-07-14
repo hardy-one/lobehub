@@ -369,6 +369,7 @@ export default {
   'heteroAgent.executionTarget.gatewayDesc':
     'Run through the device gateway so other clients can follow progress',
   'heteroAgent.executionTarget.loading': 'Loading devices…',
+  'heteroAgent.executionTarget.loadFailed': 'Failed to load execution preference',
   'heteroAgent.executionTarget.local': 'Local device',
   'heteroAgent.executionTarget.localDesc': 'Run as a local process on this desktop app',
   'heteroAgent.executionTarget.manage': 'Manage',
@@ -378,6 +379,8 @@ export default {
     'No workspace devices yet. Run `{{cmd}}` on a machine to enroll it for every member.',
   'heteroAgent.executionTarget.none': 'No device',
   'heteroAgent.executionTarget.noneDesc': 'No device enabled',
+  'heteroAgent.executionTarget.followAgent': 'Follow Agent default',
+  'heteroAgent.executionTarget.followAgentDesc': 'Use this client’s Agent-level execution choice',
   'heteroAgent.executionTarget.offline': 'Offline',
   'heteroAgent.executionTarget.online': 'Online',
   'heteroAgent.executionTarget.personalGroup': 'Private Devices',
@@ -388,6 +391,7 @@ export default {
   'heteroAgent.executionTarget.downloadDesktopDesc': 'Run agents with access to your computer',
   'heteroAgent.executionTarget.downloadDesktopTitle': 'Get the desktop app',
   'heteroAgent.executionTarget.title': 'Execution Device',
+  'heteroAgent.executionTarget.saveFailed': 'Failed to save execution device',
   'heteroAgent.executionTarget.unknownDevice': 'Unknown device',
   'hideForYou':
     "Direct message content is hidden. Please enable 'Show Direct Message Content' in settings to view.",

@@ -21,6 +21,18 @@ const { mockDeviceProxy } = vi.hoisted(() => ({
   },
 }));
 
+const mockExecutionTargetPreference = vi.hoisted(() => ({
+  delete: vi.fn(),
+  get: vi.fn().mockResolvedValue({ agent: null, topic: null }),
+  upsert: vi.fn(),
+}));
+
+vi.mock('@/database/models/userExecutionTargetPreference', () => ({
+  UserExecutionTargetPreferenceModel: vi
+    .fn()
+    .mockImplementation(() => mockExecutionTargetPreference),
+}));
+
 vi.mock('@/libs/trusted-client', () => ({
   generateTrustedClientToken: vi.fn().mockReturnValue(undefined),
   getTrustedClientTokenForSession: vi.fn().mockResolvedValue(undefined),
@@ -158,6 +170,7 @@ describe('AiAgentService.execAgent - device auto-activation', () => {
     // Reset device proxy state
     mockDeviceProxy.isConfigured = false;
     mockDeviceProxy.queryDeviceList.mockResolvedValue([]);
+    mockExecutionTargetPreference.get.mockResolvedValue({ agent: null, topic: null });
 
     service = new AiAgentService(mockDb, userId);
   });
@@ -593,6 +606,108 @@ describe('AiAgentService.execAgent - device auto-activation', () => {
     });
   });
 
+  describe('source-client execution preferences', () => {
+    const sourceClientId = '91a303c8-70b0-4e45-b05f-9df235574121';
+
+    it('applies Topic preference over Agent preference and shared Agent config', async () => {
+      mockDeviceProxy.isConfigured = true;
+      mockDeviceProxy.queryDeviceList.mockResolvedValue([onlineDevice, onlineDevice2]);
+      topicMock.findById.mockResolvedValue({
+        agentId: 'agent-1',
+        id: 'topic-existing',
+        metadata: undefined,
+      });
+      mockExecutionTargetPreference.get.mockResolvedValue({
+        agent: { boundDeviceId: 'device-002', executionTarget: 'device' },
+        topic: { boundDeviceId: 'device-001', executionTarget: 'device' },
+      });
+      await useAgencyConfig({ boundDeviceId: 'shared-device', executionTarget: 'device' });
+      service = new AiAgentService(mockDb, userId, { sourceClientId });
+
+      await service.execAgent({
+        agentId: 'agent-1',
+        appContext: { topicId: 'topic-existing' },
+        prompt: 'Run on the topic device',
+      });
+
+      expect(mockExecutionTargetPreference.get).toHaveBeenCalledWith({
+        agentId: 'agent-1',
+        topicId: 'topic-existing',
+      });
+      expect(mockCreateOperation.mock.calls[0][0].activeDeviceId).toBe('device-001');
+      expect(mockCreateOperation.mock.calls[0][0].sourceClientId).toBe(sourceClientId);
+    });
+
+    it('keeps an explicit per-run device above persisted source preferences', async () => {
+      mockDeviceProxy.isConfigured = true;
+      mockDeviceProxy.queryDeviceList.mockResolvedValue([onlineDevice, onlineDevice2]);
+      topicMock.findById.mockResolvedValue({
+        agentId: 'agent-1',
+        id: 'topic-existing',
+        metadata: undefined,
+      });
+      mockExecutionTargetPreference.get.mockResolvedValue({
+        agent: { executionTarget: 'sandbox' },
+        topic: { boundDeviceId: 'device-002', executionTarget: 'device' },
+      });
+      service = new AiAgentService(mockDb, userId, { sourceClientId });
+
+      await service.execAgent({
+        agentId: 'agent-1',
+        appContext: { topicId: 'topic-existing' },
+        deviceId: 'device-001',
+        prompt: 'Run on the explicit device',
+      });
+
+      expect(mockCreateOperation.mock.calls[0][0].activeDeviceId).toBe('device-001');
+    });
+
+    it('uses a Group member Agent preference without applying the Group Topic preference', async () => {
+      mockDeviceProxy.isConfigured = true;
+      mockDeviceProxy.queryDeviceList.mockResolvedValue([onlineDevice, onlineDevice2]);
+      mockExecutionTargetPreference.get.mockResolvedValue({
+        agent: { boundDeviceId: 'device-002', executionTarget: 'device' },
+        topic: null,
+      });
+      await useAgencyConfig({ boundDeviceId: 'device-001', executionTarget: 'device' });
+      service = new AiAgentService(mockDb, userId, { sourceClientId });
+
+      await service.execAgent({
+        agentId: 'agent-1',
+        appContext: {
+          isSubAgent: true,
+          orchestrationRole: 'member',
+          topicId: 'group-topic',
+        },
+        prompt: 'Run member',
+      });
+
+      expect(mockExecutionTargetPreference.get).toHaveBeenCalledWith({ agentId: 'agent-1' });
+      expect(mockCreateOperation.mock.calls[0][0].activeDeviceId).toBe('device-002');
+    });
+
+    it('does not re-resolve source preferences inside a normal sub-agent run', async () => {
+      mockDeviceProxy.isConfigured = true;
+      mockDeviceProxy.queryDeviceList.mockResolvedValue([onlineDevice, onlineDevice2]);
+      mockExecutionTargetPreference.get.mockResolvedValue({
+        agent: { boundDeviceId: 'device-002', executionTarget: 'device' },
+        topic: null,
+      });
+      await useAgencyConfig({ boundDeviceId: 'device-001', executionTarget: 'device' });
+      service = new AiAgentService(mockDb, userId, { sourceClientId });
+
+      await service.execAgent({
+        agentId: 'agent-1',
+        appContext: { isSubAgent: false, topicId: 'topic-existing' },
+        prompt: 'Run child',
+        skipSourceExecutionPreference: true,
+      });
+
+      expect(mockExecutionTargetPreference.get).not.toHaveBeenCalled();
+      expect(mockCreateOperation.mock.calls[0][0].activeDeviceId).toBe('device-001');
+    });
+  });
+
   describe('gateway not configured', () => {
     it('should never set activeDeviceId when gateway is not configured', async () => {
       mockDeviceProxy.isConfigured = false;
@@ -632,6 +747,38 @@ describe('AiAgentService.execAgent - device auto-activation', () => {
       expect(createArgs.metadata?.boundDeviceId).toBe('device-001');
       const createOpArgs = mockCreateOperation.mock.calls[0][0];
       expect(createOpArgs.activeDeviceId).toBe('device-001');
+    });
+
+    it('does not persist a source-client device choice into Topic metadata', async () => {
+      mockDeviceProxy.isConfigured = true;
+      mockDeviceProxy.queryDeviceList.mockResolvedValue([onlineDevice]);
+      service = new AiAgentService(mockDb, userId, {
+        sourceClientId: '91a303c8-70b0-4e45-b05f-9df235574121',
+      });
+
+      await service.execAgent({
+        agentId: 'agent-1',
+        deviceId: 'device-001',
+        prompt: 'Run privately',
+      });
+
+      const createArgs = topicMock.create.mock.calls[0][0];
+      expect(createArgs.metadata?.boundDeviceId).toBeUndefined();
+      expect(mockCreateOperation.mock.calls[0][0].activeDeviceId).toBe('device-001');
+    });
+
+    it('does not persist a requested device into shared Workspace Topic metadata', async () => {
+      mockDeviceProxy.isConfigured = true;
+      mockDeviceProxy.queryDeviceList.mockResolvedValue([onlineDevice]);
+      service = new AiAgentService(mockDb, userId, { workspaceId: 'workspace-1' });
+
+      await service.execAgent({
+        agentId: 'agent-1',
+        deviceId: 'device-001',
+        prompt: 'Run privately in workspace',
+      });
+
+      expect(topicMock.create.mock.calls[0][0].metadata?.boundDeviceId).toBeUndefined();
     });
 
     // Mirrors the "should not reuse topic boundDeviceId" test above with a

@@ -1,6 +1,7 @@
 import type {
   ExecAgentAppContext,
   ExecAgentResult,
+  ExecutionTargetSelection,
   RuntimeMentionedAgent,
   ScheduleAgentRunParams,
   ScheduleAgentRunResult,
@@ -118,6 +119,15 @@ export interface InterruptTaskParams {
   topicId?: string;
 }
 
+export interface ExecutionTargetPreferenceParams {
+  agentId: string;
+  topicId?: string;
+}
+
+export interface SetExecutionTargetPreferenceParams extends ExecutionTargetPreferenceParams {
+  selection: ExecutionTargetSelection | null;
+}
+
 /**
  * Parameters for createClientTaskThread
  * Creates a Thread for client-side task execution (desktop only, single agent mode)
@@ -167,6 +177,14 @@ export interface UpdateClientTaskThreadStatusParams {
 }
 
 class AiAgentService {
+  async getExecutionTargetPreference(params: ExecutionTargetPreferenceParams) {
+    return await lambdaClient.aiAgent.getExecutionTargetPreference.query(params);
+  }
+
+  async setExecutionTargetPreference(params: SetExecutionTargetPreferenceParams) {
+    return await lambdaClient.aiAgent.setExecutionTargetPreference.mutate(params);
+  }
+
   /**
    * Execute a single Agent task.
    * Returns the operationId needed to connect to the Agent Gateway.

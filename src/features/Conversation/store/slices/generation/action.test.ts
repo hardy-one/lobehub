@@ -7,6 +7,7 @@ import { agentSelectors } from '@/store/agent/selectors';
 import * as agentDispatcher from '@/store/chat/slices/agentRun/actions/dispatch/agentDispatcher';
 import * as heterogeneousAgentExecutor from '@/store/chat/slices/agentRun/actions/transports/hetero/heterogeneousAgentExecutor';
 import { INPUT_LOADING_OPERATION_TYPES } from '@/store/chat/slices/operation/types';
+import { useUserStore } from '@/store/user';
 
 import { type ConversationContext, type ConversationHooks } from '../../../types';
 import { createStore } from '../../index';
@@ -62,6 +63,10 @@ vi.mock('@/store/chat', () => ({
 describe('Generation Actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useUserStore.setState({
+      ensureExecutionTargetPreference: vi.fn().mockResolvedValue({ agent: null, topic: null }),
+      executionTargetPreferenceMap: {},
+    });
   });
 
   afterEach(() => {
@@ -1301,7 +1306,7 @@ describe('Generation Actions', () => {
 
     beforeEach(() => {
       // Force the hetero routing decision.
-      vi.spyOn(agentDispatcher, 'selectRuntimeType').mockReturnValue('hetero');
+      vi.spyOn(agentDispatcher, 'resolveRuntimeType').mockResolvedValue('hetero');
       // Supply a config that carries the hetero provider used by the branch.
       vi.spyOn(agentSelectors, 'getAgentConfigById').mockReturnValue(
         () => ({ agencyConfig: { heterogeneousProvider } }) as any,
@@ -1457,7 +1462,7 @@ describe('Generation Actions', () => {
     // ~336): CLIs have no "continue a cut-off response" primitive, so the
     // button is a documented no-op. Lock that no runtime is dispatched.
     beforeEach(() => {
-      vi.spyOn(agentDispatcher, 'selectRuntimeType').mockReturnValue('hetero');
+      vi.spyOn(agentDispatcher, 'resolveRuntimeType').mockResolvedValue('hetero');
       vi.spyOn(agentSelectors, 'getAgentConfigById').mockReturnValue(
         () =>
           ({

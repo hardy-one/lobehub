@@ -14,6 +14,7 @@ import {
   type BuiltinToolManifest,
   type BuiltinToolResolveContext,
   type ChatCompletionTool,
+  type RuntimeEnvMode,
   type ToolManifest,
   type WorkingModel,
 } from '@lobechat/types';
@@ -206,6 +207,8 @@ export const createAgentToolsEngine = (
   pluginIds?: string[],
   /** Conversation context for context-aware builtin manifests (scope, isSubAgent). */
   manifestContext?: BuiltinToolResolveContext,
+  /** Source/topic-resolved runtime mode for this operation. */
+  runtimeMode?: RuntimeEnvMode,
 ) => {
   const searchConfig = getSearchConfig(workingModel.model, workingModel.provider);
   const agentState = getAgentStoreState();
@@ -226,6 +229,12 @@ export const createAgentToolsEngine = (
     agentChatConfigSelectors.currentChatConfig(agentState).memory?.enabled ??
     settingsSelectors.memoryEnabled(useUserStore.getState());
   const webBrowsingEnabled = searchConfig.useApplicationBuiltinSearchTool;
+  const localSystemEnabled = runtimeMode
+    ? runtimeMode === 'local'
+    : agentChatConfigSelectors.isLocalSystemEnabled(agentState);
+  const cloudSandboxEnabled = runtimeMode
+    ? runtimeMode === 'cloud'
+    : agentChatConfigSelectors.isCloudSandboxEnabled(agentState);
 
   const chatModeRules = {
     [KnowledgeBaseManifest.identifier]: kbEnabled,
@@ -247,11 +256,10 @@ export const createAgentToolsEngine = (
     // Labs toggle that also governs the sidebar tab — with the lab off the
     // tool would drive a pane the user can't see.
     [BrowserManifest.identifier]:
-      agentChatConfigSelectors.isLocalSystemEnabled(agentState) &&
-      labPreferSelectors.enableInAppBrowser(useUserStore.getState()),
-    [CloudSandboxManifest.identifier]: agentChatConfigSelectors.isCloudSandboxEnabled(agentState),
+      localSystemEnabled && labPreferSelectors.enableInAppBrowser(useUserStore.getState()),
+    [CloudSandboxManifest.identifier]: cloudSandboxEnabled,
     [KnowledgeBaseManifest.identifier]: kbEnabled,
-    [LocalSystemManifest.identifier]: agentChatConfigSelectors.isLocalSystemEnabled(agentState),
+    [LocalSystemManifest.identifier]: localSystemEnabled,
     [MemoryManifest.identifier]: memoryEnabled,
     [WebBrowsingManifest.identifier]: webBrowsingEnabled,
   };

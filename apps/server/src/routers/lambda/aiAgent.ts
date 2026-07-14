@@ -91,6 +91,20 @@ const GetOperationStatusSchema = z.object({
   operationId: z.string(),
 });
 
+const ExecutionTargetPreferenceSchema = z.object({
+  agentId: z.string(),
+  topicId: z.string().optional(),
+});
+
+const SetExecutionTargetPreferenceSchema = ExecutionTargetPreferenceSchema.extend({
+  selection: z
+    .object({
+      boundDeviceId: z.string().min(1).optional(),
+      executionTarget: z.enum(['auto', 'device', 'local', 'none', 'sandbox']),
+    })
+    .nullable(),
+});
+
 const ProcessHumanInterventionSchema = z.object({
   action: z.enum(['approve', 'reject', 'reject_continue', 'input', 'select']),
   data: z
@@ -532,7 +546,10 @@ const aiAgentProcedure = wsCompatProcedure.use(serverDatabase).use(async (opts) 
       agentRuntimeService: new AgentRuntimeService(ctx.serverDB, ctx.userId, {
         workspaceId: wsId,
       }),
-      aiAgentService: new AiAgentService(ctx.serverDB, ctx.userId, { workspaceId: wsId }),
+      aiAgentService: new AiAgentService(ctx.serverDB, ctx.userId, {
+        sourceClientId: ctx.sourceClientId,
+        workspaceId: wsId,
+      }),
       aiChatService: new AiChatService(ctx.serverDB, ctx.userId, wsId),
       heterogeneousAgentService: new HeterogeneousAgentService(ctx.serverDB, ctx.userId, {
         workspaceId: wsId,
@@ -1030,6 +1047,10 @@ export const aiAgentRouter = router({
         });
       }
     }),
+
+  getExecutionTargetPreference: aiAgentProcedure
+    .input(ExecutionTargetPreferenceSchema)
+    .query(async ({ input, ctx }) => ctx.aiAgentService.getExecutionTargetPreference(input)),
 
   getOperationStatus: aiAgentProcedure
     .input(GetOperationStatusSchema)
@@ -1777,4 +1798,8 @@ export const aiAgentRouter = router({
 
       return { token };
     }),
+
+  setExecutionTargetPreference: aiAgentWriteProcedure
+    .input(SetExecutionTargetPreferenceSchema)
+    .mutation(async ({ input, ctx }) => ctx.aiAgentService.setExecutionTargetPreference(input)),
 });

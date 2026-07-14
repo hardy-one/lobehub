@@ -28,6 +28,11 @@ import {
 } from '@lobechat/types';
 import debug from 'debug';
 
+import {
+  resolveEffectiveExecutionTargetConfig,
+  resolveRuntimeMode,
+} from '@/helpers/executionTarget';
+import { resolveGatewayModeEnabled } from '@/helpers/gatewayMode';
 import { createAgentToolsEngine } from '@/helpers/toolEngineering';
 import { aiAgentService } from '@/services/aiAgent';
 import { isCanUseVideo, isCanUseVision } from '@/services/chat/helper';
@@ -36,7 +41,7 @@ import { composeEnabledTools, resolveAgentConfig } from '@/services/chat/mecha';
 import { localFileService } from '@/services/electron/localFileService';
 import { messageService } from '@/services/message';
 import { getAgentStoreState } from '@/store/agent';
-import { agentSelectors } from '@/store/agent/selectors';
+import { agentByIdSelectors, agentSelectors } from '@/store/agent/selectors';
 import { aiModelSelectors } from '@/store/aiInfra/selectors';
 import { getAiInfraStoreState } from '@/store/aiInfra/store';
 import { createAgentExecutors } from '@/store/chat/agents/createAgentExecutors';
@@ -56,7 +61,11 @@ import { getServerConfigStoreState, serverConfigSelectors } from '@/store/server
 import { getTaskStoreState } from '@/store/task';
 import { pageAgentRuntime } from '@/store/tool/slices/builtin/executors/lobe-page-agent';
 import { type StoreSetter } from '@/store/types';
-import { toolInterventionSelectors } from '@/store/user/selectors';
+import { toolInterventionSelectors, workspaceUserSettingsSelectors } from '@/store/user/selectors';
+import {
+  agentExecutionTargetPreferenceKey,
+  topicExecutionTargetPreferenceKey,
+} from '@/store/user/slices/executionTargetPreference/initialState';
 import { getUserStoreState } from '@/store/user/store';
 
 import { buildRunLifecycle } from '../../lifecycle/buildRunLifecycle';
@@ -190,14 +199,44 @@ export class StreamingExecutorActionImpl {
     });
 
     const { agentConfig: baseAgentConfig, plugins: pluginIds } = agentConfig;
+    const agentState = getAgentStoreState();
+    const userState = getUserStoreState();
+    const isGroupMember = operation?.context.orchestrationRole === 'member';
+    const shouldUseSourcePreference = scope !== 'sub_agent' && (!isSubAgent || isGroupMember);
+    const agentPreference = shouldUseSourcePreference
+      ? userState.executionTargetPreferenceMap[
+          agentExecutionTargetPreferenceKey(effectiveAgentId || '')
+        ]
+      : undefined;
+    const topicPreference =
+      shouldUseSourcePreference && !isGroupMember && topicId && effectiveAgentId === agentId
+        ? userState.executionTargetPreferenceMap[topicExecutionTargetPreferenceKey(topicId)]
+        : undefined;
+    const effectiveAgencyConfig = resolveEffectiveExecutionTargetConfig(
+      baseAgentConfig?.agencyConfig,
+      workspaceUserSettingsSelectors.agentDeviceOverrideById(effectiveAgentId || '')(userState),
+      agentPreference,
+      topicPreference,
+    );
+    const hasSourcePreference = agentPreference != null || topicPreference != null;
+    const runtimeMode = resolveRuntimeMode(
+      effectiveAgencyConfig,
+      isDesktop,
+      resolveGatewayModeEnabled(agentState, effectiveAgentId || ''),
+      agentByIdSelectors.isWorkspaceAgentById(effectiveAgentId || '')(agentState) &&
+        !hasSourcePreference,
+    );
     const [storedTopicOverride] = this.#readTopicModelOverride(
       { agentId, groupId, scope, topicId },
       effectiveAgentId,
     );
     const effectiveModelOverride = modelOverride ?? storedTopicOverride;
-    const agentConfigData = effectiveModelOverride
+    const modelResolvedAgentConfig = effectiveModelOverride
       ? { ...baseAgentConfig, ...effectiveModelOverride }
       : baseAgentConfig;
+    const agentConfigData = modelResolvedAgentConfig
+      ? { ...modelResolvedAgentConfig, agencyConfig: effectiveAgencyConfig }
+      : modelResolvedAgentConfig;
     const selectedToolIds = initialContext?.initialContext?.selectedTools?.map(
       (tool) => tool.identifier,
     );
@@ -256,6 +295,7 @@ export class StreamingExecutorActionImpl {
       // sub-agent runs. Replaces the former dropSubAgentInGroup + applyPluginFilters
       // isSubAgent hard-coding.
       { isSubAgent, scope },
+      runtimeMode,
     );
     // When skillActivateMode is 'manual':
     // Exclude only discovery tools (activator, skill-store) so runtime-managed defaults
@@ -300,10 +340,9 @@ export class StreamingExecutorActionImpl {
     );
 
     // Get user intervention config
-    const userStore = getUserStoreState();
     const userInterventionConfig = {
-      approvalMode: toolInterventionSelectors.approvalMode(userStore),
-      allowList: toolInterventionSelectors.allowList(userStore),
+      approvalMode: toolInterventionSelectors.approvalMode(userState),
+      allowList: toolInterventionSelectors.allowList(userState),
     };
 
     // Build modelRuntimeConfig for compression and other runtime features
@@ -581,6 +620,17 @@ export class StreamingExecutorActionImpl {
     if (!modelOverride && !isTopicModelOverrideLoaded && topicId) {
       resolvedModelOverride =
         (await this.#get().internal_fetchTopicModelOverride(topicId)) ?? undefined;
+    }
+
+    const operationContext = this.#get().operations[operationId]?.context;
+    const isGroupMember =
+      operationContext?.orchestrationRole === 'member' ||
+      (!!groupId && effectiveAgentId !== agentId);
+    if (scope !== 'sub_agent' && (!isSubAgent || isGroupMember)) {
+      await getUserStoreState().ensureExecutionTargetPreference({
+        agentId: effectiveAgentId,
+        ...(!isGroupMember && topicId ? { topicId } : {}),
+      });
     }
 
     // ===========================================

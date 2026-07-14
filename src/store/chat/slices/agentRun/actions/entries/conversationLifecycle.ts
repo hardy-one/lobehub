@@ -24,7 +24,6 @@ import type {
 import {
   getWorkingDirEffectivePath,
   getWorkingDirSourcePath,
-  resolveAgencyConfig,
 } from '@lobechat/types';
 import { nanoid } from '@lobechat/utils';
 import { TRPCClientError } from '@trpc/client';
@@ -35,7 +34,7 @@ import {
   resolveAgentWorkingDirectory,
   resolveAgentWorkingDirectoryConfig,
 } from '@/helpers/agentWorkingDirectory';
-import { resolveExecutionTarget } from '@/helpers/executionTarget';
+import { resolveExecutionTarget, resolveRuntimeMode } from '@/helpers/executionTarget';
 import { globalAgentContextManager } from '@/helpers/GlobalAgentContextManager';
 import { agentService } from '@/services/agent';
 import { aiChatService } from '@/services/aiChat';
@@ -44,11 +43,7 @@ import { resolveSelectedSkillsWithContent } from '@/services/chat/mecha/skillPre
 import { resolveSelectedToolsWithContent } from '@/services/chat/mecha/toolPreload';
 import { messageService } from '@/services/message';
 import { getAgentStoreState, useAgentStore } from '@/store/agent';
-import {
-  agentByIdSelectors,
-  agentSelectors,
-  chatConfigByIdSelectors,
-} from '@/store/agent/selectors';
+import { agentByIdSelectors, agentSelectors } from '@/store/agent/selectors';
 import { agentGroupByIdSelectors, getChatGroupStoreState } from '@/store/agentGroup';
 import { getPendingTopicRepos } from '@/store/chat/pendingTopicRepos';
 import {
@@ -56,7 +51,7 @@ import {
   displayMessageSelectors,
   topicSelectors,
 } from '@/store/chat/selectors';
-import { selectRuntimeType } from '@/store/chat/slices/agentRun/actions/dispatch/agentDispatcher';
+import { resolveRuntimeConfig } from '@/store/chat/slices/agentRun/actions/dispatch/agentDispatcher';
 import { dispatchNonHeteroSubAgent } from '@/store/chat/slices/agentRun/actions/dispatch/nonHeteroSubAgentDispatcher';
 import { buildRunLifecycle } from '@/store/chat/slices/agentRun/actions/lifecycle/buildRunLifecycle';
 import type { RunScope } from '@/store/chat/slices/agentRun/actions/lifecycle/types';
@@ -277,20 +272,6 @@ export class ConversationLifecycleActionImpl {
 
     if (!agentId) return;
 
-    const agentConfig = agentSelectors.getAgentConfigById(agentId)(getAgentStoreState());
-    const heterogeneousProvider = agentConfig?.agencyConfig?.heterogeneousProvider;
-    const runtimeType = selectRuntimeType({
-      boundDeviceId: agentConfig?.agencyConfig?.boundDeviceId,
-      executionTarget: agentConfig?.agencyConfig?.executionTarget,
-      heterogeneousProvider,
-      isGatewayMode: this.#get().isGatewayModeEnabled(agentId),
-      isWorkspaceAgent: agentByIdSelectors.isWorkspaceAgentById(agentId)(getAgentStoreState()),
-      // Callers that need to pin the runtime (e.g. task topics that were
-      // started server-side via runTask) pass `forceRuntime` to override
-      // the agent's local/cloud preference.
-      parentRuntime: forceRuntime,
-    });
-
     // ── Command Bus: extract and process built-in commands from editorData ──
     const commandOverrides: CommandSendOverrides = processCommands({
       message,
@@ -339,6 +320,18 @@ export class ConversationLifecycleActionImpl {
       context = { ...context, topicId: undefined };
     }
 
+    const agentState = getAgentStoreState();
+    const { agencyConfig, hasSourcePreference, runtimeType } = await resolveRuntimeConfig({
+      agentId,
+      isGatewayMode: this.#get().isGatewayModeEnabled(agentId),
+      // Callers that need to pin the runtime (e.g. task topics that were
+      // started server-side via runTask) pass `forceRuntime` to override
+      // the agent's local/cloud preference.
+      parentRuntime: forceRuntime,
+      topicId: context.topicId,
+    });
+    const heterogeneousProvider = agencyConfig?.heterogeneousProvider;
+
     // When creating new thread, override threadId to undefined (server will create it)
     // Check if current agentId is the supervisor agent of the group
     let isGroupSupervisor = false;
@@ -383,7 +376,12 @@ export class ConversationLifecycleActionImpl {
 
     const fileIdList = files?.map((f) => f.id);
     const isLocalSystemEnabled =
-      chatConfigByIdSelectors.isLocalSystemEnabledById(agentId)(getAgentStoreState());
+      resolveRuntimeMode(
+        agencyConfig,
+        isDesktop,
+        this.#get().isGatewayModeEnabled(agentId),
+        agentByIdSelectors.isWorkspaceAgentById(agentId)(agentState) && !hasSourcePreference,
+      ) === 'local';
     const canMaterializeLocalFiles =
       isDesktop &&
       localFileReferences.length > 0 &&
@@ -588,16 +586,7 @@ export class ConversationLifecycleActionImpl {
       ? topicSelectors.getTopicById(operationContext.topicId)(this.#get())
       : undefined;
     const currentDeviceId = getElectronStoreState().gatewayDeviceInfo?.deviceId;
-    const agentState = getAgentStoreState();
-    // Merge the caller's per-user device override (LOBE-11689) so the cwd is
-    // read for the device THIS member's run targets, not the shared row's.
     const isWorkspaceAgentForCwd = agentByIdSelectors.isWorkspaceAgentById(agentId)(agentState);
-    const agencyConfig = resolveAgencyConfig(
-      agentByIdSelectors.getAgencyConfigById(agentId)(agentState),
-      isWorkspaceAgentForCwd
-        ? getUserStoreState().workspaceUserPreference.agentDeviceOverrides?.[agentId]
-        : undefined,
-    );
     // Resolve the cwd for every hetero-provider run that lands on a MACHINE
     // (in-process `hetero` runtime, or a gateway dispatch whose effective
     // target routes to a device) — the server can only honour a cwd the client
@@ -609,7 +598,7 @@ export class ConversationLifecycleActionImpl {
       ? resolveExecutionTarget(agencyConfig, {
           clientExecutionAvailable: isDesktop,
           isHetero: true,
-          workspaceScoped: isWorkspaceAgentForCwd,
+          workspaceScoped: isWorkspaceAgentForCwd && !hasSourcePreference,
         })
       : undefined;
     const resolvesHeteroCwd =

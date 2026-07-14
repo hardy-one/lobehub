@@ -47,10 +47,30 @@ describe('AgentStateManager', () => {
       const data = {
         agentConfig: { test: true },
         modelRuntimeConfig: { model: 'gpt-4' },
+        sourceClientId: '91a303c8-70b0-4e45-b05f-9df235574121',
         userId: 'user-123',
       };
 
       await expect(stateManager.createOperationMetadata(operationId, data)).resolves.not.toThrow();
+      expect(redisMock.hmset).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ sourceClientId: data.sourceClientId }),
+      );
+    });
+
+    it('should restore sourceClientId from operation metadata', async () => {
+      redisMock.hgetall.mockResolvedValue({
+        createdAt: '2026-07-14T00:00:00.000Z',
+        lastActiveAt: '2026-07-14T00:00:00.000Z',
+        sourceClientId: '91a303c8-70b0-4e45-b05f-9df235574121',
+        status: 'idle',
+        totalCost: '0',
+        totalSteps: '0',
+      });
+
+      const metadata = await stateManager.getOperationMetadata('test-operation-id');
+
+      expect(metadata?.sourceClientId).toBe('91a303c8-70b0-4e45-b05f-9df235574121');
     });
   });
 

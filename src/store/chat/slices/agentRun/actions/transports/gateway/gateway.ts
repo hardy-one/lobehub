@@ -14,6 +14,7 @@ import type {
 } from '@lobechat/types';
 
 import { isDesktop } from '@/const/version';
+import { resolveExecutionTarget } from '@/helpers/executionTarget';
 import {
   aiAgentService,
   type ResumeApprovalParam,
@@ -32,47 +33,37 @@ import type { StoreSetter } from '@/store/types';
 import { useUserStore } from '@/store/user';
 import { settingsSelectors, toolInterventionSelectors } from '@/store/user/selectors';
 
+import { getCachedExecutionTargetConfig } from '../../dispatch/agentDispatcher';
 import { buildRunLifecycle } from '../../lifecycle/buildRunLifecycle';
 import type { RunScope } from '../../lifecycle/types';
 import { createGatewayEventHandler, isCompletedRuntimeEnd } from './gatewayEventHandler';
 import { createGatewayEventRouter } from './gatewayEventRouter';
 import { createGatewayMemberStreamHandler } from './gatewayMemberStreamHandler';
 
-/**
- * When the agent runs against the local machine, resolve this desktop's
- * own gateway deviceId so it can be passed as the run's `deviceId`. The server
- * then presets `activeDeviceId` and injects `lobe-local-system` into the very
- * first LLM payload — skipping the extra `activateDevice` round-trip the model
- * is otherwise forced to make whenever more than one device is online (with a
- * single device the server's heuristic already covered it).
- *
- * Gated on the effective runtime mode (`isLocalSystemEnabledById`), which
- * derives from `agencyConfig.executionTarget` — only a `local` target presets
- * the device. Resolving a device for `sandbox` / `none` / `device` targets
- * would wrongly route the run to this machine.
- *
- * Desktop-only and best-effort: any failure falls back to the server-side
- * device-resolution heuristics. We don't pre-check online status here — an
- * offline id simply fails the server's `onlineDevices` guard and stays unrouted.
- */
-const resolveLocalDeviceId = async (agentId?: string): Promise<string | undefined> => {
-  if (!isDesktop || !agentId) return undefined;
+const resolveLocalDeviceId = async (
+  context: Pick<ConversationContext, 'agentId' | 'topicId'>,
+): Promise<string | undefined> => {
+  if (!isDesktop || !context.agentId) return;
 
   const agentState = getAgentStoreState();
-  // Chat mode means "no execution environment" — never resolve a device, even
-  // when the target is `local`. The server enforces this too (it auto-activates
-  // a single online device), but skipping the deviceId round-trip here avoids
-  // sending an id the server would only discard.
-  if (chatConfigByIdSelectors.isChatModeById(agentId)(agentState)) return undefined;
+  if (chatConfigByIdSelectors.isChatModeById(context.agentId)(agentState)) return;
 
-  const isLocal = chatConfigByIdSelectors.isLocalSystemEnabledById(agentId)(agentState);
-  if (!isLocal) return undefined;
+  const cached = getCachedExecutionTargetConfig({
+    agentId: context.agentId,
+    topicId: context.topicId,
+  });
+  const target = resolveExecutionTarget(cached.agencyConfig, {
+    clientExecutionAvailable: true,
+    isHetero: !!cached.heterogeneousProvider,
+    workspaceScoped: cached.isWorkspaceAgent && !cached.hasSourcePreference,
+  });
+  if (target !== 'local') return;
 
   try {
-    const info = await gatewayConnectionService.getDeviceInfo();
-    return info?.deviceId;
-  } catch {
-    return undefined;
+    return (await gatewayConnectionService.getDeviceInfo())?.deviceId;
+  } catch (error) {
+    console.error('[gateway:resolveLocalDeviceId]', error);
+    return;
   }
 };
 
@@ -492,7 +483,7 @@ export class GatewayActionImpl {
       ? this.#get().getOperationAbortSignal(parentOperationId)
       : undefined;
 
-    const localDeviceId = await resolveLocalDeviceId(context.agentId);
+    const localDeviceId = await resolveLocalDeviceId(context);
     const userInterventionConfig = {
       approvalMode: toolInterventionSelectors.approvalMode(useUserStore.getState()),
       allowList: toolInterventionSelectors.allowList(useUserStore.getState()),

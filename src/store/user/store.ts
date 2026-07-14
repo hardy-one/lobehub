@@ -15,6 +15,8 @@ import { type UserAuthAction } from './slices/auth/action';
 import { createAuthSlice } from './slices/auth/action';
 import { type CommonAction } from './slices/common/action';
 import { createCommonSlice } from './slices/common/action';
+import { type ExecutionTargetPreferenceAction } from './slices/executionTargetPreference/action';
+import { createExecutionTargetPreferenceSlice } from './slices/executionTargetPreference/action';
 import { type OnboardingAction } from './slices/onboarding/action';
 import { createOnboardingSlice } from './slices/onboarding/action';
 import { type PreferenceAction } from './slices/preference/action';
@@ -31,6 +33,7 @@ export type UserStore = UserState &
   PreferenceAction &
   UserAuthAction &
   CommonAction &
+  ExecutionTargetPreferenceAction &
   AgentOnboardingAction &
   OnboardingAction &
   WorkspaceUserSettingsAction &
@@ -40,6 +43,7 @@ type UserStoreAction = UserSettingsAction &
   PreferenceAction &
   UserAuthAction &
   CommonAction &
+  ExecutionTargetPreferenceAction &
   AgentOnboardingAction &
   OnboardingAction &
   WorkspaceUserSettingsAction &
@@ -58,6 +62,7 @@ const createStore: StateCreator<UserStore, [['zustand/devtools', never]]> = (
     createPreferenceSlice(...parameters),
     createAuthSlice(...parameters),
     createCommonSlice(...parameters),
+    createExecutionTargetPreferenceSlice(...parameters),
     createAgentOnboardingSlice(...parameters),
     createOnboardingSlice(...parameters),
     createWorkspaceUserSettingsSlice(...parameters),

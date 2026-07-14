@@ -1,10 +1,56 @@
-import { describe, expect, it } from 'vitest';
+import type {
+  ExecutionTargetSelection,
+  LobeAgentAgencyConfig,
+  LobeAgentConfig,
+} from '@lobechat/types';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { selectRuntimeType } from '../dispatch/agentDispatcher';
+import { resolveRuntimeConfig, selectRuntimeType } from '../dispatch/agentDispatcher';
+
+const testState = vi.hoisted(() => ({
+  agent: {
+    agentConfig: undefined as Partial<LobeAgentConfig> | undefined,
+    isWorkspaceAgent: false,
+  },
+  user: {
+    ensureExecutionTargetPreference: vi.fn(),
+    executionTargetPreferenceMap: {} as Record<string, ExecutionTargetSelection | null>,
+    workspaceOverride: undefined as
+      Pick<LobeAgentAgencyConfig, 'boundDeviceId' | 'executionTarget'> | undefined,
+  },
+}));
+
+vi.mock('@/store/agent', () => ({ getAgentStoreState: () => testState.agent }));
+vi.mock('@lobechat/const', () => ({ isDesktop: true }));
+vi.mock('@/store/agent/selectors', () => ({
+  agentByIdSelectors: {
+    isWorkspaceAgentById: () => (state: typeof testState.agent) => state.isWorkspaceAgent,
+  },
+  agentSelectors: {
+    getAgentConfigById: () => (state: typeof testState.agent) => state.agentConfig,
+  },
+}));
+vi.mock('@/store/user', () => ({ getUserStoreState: () => testState.user }));
+vi.mock('@/store/user/selectors', () => ({
+  workspaceUserSettingsSelectors: {
+    agentDeviceOverrideById: () => (state: typeof testState.user) => state.workspaceOverride,
+  },
+}));
 
 const heteroProvider = { command: 'claude', type: 'claude-code' as const };
 const remoteHeteroProvider = { type: 'openclaw' as const };
 const remoteHeteroProviderHermes = { type: 'hermes' as const };
+
+beforeEach(() => {
+  testState.agent.agentConfig = undefined;
+  testState.agent.isWorkspaceAgent = false;
+  testState.user.ensureExecutionTargetPreference = vi.fn().mockResolvedValue({
+    agent: null,
+    topic: null,
+  });
+  testState.user.executionTargetPreferenceMap = {};
+  testState.user.workspaceOverride = undefined;
+});
 
 describe('selectRuntimeType', () => {
   describe('on web (isDesktop = false)', () => {
@@ -208,5 +254,71 @@ describe('selectRuntimeType', () => {
         selectRuntimeType({ parentRuntime: 'hetero', isGatewayMode: true }, { isDesktop: false }),
       ).toBe('hetero');
     });
+  });
+});
+
+describe('resolveRuntimeConfig', () => {
+  it('uses the Topic preference over the source-client Agent preference', async () => {
+    testState.agent.agentConfig = {
+      agencyConfig: {
+        boundDeviceId: 'shared-device',
+        executionTarget: 'device',
+        heterogeneousProvider: heteroProvider,
+      },
+    };
+    testState.user.executionTargetPreferenceMap = {
+      'agent:agent-id': { executionTarget: 'sandbox' },
+      'topic:topic-id': { boundDeviceId: 'topic-device', executionTarget: 'device' },
+    };
+
+    const result = await resolveRuntimeConfig({
+      agentId: 'agent-id',
+      isGatewayMode: false,
+      topicId: 'topic-id',
+    });
+
+    expect(testState.user.ensureExecutionTargetPreference).toHaveBeenCalledWith({
+      agentId: 'agent-id',
+      topicId: 'topic-id',
+    });
+    expect(result.agencyConfig).toMatchObject({
+      boundDeviceId: 'topic-device',
+      executionTarget: 'device',
+    });
+    expect(result.runtimeType).toBe('gateway');
+  });
+
+  it('skips preference loading when a parent runtime already owns the decision', async () => {
+    testState.agent.agentConfig = {
+      agencyConfig: { executionTarget: 'sandbox', heterogeneousProvider: heteroProvider },
+    };
+
+    const result = await resolveRuntimeConfig({
+      agentId: 'agent-id',
+      isGatewayMode: false,
+      parentRuntime: 'hetero',
+      topicId: 'topic-id',
+    });
+
+    expect(testState.user.ensureExecutionTargetPreference).not.toHaveBeenCalled();
+    expect(result.runtimeType).toBe('hetero');
+  });
+
+  it('allows an explicit source-local choice for a Workspace Agent', async () => {
+    testState.agent.agentConfig = {
+      agencyConfig: { heterogeneousProvider: heteroProvider },
+    };
+    testState.agent.isWorkspaceAgent = true;
+    testState.user.executionTargetPreferenceMap = {
+      'agent:agent-id': { boundDeviceId: 'this-device', executionTarget: 'local' },
+    };
+
+    const result = await resolveRuntimeConfig({
+      agentId: 'agent-id',
+      isGatewayMode: true,
+    });
+
+    expect(result.hasSourcePreference).toBe(true);
+    expect(result.runtimeType).toBe('hetero');
   });
 });

@@ -34,6 +34,7 @@ export * from './systemBotProvider';
 export * from './task';
 export * from './topic';
 export * from './user';
+export * from './userExecutionTargetPreference';
 export * from './userMemories';
 export * from './verify';
 export * from './workspace';

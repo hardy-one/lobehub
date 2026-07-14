@@ -49,6 +49,7 @@ import type {
   ExecGroupAgentResult,
   ExecSubAgentParams,
   ExecSubAgentResult,
+  ExecutionTargetSelection,
   ExecVirtualSubAgentParams,
   LobeAgentAgencyConfig,
   LobeAgentConfig,
@@ -60,6 +61,7 @@ import type {
   WorkspaceInitResult,
 } from '@lobechat/types';
 import {
+  applyExecutionTargetSelection,
   buildHeteroExecArgs,
   getActivePluginIds,
   getDisabledPluginIds,
@@ -89,6 +91,7 @@ import { TaskModel } from '@/database/models/task';
 import { ThreadModel } from '@/database/models/thread';
 import { TopicModel } from '@/database/models/topic';
 import { UserModel } from '@/database/models/user';
+import { UserExecutionTargetPreferenceModel } from '@/database/models/userExecutionTargetPreference';
 import { UserPersonaModel } from '@/database/models/userMemory/persona';
 import { WorkspaceUserSettingsModel } from '@/database/models/workspaceUserSettings';
 import { toolsEnv } from '@/envs/tools';
@@ -411,6 +414,8 @@ interface InternalExecAgentParams extends ExecAgentParams {
   selectedToolIds?: string[];
   /** Abort startup before the agent runtime operation is created */
   signal?: AbortSignal;
+  /** Reuse the parent run's resolved target instead of reading this source client's preference. */
+  skipSourceExecutionPreference?: boolean;
   /**
    * Whether the LLM call should use streaming.
    * Defaults to true. Set to false for non-streaming scenarios (e.g., bot integrations).
@@ -480,20 +485,27 @@ export class AiAgentService {
   private readonly taskModel: TaskModel;
   private readonly threadModel: ThreadModel;
   private readonly topicModel: TopicModel;
+  private readonly executionTargetPreferenceModel?: UserExecutionTargetPreferenceModel;
   private readonly agentRuntimeService: AgentRuntimeService;
   private readonly marketService: MarketService;
   private readonly composioService: ComposioService;
 
   private readonly workspaceId?: string;
+  private readonly sourceClientId?: string;
 
   constructor(
     db: LobeChatDatabase,
     userId: string,
-    options?: { runtimeOptions?: AgentRuntimeServiceOptions; workspaceId?: string },
+    options?: {
+      runtimeOptions?: AgentRuntimeServiceOptions;
+      sourceClientId?: string;
+      workspaceId?: string;
+    },
   ) {
     this.userId = userId;
     this.db = db;
     this.workspaceId = options?.workspaceId;
+    this.sourceClientId = options?.sourceClientId;
     const wsId = this.workspaceId;
     this.agentDocumentsService = new AgentDocumentsService(db, userId, wsId);
     this.agentModel = new AgentModel(db, userId, wsId);
@@ -506,6 +518,9 @@ export class AiAgentService {
     this.taskModel = new TaskModel(db, userId, wsId);
     this.threadModel = new ThreadModel(db, userId, wsId);
     this.topicModel = new TopicModel(db, userId, wsId);
+    this.executionTargetPreferenceModel = this.sourceClientId
+      ? new UserExecutionTargetPreferenceModel(db, userId, this.sourceClientId)
+      : undefined;
     this.agentRuntimeService = new AgentRuntimeService(db, userId, {
       ...options?.runtimeOptions,
       agentFactory: createGraphAwareAgentFactory(options?.runtimeOptions?.agentFactory),
@@ -527,6 +542,66 @@ export class AiAgentService {
     this.marketService = new MarketService({ userInfo: { userId } });
     this.composioService = new ComposioService({ db, userId, workspaceId: wsId });
   }
+
+  private requireExecutionTargetPreferenceModel = () => {
+    if (!this.executionTargetPreferenceModel) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'A valid source client id is required',
+      });
+    }
+
+    return this.executionTargetPreferenceModel;
+  };
+
+  private validateExecutionTargetPreferenceScope = async (params: {
+    agentId: string;
+    topicId?: string;
+  }) => {
+    if (params.topicId) {
+      const topic = await this.topicModel.findById(params.topicId);
+      if (!topic || topic.agentId !== params.agentId) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Topic not found' });
+      }
+      return;
+    }
+
+    if (!(await this.agentModel.existsById(params.agentId))) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' });
+    }
+  };
+
+  getExecutionTargetPreference = async (params: { agentId: string; topicId?: string }) => {
+    const model = this.requireExecutionTargetPreferenceModel();
+    await this.validateExecutionTargetPreferenceScope(params);
+    return model.get(params);
+  };
+
+  setExecutionTargetPreference = async (params: {
+    agentId: string;
+    selection: ExecutionTargetSelection | null;
+    topicId?: string;
+  }) => {
+    const model = this.requireExecutionTargetPreferenceModel();
+    await this.validateExecutionTargetPreferenceScope(params);
+
+    if (
+      params.selection &&
+      (params.selection.executionTarget === 'device' ||
+        params.selection.executionTarget === 'local') &&
+      !params.selection.boundDeviceId
+    ) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: `${params.selection.executionTarget} requires a bound device`,
+      });
+    }
+
+    if (params.selection) await model.upsert({ ...params, selection: params.selection });
+    else await model.delete(params);
+
+    return model.get(params);
+  };
 
   private async resolveOperationTaskId(
     idOrIdentifier?: string | null,
@@ -1122,6 +1197,7 @@ export class AiAgentService {
       resumeApproval,
       resumeToolResult,
       selectedToolIds,
+      skipSourceExecutionPreference,
       mentionedAgents,
       suppressUserMessage,
       ephemeralUserMessage,
@@ -1216,15 +1292,34 @@ export class AiAgentService {
 
     const heteroProviderType = agentConfig.agencyConfig?.heterogeneousProvider?.type;
     const isHeteroAgent = !!heteroProviderType || HETERO_AGENT_MODELS.has(agentConfig.model ?? '');
+    const isRemoteHeteroAgent =
+      !!heteroProviderType && isRemoteHeterogeneousType(heteroProviderType);
+    const executionTargetPreferenceModel = this.executionTargetPreferenceModel;
+    const isGroupMember = appContext?.orchestrationRole === 'member';
+    const isSubAgentRun =
+      !isGroupMember && (appContext?.isSubAgent === true || appContext?.scope === 'sub_agent');
+    const shouldUseSourcePreference =
+      !!executionTargetPreferenceModel &&
+      !isSubAgentRun &&
+      !isRemoteHeteroAgent &&
+      !skipSourceExecutionPreference;
     const shouldUseTopicModel =
       !!appContext?.topicId &&
       appContext.isSubAgent !== true &&
       appContext.scope !== 'sub_agent' &&
       appContext.orchestrationRole !== 'member' &&
       !isHeteroAgent;
+    const shouldUseTopicExecutionPreference =
+      shouldUseSourcePreference &&
+      !!appContext?.topicId &&
+      appContext?.orchestrationRole !== 'member';
+    const topic =
+      appContext?.topicId && (shouldUseTopicModel || shouldUseTopicExecutionPreference)
+        ? await this.topicModel.findById(appContext.topicId)
+        : undefined;
+    let sourceExecutionSelection: ExecutionTargetSelection | null = null;
 
     if (shouldUseTopicModel) {
-      const topic = await this.topicModel.findById(appContext.topicId!);
       const topicModelOverride = topic?.metadata?.modelOverride;
 
       // Only the Topic's owning Agent (the Supervisor for Group topics) consumes
@@ -1234,6 +1329,20 @@ export class AiAgentService {
         agentConfig.model = topicModelOverride.model;
         agentConfig.provider = topicModelOverride.provider;
       }
+    }
+
+    if (shouldUseSourcePreference && executionTargetPreferenceModel) {
+      const topicId =
+        shouldUseTopicExecutionPreference && topic?.agentId === resolvedAgentId
+          ? topic.id
+          : undefined;
+      const preferences = await executionTargetPreferenceModel.get({
+        agentId: resolvedAgentId,
+        ...(topicId ? { topicId } : {}),
+      });
+      sourceExecutionSelection = topicId
+        ? (preferences.topic ?? preferences.agent)
+        : preferences.agent;
     }
 
     // Apply per-call model/provider overrides (e.g. task config or parent-run
@@ -1304,6 +1413,11 @@ export class AiAgentService {
         }
       }
     }
+
+    agentConfig.agencyConfig = applyExecutionTargetSelection(
+      agentConfig.agencyConfig,
+      sourceExecutionSelection,
+    );
 
     if (appContext?.scope !== 'page') {
       activePluginIds = activePluginIds.filter((id) => id !== PageAgentIdentifier);
@@ -1546,6 +1660,8 @@ export class AiAgentService {
     let topicId = appContext?.topicId;
     const isNewTopic = !topicId;
     const topicBoundDeviceId = requestedDeviceId;
+    const persistedRequestedDeviceId =
+      this.sourceClientId || this.workspaceId ? undefined : requestedDeviceId;
     if (!topicId) {
       if (resume) {
         throw new Error('Resume mode requires the parent message to belong to a topic');
@@ -1555,10 +1671,10 @@ export class AiAgentService {
       // client-supplied initial metadata (e.g. repos selected before first message).
       const initialTopicMeta = appContext?.initialTopicMetadata;
       const metadata =
-        cronJobId || operationTaskId || botContext || requestedDeviceId || initialTopicMeta
+        cronJobId || operationTaskId || botContext || persistedRequestedDeviceId || initialTopicMeta
           ? {
               bot: botContext,
-              boundDeviceId: requestedDeviceId,
+              boundDeviceId: persistedRequestedDeviceId,
               cronJobId: cronJobId || undefined,
               taskId: operationTaskId,
               ...(initialTopicMeta?.repos && { repos: initialTopicMeta.repos }),
@@ -3865,6 +3981,7 @@ export class AiAgentService {
         operationId,
         parentOperationId,
         signal,
+        ...(this.sourceClientId ? { sourceClientId: this.sourceClientId } : {}),
         queueRetries,
         queueRetryDelay,
         stream,
@@ -4046,6 +4163,7 @@ export class AiAgentService {
     this.execAgentThreadRun(params, {
       isSubAgent: false,
       logScope: 'execSubAgent',
+      skipSourceExecutionPreference: true,
     });
 
   /**
@@ -4275,6 +4393,7 @@ export class AiAgentService {
        */
       orchestrationRole?: 'member';
       resumeParentOnComplete?: boolean;
+      skipSourceExecutionPreference?: boolean;
     },
   ): Promise<ExecSubAgentResult> {
     const {
@@ -4397,6 +4516,7 @@ export class AiAgentService {
       parentOperationId,
       prompt: instruction,
       ...(provider ? { provider } : {}),
+      ...(options.skipSourceExecutionPreference ? { skipSourceExecutionPreference: true } : {}),
       trigger: inheritedTrigger,
       userInterventionConfig: { approvalMode: 'headless' },
     });

@@ -671,6 +671,7 @@ export const createGroupOrchestrationExecutors = (
         const subContext: ConversationContext = {
           agentId,
           groupId,
+          orchestrationRole: 'member',
           topicId,
           threadId,
           scope: 'thread',

@@ -127,6 +127,7 @@ export class InMemoryAgentStateManager implements IAgentStateManager {
       agentConfig?: any;
       mirrorToOperationId?: string;
       modelRuntimeConfig?: any;
+      sourceClientId?: string;
       userId?: string;
       workspaceId?: string;
     },
@@ -137,6 +138,7 @@ export class InMemoryAgentStateManager implements IAgentStateManager {
       lastActiveAt: new Date().toISOString(),
       mirrorToOperationId: data.mirrorToOperationId,
       modelRuntimeConfig: data.modelRuntimeConfig,
+      sourceClientId: data.sourceClientId,
       status: 'idle',
       totalCost: 0,
       totalSteps: 0,

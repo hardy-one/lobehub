@@ -9,12 +9,10 @@ import {
 } from '@lobechat/types';
 
 import { lambdaClient } from '@/libs/trpc/client';
-import { getAgentStoreState } from '@/store/agent';
-import { agentSelectors } from '@/store/agent/selectors';
 import { displayMessageSelectors } from '@/store/chat/selectors';
 import {
   type AgentRuntimeType,
-  selectRuntimeType,
+  resolveRuntimeType,
 } from '@/store/chat/slices/agentRun/actions/dispatch/agentDispatcher';
 import { type OptimisticUpdateContext } from '@/store/chat/slices/message/actions/optimisticUpdate';
 import { dbMessageSelectors } from '@/store/chat/slices/message/selectors';
@@ -63,17 +61,15 @@ export class ConversationControlActionImpl {
    * scanning for it would flip us back into client-mode against a live
    * Gateway backend.
    */
-  #shouldUseGatewayResume = (context: ConversationContext): boolean => {
-    const agentConfig = context.agentId
-      ? agentSelectors.getAgentConfigById(context.agentId)(getAgentStoreState())
-      : undefined;
+  #shouldUseGatewayResume = async (context: ConversationContext): Promise<boolean> => {
+    if (!context.agentId) return false;
+
     return (
-      selectRuntimeType({
-        boundDeviceId: agentConfig?.agencyConfig?.boundDeviceId,
-        executionTarget: agentConfig?.agencyConfig?.executionTarget,
-        heterogeneousProvider: agentConfig?.agencyConfig?.heterogeneousProvider,
+      (await resolveRuntimeType({
+        agentId: context.agentId,
         isGatewayMode: this.#get().isGatewayModeEnabled(context.agentId),
-      }) === 'gateway'
+        topicId: context.topicId,
+      })) === 'gateway'
     );
   };
 
@@ -362,7 +358,7 @@ export class ConversationControlActionImpl {
     });
 
     const optimisticContext = { operationId };
-    const shouldUseGatewayResume = this.#shouldUseGatewayResume(effectiveContext);
+    const shouldUseGatewayResume = await this.#shouldUseGatewayResume(effectiveContext);
 
     if (!shouldUseGatewayResume) this.#writeTopicStatus(effectiveContext, 'active');
 
@@ -523,7 +519,7 @@ export class ConversationControlActionImpl {
 
     const optimisticContext: OptimisticUpdateContext = { operationId };
     const shouldCreateUserMessage = options?.createUserMessage !== false;
-    const shouldUseGatewayResume = this.#shouldUseGatewayResume(effectiveContext);
+    const shouldUseGatewayResume = await this.#shouldUseGatewayResume(effectiveContext);
 
     if (!shouldUseGatewayResume) this.#writeTopicStatus(effectiveContext, 'active');
 
@@ -1164,7 +1160,7 @@ export class ConversationControlActionImpl {
     });
 
     const optimisticContext = { operationId };
-    const shouldUseGatewayResume = this.#shouldUseGatewayResume(effectiveContext);
+    const shouldUseGatewayResume = await this.#shouldUseGatewayResume(effectiveContext);
 
     if (!shouldUseGatewayResume) this.#writeTopicStatus(effectiveContext, 'active');
 
@@ -1259,7 +1255,7 @@ export class ConversationControlActionImpl {
     // the LLM loop with the rejection content surfaced as user feedback.
     // Skip the client-mode `rejectToolCalling` chain below — that would fire
     // a duplicate halting `reject` before this continue signal.
-    if (this.#shouldUseGatewayResume(effectiveContext)) {
+    if (await this.#shouldUseGatewayResume(effectiveContext)) {
       const requestMetadata = this.#getRequestMetadataFromMessageChain(messageId);
       const toolCallId = toolMessage.tool_call_id;
       if (!toolCallId) {

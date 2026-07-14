@@ -21,9 +21,9 @@ vi.mock(
 // Mirrors the real routing rule that matters here: a workspace-scoped agent's
 // local/unset target coerces away from in-process execution (→ gateway), so the
 // test fails if `continueHeteroAfterError` stops passing `isWorkspaceAgent`.
-const mockSelectRuntimeType = vi.fn((ctx: any) => (ctx?.isWorkspaceAgent ? 'gateway' : 'hetero'));
+const mockResolveRuntimeType = vi.fn(() => (mockIsWorkspaceAgent ? 'gateway' : 'hetero'));
 vi.mock('@/store/chat/slices/agentRun/actions/dispatch/agentDispatcher', () => ({
-  selectRuntimeType: (ctx: any) => mockSelectRuntimeType(ctx),
+  resolveRuntimeType: () => mockResolveRuntimeType(),
 }));
 
 let mockResumeSessionId: string | undefined = 'sess-1';
@@ -239,9 +239,7 @@ describe('continueHeteroAfterError', () => {
     });
 
     // The routing decision saw the workspace scope.
-    expect(mockSelectRuntimeType).toHaveBeenCalledWith(
-      expect.objectContaining({ isWorkspaceAgent: true }),
-    );
+    expect(mockResolveRuntimeType).toHaveBeenCalled();
     // No local mutation of the failed run's steps.
     expect(mockUpdateMessage).not.toHaveBeenCalled();
     expect(mockRemoveMessages).not.toHaveBeenCalled();

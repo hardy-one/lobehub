@@ -130,6 +130,7 @@ export async function runStep(c: Context): Promise<Response> {
     // workspace-scoped. Without it the worker is personal-scoped and the
     // parent-message lookup misses workspace-scoped rows → ConversationParentMissing.
     const aiAgentService = new AiAgentService(serverDB, metadata.userId, {
+      ...(metadata.sourceClientId ? { sourceClientId: metadata.sourceClientId } : {}),
       workspaceId: metadata.workspaceId,
     });
 

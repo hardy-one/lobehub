@@ -94,6 +94,13 @@ describe('createContextInner', () => {
     expect(context.userId).toBe('user-123');
   });
 
+  it('should create context with sourceClientId', async () => {
+    const sourceClientId = '91a303c8-70b0-4e45-b05f-9df235574121';
+    const context = await createContextInner({ sourceClientId });
+
+    expect(context.sourceClientId).toBe(sourceClientId);
+  });
+
   it('should create context with user agent', async () => {
     const context = await createContextInner({
       userAgent: 'Mozilla/5.0',
@@ -233,6 +240,27 @@ describe('createLambdaContext', () => {
 
     expect(context.userId).toBe('session-user');
     expect(mockGetSession).toHaveBeenCalledOnce();
+  });
+
+  it('should include a valid source client id from the request header', async () => {
+    const sourceClientId = '91a303c8-70b0-4e45-b05f-9df235574121';
+    const request = new NextRequest('https://example.com/trpc/lambda', {
+      headers: { 'X-Lobe-Source-Client-Id': sourceClientId },
+    });
+
+    const context = await createLambdaContext(request);
+
+    expect(context.sourceClientId).toBe(sourceClientId);
+  });
+
+  it('should ignore an invalid source client id', async () => {
+    const request = new NextRequest('https://example.com/trpc/lambda', {
+      headers: { 'X-Lobe-Source-Client-Id': 'not-a-uuid' },
+    });
+
+    const context = await createLambdaContext(request);
+
+    expect(context.sourceClientId).toBeUndefined();
   });
 
   it('should authenticate with active OIDC auth and skip session fallback', async () => {

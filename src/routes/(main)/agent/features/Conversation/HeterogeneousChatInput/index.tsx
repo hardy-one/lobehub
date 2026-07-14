@@ -16,11 +16,11 @@ import { useHeteroAgentCloudConfig } from '@/business/client/hooks/useHeteroAgen
 import { isDesktop } from '@/const/version';
 import { type ActionKeys } from '@/features/ChatInput';
 import HeteroModel from '@/features/ChatInput/ControlBar/HeteroModel';
+import { useExecutionTargetPreference } from '@/features/ChatInput/hooks/useSelectExecutionTarget';
 import { ChatInput } from '@/features/Conversation';
 import { contextSelectors, useConversationStore } from '@/features/Conversation/store';
 import WideScreenContainer from '@/features/WideScreenContainer';
 import { resolveExecutionTarget } from '@/helpers/executionTarget';
-import { useEffectiveAgencyConfig } from '@/hooks/useEffectiveAgencyConfig';
 import { useRemoteAgentDeviceGuard } from '@/hooks/useRemoteAgentDeviceGuard';
 import { useAgentStore } from '@/store/agent';
 import { agentByIdSelectors } from '@/store/agent/selectors';
@@ -86,24 +86,22 @@ const HeterogeneousChatInput = memo(() => {
   // agent that `agencyConfig`/`isDeviceExecution` are computed from, instead of
   // the global (hijack-prone) active agent.
   const agentId = useConversationStore(contextSelectors.agentId);
+  const topicId = useConversationStore(contextSelectors.topicId);
   const { isConfigured, goToConfig } = useHeteroAgentCloudConfig(agentId);
   const params = useParams<{ aid: string }>();
   const navigate = useNavigate();
 
-  // Effective config = shared row + this member's per-agent device override
-  // (LOBE-11689) — the raw shared `agencyConfig` may carry another member's
-  // device pick, which would drive the guard/model-selector gates off the
-  // wrong machine.
-  // While the preference is loading, the merged config may still reflect only
-  // the shared row — hold the input closed (below) instead of gating device
-  // runs off a value that can flip once the override arrives.
-  const { agencyConfig, isPreferenceLoading } = useEffectiveAgencyConfig(agentId);
+  const {
+    agencyConfig,
+    hasSourcePreference,
+    isLoading: isPreferenceLoading,
+  } = useExecutionTargetPreference(agentId, topicId);
   const providerType = agencyConfig?.heterogeneousProvider?.type;
   const isWorkspaceAgent = useAgentStore(agentByIdSelectors.isWorkspaceAgentById(agentId));
   const executionTarget = resolveExecutionTarget(agencyConfig, {
     isHetero: !!providerType,
     clientExecutionAvailable: isDesktop,
-    workspaceScoped: isWorkspaceAgent,
+    workspaceScoped: isWorkspaceAgent && !hasSourcePreference,
   });
   const isRemoteAgent = !!providerType && isRemoteHeterogeneousType(providerType);
 

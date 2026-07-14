@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import GroupItem from './GroupItem';
 
 const commitAgentDefaultMock = vi.hoisted(() => vi.fn());
+const commitWorkingDirectoryState = vi.hoisted(() => ({ canCommitAgentDefault: true }));
 const switchTopicMock = vi.hoisted(() => vi.fn());
 const routerPushMock = vi.hoisted(() => vi.fn());
 const routeParamsMock = vi.hoisted(() => ({ aid: 'agent-1' as string | undefined }));
@@ -97,6 +98,7 @@ vi.mock('@/const/version', () => ({ isDesktop: true }));
 
 vi.mock('@/features/ChatInput/ControlBar/useCommitWorkingDirectory', () => ({
   useCommitWorkingDirectory: () => ({
+    canCommitAgentDefault: commitWorkingDirectoryState.canCommitAgentDefault,
     commitAgentDefault: commitAgentDefaultMock,
   }),
 }));
@@ -157,6 +159,7 @@ describe('Project topic group item', () => {
     routeParamsMock.aid = 'agent-1';
     agentStoreStateMock.activeAgentId = 'agent-1';
     activeWorkspaceSlugMock.value = 'lobehub';
+    commitWorkingDirectoryState.canCommitAgentDefault = true;
   });
 
   it('navigates to a new chat topic after committing the project directory', async () => {
@@ -221,5 +224,24 @@ describe('Project topic group item', () => {
     fireEvent.click(screen.getByRole('button', { name: 'actions.addNewTopicInProject:project' }));
 
     expect(commitAgentDefaultMock).toHaveBeenCalledWith('/Users/me/project');
+  });
+
+  it('hides shared directory creation for a private workspace source preference', () => {
+    commitWorkingDirectoryState.canCommitAgentDefault = false;
+
+    render(
+      <GroupItem
+        expanded
+        group={{
+          children: [],
+          id: 'project:/Users/me/project',
+          title: 'project',
+        }}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'actions.addNewTopicInProject:project' }),
+    ).not.toBeInTheDocument();
   });
 });

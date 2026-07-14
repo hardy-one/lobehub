@@ -51,7 +51,10 @@ import {
   displayMessageSelectors,
   topicSelectors,
 } from '@/store/chat/selectors';
-import { resolveRuntimeConfig } from '@/store/chat/slices/agentRun/actions/dispatch/agentDispatcher';
+import {
+  type AgentRuntimeType,
+  resolveRuntimeConfig,
+} from '@/store/chat/slices/agentRun/actions/dispatch/agentDispatcher';
 import { dispatchNonHeteroSubAgent } from '@/store/chat/slices/agentRun/actions/dispatch/nonHeteroSubAgentDispatcher';
 import { buildRunLifecycle } from '@/store/chat/slices/agentRun/actions/lifecycle/buildRunLifecycle';
 import type { RunScope } from '@/store/chat/slices/agentRun/actions/lifecycle/types';
@@ -321,15 +324,43 @@ export class ConversationLifecycleActionImpl {
     }
 
     const agentState = getAgentStoreState();
-    const { agencyConfig, hasSourcePreference, runtimeType } = await resolveRuntimeConfig({
-      agentId,
-      isGatewayMode: this.#get().isGatewayModeEnabled(agentId),
-      // Callers that need to pin the runtime (e.g. task topics that were
-      // started server-side via runTask) pass `forceRuntime` to override
-      // the agent's local/cloud preference.
-      parentRuntime: forceRuntime,
-      topicId: context.topicId,
-    });
+    let runtimeConfig: Awaited<ReturnType<typeof resolveRuntimeConfig>>;
+    try {
+      runtimeConfig = await resolveRuntimeConfig({
+        agentId,
+        isGatewayMode: this.#get().isGatewayModeEnabled(agentId),
+        // Callers that need to pin the runtime (e.g. task topics that were
+        // started server-side via runTask) pass `forceRuntime` to override
+        // the agent's local/cloud preference.
+        parentRuntime: forceRuntime,
+        topicId: context.topicId,
+      });
+    } catch (error) {
+      // The composer is cleared before sendMessage starts. Routing resolution is
+      // the only network preflight that runs before the normal send operation
+      // exists, so create a failed operation here to reuse the standard inline
+      // error and draft-restoration path instead of silently losing the input.
+      const messageText = error instanceof Error ? error.message : 'Unknown error';
+      const { operationId } = this.#get().startOperation({
+        type: 'sendMessage',
+        context,
+        label: 'Send Message',
+        metadata: {
+          inputEditorTempState: inputEditorData ?? this.#get().mainInputEditor?.getJSONState(),
+          inputSendErrorMsg: messageText,
+          inThread: !!context.threadId,
+        },
+      });
+      this.#get().failOperation(operationId, {
+        type: error instanceof Error ? error.name : 'unknown_error',
+        message: messageText,
+      });
+
+      if (inputEditorData) this.#get().mainInputEditor?.setJSONState(inputEditorData);
+      else this.#get().mainInputEditor?.setDocument('markdown', message);
+      return;
+    }
+    const { agencyConfig, hasSourcePreference, runtimeType } = runtimeConfig;
     const heterogeneousProvider = agencyConfig?.heterogeneousProvider;
 
     // When creating new thread, override threadId to undefined (server will create it)
@@ -1441,6 +1472,7 @@ export class ConversationLifecycleActionImpl {
             inPortalThread: !!data.createdThreadId,
             instruction: message,
             parentOperationId: operationId,
+            parentRuntime: runtimeType,
           });
         } else {
           const displayMessages = displayMessageSelectors.getDisplayMessagesByKey(
@@ -1520,6 +1552,7 @@ export class ConversationLifecycleActionImpl {
     directMentionRoute,
     instruction,
     parentOperationId,
+    parentRuntime,
   }: {
     assistantMessageId: string;
     context: ConversationContext;
@@ -1527,6 +1560,7 @@ export class ConversationLifecycleActionImpl {
     directMentionRoute: SingleAgentMentionDirectRoute;
     instruction: string;
     parentOperationId: string;
+    parentRuntime: AgentRuntimeType;
   }): Promise<void> {
     const targetAgentId = directMentionRoute.agent.id;
     const callAgentParams: CallAgentParams = {
@@ -1662,6 +1696,7 @@ export class ConversationLifecycleActionImpl {
           messages: messagesWithInstruction,
           modelOverride: parentModel,
           parentOperationId: operationId,
+          parentRuntime,
         },
         this.#get(),
       );

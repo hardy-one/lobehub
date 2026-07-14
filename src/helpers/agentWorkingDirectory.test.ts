@@ -2,6 +2,7 @@ import type { LobeAgentAgencyConfig } from '@lobechat/types';
 import { describe, expect, it } from 'vitest';
 
 import {
+  canPersistSharedAgentWorkingDirectory,
   resolveAgentWorkingDirectory,
   resolveAgentWorkingDirectoryConfig,
   resolveAgentWorkingDirectorySource,
@@ -9,6 +10,32 @@ import {
 } from './agentWorkingDirectory';
 
 const cfg = (over: Partial<LobeAgentAgencyConfig> = {}): LobeAgentAgencyConfig => ({ ...over });
+
+describe('canPersistSharedAgentWorkingDirectory', () => {
+  it('blocks shared writes for workspace source preferences', () => {
+    expect(
+      canPersistSharedAgentWorkingDirectory({
+        hasPrivatePreference: true,
+        isWorkspaceAgent: true,
+      }),
+    ).toBe(false);
+  });
+
+  it('allows personal agents and workspace agents without source preferences', () => {
+    expect(
+      canPersistSharedAgentWorkingDirectory({
+        hasPrivatePreference: true,
+        isWorkspaceAgent: false,
+      }),
+    ).toBe(true);
+    expect(
+      canPersistSharedAgentWorkingDirectory({
+        hasPrivatePreference: false,
+        isWorkspaceAgent: true,
+      }),
+    ).toBe(true);
+  });
+});
 
 describe('resolveTargetDeviceId', () => {
   it('uses boundDeviceId when executionTarget is `device`', () => {

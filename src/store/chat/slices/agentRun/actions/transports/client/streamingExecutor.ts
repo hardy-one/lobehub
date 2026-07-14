@@ -623,6 +623,17 @@ export class StreamingExecutorActionImpl {
         resolvedModelOverride =
           (await this.#get().internal_fetchTopicModelOverride(topicId)) ?? undefined;
       }
+
+      const operationContext = this.#get().operations[operationId]?.context;
+      const isGroupMember =
+        operationContext?.orchestrationRole === 'member' ||
+        (!!groupId && effectiveAgentId !== agentId);
+      if (scope !== 'sub_agent' && (!isSubAgent || isGroupMember)) {
+        await getUserStoreState().ensureExecutionTargetPreference({
+          agentId: effectiveAgentId,
+          ...(!isGroupMember && topicId ? { topicId } : {}),
+        });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.#get().failOperation(operationId, {
@@ -632,7 +643,7 @@ export class StreamingExecutorActionImpl {
 
       // sendMessageInServer may already have persisted the first assistant row
       // before this client-runtime preflight runs. Mark that row terminal so a
-      // failed model preflight cannot leave a permanent loading bubble.
+      // failed preference/model lookup cannot leave a permanent loading bubble.
       if (params.skipCreateFirstMessage && parentMessageType === 'assistant') {
         try {
           await this.#get().optimisticUpdateMessageError(
@@ -646,17 +657,6 @@ export class StreamingExecutorActionImpl {
         }
       }
       throw error;
-    }
-
-    const operationContext = this.#get().operations[operationId]?.context;
-    const isGroupMember =
-      operationContext?.orchestrationRole === 'member' ||
-      (!!groupId && effectiveAgentId !== agentId);
-    if (scope !== 'sub_agent' && (!isSubAgent || isGroupMember)) {
-      await getUserStoreState().ensureExecutionTargetPreference({
-        agentId: effectiveAgentId,
-        ...(!isGroupMember && topicId ? { topicId } : {}),
-      });
     }
 
     // ===========================================

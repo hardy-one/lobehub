@@ -229,7 +229,9 @@ const GroupItem = memo<GroupItemComponentProps>(
     const isWorkspaceAgent = useAgentStore((s) =>
       currentAgentId ? agentByIdSelectors.isWorkspaceAgentById(currentAgentId)(s) : false,
     );
-    const { commitAgentDefault } = useCommitWorkingDirectory(currentAgentId ?? '');
+    const { canCommitAgentDefault, commitAgentDefault } = useCommitWorkingDirectory(
+      currentAgentId ?? '',
+    );
 
     const handleAddTopic = useCallback(async () => {
       if (!workingDirectory || !currentAgentId || !targetAgentId) return;
@@ -261,7 +263,7 @@ const GroupItem = memo<GroupItemComponentProps>(
       workspaceScoped: isWorkspaceAgent,
     });
     const isDeviceMode = effectiveTarget === 'device' && !!agencyConfig?.boundDeviceId;
-    const canAddTopic = (isDesktop || isDeviceMode) && !!workingDirectory;
+    const canAddTopic = canCommitAgentDefault && (isDesktop || isDeviceMode) && !!workingDirectory;
 
     const loadingTopicIds = useChatStore((s) => s.topicLoadingIds);
     const statusCounts = useMemo(

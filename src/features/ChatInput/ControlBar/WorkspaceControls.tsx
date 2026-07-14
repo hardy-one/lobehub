@@ -3,6 +3,7 @@
 import { isDesktop } from '@lobechat/const';
 import { memo } from 'react';
 
+import { canPersistSharedAgentWorkingDirectory } from '@/helpers/agentWorkingDirectory';
 import { executionTargetToRuntimeMode, resolveExecutionTarget } from '@/helpers/executionTarget';
 import { useIsGatewayModeEnabled } from '@/helpers/gatewayMode';
 
@@ -33,8 +34,16 @@ interface WorkspaceControlsProps {
  */
 const WorkspaceControls = memo<WorkspaceControlsProps>(
   ({ agentId, alwaysShowWorkspace = false }) => {
-    const { config, executionTargetError, isExecutionTargetLoading, workspaceScoped } =
-      useChatInputEffectiveAgentConfig();
+    const {
+      config,
+      context,
+      executionTargetError,
+      hasSourcePreference,
+      hasWorkspaceOverride,
+      isExecutionTargetLoading,
+      isWorkspaceAgent,
+      workspaceScoped,
+    } = useChatInputEffectiveAgentConfig();
     const agencyConfig = config?.agencyConfig;
     const isHeterogeneous = !!agencyConfig?.heterogeneousProvider;
     const deviceRoutingAvailable = useIsGatewayModeEnabled(agentId);
@@ -46,13 +55,21 @@ const WorkspaceControls = memo<WorkspaceControlsProps>(
     });
     const runtimeMode = executionTargetToRuntimeMode(effectiveTarget);
     const isDeviceMode = effectiveTarget === 'device' && !!agencyConfig?.boundDeviceId;
+    const canPersistWorkingDirectory =
+      !!context.topicId ||
+      canPersistSharedAgentWorkingDirectory({
+        hasPrivatePreference: hasSourcePreference || hasWorkspaceOverride,
+        isWorkspaceAgent,
+      });
 
     const renderWorkspace = () => {
       if (executionTargetError || isExecutionTargetLoading) return null;
 
       // Remote device runs get the device-scoped picker, regardless of runtimeMode
       // (HeteroDeviceSwitcher sets runtimeMode to 'none' when a device is selected).
-      if (isDeviceMode) return <WorkingDirectorySection agentId={agentId} />;
+      if (isDeviceMode) {
+        return canPersistWorkingDirectory ? <WorkingDirectorySection agentId={agentId} /> : null;
+      }
 
       // Web has no local filesystem — cloud / heterogeneous agents browse the repo
       // through the cloud repo switcher instead.
@@ -65,7 +82,7 @@ const WorkspaceControls = memo<WorkspaceControlsProps>(
       // Desktop: local working directory + git branch / diff / PR. Shown when the
       // run is local, or always for heterogeneous agents (they always have a cwd).
       if (alwaysShowWorkspace || runtimeMode === 'local') {
-        return <WorkingDirectorySection agentId={agentId} />;
+        return canPersistWorkingDirectory ? <WorkingDirectorySection agentId={agentId} /> : null;
       }
 
       return null;

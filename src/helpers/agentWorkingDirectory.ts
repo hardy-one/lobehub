@@ -21,6 +21,17 @@ export const resolveTargetDeviceId = (
       ? currentDeviceId || agencyConfig?.boundDeviceId
       : currentDeviceId;
 
+/**
+ * Whether a per-device working-directory choice may be written to the shared
+ * Agent config. Workspace user/source preferences are private to one member,
+ * so using their device id as a shared `workingDirByDevice` key would disclose
+ * that private routing identity to the rest of the workspace.
+ */
+export const canPersistSharedAgentWorkingDirectory = (params: {
+  hasPrivatePreference: boolean;
+  isWorkspaceAgent: boolean;
+}): boolean => !params.isWorkspaceAgent || !params.hasPrivatePreference;
+
 const toWorkingDirConfig = (
   value: WorkingDirConfigValue | null | undefined,
 ): WorkingDirConfig | undefined => {

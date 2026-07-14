@@ -352,6 +352,38 @@ describe('StreamingExecutor actions', () => {
       );
     });
 
+    it('should fail a provided operation when execution-target preflight fails', async () => {
+      act(() => {
+        useChatStore.setState({ executeClientAgent: realExecAgentRuntime });
+        useUserStore.setState({
+          ensureExecutionTargetPreference: vi
+            .fn()
+            .mockRejectedValue(new Error('execution target unavailable')),
+        });
+      });
+
+      const { result } = renderHook(() => useChatStore());
+      const context = { agentId: TEST_IDS.SESSION_ID, topicId: null };
+      const { operationId } = result.current.startOperation({
+        context,
+        type: 'execClientSubAgent',
+      });
+
+      await act(async () => {
+        await expect(
+          result.current.executeClientAgent({
+            context,
+            messages: [createMockMessage({ role: 'user' })],
+            operationId,
+            parentMessageId: TEST_IDS.USER_MESSAGE_ID,
+            parentMessageType: 'user',
+          }),
+        ).rejects.toThrow('execution target unavailable');
+      });
+
+      expect(result.current.operations[operationId].status).toBe('failed');
+    });
+
     it('should handle the core AI message processing', async () => {
       act(() => {
         useChatStore.setState({ executeClientAgent: realExecAgentRuntime });

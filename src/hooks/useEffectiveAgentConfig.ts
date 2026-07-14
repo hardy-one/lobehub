@@ -168,6 +168,7 @@ export const useEffectiveAgentConfig = (context: EffectiveAgentConfigContext) =>
     executionTargetError,
     hasSourcePreference,
     hasTopicPreference: topicPreference != null,
+    hasWorkspaceOverride: workspaceOverride != null,
     isExecutionTargetLoading,
     isLoading: isModelLoading || isExecutionTargetLoading,
     isModelLoading,

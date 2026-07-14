@@ -311,6 +311,63 @@ describe('ConversationLifecycle actions', () => {
         expect(setDocument).not.toHaveBeenCalled();
       });
 
+      it('should restore the editor and expose an error when routing preflight fails', async () => {
+        const { result } = renderHook(() => useChatStore());
+        const inputEditorState = {
+          root: {
+            children: [
+              {
+                children: [{ text: 'Keep this draft', type: 'text', version: 1 }],
+                type: 'paragraph',
+                version: 1,
+              },
+            ],
+            type: 'root',
+            version: 1,
+          },
+        };
+        const setDocument = vi.fn();
+        const setJSONState = vi.fn();
+        const sendMessageInServerSpy = vi.spyOn(aiChatService, 'sendMessageInServer');
+
+        useUserStore.setState({
+          ensureExecutionTargetPreference: vi
+            .fn()
+            .mockRejectedValue(new TRPCClientError('routing unavailable')),
+        });
+        act(() => {
+          useChatStore.setState({
+            mainInputEditor: {
+              getJSONState: vi.fn(),
+              setDocument,
+              setJSONState,
+            } as any,
+          });
+        });
+
+        await act(async () => {
+          await result.current.sendMessage({
+            context: createTestContext(),
+            editorData: inputEditorState as any,
+            message: 'Keep this draft',
+          });
+        });
+
+        const sendMessageOperation = Object.values(result.current.operations).find(
+          (operation) => operation.type === 'sendMessage',
+        );
+        expect(sendMessageOperation).toMatchObject({
+          metadata: {
+            inputEditorTempState: inputEditorState,
+            inputSendErrorMsg: 'routing unavailable',
+          },
+          status: 'failed',
+        });
+        expect(setJSONState).toHaveBeenCalledWith(inputEditorState);
+        expect(setDocument).not.toHaveBeenCalled();
+        expect(sendMessageInServerSpy).not.toHaveBeenCalled();
+      });
+
       it('should create user message and trigger AI processing', async () => {
         const { result } = renderHook(() => useChatStore());
 
@@ -2301,7 +2358,7 @@ describe('ConversationLifecycle actions', () => {
         );
       });
 
-      it('should route a single leading @agent through the gateway when gateway mode is enabled', async () => {
+      it('should keep a single leading @agent on its parent gateway runtime', async () => {
         const { result } = renderHook(() => useChatStore());
         const targetAgentId = 'agent-direct-target';
         const toolMessageId = 'tool-call-agent-result';
@@ -2351,7 +2408,7 @@ describe('ConversationLifecycle actions', () => {
         act(() => {
           useChatStore.setState({
             executeGatewayAgent: executeGatewayAgentSpy,
-            isGatewayModeEnabled: () => true,
+            isGatewayModeEnabled: () => false,
           });
         });
 
@@ -2377,6 +2434,7 @@ describe('ConversationLifecycle actions', () => {
               },
             } as any,
             context: createTestContext(),
+            forceRuntime: 'gateway',
           });
         });
 

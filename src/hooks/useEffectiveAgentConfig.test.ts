@@ -202,4 +202,21 @@ describe('useEffectiveAgentConfig', () => {
     expect(result.current.isLoading).toBe(false);
     expect(testState.chat.useFetchTopicModelOverride).toHaveBeenCalledWith('topic-1');
   });
+
+  it('marks workspace user device overrides as private preferences', () => {
+    testState.agent.agentMap['agent-1'] = { ...baseConfig, workspaceId: 'workspace-1' };
+    testState.user.workspaceUserPreference = {
+      agentDeviceOverrides: {
+        'agent-1': { boundDeviceId: 'private-device', executionTarget: 'device' },
+      },
+    };
+
+    const { result } = renderHook(() => useEffectiveAgentConfig({ agentId: 'agent-1' }));
+
+    expect(result.current.hasWorkspaceOverride).toBe(true);
+    expect(result.current.config?.agencyConfig).toMatchObject({
+      boundDeviceId: 'private-device',
+      executionTarget: 'device',
+    });
+  });
 });

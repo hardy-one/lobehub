@@ -13,12 +13,12 @@ import { isDesktop } from '@/const/version';
 import RightPanel from '@/features/RightPanel';
 import { resolveExecutionTarget } from '@/helpers/executionTarget';
 import { useIsGatewayModeEnabled } from '@/helpers/gatewayMode';
+import { useEffectiveAgentConfig } from '@/hooks/useEffectiveAgentConfig';
 import { useEffectiveWorkingDirectory } from '@/hooks/useEffectiveWorkingDirectory';
 import { useClientDataSWR } from '@/libs/swr';
 import AgentDocumentsGroup from '@/routes/(main)/agent/features/Conversation/WorkingSidebar/ResourcesSection/AgentDocumentsGroup';
 import { agentDocumentService, agentDocumentSWRKeys } from '@/services/agentDocument';
 import { useAgentStore } from '@/store/agent';
-import { agentByIdSelectors, agentSelectors } from '@/store/agent/selectors';
 import { useGlobalStore } from '@/store/global';
 import { standardizeIdentifier } from '@/utils/identifier';
 
@@ -77,23 +77,24 @@ const AgentDocumentRightPanel = memo(() => {
   const { docId } = useParams<{ docId?: string }>();
   const toggleRightPanel = useGlobalStore((s) => s.toggleRightPanel);
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
-  const isHetero = useAgentStore(agentSelectors.isCurrentAgentHeterogeneous);
-  const workingDirectory = useEffectiveWorkingDirectory(activeAgentId);
-  const agencyConfig = useAgentStore((s) =>
-    activeAgentId ? agentByIdSelectors.getAgencyConfigById(activeAgentId)(s) : undefined,
-  );
+  const context = { agentId: activeAgentId || '' };
+  const { config, executionTargetError, isExecutionTargetLoading, workspaceScoped } =
+    useEffectiveAgentConfig(context);
+  const agencyConfig = config?.agencyConfig;
+  const isHetero = !!agencyConfig?.heterogeneousProvider;
+  const workingDirectory = useEffectiveWorkingDirectory(context);
   const deviceRoutingAvailable = useIsGatewayModeEnabled(activeAgentId);
-  const isWorkspaceAgent = useAgentStore((s) =>
-    activeAgentId ? agentByIdSelectors.isWorkspaceAgentById(activeAgentId)(s) : false,
-  );
   const effectiveTarget = resolveExecutionTarget(agencyConfig, {
     clientExecutionAvailable: isDesktop,
     deviceRoutingAvailable,
     isHetero,
-    workspaceScoped: isWorkspaceAgent,
+    workspaceScoped,
   });
   const remoteDeviceId =
-    effectiveTarget === 'device' && agencyConfig?.boundDeviceId
+    !executionTargetError &&
+    !isExecutionTargetLoading &&
+    effectiveTarget === 'device' &&
+    agencyConfig?.boundDeviceId
       ? agencyConfig.boundDeviceId
       : undefined;
 

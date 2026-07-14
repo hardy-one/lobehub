@@ -2,7 +2,7 @@
 
 import { isDesktop } from '@lobechat/const';
 import type { WorkingDirEntry } from '@lobechat/types';
-import { getWorkingDirSourcePath } from '@lobechat/types';
+import { getWorkingDirEffectivePath, getWorkingDirSourcePath } from '@lobechat/types';
 import { ActionIcon, Flexbox, Icon, Input, Popover, Tooltip } from '@lobehub/ui';
 import { toast } from '@lobehub/ui/base-ui';
 import { createStaticStyles, cssVar, cx } from 'antd-style';
@@ -28,17 +28,15 @@ import {
   getWorkingDirectoryName,
   getWorkingDirectoryPathString,
 } from '@/helpers/workingDirectoryPath';
-import { useEffectiveAgencyConfig } from '@/hooks/useEffectiveAgencyConfig';
 import { deviceService } from '@/services/device';
 import { electronSystemService } from '@/services/electron/system';
 import { useAgentStore } from '@/store/agent';
-import { useChatStore } from '@/store/chat';
-import { topicSelectors } from '@/store/chat/selectors';
 import { deviceSelectors, useDeviceStore } from '@/store/device';
 import { useElectronStore } from '@/store/electron';
 import { useUserStore } from '@/store/user';
 import { authSelectors } from '@/store/user/selectors';
 
+import { useChatInputEffectiveAgentConfig } from '../hooks/useEffectiveAgentConfig';
 import DirIcon from './DirIcon';
 import { useCommitWorkingDirectory } from './useCommitWorkingDirectory';
 import { useMigrateDeviceRecents } from './useMigrateDeviceRecents';
@@ -295,10 +293,8 @@ const WorkingDirectoryPicker = memo<WorkingDirectoryPickerProps>(({ agentId }) =
   // One-time fold of legacy localStorage recents into device.workingDirs.
   useMigrateDeviceRecents();
 
-  // Effective config (shared row + this member's device override, LOBE-11689)
-  // so recents / default cwd / the selected-repo label all resolve against the
-  // device THIS member's run actually targets.
-  const { agencyConfig } = useEffectiveAgencyConfig(agentId);
+  const { config, topicMetadata } = useChatInputEffectiveAgentConfig();
+  const agencyConfig = config?.agencyConfig;
   const currentDeviceId = useElectronStore((s) => s.gatewayDeviceInfo?.deviceId);
   const targetDeviceId = resolveTargetDeviceId(agencyConfig, currentDeviceId);
   // The local machine's filesystem is browsable; a remote device's is not.
@@ -308,11 +304,11 @@ const WorkingDirectoryPicker = memo<WorkingDirectoryPickerProps>(({ agentId }) =
   const recents = useMemo(() => rawRecents.filter(isValidWorkingDirEntry), [rawRecents]);
   const rawDeviceDefaultCwd = useDeviceStore(deviceSelectors.getDeviceDefaultCwd(targetDeviceId));
   const deviceDefaultCwd = getWorkingDirectoryPathString(rawDeviceDefaultCwd);
-  const rawTopicWorkingDirectory = useChatStore(topicSelectors.currentTopicWorkingDirectory);
-  const topicWorkingDirectory = getWorkingDirectoryPathString(rawTopicWorkingDirectory);
-  const topicWorkingDirectoryConfig = useChatStore(
-    (s) => topicSelectors.currentTopicMetadata(s)?.workingDirectoryConfig,
+  const rawTopicWorkingDirectory = getWorkingDirEffectivePath(
+    topicMetadata?.workingDirectoryConfig ?? topicMetadata?.workingDirectory,
   );
+  const topicWorkingDirectory = getWorkingDirectoryPathString(rawTopicWorkingDirectory);
+  const topicWorkingDirectoryConfig = topicMetadata?.workingDirectoryConfig;
   const rawLegacyAgentWorkingDirectory = useAgentStore(
     (s) => s.localAgentWorkingDirectoryMap[agentId],
   );

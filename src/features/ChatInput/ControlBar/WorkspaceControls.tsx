@@ -3,12 +3,10 @@
 import { isDesktop } from '@lobechat/const';
 import { memo } from 'react';
 
-import { resolveExecutionTarget } from '@/helpers/executionTarget';
+import { executionTargetToRuntimeMode, resolveExecutionTarget } from '@/helpers/executionTarget';
 import { useIsGatewayModeEnabled } from '@/helpers/gatewayMode';
-import { useEffectiveAgencyConfig } from '@/hooks/useEffectiveAgencyConfig';
-import { useAgentStore } from '@/store/agent';
-import { agentByIdSelectors, chatConfigByIdSelectors } from '@/store/agent/selectors';
 
+import { useChatInputEffectiveAgentConfig } from '../hooks/useEffectiveAgentConfig';
 import CloudRepoSwitcher from './CloudRepoSwitcher';
 import HeteroDeviceSwitcher from './HeteroDeviceSwitcher';
 import WorkingDirectorySection from './WorkingDirectorySection';
@@ -35,23 +33,23 @@ interface WorkspaceControlsProps {
  */
 const WorkspaceControls = memo<WorkspaceControlsProps>(
   ({ agentId, alwaysShowWorkspace = false }) => {
-    const runtimeMode = useAgentStore(chatConfigByIdSelectors.getRuntimeModeById(agentId));
-    const isHeterogeneous = useAgentStore(agentByIdSelectors.isAgentHeterogeneousById(agentId));
-    // Effective config = shared row + this member's device override (LOBE-11689),
-    // so `isDeviceMode` routes the working-directory section by the device THIS
-    // member's run actually targets.
-    const { agencyConfig } = useEffectiveAgencyConfig(agentId);
+    const { config, executionTargetError, isExecutionTargetLoading, workspaceScoped } =
+      useChatInputEffectiveAgentConfig();
+    const agencyConfig = config?.agencyConfig;
+    const isHeterogeneous = !!agencyConfig?.heterogeneousProvider;
     const deviceRoutingAvailable = useIsGatewayModeEnabled(agentId);
-    const isWorkspaceAgent = useAgentStore(agentByIdSelectors.isWorkspaceAgentById(agentId));
     const effectiveTarget = resolveExecutionTarget(agencyConfig, {
       clientExecutionAvailable: isDesktop,
       deviceRoutingAvailable,
       isHetero: isHeterogeneous,
-      workspaceScoped: isWorkspaceAgent,
+      workspaceScoped,
     });
+    const runtimeMode = executionTargetToRuntimeMode(effectiveTarget);
     const isDeviceMode = effectiveTarget === 'device' && !!agencyConfig?.boundDeviceId;
 
     const renderWorkspace = () => {
+      if (executionTargetError || isExecutionTargetLoading) return null;
+
       // Remote device runs get the device-scoped picker, regardless of runtimeMode
       // (HeteroDeviceSwitcher sets runtimeMode to 'none' when a device is selected).
       if (isDeviceMode) return <WorkingDirectorySection agentId={agentId} />;

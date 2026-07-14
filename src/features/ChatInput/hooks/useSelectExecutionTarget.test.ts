@@ -4,30 +4,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSelectExecutionTarget } from './useSelectExecutionTarget';
 
 const testState = vi.hoisted(() => ({
-  agent: {
-    agencyConfig: undefined as
-      { boundDeviceId?: string; executionTarget?: string; workingDirByDevice?: object } | undefined,
-    isWorkspaceAgent: false,
-  },
   chatInput: { topicModelContext: undefined as { topicId?: string | null } | undefined },
   electron: { gatewayDeviceInfo: undefined as { deviceId?: string } | undefined },
   getDeviceInfo: vi.fn(),
   isDesktop: false,
+  effective: {
+    agencyConfig: undefined as
+      { boundDeviceId?: string; executionTarget?: string; workingDirByDevice?: object } | undefined,
+    hasTopicPreference: false,
+  },
   user: {
-    executionTargetPreferenceMap: {} as Record<string, any>,
     updateExecutionTargetPreference: vi.fn(),
-    useFetchExecutionTargetPreference: vi.fn(() => ({
-      error: undefined,
-      isLoading: false,
-      mutate: vi.fn(),
-    })),
-    useFetchWorkspaceUserPreference: vi.fn(() => ({
-      error: undefined,
-      isLoading: false,
-    })),
-    workspaceUserPreference: {} as {
-      agentDeviceOverrides?: Record<string, { boundDeviceId?: string; executionTarget?: string }>;
-    },
   },
 }));
 
@@ -42,19 +29,19 @@ vi.mock('@/features/ChatInput/store', () => ({
     selector(testState.chatInput),
 }));
 
+vi.mock('@/hooks/useEffectiveAgentConfig', () => ({
+  useEffectiveAgentConfig: () => ({
+    config: { agencyConfig: testState.effective.agencyConfig },
+    executionTargetError: undefined,
+    hasSourcePreference: false,
+    hasTopicPreference: testState.effective.hasTopicPreference,
+    isExecutionTargetLoading: false,
+    retryExecutionTarget: vi.fn(),
+  }),
+}));
+
 vi.mock('@/services/electron/gatewayConnection', () => ({
   gatewayConnectionService: { getDeviceInfo: () => testState.getDeviceInfo() },
-}));
-
-vi.mock('@/store/agent', () => ({
-  useAgentStore: (selector: (s: typeof testState.agent) => unknown) => selector(testState.agent),
-}));
-
-vi.mock('@/store/agent/selectors', () => ({
-  agentByIdSelectors: {
-    getAgencyConfigById: () => (s: typeof testState.agent) => s.agencyConfig,
-    isWorkspaceAgentById: () => (s: typeof testState.agent) => s.isWorkspaceAgent,
-  },
 }));
 
 vi.mock('@/store/electron', () => ({
@@ -68,15 +55,13 @@ vi.mock('@/store/user', () => ({
 
 describe('useSelectExecutionTarget', () => {
   beforeEach(() => {
-    testState.agent.agencyConfig = undefined;
-    testState.agent.isWorkspaceAgent = false;
     testState.chatInput.topicModelContext = undefined;
     testState.electron.gatewayDeviceInfo = undefined;
     testState.getDeviceInfo = vi.fn();
     testState.isDesktop = false;
-    testState.user.executionTargetPreferenceMap = {};
     testState.user.updateExecutionTargetPreference = vi.fn().mockResolvedValue(undefined);
-    testState.user.workspaceUserPreference = {};
+    testState.effective.agencyConfig = undefined;
+    testState.effective.hasTopicPreference = false;
   });
 
   it('stores a no-topic selection as the source-client Agent default', async () => {
@@ -130,12 +115,12 @@ describe('useSelectExecutionTarget', () => {
   });
 
   it('applies Topic preference over Agent and shared configuration', () => {
-    testState.agent.agencyConfig = { boundDeviceId: 'shared', executionTarget: 'device' };
     testState.chatInput.topicModelContext = { topicId: 'topic-id' };
-    testState.user.executionTargetPreferenceMap = {
-      'agent:agent-id': { executionTarget: 'sandbox' },
-      'topic:topic-id': { boundDeviceId: 'topic-device', executionTarget: 'device' },
+    testState.effective.agencyConfig = {
+      boundDeviceId: 'topic-device',
+      executionTarget: 'device',
     };
+    testState.effective.hasTopicPreference = true;
 
     const { result } = renderHook(() => useSelectExecutionTarget('agent-id'));
 

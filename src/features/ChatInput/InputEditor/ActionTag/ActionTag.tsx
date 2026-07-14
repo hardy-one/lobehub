@@ -3,7 +3,7 @@ import { memo, useCallback, useEffect, useRef } from 'react';
 
 import { useProjectSkillResolver } from '@/features/SkillsList/useProjectSkillResolver';
 
-import { useAgentId } from '../../hooks/useAgentId';
+import { useChatInputEffectiveAgentConfig } from '../../hooks/useEffectiveAgentConfig';
 import { ActionMention } from './ActionMention';
 import type { ActionTagNode } from './ActionTagNode';
 
@@ -18,8 +18,8 @@ const ActionTag = memo<ActionTagProps>(({ node, editor, label }) => {
 
   // Project skills carry a filesystem SKILL.md the user can open in the portal;
   // resolve the tag by its bare name against the active session's skill list.
-  const agentId = useAgentId();
-  const resolveProjectSkill = useProjectSkillResolver(agentId);
+  const { context } = useChatInputEffectiveAgentConfig();
+  const resolveProjectSkill = useProjectSkillResolver(context);
   const skill =
     node.actionCategory === 'projectSkill' ? resolveProjectSkill(node.actionType) : undefined;
   const open = skill?.open;

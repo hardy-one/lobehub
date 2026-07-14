@@ -13,14 +13,13 @@ import { resolveExecutionTarget } from '@/helpers/executionTarget';
 import { useIsGatewayModeEnabled } from '@/helpers/gatewayMode';
 import { useEffectiveWorkingDirectory } from '@/hooks/useEffectiveWorkingDirectory';
 import { useFetchProjectSkills } from '@/hooks/useFetchProjectSkills';
-import { useAgentStore } from '@/store/agent';
-import { agentByIdSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
 import { useToolStore } from '@/store/tool';
 import { agentDocumentSkillsSelectors } from '@/store/tool/selectors';
 import type { AgentDocumentSkillItem } from '@/store/tool/slices/agentDocumentSkills/initialState';
 
 import { useAgentId } from '../../hooks/useAgentId';
+import { useChatInputEffectiveAgentConfig } from '../../hooks/useEffectiveAgentConfig';
 import { useChatInputStore } from '../../store';
 import { INSERT_ACTION_TAG_COMMAND, type InsertActionTagPayload } from './command';
 import { type ActionTagData, BUILTIN_COMMANDS } from './types';
@@ -54,7 +53,9 @@ export const useSlashActionItems = (): SlashOptions['items'] => {
   // Unified cwd: topic > agent's per-device choice > device default > home.
   // This is what makes project skills load even when only a device default is
   // set (and for local-device runs), not just an explicit agent/topic pick.
-  const workingDirectory = useEffectiveWorkingDirectory(agentId);
+  const { config, context, executionTargetError, isExecutionTargetLoading, workspaceScoped } =
+    useChatInputEffectiveAgentConfig();
+  const workingDirectory = useEffectiveWorkingDirectory(context);
 
   // Device-bound (remote) runs scan filesystem skills on that device over the
   // `device.listProjectSkills` RPC; the local desktop reads over Electron IPC.
@@ -64,21 +65,14 @@ export const useSlashActionItems = (): SlashOptions['items'] => {
   // device" (`local` + boundDeviceId) coerces to `device` when opened on web —
   // reading the raw stored target would miss that and leave the menu empty even
   // though the sidebar lists the skills.
-  const agencyConfig = useAgentStore((s) =>
-    agentId ? agentByIdSelectors.getAgencyConfigById(agentId)(s) : undefined,
-  );
-  const isHetero = useAgentStore((s) =>
-    agentId ? agentByIdSelectors.isAgentHeterogeneousById(agentId)(s) : false,
-  );
+  const agencyConfig = config?.agencyConfig;
+  const isHetero = !!agencyConfig?.heterogeneousProvider;
   const deviceRoutingAvailable = useIsGatewayModeEnabled(agentId);
-  const isWorkspaceAgent = useAgentStore((s) =>
-    agentId ? agentByIdSelectors.isWorkspaceAgentById(agentId)(s) : false,
-  );
   const effectiveTarget = resolveExecutionTarget(agencyConfig, {
     clientExecutionAvailable: isDesktop,
     deviceRoutingAvailable,
     isHetero,
-    workspaceScoped: isWorkspaceAgent,
+    workspaceScoped,
   });
   const isDeviceMode = effectiveTarget === 'device' && !!agencyConfig?.boundDeviceId;
   const remoteDeviceId = isDeviceMode ? agencyConfig.boundDeviceId : undefined;
@@ -86,7 +80,11 @@ export const useSlashActionItems = (): SlashOptions['items'] => {
   // Local desktop reads over IPC; a bound device reads over RPC. Either path
   // makes filesystem skills reachable even when this client isn't the desktop app
   // (previously gated on `isDesktop` alone, so remote/web runs got nothing).
-  const projectSkillsEnabled = (isDesktop || !!remoteDeviceId) && !!workingDirectory;
+  const projectSkillsEnabled =
+    !executionTargetError &&
+    !isExecutionTargetLoading &&
+    (isDesktop || !!remoteDeviceId) &&
+    !!workingDirectory;
   const { data: projectSkillsData } = useFetchProjectSkills(
     projectSkillsEnabled ? workingDirectory : undefined,
     remoteDeviceId,

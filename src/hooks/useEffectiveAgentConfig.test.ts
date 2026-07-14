@@ -5,6 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveEffectiveAgentConfig, useEffectiveAgentConfig } from './useEffectiveAgentConfig';
 
 const baseConfig = {
+  agencyConfig: {
+    boundDeviceId: 'shared-device',
+    executionTarget: 'device',
+    heterogeneousProvider: { type: 'claude-code' },
+  },
   chatConfig: {},
   model: 'agent-model',
   params: {},
@@ -16,7 +21,7 @@ const baseConfig = {
 const testState = vi.hoisted(() => ({
   agent: {
     agentConfigErrorMap: {} as Record<string, string>,
-    agentMap: {} as Record<string, LobeAgentConfig>,
+    agentMap: {} as Record<string, LobeAgentConfig & { workspaceId?: string }>,
     agentNotFoundMap: {} as Record<string, boolean>,
   },
   chat: {
@@ -25,7 +30,9 @@ const testState = vi.hoisted(() => ({
       {
         items: Array<{
           id: string;
-          metadata?: { modelOverride?: { model: string; provider: string } };
+          metadata?: {
+            modelOverride?: { model: string; provider: string };
+          };
         }>;
       }
     >,
@@ -33,8 +40,26 @@ const testState = vi.hoisted(() => ({
     useFetchTopicModelOverride: vi.fn(() => ({
       data: undefined,
       error: undefined,
+      isLoading: false,
       mutate: vi.fn(),
     })),
+  },
+  user: {
+    executionTargetPreferenceMap: {} as Record<string, unknown>,
+    useFetchExecutionTargetPreference: vi.fn(() => ({
+      data: undefined as { agent: null; topic: null } | undefined,
+      error: undefined,
+      isLoading: false,
+      mutate: vi.fn(),
+    })),
+    useFetchWorkspaceUserPreference: vi.fn(() => ({
+      error: undefined,
+      isLoading: false,
+      mutate: vi.fn(),
+    })),
+    workspaceUserPreference: {} as {
+      agentDeviceOverrides?: Record<string, { boundDeviceId?: string; executionTarget?: string }>;
+    },
   },
 }));
 
@@ -49,6 +74,8 @@ vi.mock('@/store/agent/selectors', () => ({
       state.agentConfigErrorMap[id],
     isAgentConfigLoadingById: (id: string) => (state: typeof testState.agent) =>
       !state.agentMap[id] && !state.agentNotFoundMap[id],
+    isWorkspaceAgentById: (id: string) => (state: typeof testState.agent) =>
+      !!state.agentMap[id]?.workspaceId,
   },
 }));
 
@@ -56,15 +83,41 @@ vi.mock('@/store/chat', () => ({
   useChatStore: (selector: (state: typeof testState.chat) => unknown) => selector(testState.chat),
 }));
 
+vi.mock('@/store/user', () => ({
+  useUserStore: (selector: (state: typeof testState.user) => unknown) => selector(testState.user),
+}));
+
+vi.mock('@/store/user/selectors', () => ({
+  workspaceUserSettingsSelectors: {
+    agentDeviceOverrideById: (id: string) => (state: typeof testState.user) =>
+      state.workspaceUserPreference.agentDeviceOverrides?.[id],
+  },
+}));
+
 describe('resolveEffectiveAgentConfig', () => {
-  it('applies the Topic model without changing the original Agent config', () => {
+  it('applies Topic model and Topic device preference without changing the original Agent config', () => {
     const result = resolveEffectiveAgentConfig({
       agentConfig: baseConfig,
+      agentPreference: { executionTarget: 'sandbox' },
       topicModelOverride: { model: 'topic-model', provider: 'topic-provider' },
+      topicPreference: { boundDeviceId: 'topic-device', executionTarget: 'device' },
+      workspaceOverride: { boundDeviceId: 'workspace-device', executionTarget: 'device' },
     });
 
-    expect(result).toMatchObject({ model: 'topic-model', provider: 'topic-provider' });
-    expect(baseConfig).toMatchObject({ model: 'agent-model', provider: 'agent-provider' });
+    expect(result).toMatchObject({
+      agencyConfig: {
+        boundDeviceId: 'topic-device',
+        executionTarget: 'device',
+        heterogeneousProvider: { type: 'claude-code' },
+      },
+      model: 'topic-model',
+      provider: 'topic-provider',
+    });
+    expect(baseConfig).toMatchObject({
+      agencyConfig: { boundDeviceId: 'shared-device', executionTarget: 'device' },
+      model: 'agent-model',
+      provider: 'agent-provider',
+    });
   });
 });
 
@@ -78,11 +131,26 @@ describe('useEffectiveAgentConfig', () => {
     testState.chat.useFetchTopicModelOverride = vi.fn(() => ({
       data: undefined,
       error: undefined,
+      isLoading: false,
       mutate: vi.fn(),
     }));
+    testState.user.executionTargetPreferenceMap = {};
+    testState.user.useFetchExecutionTargetPreference = vi.fn(() => ({
+      data: { agent: null, topic: null },
+      error: undefined,
+      isLoading: false,
+      mutate: vi.fn(),
+    }));
+    testState.user.useFetchWorkspaceUserPreference = vi.fn(() => ({
+      error: undefined,
+      isLoading: false,
+      mutate: vi.fn(),
+    }));
+    testState.user.workspaceUserPreference = {};
   });
 
-  it('resolves a Group Topic model override for the supervisor', () => {
+  it('resolves Group Topic model and source-specific Topic device preference', () => {
+    testState.agent.agentMap['agent-1'] = { ...baseConfig, workspaceId: 'workspace-1' };
     testState.chat.topicDataMap = {
       'group_group-1': {
         items: [
@@ -95,6 +163,10 @@ describe('useEffectiveAgentConfig', () => {
         ],
       },
     };
+    testState.user.executionTargetPreferenceMap = {
+      'agent:agent-1': { executionTarget: 'sandbox' },
+      'topic:topic-1': { boundDeviceId: 'topic-device', executionTarget: 'device' },
+    };
 
     const { result } = renderHook(() =>
       useEffectiveAgentConfig({
@@ -106,13 +178,15 @@ describe('useEffectiveAgentConfig', () => {
     );
 
     expect(result.current.config).toMatchObject({
+      agencyConfig: { boundDeviceId: 'topic-device', executionTarget: 'device' },
       model: 'topic-model',
       provider: 'topic-provider',
     });
+    expect(result.current.workspaceScoped).toBe(false);
     expect(testState.chat.useFetchTopicModelOverride).toHaveBeenCalledWith(undefined);
   });
 
-  it('uses the independent Topic cache outside the paginated list', () => {
+  it('uses the independent Topic cache when the Topic is outside the paginated list', () => {
     testState.chat.topicModelOverrideMap = {
       'topic-1': { model: 'cached-model', provider: 'cached-provider' },
     };

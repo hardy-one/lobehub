@@ -6,10 +6,10 @@ import React, { memo, Suspense, useCallback } from 'react';
 import DragUploadZone, { type DroppedLocalPath, useUploadFiles } from '@/components/DragUploadZone';
 import Loading from '@/components/Loading/BrandTextLoading';
 import { insertLocalPathTags } from '@/features/ChatInput/InputEditor/insertLocalFileTags';
+import { resolveExecutionTarget } from '@/helpers/executionTarget';
+import { useIsGatewayModeEnabled } from '@/helpers/gatewayMode';
 import { useEffectiveAgentConfig } from '@/hooks/useEffectiveAgentConfig';
 import { useEffectiveWorkingDirectory } from '@/hooks/useEffectiveWorkingDirectory';
-import { useAgentStore } from '@/store/agent';
-import { agentChatConfigSelectors, agentSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
 
 import ConversationArea from './ConversationArea';
@@ -24,18 +24,34 @@ const wrapperStyle: React.CSSProperties = {
 
 const ChatConversation = memo(() => {
   const context = useAgentContext();
-  const { config, isModelLoading } = useEffectiveAgentConfig(context);
+  const {
+    config,
+    executionTargetError,
+    isExecutionTargetLoading,
+    isModelLoading,
+    workspaceScoped,
+  } = useEffectiveAgentConfig(context);
   const agentId = context.agentId;
   const model = config?.model ?? DEFAULT_MODEL;
   const provider = config?.provider ?? DEFAULT_PROVIDER;
-  const isHeterogeneous = useAgentStore(agentSelectors.isCurrentAgentHeterogeneous);
-  const isLocalSystemEnabled = useAgentStore(agentChatConfigSelectors.isLocalSystemEnabled);
+  const isHeterogeneous = !!config?.agencyConfig?.heterogeneousProvider;
+  const deviceRoutingAvailable = useIsGatewayModeEnabled(agentId);
+  const executionTarget = resolveExecutionTarget(config?.agencyConfig, {
+    clientExecutionAvailable: isDesktop,
+    deviceRoutingAvailable,
+    isHetero: isHeterogeneous,
+    workspaceScoped,
+  });
 
   const { handleUploadFiles } = useUploadFiles({ agentId, model, provider });
-  const workingDirectory = useEffectiveWorkingDirectory(agentId);
+  const workingDirectory = useEffectiveWorkingDirectory(context);
 
   const enableLocalPathReference =
-    isDesktop && !!workingDirectory && (isHeterogeneous || isLocalSystemEnabled);
+    !executionTargetError &&
+    !isExecutionTargetLoading &&
+    isDesktop &&
+    !!workingDirectory &&
+    (isHeterogeneous || executionTarget === 'local');
 
   const handleLocalPaths = useCallback((paths: DroppedLocalPath[]) => {
     const editor = useChatStore.getState().mainInputEditor?.instance;

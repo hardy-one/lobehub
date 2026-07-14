@@ -128,8 +128,13 @@ const HeteroControlBar = memo(() => {
   });
 
   // All hooks must be called unconditionally (Rules of Hooks)
-  const isLoading = useAgentStore(agentByIdSelectors.isAgentConfigLoadingById(agentId));
-  const { agencyConfig, hasSourcePreference } = useSelectExecutionTarget(agentId);
+  const isAgentConfigLoading = useAgentStore(agentByIdSelectors.isAgentConfigLoadingById(agentId));
+  const {
+    agencyConfig,
+    hasSourcePreference,
+    isLoading: isPreferenceLoading,
+  } = useSelectExecutionTarget(agentId);
+  const isLoading = isAgentConfigLoading || isPreferenceLoading;
   const isWorkspaceAgent = useAgentStore(agentByIdSelectors.isWorkspaceAgentById(agentId));
 
   // On web there's no full-access badge / skeleton — just the workspace controls

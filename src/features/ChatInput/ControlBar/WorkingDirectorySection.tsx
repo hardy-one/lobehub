@@ -8,13 +8,11 @@ import { memo } from 'react';
 import SafeBoundary from '@/components/ErrorBoundary';
 import { resolveTargetDeviceId } from '@/helpers/agentWorkingDirectory';
 import { getConfigRepoType, getWorkingDirectoryPathString } from '@/helpers/workingDirectoryPath';
-import { useEffectiveAgencyConfig } from '@/hooks/useEffectiveAgencyConfig';
 import { useEffectiveWorkingDirectory } from '@/hooks/useEffectiveWorkingDirectory';
-import { useChatStore } from '@/store/chat';
-import { topicSelectors } from '@/store/chat/selectors';
 import { deviceSelectors, useDeviceStore } from '@/store/device';
 import { useElectronStore } from '@/store/electron';
 
+import { useChatInputEffectiveAgentConfig } from '../hooks/useEffectiveAgentConfig';
 import GitStatus from './GitStatus';
 import { useRepoType } from './useRepoType';
 import WorkingDirectoryPicker from './WorkingDirectoryPicker';
@@ -35,15 +33,13 @@ const getEntryEffectivePath = (entry: WorkingDirEntry) => {
  * (read-only) via GitStatus's `deviceId`.
  */
 const WorkingDirectorySectionInner = memo<WorkingDirectorySectionProps>(({ agentId }) => {
-  // Effective config (shared row + this member's device override, LOBE-11689)
-  // so GitStatus probes the same device `useEffectiveWorkingDirectory` resolved
-  // the cwd from — raw shared config could point them at different machines.
-  const { agencyConfig } = useEffectiveAgencyConfig(agentId);
+  const { config, context, topicMetadata } = useChatInputEffectiveAgentConfig();
+  const agencyConfig = config?.agencyConfig;
   const currentDeviceId = useElectronStore((s) => s.gatewayDeviceInfo?.deviceId);
   const targetDeviceId = resolveTargetDeviceId(agencyConfig, currentDeviceId);
   const isLocalDevice = isDesktop && !!targetDeviceId && targetDeviceId === currentDeviceId;
 
-  const rawEffectiveWorkingDirectory = useEffectiveWorkingDirectory(agentId);
+  const rawEffectiveWorkingDirectory = useEffectiveWorkingDirectory(context);
   const effectiveWorkingDirectory = getWorkingDirectoryPathString(rawEffectiveWorkingDirectory);
 
   // Live probes (fs / cached device dirs) can't resolve repoType for a worktree
@@ -51,9 +47,7 @@ const WorkingDirectorySectionInner = memo<WorkingDirectorySectionProps>(({ agent
   // repoType persisted on the topic (the same snapshot the meta hover card reads).
   // Without this the whole GitStatus is gated out and branch/worktree/PR chips
   // vanish even though the topic clearly carries git context.
-  const topicWorkingDirectoryConfig = useChatStore(
-    (s) => topicSelectors.currentTopicMetadata(s)?.workingDirectoryConfig,
-  );
+  const topicWorkingDirectoryConfig = topicMetadata?.workingDirectoryConfig;
   // Only trust the persisted config when it actually describes the directory we
   // resolved — the topic override wins in `useEffectiveWorkingDirectory`, so this
   // holds whenever the config is what produced `effectiveWorkingDirectory`.

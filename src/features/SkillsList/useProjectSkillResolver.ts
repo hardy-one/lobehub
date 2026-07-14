@@ -3,9 +3,9 @@ import { useCallback } from 'react';
 
 import { resolveExecutionTarget } from '@/helpers/executionTarget';
 import { useIsGatewayModeEnabled } from '@/helpers/gatewayMode';
+import type { EffectiveAgentConfigContext } from '@/hooks/useEffectiveAgentConfig';
+import { useEffectiveAgentConfig } from '@/hooks/useEffectiveAgentConfig';
 import { useEffectiveWorkingDirectory } from '@/hooks/useEffectiveWorkingDirectory';
-import { useAgentStore } from '@/store/agent';
-import { agentByIdSelectors } from '@/store/agent/selectors';
 
 import { useProjectSkills } from './useProjectSkills';
 
@@ -35,36 +35,36 @@ export interface ResolvedProjectSkill {
  * exactly the skill the slash menu would have inserted.
  */
 export const useProjectSkillResolver = (
-  agentId?: string,
+  context: EffectiveAgentConfigContext,
 ): ((name: string) => ResolvedProjectSkill | undefined) => {
+  const { agentId } = context;
   // Unified cwd: topic > agent's per-device choice > device default > home.
-  const workingDirectory = useEffectiveWorkingDirectory(agentId);
+  const { config, executionTargetError, isExecutionTargetLoading, workspaceScoped } =
+    useEffectiveAgentConfig(context);
+  const workingDirectory = useEffectiveWorkingDirectory(context);
 
   // Resolve the EFFECTIVE target, then treat it as remote only when it lands on
   // `device` with a bound device — same coercion the slash menu / sidebar use so
   // a hetero "This device" run opened on web still resolves.
-  const agencyConfig = useAgentStore((s) =>
-    agentId ? agentByIdSelectors.getAgencyConfigById(agentId)(s) : undefined,
-  );
-  const isHetero = useAgentStore((s) =>
-    agentId ? agentByIdSelectors.isAgentHeterogeneousById(agentId)(s) : false,
-  );
+  const agencyConfig = config?.agencyConfig;
+  const isHetero = !!agencyConfig?.heterogeneousProvider;
   const deviceRoutingAvailable = useIsGatewayModeEnabled(agentId);
-  const isWorkspaceAgent = useAgentStore((s) =>
-    agentId ? agentByIdSelectors.isWorkspaceAgentById(agentId)(s) : false,
-  );
   const effectiveTarget = resolveExecutionTarget(agencyConfig, {
     clientExecutionAvailable: isDesktop,
     deviceRoutingAvailable,
     isHetero,
-    workspaceScoped: isWorkspaceAgent,
+    workspaceScoped,
   });
   const isDeviceMode = effectiveTarget === 'device' && !!agencyConfig?.boundDeviceId;
   const remoteDeviceId = isDeviceMode ? agencyConfig.boundDeviceId : undefined;
 
   // Local desktop reads over IPC; a bound device reads over RPC. Shares the SWR
   // key with the slash menu / sidebar, so this adds no extra fetch.
-  const projectSkillsEnabled = (isDesktop || !!remoteDeviceId) && !!workingDirectory;
+  const projectSkillsEnabled =
+    !executionTargetError &&
+    !isExecutionTargetLoading &&
+    (isDesktop || !!remoteDeviceId) &&
+    !!workingDirectory;
   const { items, onOpenSkill } = useProjectSkills(
     projectSkillsEnabled ? workingDirectory : undefined,
     remoteDeviceId,

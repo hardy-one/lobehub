@@ -12,13 +12,14 @@ import type { PartialDeep } from 'type-fest';
 
 import { resolveTargetDeviceId } from '@/helpers/agentWorkingDirectory';
 import { getHeteroSessionIdForWorkingDirectory } from '@/helpers/heteroSessionByWorkingDirectory';
-import { useEffectiveAgencyConfig } from '@/hooks/useEffectiveAgencyConfig';
 import { useAgentStore } from '@/store/agent';
 import { agentByIdSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
 import { topicSelectors } from '@/store/chat/selectors';
 import { useDeviceStore } from '@/store/device';
 import { useElectronStore } from '@/store/electron';
+
+import { useChatInputEffectiveAgentConfig } from '../hooks/useEffectiveAgentConfig';
 
 const normalizeWorkingDirEntry = (entry: WorkingDirEntry): WorkingDirEntry | undefined => {
   const path = entry.path.trim();
@@ -72,20 +73,14 @@ const toAgentWorkingDirConfig = (entry: WorkingDirEntry): WorkingDirConfig => ({
 export const useCommitWorkingDirectory = (agentId: string) => {
   const { t } = useTranslation(['plugin', 'chat']);
 
-  // The RAW shared config — every write below spreads it back into
-  // `agents.agencyConfig`, so it must never contain this member's per-user
-  // device override (spreading the merged config would leak the override's
-  // executionTarget/boundDeviceId into the workspace-shared row).
-  const agencyConfig = useAgentStore(agentByIdSelectors.getAgencyConfigById(agentId));
-  // The EFFECTIVE config (override merged, LOBE-11689) — only for resolving
-  // which device the cwd write should target, keeping it on the same machine
-  // the picker/GitStatus/`useEffectiveWorkingDirectory` operate on.
-  const { agencyConfig: effectiveAgencyConfig } = useEffectiveAgencyConfig(agentId);
+  const storedAgencyConfig = useAgentStore(agentByIdSelectors.getAgencyConfigById(agentId));
+  const { config } = useChatInputEffectiveAgentConfig();
+  const effectiveAgencyConfig = config?.agencyConfig;
   // Heterogeneous CLI agents (Claude Code, Codex, …) store sessions per-cwd, so
   // their session cwd anchors to the SOURCE repo — a worktree switch (same repo,
   // different activeWorktree) must NOT change the session cwd or reset the
   // session. Non-hetero agents keep running in the effective (worktree) cwd.
-  const isHetero = !!agencyConfig?.heterogeneousProvider;
+  const isHetero = !!effectiveAgencyConfig?.heterogeneousProvider;
   const updateAgentConfigById = useAgentStore((s) => s.updateAgentConfigById);
   const updateAgentRuntimeEnvConfigById = useAgentStore((s) => s.updateAgentRuntimeEnvConfigById);
   const legacyAgentWorkingDirectory = useAgentStore(
@@ -101,7 +96,6 @@ export const useCommitWorkingDirectory = (agentId: string) => {
   const updateDeviceCwd = useDeviceStore((s) => s.updateDeviceCwd);
   const currentDeviceId = useElectronStore((s) => s.gatewayDeviceInfo?.deviceId);
   const targetDeviceId = resolveTargetDeviceId(effectiveAgencyConfig, currentDeviceId);
-
   // A workspace agent resolving to THIS member's personal machine (a `local`
   // override, LOBE-11689) must not persist its cwd into the workspace-shared
   // `agents.agencyConfig.workingDirByDevice` — that would leak the member's
@@ -160,7 +154,7 @@ export const useCommitWorkingDirectory = (agentId: string) => {
             workingDirectory: sessionCwd || undefined,
           });
         } else if (targetDeviceId) {
-          const prev = agencyConfig?.workingDirByDevice ?? {};
+          const prev = storedAgencyConfig?.workingDirByDevice ?? {};
           // Clearing sends `undefined` rather than dropping the key: deep-merge
           // (client store + server persist) can't remove a key, so the delete is
           // carried as an explicit `undefined` and pruned after each merge.
@@ -169,7 +163,7 @@ export const useCommitWorkingDirectory = (agentId: string) => {
             [targetDeviceId]: entry ? toAgentWorkingDirConfig(entry) : undefined,
           };
           const configPatch = {
-            agencyConfig: { ...agencyConfig, workingDirByDevice: nextMap },
+            agencyConfig: { ...storedAgencyConfig, workingDirByDevice: nextMap },
           } as PartialDeep<LobeAgentConfig>;
           await updateAgentConfigById(agentId, configPatch);
         }
@@ -190,7 +184,7 @@ export const useCommitWorkingDirectory = (agentId: string) => {
     },
     [
       agentId,
-      agencyConfig,
+      storedAgencyConfig,
       activeTopic,
       activeTopicId,
       isHetero,
@@ -223,13 +217,13 @@ export const useCommitWorkingDirectory = (agentId: string) => {
     // explicit `undefined` and pruned after each merge. The user can't tell the
     // per-device map from the legacy slot, so clear both together to avoid a
     // dead second click.
-    if (targetDeviceId && agencyConfig?.workingDirByDevice?.[targetDeviceId]) {
+    if (targetDeviceId && storedAgencyConfig?.workingDirByDevice?.[targetDeviceId]) {
       const nextMap: Record<string, WorkingDirConfigValue | undefined> = {
-        ...agencyConfig.workingDirByDevice,
+        ...storedAgencyConfig.workingDirByDevice,
         [targetDeviceId]: undefined,
       };
       const configPatch = {
-        agencyConfig: { ...agencyConfig, workingDirByDevice: nextMap },
+        agencyConfig: { ...storedAgencyConfig, workingDirByDevice: nextMap },
       } as PartialDeep<LobeAgentConfig>;
       await updateAgentConfigById(agentId, configPatch);
     }
@@ -240,7 +234,7 @@ export const useCommitWorkingDirectory = (agentId: string) => {
     }
   }, [
     agentId,
-    agencyConfig,
+    storedAgencyConfig,
     activeTopic,
     activeTopicId,
     targetDeviceId,
@@ -296,10 +290,10 @@ export const useCommitWorkingDirectory = (agentId: string) => {
       const path = newPath.trim();
       if (!path) return;
       if (targetDeviceId && !isPersonalDeviceTarget) {
-        const prev = agencyConfig?.workingDirByDevice ?? {};
+        const prev = storedAgencyConfig?.workingDirByDevice ?? {};
         await updateAgentConfigById(agentId, {
           agencyConfig: {
-            ...agencyConfig,
+            ...storedAgencyConfig,
             workingDirByDevice: { ...prev, [targetDeviceId]: path },
           },
         });
@@ -313,8 +307,8 @@ export const useCommitWorkingDirectory = (agentId: string) => {
     },
     [
       agentId,
-      agencyConfig,
       isPersonalDeviceTarget,
+      storedAgencyConfig,
       targetDeviceId,
       updateAgentConfigById,
       updateAgentRuntimeEnvConfigById,

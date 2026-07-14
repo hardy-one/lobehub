@@ -4,8 +4,8 @@ import isEqual from 'fast-deep-equal';
 import { memo } from 'react';
 
 import { ActionMention } from '@/features/ChatInput/InputEditor/ActionTag/ActionMention';
+import { contextSelectors, useConversationStore } from '@/features/Conversation/store';
 import { useProjectSkillResolver } from '@/features/SkillsList/useProjectSkillResolver';
-import { useAgentStore } from '@/store/agent';
 
 import { type MarkdownElementProps } from '../type';
 
@@ -29,8 +29,8 @@ const Render = memo<MarkdownElementProps<SkillNodeProps>>(({ node, children }) =
   const { label, name } = node?.properties || {};
   const displayLabel = label || name || (typeof children === 'string' ? children : undefined);
 
-  const activeAgentId = useAgentStore((s) => s.activeAgentId);
-  const resolveProjectSkill = useProjectSkillResolver(activeAgentId);
+  const context = useConversationStore(contextSelectors.context);
+  const resolveProjectSkill = useProjectSkillResolver(context);
   // The runtime identifier is the `name`; fall back to the displayed text.
   const skillName = name || (typeof displayLabel === 'string' ? displayLabel : undefined);
   const skill = skillName ? resolveProjectSkill(skillName) : undefined;

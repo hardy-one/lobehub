@@ -22,7 +22,6 @@ const rightPanel = vi.hoisted(() => ({
 
 const agentStore = vi.hoisted(() => ({
   activeAgentId: undefined as string | undefined,
-  isLocalSystemEnabled: false,
 }));
 
 const reviewState = vi.hoisted(() => ({
@@ -62,16 +61,8 @@ vi.mock('@/store/agent', () => ({
   useAgentStore: (selector: (s: typeof agentStore) => unknown) => selector(agentStore),
 }));
 vi.mock('@/store/agent/selectors', () => ({
-  agentByIdSelectors: {
-    getAgencyConfigById: () => () => undefined,
-    isWorkspaceAgentById: () => () => false,
-  },
-  agentSelectors: {
-    isCurrentAgentHeterogeneous: () => false,
-  },
   chatConfigByIdSelectors: {
     isChatModeById: () => () => false,
-    isLocalSystemEnabledById: () => () => agentStore.isLocalSystemEnabled,
   },
 }));
 vi.mock('@/store/global', () => ({
@@ -83,8 +74,6 @@ vi.mock('@/store/global/selectors', () => ({
   },
 }));
 vi.mock('@/store/electron', () => ({ useElectronStore: () => undefined }));
-vi.mock('@/store/chat', () => ({ useChatStore: () => undefined }));
-
 vi.mock('@/business/client/features/WorkingSidebarTabs', () => ({
   useBusinessWorkingSidebarTabs: () => [],
 }));
@@ -95,12 +84,24 @@ vi.mock('@/features/ChatInput/ControlBar/useRepoType', () => ({
 vi.mock('@/hooks/useEffectiveWorkingDirectory', () => ({
   useEffectiveWorkingDirectory: () => reviewState.workingDirectory,
 }));
+vi.mock('@/hooks/useEffectiveAgentConfig', () => ({
+  useEffectiveAgentConfig: () => ({
+    config: { agencyConfig: undefined },
+    executionTargetError: undefined,
+    isExecutionTargetLoading: false,
+    workspaceScoped: false,
+  }),
+}));
 vi.mock('@/hooks/useLocalStorageState', () => ({
   useLocalStorageState: () => [reviewState.showTree, vi.fn()],
 }));
 vi.mock('@/helpers/agentWorkingDirectory', () => ({ resolveTargetDeviceId: () => undefined }));
 vi.mock('@/helpers/executionTarget', () => ({ resolveExecutionTarget: () => 'local' }));
 vi.mock('@/helpers/gatewayMode', () => ({ useIsGatewayModeEnabled: () => false }));
+
+vi.mock('../../useAgentContext', () => ({
+  useAgentContext: () => ({ agentId: agentStore.activeAgentId ?? '', topicId: null }),
+}));
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -117,7 +118,6 @@ vi.mock('antd-style', () => ({
 
 beforeEach(() => {
   agentStore.activeAgentId = undefined;
-  agentStore.isLocalSystemEnabled = false;
   reviewState.repoType = undefined;
   reviewState.showTree = false;
   reviewState.workingDirectory = undefined;
@@ -157,7 +157,6 @@ describe('AgentWorkingSidebar — controlled panel width', () => {
 
   it('clamps two-pane Review width without overwriting the persisted preference', () => {
     agentStore.activeAgentId = 'agent';
-    agentStore.isLocalSystemEnabled = true;
     reviewState.repoType = 'git';
     reviewState.showTree = true;
     reviewState.workingDirectory = 'C:\\repo';

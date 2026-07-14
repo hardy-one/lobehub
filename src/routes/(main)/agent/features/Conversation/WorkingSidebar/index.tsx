@@ -12,21 +12,18 @@ import RightPanel from '@/features/RightPanel';
 import { resolveTargetDeviceId } from '@/helpers/agentWorkingDirectory';
 import { resolveExecutionTarget } from '@/helpers/executionTarget';
 import { useIsGatewayModeEnabled } from '@/helpers/gatewayMode';
+import { useEffectiveAgentConfig } from '@/hooks/useEffectiveAgentConfig';
 import { useEffectiveWorkingDirectory } from '@/hooks/useEffectiveWorkingDirectory';
 import { useLocalStorageState } from '@/hooks/useLocalStorageState';
 import { useAgentStore } from '@/store/agent';
-import {
-  agentByIdSelectors,
-  agentSelectors,
-  chatConfigByIdSelectors,
-} from '@/store/agent/selectors';
-import { useChatStore } from '@/store/chat';
+import { chatConfigByIdSelectors } from '@/store/agent/selectors';
 import { useElectronStore } from '@/store/electron';
 import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors';
 import { useUserStore } from '@/store/user';
 import { labPreferSelectors } from '@/store/user/selectors';
 
+import { useAgentContext } from '../useAgentContext';
 import Files from './Files';
 import ProgressSection from './ProgressSection';
 import ResourcesSection from './ResourcesSection';
@@ -109,43 +106,44 @@ const AgentWorkingSidebar = memo(() => {
     s.status.showRightPanel,
     s.status.workingSidebarTab,
   ]);
-  const activeAgentId = useAgentStore((s) => s.activeAgentId);
-  const topicId = useChatStore((s) => s.activeTopicId);
-  const isLocalSystemEnabled = useAgentStore((s) =>
-    activeAgentId ? chatConfigByIdSelectors.isLocalSystemEnabledById(activeAgentId)(s) : false,
-  );
+  const context = useAgentContext();
+  const activeAgentId = context.agentId;
+  const topicId = context.topicId;
+  const { config, executionTargetError, isExecutionTargetLoading, workspaceScoped } =
+    useEffectiveAgentConfig(context);
+  const agencyConfig = config?.agencyConfig;
+  const isHetero = !!agencyConfig?.heterogeneousProvider;
   const isChatMode = useAgentStore((s) =>
     activeAgentId ? chatConfigByIdSelectors.isChatModeById(activeAgentId)(s) : false,
   );
-  const isHetero = useAgentStore(agentSelectors.isCurrentAgentHeterogeneous);
   // Unified precedence (topic > per-device choice > legacy > device default), so
   // the sidebar resolves the same directory the runtime bar / git status do.
   // The old `topicCwd || legacy agentCwd` pattern missed `workingDirByDevice`,
   // landing on the home fallback for device-bound agents and hiding Review.
-  const workingDirectory = useEffectiveWorkingDirectory(activeAgentId);
+  const workingDirectory = useEffectiveWorkingDirectory(context);
   // Effective target device for git ops — bound device for remote agents, this
   // machine otherwise. Resolved the same way WorkingDirectoryPicker / GitStatus do.
-  const agencyConfig = useAgentStore((s) =>
-    activeAgentId ? agentByIdSelectors.getAgencyConfigById(activeAgentId)(s) : undefined,
-  );
   const currentDeviceId = useElectronStore((s) => s.gatewayDeviceInfo?.deviceId);
   const targetDeviceId = resolveTargetDeviceId(agencyConfig, currentDeviceId);
   const repoType = useRepoType(workingDirectory, targetDeviceId);
   const deviceRoutingAvailable = useIsGatewayModeEnabled(activeAgentId);
-  const isWorkspaceAgent = useAgentStore((s) =>
-    activeAgentId ? agentByIdSelectors.isWorkspaceAgentById(activeAgentId)(s) : false,
-  );
   const effectiveTarget = resolveExecutionTarget(agencyConfig, {
     clientExecutionAvailable: isDesktop,
     deviceRoutingAvailable,
     isHetero,
-    workspaceScoped: isWorkspaceAgent,
+    workspaceScoped,
   });
+  const isLocalSystemEnabled =
+    !executionTargetError && !isExecutionTargetLoading && effectiveTarget === 'local';
 
   // Running against a bound device (remote, or this machine as a device): file
   // tree + git reads go over RPC, so both Review and Files are reachable even
   // when runtimeMode isn't `local`.
-  const isDeviceMode = effectiveTarget === 'device' && !!agencyConfig?.boundDeviceId;
+  const isDeviceMode =
+    !executionTargetError &&
+    !isExecutionTargetLoading &&
+    effectiveTarget === 'device' &&
+    !!agencyConfig?.boundDeviceId;
   // `targetDeviceId` also identifies the local desktop for per-device working
   // directory state. Files/Review only need a deviceId when routing through a
   // remote device RPC; local "This device" must keep Electron IPC + file-open
@@ -171,7 +169,10 @@ const AgentWorkingSidebar = memo(() => {
     ? `topic:${topicId}`
     : `draft-agent:${activeAgentId ?? 'default'}`;
 
-  const businessTabs = useBusinessWorkingSidebarTabs({ activeAgentId, topicId });
+  const businessTabs = useBusinessWorkingSidebarTabs({
+    activeAgentId,
+    topicId: topicId ?? undefined,
+  });
 
   const availableTabs = new Set<string>([
     'resources',
@@ -348,6 +349,8 @@ const AgentWorkingSidebar = memo(() => {
             <ResourcesSection
               deviceId={remoteDeviceId}
               enabled={showRightPanel && activeTab === 'resources'}
+              isHetero={isHetero}
+              workingDirectory={workingDirectory}
             />
           </Flexbox>
         </Flexbox>

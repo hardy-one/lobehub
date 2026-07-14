@@ -1,10 +1,6 @@
 import { Flexbox } from '@lobehub/ui';
 import { memo } from 'react';
 
-import { useEffectiveWorkingDirectory } from '@/hooks/useEffectiveWorkingDirectory';
-import { useAgentStore } from '@/store/agent';
-import { agentSelectors } from '@/store/agent/selectors';
-
 import AgentDocumentsGroup from './AgentDocumentsGroup';
 import SkillsGroup from './SkillsGroup';
 
@@ -17,19 +13,12 @@ interface ResourcesSectionProps {
    * list on conversation enter.
    */
   enabled?: boolean;
+  isHetero: boolean;
+  workingDirectory?: string;
 }
 
-const ResourcesSection = memo<ResourcesSectionProps>(({ deviceId, enabled = true }) => {
-  const isHetero = useAgentStore(agentSelectors.isCurrentAgentHeterogeneous);
-  const activeAgentId = useAgentStore((s) => s.activeAgentId);
-  // Resolve the cwd the same way the runtime bar / WorkingSidebar do
-  // (`useEffectiveWorkingDirectory`). The old `topicCwd || agentCwd` pattern
-  // missed `workingDirByDevice[deviceId]` / `device.defaultCwd`, so a
-  // device-bound agent resolved to `undefined` here and the skills fetch never
-  // fired even though `deviceId` was set.
-  const workingDirectory = useEffectiveWorkingDirectory(activeAgentId);
-
-  return (
+const ResourcesSection = memo<ResourcesSectionProps>(
+  ({ deviceId, enabled = true, isHetero, workingDirectory }) => (
     <Flexbox
       data-testid="workspace-resources"
       flex={1}
@@ -50,8 +39,8 @@ const ResourcesSection = memo<ResourcesSectionProps>(({ deviceId, enabled = true
         />
       )}
     </Flexbox>
-  );
-});
+  ),
+);
 
 ResourcesSection.displayName = 'ResourcesSection';
 

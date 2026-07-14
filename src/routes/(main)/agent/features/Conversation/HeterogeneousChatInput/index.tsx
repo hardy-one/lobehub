@@ -93,6 +93,7 @@ const HeterogeneousChatInput = memo(() => {
 
   const {
     agencyConfig,
+    error: preferenceError,
     hasSourcePreference,
     isLoading: isPreferenceLoading,
   } = useExecutionTargetPreference(agentId, topicId);
@@ -112,6 +113,8 @@ const HeterogeneousChatInput = memo(() => {
   // gate the control bar applied before the selector moved into the input.
   const isSelectableHeteroProvider = providerType === 'claude-code' || providerType === 'codex';
   const showHeteroModel =
+    !preferenceError &&
+    !isPreferenceLoading &&
     isSelectableHeteroProvider &&
     shouldShowHeteroModelSelector({
       boundDeviceId: agencyConfig?.boundDeviceId,
@@ -144,7 +147,11 @@ const HeterogeneousChatInput = memo(() => {
   const isDeviceExecution =
     isRemoteAgent || (executionTarget === 'device' && !!agencyConfig?.boundDeviceId);
 
-  const { status, refresh } = useRemoteAgentDeviceGuard({ agentId, enabled: isDeviceExecution });
+  const { status, refresh } = useRemoteAgentDeviceGuard({
+    agencyConfig,
+    enabled: isDeviceExecution,
+    isLoading: isPreferenceLoading,
+  });
 
   const goToAgentProfile = () => {
     if (params.aid) navigate(urlJoin('/agent', params.aid, 'profile'));
@@ -211,11 +218,12 @@ const HeterogeneousChatInput = memo(() => {
   };
 
   // Device execution doesn't use the cloud sandbox, so it doesn't need cloud
-  // credentials — only the sandbox path gates on `isConfigured`. While the
-  // workspace preference loads, keep send disabled: the effective target isn't
-  // known yet, so neither guard can vouch for the run.
+  // credentials — only the sandbox path gates on `isConfigured`.
   const inputDisabled =
-    isPreferenceLoading || (!isConfigured && !isDeviceExecution) || deviceBlocked;
+    !!preferenceError ||
+    isPreferenceLoading ||
+    (!isConfigured && !isDeviceExecution) ||
+    deviceBlocked;
   const hasGuard = deviceBlocked || (!isConfigured && !isDeviceExecution);
 
   return (

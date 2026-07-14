@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useLocalFileTag } from './useLocalFileTag.desktop';
 
-const { agentState, chatState, electronState, searchProjectFilesMock } = vi.hoisted(() => ({
-  agentState: {
+const { effectiveState, electronState, searchProjectFilesMock } = vi.hoisted(() => ({
+  effectiveState: {
     agencyConfig: undefined as
       | {
           boundDeviceId?: string;
@@ -12,11 +12,8 @@ const { agentState, chatState, electronState, searchProjectFilesMock } = vi.hois
           heterogeneousProvider?: { type: string };
         }
       | undefined,
-    isLocalSystemEnabled: true,
+    isLoading: false,
     workingDirectory: '/local/repo',
-  },
-  chatState: {
-    topicWorkingDirectory: undefined as string | undefined,
   },
   electronState: {
     currentDeviceId: 'local-device',
@@ -34,28 +31,22 @@ vi.mock('../hooks/useAgentId', () => ({
   useAgentId: () => 'agent-1',
 }));
 
-vi.mock('@/store/agent', () => ({
-  useAgentStore: <T>(selector: (state: typeof agentState) => T) => selector(agentState),
+vi.mock('../hooks/useEffectiveAgentConfig', () => ({
+  useChatInputEffectiveAgentConfig: () => ({
+    config: { agencyConfig: effectiveState.agencyConfig },
+    context: { agentId: 'agent-1' },
+    executionTargetError: undefined,
+    isExecutionTargetLoading: effectiveState.isLoading,
+    workspaceScoped: false,
+  }),
 }));
 
-vi.mock('@/store/agent/selectors', () => ({
-  agentByIdSelectors: {
-    getAgencyConfigById: () => (state: typeof agentState) => state.agencyConfig,
-    getAgentWorkingDirectoryById: () => (state: typeof agentState) => state.workingDirectory,
-  },
-  chatConfigByIdSelectors: {
-    isLocalSystemEnabledById: () => (state: typeof agentState) => state.isLocalSystemEnabled,
-  },
+vi.mock('@/hooks/useEffectiveWorkingDirectory', () => ({
+  useEffectiveWorkingDirectory: () => effectiveState.workingDirectory,
 }));
 
-vi.mock('@/store/chat', () => ({
-  useChatStore: <T>(selector: (state: typeof chatState) => T) => selector(chatState),
-}));
-
-vi.mock('@/store/chat/selectors', () => ({
-  topicSelectors: {
-    currentTopicWorkingDirectory: (state: typeof chatState) => state.topicWorkingDirectory,
-  },
+vi.mock('@/helpers/gatewayMode', () => ({
+  useIsGatewayModeEnabled: () => false,
 }));
 
 vi.mock('@/store/electron', () => ({
@@ -69,10 +60,9 @@ vi.mock('./MentionMenu/LocalFileIcon', () => ({
 
 describe('useLocalFileTag.desktop', () => {
   beforeEach(() => {
-    agentState.agencyConfig = undefined;
-    agentState.isLocalSystemEnabled = true;
-    agentState.workingDirectory = '/local/repo';
-    chatState.topicWorkingDirectory = undefined;
+    effectiveState.agencyConfig = undefined;
+    effectiveState.isLoading = false;
+    effectiveState.workingDirectory = '/local/repo';
     electronState.currentDeviceId = 'local-device';
     searchProjectFilesMock.mockReset();
     searchProjectFilesMock.mockResolvedValue({
@@ -129,12 +119,12 @@ describe('useLocalFileTag.desktop', () => {
   });
 
   it('passes a remote bound device id for remote file search', async () => {
-    agentState.agencyConfig = {
+    effectiveState.agencyConfig = {
       boundDeviceId: 'remote-device',
       executionTarget: 'device',
       heterogeneousProvider: { type: 'claude-code' },
     };
-    agentState.workingDirectory = '/remote/repo';
+    effectiveState.workingDirectory = '/remote/repo';
 
     const { result } = renderHook(() => useLocalFileTag());
 

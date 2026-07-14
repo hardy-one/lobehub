@@ -3,14 +3,14 @@ import debug from 'debug';
 import { createElement, useCallback } from 'react';
 
 import { resolveTargetDeviceId } from '@/helpers/agentWorkingDirectory';
+import { resolveExecutionTarget } from '@/helpers/executionTarget';
+import { useIsGatewayModeEnabled } from '@/helpers/gatewayMode';
+import { useEffectiveWorkingDirectory } from '@/hooks/useEffectiveWorkingDirectory';
 import { projectFileService } from '@/services/projectFile';
-import { useAgentStore } from '@/store/agent';
-import { agentByIdSelectors, chatConfigByIdSelectors } from '@/store/agent/selectors';
-import { useChatStore } from '@/store/chat';
-import { topicSelectors } from '@/store/chat/selectors';
 import { useElectronStore } from '@/store/electron';
 
 import { useAgentId } from '../hooks/useAgentId';
+import { useChatInputEffectiveAgentConfig } from '../hooks/useEffectiveAgentConfig';
 import { compactDirectoryTail, compactFileName } from './MentionMenu/localFileDisplay';
 import LocalFileIcon from './MentionMenu/LocalFileIcon';
 
@@ -24,22 +24,26 @@ export interface UseLocalFileTagResult {
 
 export const useLocalFileTag = (): UseLocalFileTagResult => {
   const agentId = useAgentId();
-  const agencyConfig = useAgentStore(agentByIdSelectors.getAgencyConfigById(agentId));
+  const { config, context, executionTargetError, isExecutionTargetLoading, workspaceScoped } =
+    useChatInputEffectiveAgentConfig();
+  const agencyConfig = config?.agencyConfig;
   const heterogeneousType = agencyConfig?.heterogeneousProvider?.type;
-  const isLocalSystemEnabled = useAgentStore(
-    chatConfigByIdSelectors.isLocalSystemEnabledById(agentId),
-  );
   const currentDeviceId = useElectronStore((s) => s.gatewayDeviceInfo?.deviceId);
-  const agentWorkingDirectory = useAgentStore((s) =>
-    agentByIdSelectors.getAgentWorkingDirectoryById(agentId, currentDeviceId)(s),
-  );
-  const topicWorkingDirectory = useChatStore(topicSelectors.currentTopicWorkingDirectory);
-  const workingDirectory = topicWorkingDirectory || agentWorkingDirectory;
+  const workingDirectory = useEffectiveWorkingDirectory(context);
   const targetDeviceId = resolveTargetDeviceId(agencyConfig, currentDeviceId);
-  const searchDeviceId =
-    targetDeviceId && targetDeviceId !== currentDeviceId ? targetDeviceId : undefined;
+  const deviceRoutingAvailable = useIsGatewayModeEnabled(agentId);
+  const executionTarget = resolveExecutionTarget(agencyConfig, {
+    clientExecutionAvailable: true,
+    deviceRoutingAvailable,
+    isHetero: !!heterogeneousType,
+    workspaceScoped,
+  });
+  const searchDeviceId = executionTarget === 'device' ? targetDeviceId : undefined;
 
-  const enableLocalFileTag = !!heterogeneousType || isLocalSystemEnabled;
+  const enableLocalFileTag =
+    !executionTargetError &&
+    !isExecutionTargetLoading &&
+    (!!heterogeneousType || executionTarget === 'local' || executionTarget === 'device');
 
   const searchLocalFiles = useCallback(
     async (matchingString: string): Promise<ISlashMenuOption[]> => {

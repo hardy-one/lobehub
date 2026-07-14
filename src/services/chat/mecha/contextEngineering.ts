@@ -767,6 +767,8 @@ export const contextEngineering = async ({
     // Variable generators
     variableGenerators: {
       ...VARIABLE_GENERATORS,
+      model: () => model,
+      provider: () => provider,
       // NOTICE: required by builtin-tool-creds/src/systemRole.ts
       CREDS_LIST: () => (credsList ? generateCredsList(credsList) : ''),
       // NOTICE: required by builtin-tool-creds/src/systemRole.ts (Composio integrations)

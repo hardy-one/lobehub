@@ -670,6 +670,26 @@ describe('contextEngineering', () => {
   });
 
   describe('Process placeholder variables', () => {
+    it('should resolve model placeholders from the runtime model', async () => {
+      const messages = [
+        {
+          content: 'Running {{provider}}/{{model}}',
+          createdAt: Date.now(),
+          id: 'runtime-model-placeholder',
+          role: 'user',
+          updatedAt: Date.now(),
+        },
+      ] as UIChatMessage[];
+
+      const result = await contextEngineering({
+        messages,
+        model: 'topic-model',
+        provider: 'topic-provider',
+      });
+
+      expect(result[1].content).toBe('Running topic-provider/topic-model');
+    });
+
     it('should process placeholder variables in string content', async () => {
       const messages: UIChatMessage[] = [
         {

@@ -126,8 +126,10 @@ const sanitizeStateToolCalls = (toolCalls: MessageToolCall[]) => {
 const persistFinalMessage = async ({
   assistantMessageId,
   host,
+  model,
   output,
-}: Pick<FinalizeCallLlmTurnInput, 'assistantMessageId' | 'host' | 'output'>) => {
+  provider,
+}: Pick<FinalizeCallLlmTurnInput, 'assistantMessageId' | 'host' | 'model' | 'output' | 'provider'>) => {
   const finalContent = output.hasContentImages
     ? serializePartsForStorage(output.contentParts)
     : output.content;
@@ -145,7 +147,9 @@ const persistFinalMessage = async ({
       content: finalContent,
       imageList: output.imageList.length > 0 ? output.imageList : undefined,
       metadata,
+      model,
       observationId: output.observationId,
+      provider,
       reasoning: finalReasoning,
       search: output.grounding,
       tools: sanitizePersistedTools(output.toolsCalling),
@@ -267,7 +271,13 @@ export const finalizeCallLlmTurn = async ({
     }
   }
 
-  const finalReasoning = await persistFinalMessage({ assistantMessageId, host, output });
+  const finalReasoning = await persistFinalMessage({
+    assistantMessageId,
+    host,
+    model,
+    output,
+    provider,
+  });
   const newState = buildFinalState({
     assistantMessageId,
     finalReasoning,

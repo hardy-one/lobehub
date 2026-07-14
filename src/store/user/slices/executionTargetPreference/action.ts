@@ -34,6 +34,7 @@ export const createExecutionTargetPreferenceSlice = (
 ) => new ExecutionTargetPreferenceActionImpl(set, get, _api);
 
 export class ExecutionTargetPreferenceActionImpl {
+  readonly #confirmedPreferences = new Map<string, ExecutionTargetSelection | null | undefined>();
   readonly #get: () => UserStore;
   readonly #mutationQueues = new Map<string, Promise<void>>();
   readonly #mutationVersions = new Map<string, number>();
@@ -98,6 +99,7 @@ export class ExecutionTargetPreferenceActionImpl {
       : agentExecutionTargetPreferenceKey(params.agentId);
     const map = this.#get().executionTargetPreferenceMap;
     const previous = map[key];
+    if (!this.#mutationQueues.has(key)) this.#confirmedPreferences.set(key, previous);
     const version = (this.#mutationVersions.get(key) ?? 0) + 1;
     this.#mutationVersions.set(key, version);
     this.#set(
@@ -118,13 +120,15 @@ export class ExecutionTargetPreferenceActionImpl {
 
     try {
       const result = await request;
+      const confirmed = params.topicId ? result.topic : result.agent;
+      this.#confirmedPreferences.set(key, confirmed);
       if (this.#mutationVersions.get(key) !== version) return;
       const current = this.#get().executionTargetPreferenceMap;
       this.#set(
         {
           executionTargetPreferenceMap: {
             ...current,
-            [key]: params.topicId ? result.topic : result.agent,
+            [key]: confirmed,
           },
         },
         false,
@@ -135,13 +139,17 @@ export class ExecutionTargetPreferenceActionImpl {
       const current = this.#get().executionTargetPreferenceMap;
       if (current[key] === params.selection) {
         const next = { ...current };
-        if (previous === undefined) delete next[key];
-        else next[key] = previous;
+        const confirmed = this.#confirmedPreferences.get(key);
+        if (confirmed === undefined) delete next[key];
+        else next[key] = confirmed;
         this.#set({ executionTargetPreferenceMap: next }, false, n('update/rollback'));
       }
       throw error;
     } finally {
-      if (this.#mutationQueues.get(key) === settledQueue) this.#mutationQueues.delete(key);
+      if (this.#mutationQueues.get(key) === settledQueue) {
+        this.#confirmedPreferences.delete(key);
+        this.#mutationQueues.delete(key);
+      }
     }
   };
 

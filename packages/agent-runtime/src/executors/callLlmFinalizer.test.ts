@@ -125,6 +125,8 @@ describe('callLlmFinalizer', () => {
           performance: { tps: 12, ttft: 120 },
           usage,
         }),
+        model: 'fallback-model',
+        provider: 'fallback-provider',
         reasoning: { content: 'Reasoning' },
         search: { searchQueries: ['query'] },
         tools: [expect.objectContaining({ arguments: '{}' })],

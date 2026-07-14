@@ -54,6 +54,30 @@ describe('executionTargetPreference actions', () => {
     });
   });
 
+  it('rolls rapid failed writes back to the last confirmed preference', async () => {
+    useUserStore.setState({
+      executionTargetPreferenceMap: { 'agent:agent-id': { executionTarget: 'sandbox' } },
+    });
+    vi.spyOn(aiAgentService, 'setExecutionTargetPreference').mockRejectedValue(
+      new Error('save failed'),
+    );
+
+    const first = useUserStore.getState().updateExecutionTargetPreference({
+      agentId: 'agent-id',
+      selection: { executionTarget: 'local' },
+    });
+    const second = useUserStore.getState().updateExecutionTargetPreference({
+      agentId: 'agent-id',
+      selection: { executionTarget: 'none' },
+    });
+
+    await Promise.allSettled([first, second]);
+
+    expect(useUserStore.getState().executionTargetPreferenceMap['agent:agent-id']).toEqual({
+      executionTarget: 'sandbox',
+    });
+  });
+
   it('serializes rapid writes so the last user choice also wins on the server', async () => {
     let resolveFirst:
       ((value: { agent: { executionTarget: 'sandbox' }; topic: null }) => void) | undefined;

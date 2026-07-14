@@ -610,16 +610,42 @@ export class StreamingExecutorActionImpl {
     // payload and the `/webapi/chat/[provider]` route forwards it to the provider
     // without rechecking capability. Wait (bounded) for the list so a fast first
     // send after reload never attaches tools to a model that can't use them.
-    await getAiInfraStoreState().ensureAiProviderRuntimeStateReady();
+    let resolvedModelOverride: TopicModelOverride | undefined;
+    try {
+      await getAiInfraStoreState().ensureAiProviderRuntimeStateReady();
 
-    const [storedTopicOverride, isTopicModelOverrideLoaded] = this.#readTopicModelOverride(
-      context,
-      effectiveAgentId,
-    );
-    let resolvedModelOverride = modelOverride ?? storedTopicOverride;
-    if (!modelOverride && !isTopicModelOverrideLoaded && topicId) {
-      resolvedModelOverride =
-        (await this.#get().internal_fetchTopicModelOverride(topicId)) ?? undefined;
+      const [storedTopicOverride, isTopicModelOverrideLoaded] = this.#readTopicModelOverride(
+        context,
+        effectiveAgentId,
+      );
+      resolvedModelOverride = modelOverride ?? storedTopicOverride;
+      if (!modelOverride && !isTopicModelOverrideLoaded && topicId) {
+        resolvedModelOverride =
+          (await this.#get().internal_fetchTopicModelOverride(topicId)) ?? undefined;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.#get().failOperation(operationId, {
+        type: error instanceof Error ? error.name : 'runtime_preflight_error',
+        message,
+      });
+
+      // sendMessageInServer may already have persisted the first assistant row
+      // before this client-runtime preflight runs. Mark that row terminal so a
+      // failed model preflight cannot leave a permanent loading bubble.
+      if (params.skipCreateFirstMessage && parentMessageType === 'assistant') {
+        try {
+          await this.#get().optimisticUpdateMessageError(
+            parentMessageId,
+            { message, type: 'AgentRuntimeError' },
+            { operationId },
+            resolvedModelOverride,
+          );
+        } catch (persistError) {
+          console.error('[executeClientAgent] Failed to persist preflight error:', persistError);
+        }
+      }
+      throw error;
     }
 
     const operationContext = this.#get().operations[operationId]?.context;

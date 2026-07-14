@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as toolEngineering from '@/helpers/toolEngineering';
 import { chatService } from '@/services/chat';
 import * as agentConfigResolver from '@/services/chat/mecha/agentConfigResolver';
+import { messageService } from '@/services/message';
 import { topicService } from '@/services/topic';
 import { useAgentStore } from '@/store/agent';
 import { useAiInfraStore } from '@/store/aiInfra';
@@ -312,6 +313,45 @@ describe('StreamingExecutor actions', () => {
   });
 
   describe('executeClientAgent', () => {
+    it('should fail the operation and persisted assistant when Topic model preflight fails', async () => {
+      act(() => {
+        useChatStore.setState({ executeClientAgent: realExecAgentRuntime });
+      });
+      vi.mocked(topicService.getTopicModelOverride).mockRejectedValueOnce(
+        new Error('topic model unavailable'),
+      );
+
+      const { result } = renderHook(() => useChatStore());
+
+      await act(async () => {
+        await expect(
+          result.current.executeClientAgent({
+            context: { agentId: TEST_IDS.SESSION_ID, topicId: TEST_IDS.TOPIC_ID },
+            messages: [createMockMessage({ role: 'user' })],
+            parentMessageId: TEST_IDS.ASSISTANT_MESSAGE_ID,
+            parentMessageType: 'assistant',
+            skipCreateFirstMessage: true,
+          }),
+        ).rejects.toThrow('topic model unavailable');
+      });
+
+      const operation = Object.values(result.current.operations).find(
+        (item) => item.type === 'execAgentRuntime',
+      );
+      expect(operation?.status).toBe('failed');
+      expect(messageService.updateMessage).toHaveBeenCalledWith(
+        TEST_IDS.ASSISTANT_MESSAGE_ID,
+        {
+          error: { message: 'topic model unavailable', type: 'AgentRuntimeError' },
+        },
+        {
+          agentId: TEST_IDS.SESSION_ID,
+          messageId: TEST_IDS.ASSISTANT_MESSAGE_ID,
+          topicId: TEST_IDS.TOPIC_ID,
+        },
+      );
+    });
+
     it('should handle the core AI message processing', async () => {
       act(() => {
         useChatStore.setState({ executeClientAgent: realExecAgentRuntime });

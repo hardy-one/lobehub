@@ -3,13 +3,12 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useLocation, useSearchParams } from 'react-router';
 
+import { useTopicModel } from '@/features/ChatInput/hooks/useTopicModel';
 import { useConversationStore } from '@/features/Conversation';
 import { overlayCaptureUploadPool } from '@/features/Electron/ScreenCapture/overlayCaptureUploadPool';
 import { canConsumePendingOverlayDispatch } from '@/features/Electron/ScreenCapture/overlayDispatch';
 import { useOverlayDispatchStore } from '@/features/Electron/ScreenCapture/overlayDispatchStore';
 import { usePermission } from '@/hooks/usePermission';
-import { useAgentStore } from '@/store/agent';
-import { agentByIdSelectors, agentSelectors } from '@/store/agent/selectors';
 import type { UploadFileItem } from '@/types/files/upload';
 
 /**
@@ -25,9 +24,14 @@ const MessageFromUrl = () => {
     s.messagesInit,
   ]);
   const agentId = context.agentId;
+  const {
+    isLoading: isEffectiveConfigLoading,
+    model,
+    provider: effectiveProvider,
+    setModel,
+  } = useTopicModel(context);
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
-  const isAgentConfigLoading = useAgentStore(agentSelectors.isAgentConfigLoading);
   const { allowed: canCreate } = usePermission('create_content');
   const { allowed: canEdit } = usePermission('edit_own_content');
   const [pendingDispatch, clearPendingDispatch] = useOverlayDispatchStore((s) => [
@@ -61,7 +65,7 @@ const MessageFromUrl = () => {
     // For existing conversations (topicId exists), also wait until messages are initialized
     // to avoid sending during skeleton fetch states.
     const isNewConversation = !context.topicId;
-    const isReady = !isAgentConfigLoading && (isNewConversation || messagesInit);
+    const isReady = !isEffectiveConfigLoading && (isNewConversation || messagesInit);
     if (!isReady) return;
 
     const signature = `${agentId}::${message}`;
@@ -87,7 +91,7 @@ const MessageFromUrl = () => {
     agentId,
     canCreate,
     context.topicId,
-    isAgentConfigLoading,
+    isEffectiveConfigLoading,
     messagesInit,
     routeAgentId,
   ]);
@@ -99,7 +103,7 @@ const MessageFromUrl = () => {
     if (
       !canConsumePendingOverlayDispatch({
         agentId,
-        isAgentConfigLoading,
+        isAgentConfigLoading: isEffectiveConfigLoading,
         messagesInit,
         pendingDispatch,
         routeAgentId,
@@ -119,15 +123,13 @@ const MessageFromUrl = () => {
 
     void (async () => {
       try {
-        if (canEdit && modelId && provider) {
-          const agentState = useAgentStore.getState();
-          const currentModel = agentByIdSelectors.getAgentModelById(agentId!)(agentState);
-          const currentProvider = agentByIdSelectors.getAgentModelProviderById(agentId!)(
-            agentState,
-          );
-          if (currentModel !== modelId || currentProvider !== provider) {
-            await agentState.updateAgentConfigById(agentId!, { model: modelId, provider });
-          }
+        if (
+          canEdit &&
+          modelId &&
+          provider &&
+          (model !== modelId || effectiveProvider !== provider)
+        ) {
+          await setModel({ model: modelId, provider });
         }
 
         const resolved = await Promise.all(captureEntries.map(({ entry }) => entry.promise));
@@ -147,11 +149,14 @@ const MessageFromUrl = () => {
     canEdit,
     clearPendingDispatch,
     context.topicId,
-    isAgentConfigLoading,
+    effectiveProvider,
+    isEffectiveConfigLoading,
     messagesInit,
+    model,
     pendingDispatch,
     routeAgentId,
     sendMessage,
+    setModel,
   ]);
 
   return null;

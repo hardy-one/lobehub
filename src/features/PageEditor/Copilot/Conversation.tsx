@@ -1,3 +1,5 @@
+import { DEFAULT_PROVIDER } from '@lobechat/business-const';
+import { DEFAULT_MODEL } from '@lobechat/const';
 import { isChatGroupSessionId } from '@lobechat/types';
 import { Flexbox } from '@lobehub/ui';
 import { memo, useCallback, useMemo } from 'react';
@@ -16,8 +18,8 @@ import {
   conversationSelectors,
   useConversationStore,
 } from '@/features/Conversation';
+import { useEffectiveAgentConfig } from '@/hooks/useEffectiveAgentConfig';
 import { useAgentStore } from '@/store/agent';
-import { agentByIdSelectors } from '@/store/agent/selectors';
 
 import { usePageLockedByOther } from '../usePageLockedByOther';
 import AgentSelectorAction from './AgentSelector/AgentSelectorAction';
@@ -35,13 +37,13 @@ const Conversation = memo(() => {
     s.useFetchAgentConfig,
   ]);
   const currentAgentId = useConversationStore(conversationSelectors.agentId);
+  const context = useConversationStore(conversationSelectors.context);
 
   useFetchAgentConfig(true, currentAgentId);
 
-  const model = useAgentStore((s) => agentByIdSelectors.getAgentModelById(currentAgentId)(s));
-  const provider = useAgentStore((s) =>
-    agentByIdSelectors.getAgentModelProviderById(currentAgentId)(s),
-  );
+  const { config, isModelLoading } = useEffectiveAgentConfig(context);
+  const model = config?.model ?? DEFAULT_MODEL;
+  const provider = config?.provider ?? DEFAULT_PROVIDER;
   const { handleUploadFiles } = useUploadFiles({ agentId: currentAgentId, model, provider });
 
   const handleAgentChange = useCallback(
@@ -73,7 +75,7 @@ const Conversation = memo(() => {
   return (
     <DragUploadZone
       style={{ flex: 1, height: '100%', minWidth: 300 }}
-      onUploadFiles={handleUploadFiles}
+      onUploadFiles={(files) => (isModelLoading ? Promise.resolve() : handleUploadFiles(files))}
     >
       <Flexbox flex={1} height={'100%'}>
         <CopilotToolbar />
@@ -84,6 +86,7 @@ const Conversation = memo(() => {
           actionBarStyle={COMPACT_ACTION_BAR_STYLE}
           allowExpand={false}
           disableSend={lockedByOther}
+          isConfigLoading={isModelLoading}
           leftActions={EMPTY_LEFT_ACTIONS}
           leftContent={leftContent}
           sendAreaPrefix={modelSelector}

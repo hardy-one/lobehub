@@ -4,6 +4,8 @@ import { memo } from 'react';
 
 import { type ActionKeys } from '@/features/ChatInput';
 import { ChatInput } from '@/features/Conversation';
+import { contextSelectors, useConversationStore } from '@/features/Conversation/store';
+import { useEffectiveAgentConfig } from '@/hooks/useEffectiveAgentConfig';
 import { useChatStore } from '@/store/chat';
 
 import { useSendMenuItems } from './useSendMenuItems';
@@ -30,10 +32,13 @@ const rightActions: ActionKeys[] = ['contextWindow'];
  */
 const MainChatInput = memo(() => {
   const sendMenuItems = useSendMenuItems();
+  const context = useConversationStore(contextSelectors.context);
+  const { isModelLoading } = useEffectiveAgentConfig(context);
 
   return (
     <ChatInput
       skipScrollMarginWithList
+      isConfigLoading={isModelLoading}
       leftActions={leftActions}
       rightActions={rightActions}
       sendMenu={{ items: sendMenuItems }}

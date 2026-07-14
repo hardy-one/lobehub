@@ -124,6 +124,14 @@ vi.mock('@/components/DragUploadZone', () => ({
   useUploadFiles: () => ({ handleUploadFiles: vi.fn() }),
 }));
 vi.mock('@/hooks/useEnterToSend', () => ({ useEnterToSend: () => vi.fn(() => false) }));
+vi.mock('@/hooks/useEffectiveAgentConfig', () => ({
+  useEffectiveAgentConfig: () => ({
+    config: { model: 'gpt-4o-mini', provider: 'openai' },
+    isModelLoading: false,
+    modelError: undefined,
+    retryModel: vi.fn(),
+  }),
+}));
 vi.mock('@/hooks/useIMECompositionEvent', () => ({
   useIMECompositionEvent: () => ({
     compositionProps: {

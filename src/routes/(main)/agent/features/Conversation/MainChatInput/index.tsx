@@ -5,9 +5,8 @@ import { memo, useMemo } from 'react';
 import { type ActionKeys } from '@/features/ChatInput';
 import { ChatInput } from '@/features/Conversation';
 import { contextSelectors, useConversationStore } from '@/features/Conversation/store';
+import { useEffectiveAgentConfig } from '@/hooks/useEffectiveAgentConfig';
 import { useModelSupportImageOutput } from '@/hooks/useModelSupportImageOutput';
-import { useAgentStore } from '@/store/agent';
-import { agentByIdSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
 import { useUserStore } from '@/store/user';
 import { userGeneralSettingsSelectors } from '@/store/user/selectors';
@@ -30,11 +29,9 @@ const MainChatInput = memo(() => {
   const isDevMode = useUserStore((s) => userGeneralSettingsSelectors.config(s).isDevMode);
   const sendMenuItems = useSendMenuItems();
 
-  const agentId = useConversationStore(contextSelectors.agentId);
-  const model = useAgentStore(agentByIdSelectors.getAgentModelById(agentId));
-  const provider = useAgentStore(agentByIdSelectors.getAgentModelProviderById(agentId));
-  const isAgentConfigLoading = useAgentStore(agentByIdSelectors.isAgentConfigLoadingById(agentId));
-  const supportsImageOutput = useModelSupportImageOutput(model, provider);
+  const context = useConversationStore(contextSelectors.context);
+  const { config, isModelLoading } = useEffectiveAgentConfig(context);
+  const supportsImageOutput = useModelSupportImageOutput(config?.model, config?.provider);
   const rightActions = supportsImageOutput
     ? promptTransformRightActions
     : contextWindowRightActions;
@@ -46,7 +43,7 @@ const MainChatInput = memo(() => {
       <AgentConfigError />
       <ChatInput
         skipScrollMarginWithList
-        isConfigLoading={isAgentConfigLoading}
+        isConfigLoading={isModelLoading}
         leftActions={leftActions}
         rightActions={rightActions}
         {...(isDevMode

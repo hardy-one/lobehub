@@ -1,13 +1,12 @@
+import { DEFAULT_PROVIDER } from '@lobechat/business-const';
+import { DEFAULT_MODEL } from '@lobechat/const';
 import type { MessageMapScope, TopicModelOverride } from '@lobechat/types';
 import { useCallback } from 'react';
 
+import { useEffectiveAgentConfig } from '@/hooks/useEffectiveAgentConfig';
 import { useAgentStore } from '@/store/agent';
-import { agentByIdSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
-import {
-  topicMapKeyFromContext,
-  topicMapScopeFromMessageScope,
-} from '@/store/chat/utils/topicMapKey';
+import { topicMapScopeFromMessageScope } from '@/store/chat/utils/topicMapKey';
 
 import { useChatInputStore } from '../store';
 import { useAgentId } from './useAgentId';
@@ -29,31 +28,9 @@ export const useChatInputTopicModel = () => {
 export const useTopicModel = (context: TopicModelContext) => {
   const topicScope = topicMapScopeFromMessageScope(context.scope);
   const scopedAgentId = topicScope === 'group' ? undefined : context.agentId;
-  const [topicOverride, topicInList, useFetchTopicModelOverride] = useChatStore((s) => {
-    if (!context.topicId) return [undefined, false, s.useFetchTopicModelOverride] as const;
-
-    const topic = s.topicDataMap[topicMapKeyFromContext(context)]?.items?.find(
-      (item) => item.id === context.topicId,
-    );
-
-    return [
-      topic
-        ? topic.metadata?.modelOverride
-        : (s.topicModelOverrideMap[context.topicId] ?? undefined),
-      !!topic,
-      s.useFetchTopicModelOverride,
-    ] as const;
-  });
-  const { data: fetchedTopicOverride } = useFetchTopicModelOverride(
-    context.topicId && !topicInList ? context.topicId : undefined,
-  );
-  const effectiveTopicOverride = topicOverride ?? fetchedTopicOverride ?? undefined;
+  const { config, isModelLoading, modelError, retryModel } = useEffectiveAgentConfig(context);
   const updateTopicMetadata = useChatStore((s) => s.updateTopicMetadata);
-  const [agentModel, agentProvider, updateAgentConfigById] = useAgentStore((s) => [
-    agentByIdSelectors.getAgentModelById(context.agentId)(s),
-    agentByIdSelectors.getAgentModelProviderById(context.agentId)(s),
-    s.updateAgentConfigById,
-  ]);
+  const updateAgentConfigById = useAgentStore((s) => s.updateAgentConfigById);
 
   const setModel = useCallback(
     async (next: TopicModelOverride) => {
@@ -85,8 +62,11 @@ export const useTopicModel = (context: TopicModelContext) => {
   );
 
   return {
-    model: effectiveTopicOverride?.model ?? agentModel,
-    provider: effectiveTopicOverride?.provider ?? agentProvider,
+    error: modelError,
+    isLoading: isModelLoading,
+    model: config?.model ?? DEFAULT_MODEL,
+    provider: config?.provider ?? DEFAULT_PROVIDER,
+    retry: retryModel,
     setModel,
   };
 };

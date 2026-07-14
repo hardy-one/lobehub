@@ -6,8 +6,6 @@ import { useChatInputTopicModel, useTopicModel } from './useTopicModel';
 const testState = vi.hoisted(() => ({
   agent: {
     activeAgentId: 'active-agent',
-    model: 'agent-model',
-    provider: 'agent-provider',
     updateAgentConfigById: vi.fn(),
   },
   chatInput: {
@@ -16,31 +14,29 @@ const testState = vi.hoisted(() => ({
       { groupId?: string; scope?: 'group' | 'main'; topicId?: string | null } | undefined,
   },
   chat: {
-    topicDataMap: {} as Record<
-      string,
-      {
-        items: Array<{
-          id: string;
-          metadata?: { modelOverride?: { model: string; provider: string } };
-        }>;
-      }
-    >,
-    topicModelOverrideMap: {} as Record<string, { model: string; provider: string } | null>,
     updateTopicMetadata: vi.fn(),
-    useFetchTopicModelOverride: vi.fn(() => ({ data: undefined })),
+  },
+  effective: {
+    config: { model: 'agent-model', provider: 'agent-provider' },
+    lastContext: undefined as unknown,
+  },
+}));
+
+vi.mock('@/hooks/useEffectiveAgentConfig', () => ({
+  useEffectiveAgentConfig: (context: unknown) => {
+    testState.effective.lastContext = context;
+    return {
+      config: testState.effective.config,
+      isModelLoading: false,
+      modelError: undefined,
+      retryModel: vi.fn(),
+    };
   },
 }));
 
 vi.mock('@/store/agent', () => ({
   useAgentStore: (selector: (state: typeof testState.agent) => unknown) =>
     selector(testState.agent),
-}));
-
-vi.mock('@/store/agent/selectors', () => ({
-  agentByIdSelectors: {
-    getAgentModelById: () => (state: typeof testState.agent) => state.model,
-    getAgentModelProviderById: () => (state: typeof testState.agent) => state.provider,
-  },
 }));
 
 vi.mock('@/store/chat', () => ({
@@ -55,15 +51,12 @@ vi.mock('../store', () => ({
 describe('useTopicModel', () => {
   beforeEach(() => {
     testState.agent.activeAgentId = 'active-agent';
-    testState.agent.model = 'agent-model';
-    testState.agent.provider = 'agent-provider';
     testState.agent.updateAgentConfigById = vi.fn();
     testState.chatInput.agentId = undefined;
     testState.chatInput.topicModelContext = undefined;
-    testState.chat.topicDataMap = {};
-    testState.chat.topicModelOverrideMap = {};
     testState.chat.updateTopicMetadata = vi.fn();
-    testState.chat.useFetchTopicModelOverride = vi.fn(() => ({ data: undefined }));
+    testState.effective.config = { model: 'agent-model', provider: 'agent-provider' };
+    testState.effective.lastContext = undefined;
   });
 
   it('falls back to the active Agent when ChatInput has no explicit agentId', async () => {
@@ -81,7 +74,6 @@ describe('useTopicModel', () => {
     [
       'Agent',
       { agentId: 'agent-1', scope: 'main' as const, topicId: 'topic-1' },
-      'agent_agent-1',
       { agentId: 'agent-1', groupId: undefined, scope: 'agent' },
     ],
     [
@@ -92,20 +84,10 @@ describe('useTopicModel', () => {
         scope: 'group' as const,
         topicId: 'topic-1',
       },
-      'group_group-1',
       { agentId: undefined, groupId: 'group-1', scope: 'group' },
     ],
-  ])('reads and updates a %s Topic override', async (_, context, topicKey, expectedScope) => {
-    testState.chat.topicDataMap = {
-      [topicKey]: {
-        items: [
-          {
-            id: 'topic-1',
-            metadata: { modelOverride: { model: 'topic-model', provider: 'topic-provider' } },
-          },
-        ],
-      },
-    };
+  ])('reads and updates a %s Topic override', async (_, context, expectedScope) => {
+    testState.effective.config = { model: 'topic-model', provider: 'topic-provider' };
     const { result } = renderHook(() => useTopicModel(context));
 
     expect(result.current.model).toBe('topic-model');
@@ -118,10 +100,8 @@ describe('useTopicModel', () => {
     );
   });
 
-  it('restores an override for a Topic outside the paginated list', () => {
-    testState.chat.topicModelOverrideMap = {
-      'topic-1': { model: 'topic-model', provider: 'topic-provider' },
-    };
+  it('uses the effective config resolved for the requested Topic context', () => {
+    testState.effective.config = { model: 'topic-model', provider: 'topic-provider' };
 
     const { result } = renderHook(() =>
       useTopicModel({ agentId: 'agent-1', scope: 'main', topicId: 'topic-1' }),
@@ -129,6 +109,10 @@ describe('useTopicModel', () => {
 
     expect(result.current.model).toBe('topic-model');
     expect(result.current.provider).toBe('topic-provider');
-    expect(testState.chat.useFetchTopicModelOverride).toHaveBeenCalledWith('topic-1');
+    expect(testState.effective.lastContext).toEqual({
+      agentId: 'agent-1',
+      scope: 'main',
+      topicId: 'topic-1',
+    });
   });
 });

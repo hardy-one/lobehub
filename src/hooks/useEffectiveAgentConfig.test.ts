@@ -8,7 +8,6 @@ const baseConfig = {
   agencyConfig: {
     boundDeviceId: 'shared-device',
     executionTarget: 'device',
-    heterogeneousProvider: { type: 'claude-code' },
   },
   chatConfig: {},
   model: 'agent-model',
@@ -109,13 +108,30 @@ describe('resolveEffectiveAgentConfig', () => {
       agencyConfig: {
         boundDeviceId: 'topic-device',
         executionTarget: 'device',
-        heterogeneousProvider: { type: 'claude-code' },
       },
       model: 'topic-model',
       provider: 'topic-provider',
     });
     expect(baseConfig).toMatchObject({
       agencyConfig: { boundDeviceId: 'shared-device', executionTarget: 'device' },
+      model: 'agent-model',
+      provider: 'agent-provider',
+    });
+  });
+
+  it('does not apply a Topic model to a heterogeneous Agent', () => {
+    const result = resolveEffectiveAgentConfig({
+      agentConfig: {
+        ...baseConfig,
+        agencyConfig: {
+          ...baseConfig.agencyConfig,
+          heterogeneousProvider: { type: 'claude-code' },
+        },
+      },
+      topicModelOverride: { model: 'topic-model', provider: 'topic-provider' },
+    });
+
+    expect(result).toMatchObject({
       model: 'agent-model',
       provider: 'agent-provider',
     });
@@ -225,6 +241,37 @@ describe('useEffectiveAgentConfig', () => {
     expect(result.current.isModelLoading).toBe(false);
     expect(result.current.isModelUnavailable).toBe(true);
     expect(result.current.topicModelError).toBe(topicModelError);
+  });
+
+  it('does not fetch or gate a heterogeneous Agent on a Topic model', () => {
+    const topicModelError = new Error('topic model unavailable');
+    testState.agent.agentMap['agent-1'] = {
+      ...baseConfig,
+      agencyConfig: {
+        ...baseConfig.agencyConfig,
+        heterogeneousProvider: { type: 'claude-code' },
+      },
+    };
+    testState.chat.useFetchTopicModelOverride = vi.fn(() => ({
+      data: undefined,
+      error: topicModelError,
+      isLoading: false,
+      mutate: vi.fn(),
+    }));
+
+    const { result } = renderHook(() =>
+      useEffectiveAgentConfig({ agentId: 'agent-1', topicId: 'topic-1' }),
+    );
+
+    expect(result.current.config).toMatchObject({
+      model: 'agent-model',
+      provider: 'agent-provider',
+    });
+    expect(result.current.isModelLoading).toBe(false);
+    expect(result.current.isModelUnavailable).toBe(false);
+    expect(result.current.modelError).toBeUndefined();
+    expect(result.current.topicModelError).toBeUndefined();
+    expect(testState.chat.useFetchTopicModelOverride).toHaveBeenCalledWith(undefined);
   });
 
   it('retries a missing Agent config through both model and execution-target recovery', async () => {

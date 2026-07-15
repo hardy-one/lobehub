@@ -44,14 +44,19 @@ export const resolveEffectiveAgentConfig = ({
 }: ResolveEffectiveAgentConfigParams): LobeAgentConfig | undefined => {
   if (!agentConfig) return;
 
+  const isHeterogeneousAgent = !!agentConfig.agencyConfig?.heterogeneousProvider;
   const agencyConfig = resolveEffectiveExecutionTargetConfig(
     agentConfig.agencyConfig,
     workspaceOverride,
     agentPreference,
     topicPreference,
   );
-  const model = topicModelOverride?.model ?? agentConfig.model;
-  const provider = topicModelOverride?.provider ?? agentConfig.provider;
+  const model = isHeterogeneousAgent
+    ? agentConfig.model
+    : (topicModelOverride?.model ?? agentConfig.model);
+  const provider = isHeterogeneousAgent
+    ? agentConfig.provider
+    : (topicModelOverride?.provider ?? agentConfig.provider);
 
   if (
     agencyConfig === agentConfig.agencyConfig &&
@@ -79,6 +84,8 @@ export const useEffectiveAgentConfig = (context: EffectiveAgentConfigContext) =>
     agentByIdSelectors.isWorkspaceAgentById(agentId)(s),
     s.retryAgentConfigFetch,
   ]);
+  const canUseTopicModelOverride =
+    !!agentConfig && !agentConfig.agencyConfig?.heterogeneousProvider;
   const [cachedTopicModelOverride, topicInList, topicMetadata, useFetchTopicModelOverride] =
     useChatStore((s) => {
       if (!topicId) {
@@ -96,13 +103,16 @@ export const useEffectiveAgentConfig = (context: EffectiveAgentConfigContext) =>
         s.useFetchTopicModelOverride,
       ] as const;
     });
-  const shouldFetchTopicModel = !!topicId && !topicInList;
+  const shouldFetchTopicModel = canUseTopicModelOverride && !!topicId && !topicInList;
   const topicModelSWR = useFetchTopicModelOverride(shouldFetchTopicModel ? topicId : undefined);
-  const topicModelOverride = topicInList
-    ? (topicMetadata?.modelOverride ?? null)
-    : cachedTopicModelOverride !== undefined
-      ? cachedTopicModelOverride
-      : topicModelSWR.data;
+  const topicModelOverride = canUseTopicModelOverride
+    ? topicInList
+      ? (topicMetadata?.modelOverride ?? null)
+      : cachedTopicModelOverride !== undefined
+        ? cachedTopicModelOverride
+        : topicModelSWR.data
+    : null;
+  const topicModelError = canUseTopicModelOverride ? topicModelSWR.error : undefined;
 
   const workspaceOverride = useUserStore(
     workspaceUserSettingsSelectors.agentDeviceOverrideById(agentId),
@@ -140,9 +150,9 @@ export const useEffectiveAgentConfig = (context: EffectiveAgentConfigContext) =>
 
   const hasSourcePreference = agentPreference != null || topicPreference != null;
   const topicModelLoading =
-    shouldFetchTopicModel && topicModelOverride === undefined && !topicModelSWR.error;
+    shouldFetchTopicModel && topicModelOverride === undefined && !topicModelError;
   const topicModelUnavailable =
-    shouldFetchTopicModel && topicModelOverride === undefined && !!topicModelSWR.error;
+    shouldFetchTopicModel && topicModelOverride === undefined && !!topicModelError;
   const preferenceLoading =
     !!agentId &&
     (agentPreference === undefined || (!!topicId && topicPreference === undefined)) &&
@@ -150,7 +160,7 @@ export const useEffectiveAgentConfig = (context: EffectiveAgentConfigContext) =>
   const workspacePreferenceLoading = isWorkspaceAgent && workspaceSWR.isLoading;
   const agentConfigLoading = isAgentConfigLoading && !agentConfigError;
   const unavailableAgentConfigError = !agentConfig ? agentConfigError : undefined;
-  const modelError = unavailableAgentConfigError ?? topicModelSWR.error;
+  const modelError = unavailableAgentConfigError ?? topicModelError;
   const executionTargetError =
     unavailableAgentConfigError ??
     preferenceSWR.error ??
@@ -199,7 +209,7 @@ export const useEffectiveAgentConfig = (context: EffectiveAgentConfigContext) =>
     retryExecutionTarget,
     retryModel,
     topicMetadata: topicMetadata as ChatTopicMetadata | undefined,
-    topicModelError: topicModelSWR.error,
+    topicModelError,
     topicModelOverride,
     workspaceScoped: isWorkspaceAgent && !hasSourcePreference,
   };

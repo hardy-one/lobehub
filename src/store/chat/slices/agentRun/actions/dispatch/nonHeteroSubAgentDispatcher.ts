@@ -56,7 +56,7 @@ export interface NonHeteroSubAgentDispatchContext {
 }
 
 /**
- * Unified dispatcher for non-hetero, non-group sub-agent invocations ().
+ * Unified dispatcher for non-hetero, non-group sub-agent invocations.
  *
  * Resolves the child runtime by inheriting from the parent (via
  * `selectRuntimeType` with `parentRuntime`), then routes to the correct
@@ -127,7 +127,7 @@ export async function dispatchNonHeteroSubAgent(
     }
 
     case 'hetero': {
-      // Hetero sub-agent invocation is out of scope for .
+      // Hetero sub-agent invocation is handled by the dedicated heterogeneous pipeline.
       // Hetero agents are dispatched through a dedicated heterogeneous pipeline
       // (`executeHeterogeneousAgent`) and must not fall through to client mode.
       throw new Error(

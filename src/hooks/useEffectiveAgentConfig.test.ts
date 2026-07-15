@@ -1,5 +1,5 @@
 import type { LobeAgentConfig } from '@lobechat/types';
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resolveEffectiveAgentConfig, useEffectiveAgentConfig } from './useEffectiveAgentConfig';
@@ -23,6 +23,7 @@ const testState = vi.hoisted(() => ({
     agentConfigErrorMap: {} as Record<string, string>,
     agentMap: {} as Record<string, LobeAgentConfig & { workspaceId?: string }>,
     agentNotFoundMap: {} as Record<string, boolean>,
+    retryAgentConfigFetch: vi.fn(),
   },
   chat: {
     topicDataMap: {} as Record<
@@ -39,7 +40,7 @@ const testState = vi.hoisted(() => ({
     topicModelOverrideMap: {} as Record<string, { model: string; provider: string } | null>,
     useFetchTopicModelOverride: vi.fn(() => ({
       data: undefined,
-      error: undefined,
+      error: undefined as Error | undefined,
       isLoading: false,
       mutate: vi.fn(),
     })),
@@ -126,11 +127,12 @@ describe('useEffectiveAgentConfig', () => {
     testState.agent.agentConfigErrorMap = {};
     testState.agent.agentMap = { 'agent-1': { ...baseConfig } };
     testState.agent.agentNotFoundMap = {};
+    testState.agent.retryAgentConfigFetch = vi.fn();
     testState.chat.topicDataMap = {};
     testState.chat.topicModelOverrideMap = {};
     testState.chat.useFetchTopicModelOverride = vi.fn(() => ({
       data: undefined,
-      error: undefined,
+      error: undefined as Error | undefined,
       isLoading: false,
       mutate: vi.fn(),
     }));
@@ -223,6 +225,31 @@ describe('useEffectiveAgentConfig', () => {
     expect(result.current.isModelLoading).toBe(false);
     expect(result.current.isModelUnavailable).toBe(true);
     expect(result.current.topicModelError).toBe(topicModelError);
+  });
+
+  it('retries a missing Agent config through model recovery', async () => {
+    testState.agent.agentMap = {};
+    testState.agent.agentConfigErrorMap = { 'agent-1': 'agent config unavailable' };
+
+    const { result } = renderHook(() => useEffectiveAgentConfig({ agentId: 'agent-1' }));
+
+    expect(result.current.isModelUnavailable).toBe(true);
+    expect(result.current.executionTargetError).toBe('agent config unavailable');
+
+    await act(() => result.current.retryModel());
+
+    expect(testState.agent.retryAgentConfigFetch).toHaveBeenCalledWith('agent-1');
+  });
+
+  it('keeps using cached Agent config when a background revalidation fails', () => {
+    testState.agent.agentConfigErrorMap = { 'agent-1': 'background refresh failed' };
+
+    const { result } = renderHook(() => useEffectiveAgentConfig({ agentId: 'agent-1' }));
+
+    expect(result.current.config).toEqual(baseConfig);
+    expect(result.current.modelError).toBeUndefined();
+    expect(result.current.executionTargetError).toBeUndefined();
+    expect(result.current.isModelUnavailable).toBe(false);
   });
 
   it('marks workspace user device overrides as private preferences', () => {

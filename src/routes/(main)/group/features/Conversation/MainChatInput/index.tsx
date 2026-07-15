@@ -2,6 +2,7 @@
 
 import { memo } from 'react';
 
+import AsyncError from '@/components/AsyncError';
 import { type ActionKeys } from '@/features/ChatInput';
 import { ChatInput } from '@/features/Conversation';
 import { contextSelectors, useConversationStore } from '@/features/Conversation/store';
@@ -33,20 +34,32 @@ const rightActions: ActionKeys[] = ['contextWindow'];
 const MainChatInput = memo(() => {
   const sendMenuItems = useSendMenuItems();
   const context = useConversationStore(contextSelectors.context);
-  const { isModelLoading, isModelUnavailable } = useEffectiveAgentConfig(context);
+  const { isModelLoading, isModelUnavailable, modelError, retryModel, topicModelError } =
+    useEffectiveAgentConfig(context);
 
   return (
-    <ChatInput
-      skipScrollMarginWithList
-      isConfigLoading={isModelLoading || isModelUnavailable}
-      leftActions={leftActions}
-      rightActions={rightActions}
-      sendMenu={{ items: sendMenuItems }}
-      onEditorReady={(instance) => {
-        // Sync to global ChatStore for compatibility with other features
-        useChatStore.setState({ mainInputEditor: instance });
-      }}
-    />
+    <>
+      {isModelUnavailable && modelError && !topicModelError && (
+        <AsyncError
+          error={modelError}
+          variant={'inline'}
+          onRetry={() => {
+            void retryModel();
+          }}
+        />
+      )}
+      <ChatInput
+        skipScrollMarginWithList
+        isConfigLoading={isModelLoading || isModelUnavailable}
+        leftActions={leftActions}
+        rightActions={rightActions}
+        sendMenu={{ items: sendMenuItems }}
+        onEditorReady={(instance) => {
+          // Sync to global ChatStore for compatibility with other features
+          useChatStore.setState({ mainInputEditor: instance });
+        }}
+      />
+    </>
   );
 });
 

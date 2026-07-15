@@ -66,14 +66,19 @@ export const resolveEffectiveAgentConfig = ({
 
 export const useEffectiveAgentConfig = (context: EffectiveAgentConfigContext) => {
   const { agentId, topicId } = context;
-  const [agentConfig, agentConfigError, isAgentConfigLoading, isWorkspaceAgent] = useAgentStore(
-    (s) => [
-      s.agentMap[agentId] as LobeAgentConfig | undefined,
-      agentByIdSelectors.getAgentConfigErrorById(agentId)(s),
-      agentByIdSelectors.isAgentConfigLoadingById(agentId)(s),
-      agentByIdSelectors.isWorkspaceAgentById(agentId)(s),
-    ],
-  );
+  const [
+    agentConfig,
+    agentConfigError,
+    isAgentConfigLoading,
+    isWorkspaceAgent,
+    retryAgentConfigFetch,
+  ] = useAgentStore((s) => [
+    s.agentMap[agentId] as LobeAgentConfig | undefined,
+    agentByIdSelectors.getAgentConfigErrorById(agentId)(s),
+    agentByIdSelectors.isAgentConfigLoadingById(agentId)(s),
+    agentByIdSelectors.isWorkspaceAgentById(agentId)(s),
+    s.retryAgentConfigFetch,
+  ]);
   const [cachedTopicModelOverride, topicInList, topicMetadata, useFetchTopicModelOverride] =
     useChatStore((s) => {
       if (!topicId) {
@@ -144,23 +149,35 @@ export const useEffectiveAgentConfig = (context: EffectiveAgentConfigContext) =>
     !preferenceSWR.error;
   const workspacePreferenceLoading = isWorkspaceAgent && workspaceSWR.isLoading;
   const agentConfigLoading = isAgentConfigLoading && !agentConfigError;
-  const modelError = agentConfigError ?? topicModelSWR.error;
+  const unavailableAgentConfigError = !agentConfig ? agentConfigError : undefined;
+  const modelError = unavailableAgentConfigError ?? topicModelSWR.error;
   const executionTargetError =
-    agentConfigError ?? preferenceSWR.error ?? (isWorkspaceAgent ? workspaceSWR.error : undefined);
+    unavailableAgentConfigError ??
+    preferenceSWR.error ??
+    (isWorkspaceAgent ? workspaceSWR.error : undefined);
   const isModelLoading = agentConfigLoading || topicModelLoading;
   const isModelUnavailable = (!!agentConfigError && !agentConfig) || topicModelUnavailable;
   const isExecutionTargetLoading =
     agentConfigLoading || preferenceLoading || workspacePreferenceLoading;
 
-  const retryModel = useCallback(async () => {
+  const retryAgentConfig = useCallback(async () => {
+    if (unavailableAgentConfigError) await retryAgentConfigFetch(agentId);
+  }, [agentId, retryAgentConfigFetch, unavailableAgentConfigError]);
+  const retryTopicModel = useCallback(async () => {
     if (shouldFetchTopicModel) await topicModelSWR.mutate();
   }, [shouldFetchTopicModel, topicModelSWR]);
-  const retryExecutionTarget = useCallback(async () => {
+  const retryPreferences = useCallback(async () => {
     await Promise.all([
       preferenceSWR.mutate(),
       ...(isWorkspaceAgent ? [workspaceSWR.mutate()] : []),
     ]);
   }, [isWorkspaceAgent, preferenceSWR, workspaceSWR]);
+  const retryModel = useCallback(async () => {
+    await Promise.all([retryAgentConfig(), retryTopicModel()]);
+  }, [retryAgentConfig, retryTopicModel]);
+  const retryExecutionTarget = useCallback(async () => {
+    await retryPreferences();
+  }, [retryPreferences]);
   const retry = useCallback(async () => {
     await Promise.all([retryModel(), retryExecutionTarget()]);
   }, [retryExecutionTarget, retryModel]);

@@ -30,7 +30,7 @@ const MainChatInput = memo(() => {
   const sendMenuItems = useSendMenuItems();
 
   const context = useConversationStore(contextSelectors.context);
-  const { config, isModelLoading } = useEffectiveAgentConfig(context);
+  const { config, isModelLoading, isModelUnavailable } = useEffectiveAgentConfig(context);
   const supportsImageOutput = useModelSupportImageOutput(config?.model, config?.provider);
   const rightActions = supportsImageOutput
     ? promptTransformRightActions
@@ -43,7 +43,7 @@ const MainChatInput = memo(() => {
       <AgentConfigError />
       <ChatInput
         skipScrollMarginWithList
-        isConfigLoading={isModelLoading}
+        isConfigLoading={isModelLoading || isModelUnavailable}
         leftActions={leftActions}
         rightActions={rightActions}
         {...(isDevMode

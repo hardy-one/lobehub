@@ -12,7 +12,7 @@ import { useGroupContext } from './useGroupContext';
 
 const ChatConversation = memo(() => {
   const context = useGroupContext();
-  const { config, isModelLoading } = useEffectiveAgentConfig(context);
+  const { config, isModelLoading, isModelUnavailable } = useEffectiveAgentConfig(context);
   const agentId = context.agentId;
   const model = config?.model ?? DEFAULT_MODEL;
   const provider = config?.provider ?? DEFAULT_PROVIDER;
@@ -21,7 +21,9 @@ const ChatConversation = memo(() => {
   return (
     <DragUploadZone
       style={{ height: '100%', width: '100%' }}
-      onUploadFiles={(files) => (isModelLoading ? Promise.resolve() : handleUploadFiles(files))}
+      onUploadFiles={(files) =>
+        isModelLoading || isModelUnavailable ? Promise.resolve() : handleUploadFiles(files)
+      }
     >
       <Flexbox height={'100%'} style={{ overflow: 'hidden', position: 'relative' }} width={'100%'}>
         <ChatHeader />

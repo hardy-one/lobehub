@@ -29,6 +29,7 @@ const ChatConversation = memo(() => {
     executionTargetError,
     isExecutionTargetLoading,
     isModelLoading,
+    isModelUnavailable,
     workspaceScoped,
   } = useEffectiveAgentConfig(context);
   const agentId = context.agentId;
@@ -65,7 +66,9 @@ const ChatConversation = memo(() => {
         enableLocalPathReference={enableLocalPathReference}
         style={wrapperStyle}
         onLocalPaths={enableLocalPathReference ? handleLocalPaths : undefined}
-        onUploadFiles={(files) => (isModelLoading ? Promise.resolve() : handleUploadFiles(files))}
+        onUploadFiles={(files) =>
+          isModelLoading || isModelUnavailable ? Promise.resolve() : handleUploadFiles(files)
+        }
       >
         <Flexbox flex={1} height={'100%'} style={{ minWidth: 0 }}>
           <TooltipGroup>

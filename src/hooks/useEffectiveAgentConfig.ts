@@ -136,6 +136,8 @@ export const useEffectiveAgentConfig = (context: EffectiveAgentConfigContext) =>
   const hasSourcePreference = agentPreference != null || topicPreference != null;
   const topicModelLoading =
     shouldFetchTopicModel && topicModelOverride === undefined && !topicModelSWR.error;
+  const topicModelUnavailable =
+    shouldFetchTopicModel && topicModelOverride === undefined && !!topicModelSWR.error;
   const preferenceLoading =
     !!agentId &&
     (agentPreference === undefined || (!!topicId && topicPreference === undefined)) &&
@@ -146,6 +148,7 @@ export const useEffectiveAgentConfig = (context: EffectiveAgentConfigContext) =>
   const executionTargetError =
     agentConfigError ?? preferenceSWR.error ?? (isWorkspaceAgent ? workspaceSWR.error : undefined);
   const isModelLoading = agentConfigLoading || topicModelLoading;
+  const isModelUnavailable = (!!agentConfigError && !agentConfig) || topicModelUnavailable;
   const isExecutionTargetLoading =
     agentConfigLoading || preferenceLoading || workspacePreferenceLoading;
 
@@ -172,12 +175,14 @@ export const useEffectiveAgentConfig = (context: EffectiveAgentConfigContext) =>
     isExecutionTargetLoading,
     isLoading: isModelLoading || isExecutionTargetLoading,
     isModelLoading,
+    isModelUnavailable,
     isWorkspaceAgent,
     modelError,
     retry,
     retryExecutionTarget,
     retryModel,
     topicMetadata: topicMetadata as ChatTopicMetadata | undefined,
+    topicModelError: topicModelSWR.error,
     topicModelOverride,
     workspaceScoped: isWorkspaceAgent && !hasSourcePreference,
   };

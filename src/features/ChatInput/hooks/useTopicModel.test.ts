@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useChatInputTopicModel, useTopicModel } from './useTopicModel';
 
+const toastError = vi.hoisted(() => vi.fn());
+
 const testState = vi.hoisted(() => ({
   agent: {
     activeAgentId: 'active-agent',
@@ -20,6 +22,14 @@ const testState = vi.hoisted(() => ({
     config: { model: 'agent-model', provider: 'agent-provider' },
     lastContext: undefined as unknown,
   },
+}));
+
+vi.mock('@lobehub/ui/base-ui', () => ({
+  toast: { error: toastError },
+}));
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
 }));
 
 vi.mock('@/hooks/useEffectiveAgentConfig', () => ({
@@ -57,6 +67,7 @@ describe('useTopicModel', () => {
     testState.chat.updateTopicMetadata = vi.fn();
     testState.effective.config = { model: 'agent-model', provider: 'agent-provider' };
     testState.effective.lastContext = undefined;
+    toastError.mockReset();
   });
 
   it('falls back to the active Agent when ChatInput has no explicit agentId', async () => {
@@ -114,5 +125,20 @@ describe('useTopicModel', () => {
       scope: 'main',
       topicId: 'topic-1',
     });
+  });
+
+  it('surfaces Topic model persistence failures without leaking a rejected promise', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    testState.chat.updateTopicMetadata = vi.fn().mockRejectedValue(new Error('save failed'));
+    const { result } = renderHook(() =>
+      useTopicModel({ agentId: 'agent-1', scope: 'main', topicId: 'topic-1' }),
+    );
+
+    await expect(
+      result.current.setModel({ model: 'next-model', provider: 'next-provider' }),
+    ).resolves.toBeUndefined();
+
+    expect(toastError).toHaveBeenCalledWith('topicModel.saveFailed');
+    consoleError.mockRestore();
   });
 });

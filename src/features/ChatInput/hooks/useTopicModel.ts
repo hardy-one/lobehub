@@ -1,7 +1,9 @@
 import { DEFAULT_PROVIDER } from '@lobechat/business-const';
 import { DEFAULT_MODEL } from '@lobechat/const';
 import type { MessageMapScope, TopicModelOverride } from '@lobechat/types';
+import { toast } from '@lobehub/ui/base-ui';
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { useEffectiveAgentConfig } from '@/hooks/useEffectiveAgentConfig';
 import { useAgentStore } from '@/store/agent';
@@ -26,6 +28,7 @@ export const useChatInputTopicModel = () => {
 };
 
 export const useTopicModel = (context: TopicModelContext) => {
+  const { t } = useTranslation('chat');
   const topicScope = topicMapScopeFromMessageScope(context.scope);
   const scopedAgentId = topicScope === 'group' ? undefined : context.agentId;
   const { config, isModelLoading, modelError, retryModel } = useEffectiveAgentConfig(context);
@@ -40,15 +43,20 @@ export const useTopicModel = (context: TopicModelContext) => {
       }
 
       const modelOverride = { model: next.model, provider: next.provider };
-      await updateTopicMetadata(
-        context.topicId,
-        { modelOverride },
-        {
-          agentId: scopedAgentId,
-          groupId: context.groupId,
-          scope: topicScope,
-        },
-      );
+      try {
+        await updateTopicMetadata(
+          context.topicId,
+          { modelOverride },
+          {
+            agentId: scopedAgentId,
+            groupId: context.groupId,
+            scope: topicScope,
+          },
+        );
+      } catch (error) {
+        console.error('[useTopicModel] failed to persist Topic model:', error);
+        toast.error(t('topicModel.saveFailed'));
+      }
     },
     [
       context.agentId,
@@ -56,6 +64,7 @@ export const useTopicModel = (context: TopicModelContext) => {
       context.topicId,
       scopedAgentId,
       topicScope,
+      t,
       updateAgentConfigById,
       updateTopicMetadata,
     ],

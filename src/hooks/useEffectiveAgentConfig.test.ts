@@ -203,6 +203,28 @@ describe('useEffectiveAgentConfig', () => {
     expect(testState.chat.useFetchTopicModelOverride).toHaveBeenCalledWith('topic-1');
   });
 
+  it('marks an unresolved Topic model as unavailable after its fetch fails', () => {
+    const topicModelError = new Error('topic model unavailable');
+    testState.chat.useFetchTopicModelOverride = vi.fn(() => ({
+      data: undefined,
+      error: topicModelError,
+      isLoading: false,
+      mutate: vi.fn(),
+    }));
+
+    const { result } = renderHook(() =>
+      useEffectiveAgentConfig({ agentId: 'agent-1', topicId: 'topic-1' }),
+    );
+
+    expect(result.current.config).toMatchObject({
+      model: 'agent-model',
+      provider: 'agent-provider',
+    });
+    expect(result.current.isModelLoading).toBe(false);
+    expect(result.current.isModelUnavailable).toBe(true);
+    expect(result.current.topicModelError).toBe(topicModelError);
+  });
+
   it('marks workspace user device overrides as private preferences', () => {
     testState.agent.agentMap['agent-1'] = { ...baseConfig, workspaceId: 'workspace-1' };
     testState.user.workspaceUserPreference = {

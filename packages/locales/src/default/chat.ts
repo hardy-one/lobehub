@@ -1348,6 +1348,7 @@ export default {
   'topic.recent': 'Recent Topics',
   'topic.saveCurrentMessages': 'Save current conversation as topic',
   'topic.viewAll': 'View All Topics',
+  'topicModel.saveFailed': 'Failed to save Topic model',
   'translate.action': 'Translate',
   'translate.clear': 'Clear Translation',
   'tts.action': 'Text-to-Speech',

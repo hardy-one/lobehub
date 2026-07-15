@@ -33,12 +33,12 @@ const rightActions: ActionKeys[] = ['contextWindow'];
 const MainChatInput = memo(() => {
   const sendMenuItems = useSendMenuItems();
   const context = useConversationStore(contextSelectors.context);
-  const { isModelLoading } = useEffectiveAgentConfig(context);
+  const { isModelLoading, isModelUnavailable } = useEffectiveAgentConfig(context);
 
   return (
     <ChatInput
       skipScrollMarginWithList
-      isConfigLoading={isModelLoading}
+      isConfigLoading={isModelLoading || isModelUnavailable}
       leftActions={leftActions}
       rightActions={rightActions}
       sendMenu={{ items: sendMenuItems }}

@@ -14,6 +14,7 @@ import {
   useBusinessChatInputAlerts,
 } from '@/business/client/hooks/useBusinessChatInputSendAreaPrefix';
 import { useBusinessInputCompletionErrorAlert } from '@/business/client/hooks/useBusinessInputCompletionErrorAlert';
+import AsyncError from '@/components/AsyncError';
 import type { ActionKeys, ChatInputFeature } from '@/features/ChatInput';
 import { ChatInputProvider, DesktopChatInput } from '@/features/ChatInput';
 import { selectors as chatInputSelectors, useChatInputStore } from '@/features/ChatInput/store';
@@ -22,6 +23,7 @@ import {
   type SendButtonHandler,
   type SendButtonProps,
 } from '@/features/ChatInput/store/initialState';
+import { useEffectiveAgentConfig } from '@/hooks/useEffectiveAgentConfig';
 import { useAgentStore } from '@/store/agent';
 import { chatConfigByIdSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
@@ -234,6 +236,9 @@ const ChatInput = memo<ChatInputProps>(
     const storeApi = useConversationStoreApi();
     const dbMessages = useConversationStore(dataSelectors.dbMessages);
     const context = useConversationStore((s) => s.context);
+    const { isModelLoading, isModelUnavailable, retryModel, topicModelError } =
+      useEffectiveAgentConfig(context);
+    const effectiveConfigLoading = isConfigLoading || isModelLoading || isModelUnavailable;
     const draftKey = useMemo(() => messageMapKey(context), [context]);
     const [agentId, inputMessage, sendMessage, stopGenerating] = useConversationStore((s) => [
       s.context.agentId,
@@ -426,6 +431,17 @@ const ChatInput = memo<ChatInputProps>(
               />
             </Flexbox>
           )}
+          {isModelUnavailable && topicModelError && (
+            <Flexbox paddingBlock={'0 6px'} paddingInline={12}>
+              <AsyncError
+                error={topicModelError}
+                variant={'inline'}
+                onRetry={() => {
+                  void retryModel();
+                }}
+              />
+            </Flexbox>
+          )}
           <InputCompletionErrorAlert />
           {businessAlerts}
           <Flexbox
@@ -450,7 +466,7 @@ const ChatInput = memo<ChatInputProps>(
             controlBarSlot={controlBarSlot}
             extraActionItems={extraActionItems}
             hidden={hasPendingInterventions}
-            isConfigLoading={isConfigLoading}
+            isConfigLoading={effectiveConfigLoading}
             leftContent={leftContent}
             placeholderVariant={placeholderVariant}
             sendAreaPrefix={businessSendAreaPrefix}

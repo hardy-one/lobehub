@@ -41,7 +41,7 @@ const Conversation = memo(() => {
 
   useFetchAgentConfig(true, currentAgentId);
 
-  const { config, isModelLoading } = useEffectiveAgentConfig(context);
+  const { config, isModelLoading, isModelUnavailable } = useEffectiveAgentConfig(context);
   const model = config?.model ?? DEFAULT_MODEL;
   const provider = config?.provider ?? DEFAULT_PROVIDER;
   const { handleUploadFiles } = useUploadFiles({ agentId: currentAgentId, model, provider });
@@ -75,7 +75,9 @@ const Conversation = memo(() => {
   return (
     <DragUploadZone
       style={{ flex: 1, height: '100%', minWidth: 300 }}
-      onUploadFiles={(files) => (isModelLoading ? Promise.resolve() : handleUploadFiles(files))}
+      onUploadFiles={(files) =>
+        isModelLoading || isModelUnavailable ? Promise.resolve() : handleUploadFiles(files)
+      }
     >
       <Flexbox flex={1} height={'100%'}>
         <CopilotToolbar />
@@ -86,7 +88,7 @@ const Conversation = memo(() => {
           actionBarStyle={COMPACT_ACTION_BAR_STYLE}
           allowExpand={false}
           disableSend={lockedByOther}
-          isConfigLoading={isModelLoading}
+          isConfigLoading={isModelLoading || isModelUnavailable}
           leftActions={EMPTY_LEFT_ACTIONS}
           leftContent={leftContent}
           sendAreaPrefix={modelSelector}

@@ -1201,6 +1201,7 @@
   "topic.recent": "最近话题",
   "topic.saveCurrentMessages": "保存为话题",
   "topic.viewAll": "查看全部主题",
+  "topicModel.saveFailed": "话题模型保存失败",
   "translate.action": "翻译",
   "translate.clear": "删除翻译",
   "tts.action": "语音朗读",

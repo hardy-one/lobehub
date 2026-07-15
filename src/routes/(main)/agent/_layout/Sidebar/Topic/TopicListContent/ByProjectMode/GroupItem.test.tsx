@@ -14,6 +14,10 @@ const routerPushMock = vi.hoisted(() => vi.fn());
 const routeParamsMock = vi.hoisted(() => ({ aid: 'agent-1' as string | undefined }));
 const agentStoreStateMock = vi.hoisted(() => ({ activeAgentId: 'agent-1' as string | undefined }));
 const activeWorkspaceSlugMock = vi.hoisted(() => ({ value: 'lobehub' as string | null }));
+const effectiveConfigState = vi.hoisted(() => ({
+  executionTargetError: undefined as Error | undefined,
+  isExecutionTargetLoading: false,
+}));
 
 vi.mock('react-router', () => ({
   useParams: () => routeParamsMock,
@@ -107,6 +111,15 @@ vi.mock('@/helpers/executionTarget', () => ({
   resolveExecutionTarget: () => 'device',
 }));
 
+vi.mock('@/hooks/useEffectiveAgentConfig', () => ({
+  useEffectiveAgentConfig: () => ({
+    config: { agencyConfig: { boundDeviceId: 'device-1' } },
+    executionTargetError: effectiveConfigState.executionTargetError,
+    isExecutionTargetLoading: effectiveConfigState.isExecutionTargetLoading,
+    workspaceScoped: false,
+  }),
+}));
+
 vi.mock('@/hooks/useQueryRoute', () => ({
   useQueryRoute: () => ({
     push: routerPushMock,
@@ -160,6 +173,8 @@ describe('Project topic group item', () => {
     agentStoreStateMock.activeAgentId = 'agent-1';
     activeWorkspaceSlugMock.value = 'lobehub';
     commitWorkingDirectoryState.canCommitAgentDefault = true;
+    effectiveConfigState.executionTargetError = undefined;
+    effectiveConfigState.isExecutionTargetLoading = false;
   });
 
   it('navigates to a new chat topic after committing the project directory', async () => {

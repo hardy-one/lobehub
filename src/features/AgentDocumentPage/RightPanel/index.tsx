@@ -168,9 +168,11 @@ const AgentDocumentRightPanel = memo(() => {
             deviceId={remoteDeviceId}
             openMode="route"
             showFilterTabs={false}
-            showLocalProjectSkills={isDesktop}
             style={{ flex: 1, minHeight: 0 }}
             workingDirectory={workingDirectory}
+            showLocalProjectSkills={
+              !executionTargetError && !isExecutionTargetLoading && effectiveTarget === 'local'
+            }
           />
         </Flexbox>
       </Flexbox>

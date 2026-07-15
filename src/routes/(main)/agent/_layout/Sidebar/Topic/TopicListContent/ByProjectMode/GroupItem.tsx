@@ -13,10 +13,10 @@ import { isDesktop } from '@/const/version';
 import { useCommitWorkingDirectory } from '@/features/ChatInput/ControlBar/useCommitWorkingDirectory';
 import { resolveExecutionTarget } from '@/helpers/executionTarget';
 import { useIsGatewayModeEnabled } from '@/helpers/gatewayMode';
+import { useEffectiveAgentConfig } from '@/hooks/useEffectiveAgentConfig';
 import { useQueryRoute } from '@/hooks/useQueryRoute';
 import { usePathname } from '@/libs/router/navigation';
 import { useAgentStore } from '@/store/agent';
-import { agentByIdSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
 import { operationSelectors } from '@/store/chat/selectors';
 
@@ -220,15 +220,13 @@ const GroupItem = memo<GroupItemComponentProps>(
     const currentAgentId = targetAgentId ?? agentId;
     const router = useQueryRoute();
     const activeWorkspaceSlug = useActiveWorkspaceSlug();
-    const agencyConfig = useAgentStore(
-      agentByIdSelectors.getAgencyConfigById(currentAgentId ?? ''),
-    );
-    const isHeterogeneous = useAgentStore((s) =>
-      currentAgentId ? agentByIdSelectors.isAgentHeterogeneousById(currentAgentId)(s) : false,
-    );
-    const isWorkspaceAgent = useAgentStore((s) =>
-      currentAgentId ? agentByIdSelectors.isWorkspaceAgentById(currentAgentId)(s) : false,
-    );
+    const { config, executionTargetError, isExecutionTargetLoading, workspaceScoped } =
+      useEffectiveAgentConfig({
+        agentId: currentAgentId ?? '',
+        scope: 'main',
+      });
+    const agencyConfig = config?.agencyConfig;
+    const isHeterogeneous = !!agencyConfig?.heterogeneousProvider;
     const { canCommitAgentDefault, commitAgentDefault } = useCommitWorkingDirectory(
       currentAgentId ?? '',
     );
@@ -260,10 +258,16 @@ const GroupItem = memo<GroupItemComponentProps>(
       clientExecutionAvailable: isDesktop,
       deviceRoutingAvailable,
       isHetero: isHeterogeneous,
-      workspaceScoped: isWorkspaceAgent,
+      workspaceScoped,
     });
+    const isLocalMode = effectiveTarget === 'local';
     const isDeviceMode = effectiveTarget === 'device' && !!agencyConfig?.boundDeviceId;
-    const canAddTopic = canCommitAgentDefault && (isDesktop || isDeviceMode) && !!workingDirectory;
+    const canAddTopic =
+      !executionTargetError &&
+      !isExecutionTargetLoading &&
+      canCommitAgentDefault &&
+      (isLocalMode || isDeviceMode) &&
+      !!workingDirectory;
 
     const loadingTopicIds = useChatStore((s) => s.topicLoadingIds);
     const statusCounts = useMemo(

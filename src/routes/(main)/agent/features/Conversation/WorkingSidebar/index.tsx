@@ -350,6 +350,7 @@ const AgentWorkingSidebar = memo(() => {
               deviceId={remoteDeviceId}
               enabled={showRightPanel && activeTab === 'resources'}
               isHetero={isHetero}
+              showLocalProjectSkills={isLocalSystemEnabled}
               workingDirectory={workingDirectory}
             />
           </Flexbox>

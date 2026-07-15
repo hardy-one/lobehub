@@ -23,6 +23,14 @@ vi.mock(
 // test fails if `continueHeteroAfterError` stops passing `isWorkspaceAgent`.
 const mockResolveRuntimeType = vi.fn(() => (mockIsWorkspaceAgent ? 'gateway' : 'hetero'));
 vi.mock('@/store/chat/slices/agentRun/actions/dispatch/agentDispatcher', () => ({
+  getCachedExecutionTargetConfig: () => ({
+    agencyConfig: {
+      boundDeviceId: 'device-1',
+      executionTarget: 'local',
+      heterogeneousProvider: { type: 'claude-code' },
+      workingDirByDevice: { 'device-1': '/work/dir' },
+    },
+  }),
   resolveRuntimeType: () => mockResolveRuntimeType(),
 }));
 
@@ -55,11 +63,12 @@ vi.mock('@/services/message', () => ({
   },
 }));
 
-vi.mock('@/store/agent', () => ({ getAgentStoreState: () => ({}) }));
+vi.mock('@/store/agent', () => ({
+  getAgentStoreState: () => ({ localAgentWorkingDirectoryMap: {} }),
+}));
 
 vi.mock('@/store/agent/selectors', () => ({
   agentByIdSelectors: {
-    getAgentWorkingDirectoryById: () => () => '/work/dir',
     isWorkspaceAgentById: () => () => mockIsWorkspaceAgent,
   },
   agentSelectors: {

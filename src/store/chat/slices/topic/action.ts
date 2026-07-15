@@ -3,6 +3,7 @@
 import { chainSummaryTitle } from '@lobechat/prompts';
 import {
   type ChatTopicMetadata,
+  type LobeAgentAgencyConfig,
   type MessageMapScope,
   type TopicModelOverride,
   type UIChatMessage,
@@ -131,6 +132,7 @@ export class ChatTopicActionImpl {
   #resolveTopicLinkedPullRequestRefreshParams = (
     topicId: string,
     metadata?: ChatTopicMetadata,
+    agencyConfig?: LobeAgentAgencyConfig,
   ): TopicLinkedPullRequestRefreshParams | undefined => {
     const sourceMetadata = metadata ?? topicSelectors.getTopicById(topicId)(this.#get())?.metadata;
     const base = getTopicLinkedPullRequestBase(sourceMetadata);
@@ -139,7 +141,7 @@ export class ChatTopicActionImpl {
     const { activeAgentId } = this.#get();
     if (!activeAgentId) return undefined;
 
-    const transport = resolveTopicGitTransport(activeAgentId);
+    const transport = resolveTopicGitTransport(agencyConfig);
     if (!canReadTopicGitTransport(transport)) return undefined;
 
     return {
@@ -673,9 +675,10 @@ export class ChatTopicActionImpl {
   useFetchTopicLinkedPullRequest = (
     topicId?: string,
     metadata?: ChatTopicMetadata,
+    agencyConfig?: LobeAgentAgencyConfig,
   ): SWRResponse<GitLinkedPRSummary | undefined> => {
     const params = topicId
-      ? this.#resolveTopicLinkedPullRequestRefreshParams(topicId, metadata)
+      ? this.#resolveTopicLinkedPullRequestRefreshParams(topicId, metadata, agencyConfig)
       : undefined;
 
     return useClientDataSWRWithSync<GitLinkedPRSummary | undefined>(

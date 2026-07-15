@@ -14,6 +14,8 @@ const setSearchParamsMock = vi.hoisted(() => vi.fn());
 const useLocationMock = vi.hoisted(() => vi.fn());
 const useParamsMock = vi.hoisted(() => vi.fn());
 const useSearchParamsMock = vi.hoisted(() => vi.fn());
+const useFetchTopicLinkedPullRequestMock = vi.hoisted(() => vi.fn());
+const effectiveAgencyConfig = { boundDeviceId: 'device-2', executionTarget: 'device' } as const;
 
 vi.hoisted(() => {
   const storage = {
@@ -42,6 +44,10 @@ vi.mock('react-router', async () => {
   };
 });
 
+vi.mock('@/hooks/useEffectiveAgentConfig', () => ({
+  useEffectiveAgentConfig: () => ({ config: { agencyConfig: effectiveAgencyConfig } }),
+}));
+
 describe('ChatHydration', () => {
   beforeEach(() => {
     navigateMock.mockReset();
@@ -49,6 +55,7 @@ describe('ChatHydration', () => {
     useLocationMock.mockReset();
     useParamsMock.mockReset();
     useSearchParamsMock.mockReset();
+    useFetchTopicLinkedPullRequestMock.mockReset();
 
     useChatStore.setState(
       {
@@ -56,6 +63,7 @@ describe('ChatHydration', () => {
         activeAgentId: 'agt_test',
         activeThreadId: undefined,
         activeTopicId: undefined,
+        useFetchTopicLinkedPullRequest: useFetchTopicLinkedPullRequestMock,
       },
       false,
     );
@@ -95,6 +103,12 @@ describe('ChatHydration', () => {
     ]);
 
     render(<ChatHydration />);
+
+    expect(useFetchTopicLinkedPullRequestMock).toHaveBeenCalledWith(
+      'tpc_123',
+      undefined,
+      effectiveAgencyConfig,
+    );
 
     await waitFor(() => {
       expect(useChatStore.getState().activeTopicId).toBe('tpc_123');

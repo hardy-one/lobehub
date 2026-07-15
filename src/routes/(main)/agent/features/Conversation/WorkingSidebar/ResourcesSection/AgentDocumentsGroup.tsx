@@ -34,7 +34,6 @@ import { useWorkspaceAwareNavigate } from '@/features/Workspace/useWorkspaceAwar
 import { useClientDataSWR } from '@/libs/swr';
 import { agentDocumentService, agentDocumentSWRKeys } from '@/services/agentDocument';
 import { useAgentStore } from '@/store/agent';
-import { chatConfigByIdSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
 import { standardizeIdentifier } from '@/utils/identifier';
 
@@ -310,9 +309,6 @@ const AgentDocumentsGroup = memo<AgentDocumentsGroupProps>(
     const openDocument = useChatStore((s) => s.openDocument);
     const isDocumentMode = !!docId;
     const resolvedOpenMode = openMode ?? (isDocumentMode ? 'route' : 'portal');
-    const isLocalEnabled = useAgentStore((s) =>
-      agentId ? chatConfigByIdSelectors.isLocalSystemEnabledById(agentId)(s) : false,
-    );
     const [filter, setFilter] = useState<ResourceFilter>(() =>
       isDocumentMode ? 'documents' : 'skills',
     );
@@ -329,8 +325,7 @@ const AgentDocumentsGroup = memo<AgentDocumentsGroupProps>(
     }, [controlledFilter, isDocumentMode]);
 
     // Local desktop reads skills over IPC; a bound device reads over RPC.
-    const showProjectSkills =
-      (showLocalProjectSkills || isLocalEnabled || !!deviceId) && !!workingDirectory;
+    const showProjectSkills = (showLocalProjectSkills || !!deviceId) && !!workingDirectory;
 
     // Mirror what each child component reads so the parent can decide the
     // section layout (flat when a single source has items, sectioned otherwise).

@@ -12,12 +12,17 @@ import { message as antdMessage } from '@/components/AntdStaticMethods';
 import { MESSAGE_CANCEL_FLAT } from '@/const/index';
 import { saveDraft } from '@/features/ChatInput/draftStorage';
 import { isHeterogeneousAgentStatusGuideError } from '@/features/Conversation/Error/heterogeneous';
+import { resolveAgentWorkingDirectory } from '@/helpers/agentWorkingDirectory';
+import { globalAgentContextManager } from '@/helpers/GlobalAgentContextManager';
 import { messageService } from '@/services/message';
 import { getAgentStoreState } from '@/store/agent';
-import { agentByIdSelectors, agentSelectors } from '@/store/agent/selectors';
+import { agentSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
 import { topicSelectors } from '@/store/chat/selectors';
-import { resolveRuntimeType } from '@/store/chat/slices/agentRun/actions/dispatch/agentDispatcher';
+import {
+  getCachedExecutionTargetConfig,
+  resolveRuntimeType,
+} from '@/store/chat/slices/agentRun/actions/dispatch/agentDispatcher';
 import {
   parseMentionedAgentsFromEditorData,
   parseSelectedSkillsFromEditorData,
@@ -112,11 +117,19 @@ const resolveHeteroRunContext = (
   const topic = context.topicId
     ? topicSelectors.getTopicById(context.topicId)(chatStore)
     : undefined;
+  const agentState = getAgentStoreState();
   const currentDeviceId = getElectronStoreState().gatewayDeviceInfo?.deviceId;
-  const agentWorkingDirectory = agentByIdSelectors.getAgentWorkingDirectoryById(
+  const { agencyConfig } = getCachedExecutionTargetConfig({
     agentId,
+    topicId: context.topicId,
+  });
+  const desktopContext = globalAgentContextManager.getContext();
+  const agentWorkingDirectory = resolveAgentWorkingDirectory({
+    agencyConfig,
     currentDeviceId,
-  )(getAgentStoreState());
+    fallback: desktopContext.desktopPath ?? desktopContext.homePath,
+    legacyAgentWorkingDirectory: agentState.localAgentWorkingDirectoryMap[agentId],
+  });
   const workingDirectory = topic?.metadata?.workingDirectory || agentWorkingDirectory;
 
   // Drops the saved sessionId when its bound cwd disagrees with the current

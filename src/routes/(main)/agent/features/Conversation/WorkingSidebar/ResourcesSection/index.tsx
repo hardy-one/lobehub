@@ -14,11 +14,12 @@ interface ResourcesSectionProps {
    */
   enabled?: boolean;
   isHetero: boolean;
+  showLocalProjectSkills?: boolean;
   workingDirectory?: string;
 }
 
 const ResourcesSection = memo<ResourcesSectionProps>(
-  ({ deviceId, enabled = true, isHetero, workingDirectory }) => (
+  ({ deviceId, enabled = true, isHetero, showLocalProjectSkills, workingDirectory }) => (
     <Flexbox
       data-testid="workspace-resources"
       flex={1}
@@ -34,6 +35,7 @@ const ResourcesSection = memo<ResourcesSectionProps>(
         <AgentDocumentsGroup
           deviceId={deviceId}
           enabled={enabled}
+          showLocalProjectSkills={showLocalProjectSkills}
           style={{ flex: 1, minHeight: 0 }}
           workingDirectory={workingDirectory}
         />

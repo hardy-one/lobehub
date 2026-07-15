@@ -16,6 +16,7 @@ import { getSessionStoreState } from '@/store/session';
 import * as toolStoreModule from '@/store/tool';
 import { pageAgentRuntime } from '@/store/tool/slices/builtin/executors/lobe-page-agent';
 import { useUserStore } from '@/store/user';
+import { topicExecutionTargetPreferenceKey } from '@/store/user/slices/executionTargetPreference/initialState';
 
 import { useChatStore } from '../../../../store';
 import { createMockAgentConfig, createMockMessage, TEST_CONTENT, TEST_IDS } from './fixtures';
@@ -1760,6 +1761,60 @@ describe('ConversationLifecycle actions', () => {
             },
           }),
           expect.any(AbortController),
+        );
+      });
+
+      it('should resolve heterogeneous cwd from the source-aware topic target', async () => {
+        mockConstEnv.isDesktop = true;
+        setupMockSelectors({
+          agentConfig: {
+            agencyConfig: {
+              boundDeviceId: 'device-b',
+              executionTarget: 'device',
+              heterogeneousProvider: { command: 'codex', type: 'codex' },
+              workingDirByDevice: {
+                'device-a': '/repo-a',
+                'device-b': '/repo-b',
+              },
+            },
+          },
+        });
+        useUserStore.setState({
+          ensureExecutionTargetPreference: vi.fn().mockResolvedValue({
+            agent: null,
+            topic: { boundDeviceId: 'device-a', executionTarget: 'local' },
+          }),
+          executionTargetPreferenceMap: {
+            [topicExecutionTargetPreferenceKey(TEST_IDS.TOPIC_ID)]: {
+              boundDeviceId: 'device-a',
+              executionTarget: 'local',
+            },
+          },
+        });
+
+        const { result } = renderHook(() => useChatStore());
+        vi.spyOn(aiChatService, 'sendMessageInServer').mockResolvedValue({
+          assistantMessageId: TEST_IDS.ASSISTANT_MESSAGE_ID,
+          messages: [
+            createMockMessage({ id: TEST_IDS.USER_MESSAGE_ID, role: 'user' }),
+            createMockMessage({ id: TEST_IDS.ASSISTANT_MESSAGE_ID, role: 'assistant' }),
+          ],
+          topicId: TEST_IDS.TOPIC_ID,
+          topics: [],
+          userMessageId: TEST_IDS.USER_MESSAGE_ID,
+        } as any);
+        executeHeterogeneousAgentMock.mockResolvedValue(undefined);
+
+        await act(async () => {
+          await result.current.sendMessage({
+            context: { ...createTestContext(), topicId: TEST_IDS.TOPIC_ID },
+            message: TEST_CONTENT.USER_MESSAGE,
+          });
+        });
+
+        expect(executeHeterogeneousAgentMock).toHaveBeenCalledWith(
+          expect.any(Function),
+          expect.objectContaining({ workingDirectory: '/repo-a' }),
         );
       });
 

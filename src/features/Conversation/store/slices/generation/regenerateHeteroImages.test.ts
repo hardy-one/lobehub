@@ -11,6 +11,15 @@ import { createStore } from '../../index';
 // is regenerate silently dropping image attachments (the send path forwards
 // them; this path must too).
 const mockExecuteHeterogeneousAgent = vi.fn();
+const effectiveAgencyConfig = {
+  boundDeviceId: 'device-2',
+  executionTarget: 'device' as const,
+  heterogeneousProvider: { type: 'claude-code' as const },
+  workingDirByDevice: {
+    'device-1': '/device-1/repo',
+    'device-2': '/device-2/repo',
+  },
+};
 vi.mock(
   '@/store/chat/slices/agentRun/actions/transports/hetero/heterogeneousAgentExecutor',
   () => ({
@@ -19,6 +28,7 @@ vi.mock(
 );
 
 vi.mock('@/store/chat/slices/agentRun/actions/dispatch/agentDispatcher', () => ({
+  getCachedExecutionTargetConfig: () => ({ agencyConfig: effectiveAgencyConfig }),
   resolveRuntimeType: () => 'hetero',
 }));
 
@@ -42,11 +52,12 @@ vi.mock('@/services/message', () => ({
   messageService: { createMessage: vi.fn(async () => ({ id: 'assistant-new' })) },
 }));
 
-vi.mock('@/store/agent', () => ({ getAgentStoreState: () => ({}) }));
+vi.mock('@/store/agent', () => ({
+  getAgentStoreState: () => ({ localAgentWorkingDirectoryMap: {} }),
+}));
 
 vi.mock('@/store/agent/selectors', () => ({
   agentByIdSelectors: {
-    getAgentWorkingDirectoryById: () => () => '/work/dir',
     isWorkspaceAgentById: () => () => false,
   },
   agentSelectors: {
@@ -123,6 +134,7 @@ describe('regenerateUserMessage (hetero) — image forwarding', () => {
       assistantMessageId: 'assistant-new',
       imageList,
       message: 'describe this',
+      workingDirectory: '/device-2/repo',
     });
   });
 

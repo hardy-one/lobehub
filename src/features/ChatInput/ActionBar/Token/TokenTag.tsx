@@ -1,3 +1,4 @@
+import { isDesktop } from '@lobechat/const';
 import { ToolNameResolver } from '@lobechat/context-engine';
 import { pluginPrompts } from '@lobechat/prompts';
 import { Center, Flexbox, Tooltip } from '@lobehub/ui';
@@ -7,6 +8,8 @@ import numeral from 'numeral';
 import { memo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { resolveRuntimeMode } from '@/helpers/executionTarget';
+import { useIsGatewayModeEnabled } from '@/helpers/gatewayMode';
 import { createAgentToolsEngine } from '@/helpers/toolEngineering';
 import { useModelContextWindowTokens } from '@/hooks/useModelContextWindowTokens';
 import { useModelSupportToolUse } from '@/hooks/useModelSupportToolUse';
@@ -23,6 +26,7 @@ import { useUserStore } from '@/store/user';
 import { settingsSelectors, userGeneralSettingsSelectors } from '@/store/user/selectors';
 
 import { useAgentId } from '../../hooks/useAgentId';
+import { useChatInputEffectiveAgentConfig } from '../../hooks/useEffectiveAgentConfig';
 import { useChatInputTopicModel } from '../../hooks/useTopicModel';
 import { useChatInputStore } from '../../store';
 import ActionPopover from '../components/ActionPopover';
@@ -51,7 +55,6 @@ const Token = memo(() => {
     useModelBuiltinSearch,
     skillActivateMode,
     agentMemoryEnabled,
-    runtimeMode,
     hasEnabledKnowledgeBases,
   ] = useAgentStore((s) => {
     const chatConfig = chatConfigByIdSelectors.getChatConfigById(agentId)(s);
@@ -64,13 +67,24 @@ const Token = memo(() => {
       chatConfig.useModelBuiltinSearch,
       chatConfigByIdSelectors.getSkillActivateModeById(agentId)(s),
       chatConfig.memory?.enabled,
-      chatConfigByIdSelectors.getRuntimeModeById(agentId)(s),
       agentByIdSelectors
         .getAgentKnowledgeBasesById(agentId)(s)
         .some((item) => item.enabled),
     ];
   });
   const { model, provider } = useChatInputTopicModel();
+  const { config, executionTargetError, isExecutionTargetLoading, workspaceScoped } =
+    useChatInputEffectiveAgentConfig();
+  const deviceRoutingAvailable = useIsGatewayModeEnabled(agentId);
+  const runtimeMode =
+    executionTargetError || isExecutionTargetLoading
+      ? 'none'
+      : resolveRuntimeMode(
+          config?.agencyConfig,
+          isDesktop,
+          deviceRoutingAvailable,
+          workspaceScoped,
+        );
   const globalMemoryEnabled = useUserStore(settingsSelectors.memoryEnabled);
   const effectiveMemoryEnabled = agentMemoryEnabled ?? globalMemoryEnabled;
   const [isProviderHasBuiltinSearch, isModelHasBuiltinSearch, isModelBuiltinSearchInternal] =
@@ -101,7 +115,12 @@ const Token = memo(() => {
 
   const toolsString = useToolStore(
     useCallback(() => {
-      const toolsEngine = createAgentToolsEngine({ model, provider });
+      const toolsEngine = createAgentToolsEngine(
+        { model, provider },
+        undefined,
+        undefined,
+        runtimeMode,
+      );
 
       const { tools, enabledManifests } = toolsEngine.generateToolsDetailed({
         excludeDefaultToolIds: getToolExcludeDefaultToolIds(skillActivateMode),

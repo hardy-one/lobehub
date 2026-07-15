@@ -27,19 +27,16 @@ vi.mock('@/services/git', () => ({
   },
 }));
 
-vi.mock('@/store/agent', () => ({
-  getAgentStoreState: () => ({}),
-}));
-
-vi.mock('@/store/agent/selectors', () => ({
-  agentByIdSelectors: {
-    getAgencyConfigById: () => () => undefined,
-  },
-}));
-
 const env = vi.hoisted(() => ({
   currentDeviceId: undefined as string | undefined,
+  effectiveAgencyConfig: undefined as
+    { boundDeviceId?: string; executionTarget?: string } | undefined,
+  receivedAgencyConfig: undefined as unknown,
   targetDeviceId: undefined as string | undefined,
+}));
+
+vi.mock('../../dispatch/agentDispatcher', () => ({
+  getCachedExecutionTargetConfig: () => ({ agencyConfig: env.effectiveAgencyConfig }),
 }));
 
 vi.mock('@/store/electron', () => ({
@@ -49,7 +46,10 @@ vi.mock('@/store/electron', () => ({
 }));
 
 vi.mock('@/helpers/agentWorkingDirectory', () => ({
-  resolveTargetDeviceId: () => env.targetDeviceId,
+  resolveTargetDeviceId: (agencyConfig: unknown) => {
+    env.receivedAgencyConfig = agencyConfig;
+    return env.targetDeviceId;
+  },
 }));
 
 const deviceMocks = vi.hoisted(() => ({
@@ -106,6 +106,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockConstEnv.isDesktop = true;
   env.currentDeviceId = undefined;
+  env.effectiveAgencyConfig = undefined;
+  env.receivedAgencyConfig = undefined;
   env.targetDeviceId = undefined;
   deviceMocks.workingDirs = [];
   electronGitMocks.detectRepoType.mockResolvedValue(undefined);
@@ -130,6 +132,26 @@ describe('snapshotTopicWorkingDirGit', () => {
         path: '/repo',
         repoType: 'github',
       },
+    });
+  });
+
+  it('uses the source-aware topic target for git reads', async () => {
+    env.effectiveAgencyConfig = { boundDeviceId: 'device-2', executionTarget: 'device' };
+    env.targetDeviceId = 'device-2';
+    topicMocks.getTopicById.mockReturnValue(githubTopic);
+    const { get } = makeGet();
+
+    await snapshotTopicWorkingDirGit(get, { agentId: 'agent-1', topicId: 'topic-1' });
+
+    expect(env.receivedAgencyConfig).toBe(env.effectiveAgencyConfig);
+    expect(gitMocks.getGitBranch).toHaveBeenCalledWith({
+      deviceId: 'device-2',
+      path: '/repo',
+    });
+    expect(gitMocks.getLinkedPullRequest).toHaveBeenCalledWith({
+      branch: 'fix/remote-review',
+      deviceId: 'device-2',
+      path: '/repo',
     });
   });
 

@@ -1,17 +1,18 @@
 'use client';
 
+import { isDesktop } from '@lobechat/const';
 import { Flexbox } from '@lobehub/ui';
 import { createStaticStyles, cssVar } from 'antd-style';
 import { memo } from 'react';
 
 import NavHeader from '@/features/NavHeader';
 import OpenInAppButton from '@/features/OpenInAppButton';
-import { useAgentStore } from '@/store/agent';
-import { agentByIdSelectors, chatConfigByIdSelectors } from '@/store/agent/selectors';
-import { useChatStore } from '@/store/chat';
-import { topicSelectors } from '@/store/chat/selectors';
-import { useElectronStore } from '@/store/electron';
+import { resolveExecutionTarget } from '@/helpers/executionTarget';
+import { useIsGatewayModeEnabled } from '@/helpers/gatewayMode';
+import { useEffectiveAgentConfig } from '@/hooks/useEffectiveAgentConfig';
+import { useEffectiveWorkingDirectory } from '@/hooks/useEffectiveWorkingDirectory';
 
+import { useAgentContext } from '../useAgentContext';
 import HeaderActions from './HeaderActions';
 import ShareButton from './ShareButton';
 import Tags from './Tags';
@@ -41,18 +42,19 @@ const headerStyles = createStaticStyles(({ css }) => ({
 }));
 
 const Header = memo(() => {
-  const agentId = useChatStore((s) => s.activeAgentId);
-  const topicWorkingDirectory = useChatStore(topicSelectors.currentTopicWorkingDirectory);
-  const currentDeviceId = useElectronStore((s) => s.gatewayDeviceInfo?.deviceId);
-  const agentWorkingDirectory = useAgentStore((s) =>
-    agentId
-      ? agentByIdSelectors.getAgentWorkingDirectoryById(agentId, currentDeviceId)(s)
-      : undefined,
-  );
-  const isLocalSystemEnabled = useAgentStore((s) =>
-    agentId ? chatConfigByIdSelectors.isLocalSystemEnabledById(agentId)(s) : false,
-  );
-  const effectiveWorkingDirectory = topicWorkingDirectory || agentWorkingDirectory || '';
+  const context = useAgentContext();
+  const { config, executionTargetError, isExecutionTargetLoading, workspaceScoped } =
+    useEffectiveAgentConfig(context);
+  const workingDirectory = useEffectiveWorkingDirectory(context) ?? '';
+  const deviceRoutingAvailable = useIsGatewayModeEnabled(context.agentId);
+  const executionTarget = resolveExecutionTarget(config?.agencyConfig, {
+    clientExecutionAvailable: isDesktop,
+    deviceRoutingAvailable,
+    isHetero: !!config?.agencyConfig?.heterogeneousProvider,
+    workspaceScoped,
+  });
+  const isLocalSystemEnabled =
+    !executionTargetError && !isExecutionTargetLoading && executionTarget === 'local';
 
   return (
     <div className={headerStyles.container}>
@@ -77,9 +79,7 @@ const Header = memo(() => {
             gap={4}
             style={{ backgroundColor: cssVar.colorBgContainer }}
           >
-            {isLocalSystemEnabled && (
-              <OpenInAppButton workingDirectory={effectiveWorkingDirectory} />
-            )}
+            {isLocalSystemEnabled && <OpenInAppButton workingDirectory={workingDirectory} />}
             <ShareButton />
             <TerminalToggle />
             <WorkingPanelToggle />

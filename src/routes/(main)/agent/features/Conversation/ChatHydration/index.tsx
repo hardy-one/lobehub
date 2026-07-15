@@ -6,6 +6,7 @@ import { useLocation, useParams, useSearchParams } from 'react-router';
 
 import { useClearActiveTopicUnread } from '@/features/Conversation/hooks';
 import { useWorkspaceAwareNavigate } from '@/features/Workspace/useWorkspaceAwareNavigate';
+import { useEffectiveAgentConfig } from '@/hooks/useEffectiveAgentConfig';
 import { useQueryState } from '@/hooks/useQueryParam';
 import { useChatStore } from '@/store/chat';
 import { topicSelectors } from '@/store/chat/selectors';
@@ -30,11 +31,20 @@ const ChatHydration = memo(() => {
     routeTopicId ? topicSelectors.getTopicById(routeTopicId)(s)?.metadata : undefined,
   );
   const useFetchTopicLinkedPullRequest = useChatStore((s) => s.useFetchTopicLinkedPullRequest);
+  const { config } = useEffectiveAgentConfig({
+    agentId: activeAgentId ?? '',
+    scope: 'main',
+    topicId: routeTopicId,
+  });
 
   // Route hydration sets activeTopicId directly (below) instead of going through
   // switchTopic, so clear any lingering persisted unread once the topic loads.
   useClearActiveTopicUnread();
-  useFetchTopicLinkedPullRequest(activeAgentId ? routeTopicId : undefined, topicMetadata);
+  useFetchTopicLinkedPullRequest(
+    activeAgentId ? routeTopicId : undefined,
+    topicMetadata,
+    config?.agencyConfig,
+  );
 
   useLayoutEffect(() => {
     const target = routeTopicId ?? null;

@@ -2,6 +2,7 @@ import { isDesktop } from '@lobechat/const';
 import type {
   ChatTopicMetadata,
   DeviceGitUpstreamRef,
+  LobeAgentAgencyConfig,
   WorkingDirConfig,
   WorkingDirGithubState,
 } from '@lobechat/types';
@@ -9,8 +10,6 @@ import { getWorkingDirEffectivePath } from '@lobechat/types';
 
 import { resolveTargetDeviceId } from '@/helpers/agentWorkingDirectory';
 import type { GitLinkedPRSummary } from '@/services/git';
-import { getAgentStoreState } from '@/store/agent';
-import { agentByIdSelectors } from '@/store/agent/selectors';
 import { getElectronStoreState } from '@/store/electron';
 
 export interface TopicGitTransport {
@@ -29,9 +28,9 @@ export interface TopicLinkedPullRequestBase {
 export const canReadTopicGitTransport = (transport: Pick<TopicGitTransport, 'deviceId'>) =>
   !!transport.deviceId || isDesktop;
 
-export const resolveTopicGitTransport = (agentId: string): TopicGitTransport => {
-  const agentState = getAgentStoreState();
-  const agencyConfig = agentByIdSelectors.getAgencyConfigById(agentId)(agentState);
+export const resolveTopicGitTransport = (
+  agencyConfig?: LobeAgentAgencyConfig,
+): TopicGitTransport => {
   const currentDeviceId = getElectronStoreState().gatewayDeviceInfo?.deviceId;
   const targetDeviceId = resolveTargetDeviceId(agencyConfig, currentDeviceId);
   const isLocalDevice = isDesktop && !!targetDeviceId && targetDeviceId === currentDeviceId;

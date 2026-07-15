@@ -13,6 +13,7 @@ import {
 import { deviceSelectors, getDeviceStoreState } from '@/store/device';
 
 import { topicSelectors } from '../../../topic/selectors';
+import { getCachedExecutionTargetConfig } from '../dispatch/agentDispatcher';
 
 /**
  * Resolve the working directory's repo type the SAME way the ControlBar's
@@ -63,7 +64,8 @@ export const snapshotTopicWorkingDirGit = async (
   const path = getWorkingDirEffectivePath(currentConfig) ?? topic.metadata?.workingDirectory;
   if (!path) return;
 
-  const { deviceId, isLocalDevice, targetDeviceId } = resolveTopicGitTransport(agentId);
+  const { agencyConfig } = getCachedExecutionTargetConfig({ agentId, topicId });
+  const { deviceId, isLocalDevice, targetDeviceId } = resolveTopicGitTransport(agencyConfig);
 
   // Same transport gate as `gitHooks.isEnabled`: a local read needs `isDesktop`,
   // a remote read needs a `deviceId`. Neither → nothing to probe.

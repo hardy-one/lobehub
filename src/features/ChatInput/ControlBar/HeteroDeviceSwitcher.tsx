@@ -355,6 +355,7 @@ const HeteroDeviceSwitcher = memo<HeteroDeviceSwitcherProps>(({ agentId }) => {
     retry: retryPreference,
     selectExecutionTarget,
     topicId,
+    workspaceScoped,
   } = useSelectExecutionTarget(agentId);
 
   const heteroType = agencyConfig?.heterogeneousProvider?.type;
@@ -385,6 +386,7 @@ const HeteroDeviceSwitcher = memo<HeteroDeviceSwitcherProps>(({ agentId }) => {
     clientExecutionAvailable: isDesktop,
     deviceRoutingAvailable,
     isHetero,
+    workspaceScoped,
   });
 
   const handleSelect = useCallback(

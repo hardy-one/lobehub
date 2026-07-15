@@ -11,6 +11,7 @@ import { createStore } from '../../index';
 // parented to and which prompt it carries — a continuation instruction, not the
 // original user prompt (which would restart the whole task).
 const mockExecuteHeterogeneousAgent = vi.fn();
+const antdMessageMocks = vi.hoisted(() => ({ error: vi.fn(), info: vi.fn() }));
 vi.mock(
   '@/store/chat/slices/agentRun/actions/transports/hetero/heterogeneousAgentExecutor',
   () => ({
@@ -90,7 +91,7 @@ vi.mock('@/store/electron', () => ({
 }));
 
 vi.mock('@/components/AntdStaticMethods', () => ({
-  message: { info: vi.fn() },
+  message: antdMessageMocks,
 }));
 
 const mockChatDeleteMessage = vi.fn(async () => {});
@@ -152,6 +153,25 @@ describe('continueHeteroAfterError', () => {
     vi.clearAllMocks();
     mockResumeSessionId = 'sess-1';
     mockIsWorkspaceAgent = false;
+  });
+
+  it('surfaces execution-target preflight failures without mutating the run', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockResolveRuntimeType.mockRejectedValueOnce(new Error('preference lookup failed'));
+    const store = buildGroupStore([
+      { content: 'looking', id: 'step-1', tools: [{ id: 'call-1' }] },
+      { content: '', error: HETERO_RATE_LIMIT, id: 'step-2' },
+    ]);
+
+    await act(async () => {
+      await store.getState().continueHeteroAfterError('step-1');
+    });
+
+    expect(antdMessageMocks.error).toHaveBeenCalledWith('Failed to load execution preference');
+    expect(mockUpdateMessage).not.toHaveBeenCalled();
+    expect(mockRemoveMessages).not.toHaveBeenCalled();
+    expect(mockExecuteHeterogeneousAgent).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 
   it('keeps a tail step that did work: clears its error and chains the continuation onto it', async () => {

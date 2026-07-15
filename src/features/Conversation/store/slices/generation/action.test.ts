@@ -1471,7 +1471,7 @@ describe('Generation Actions', () => {
       );
     });
 
-    it('returns early without starting an operation or dispatching any runtime', async () => {
+    it('retires the tracking operation without dispatching any runtime', async () => {
       const { useChatStore } = await import('@/store/chat');
       vi.mocked(useChatStore.getState).mockReturnValue({
         messagesMap: {},
@@ -1503,10 +1503,45 @@ describe('Generation Actions', () => {
         await store.getState().continueGenerationMessage('block-1', 'block-1');
       });
 
-      // Hetero short-circuits BEFORE creating the continue operation.
-      expect(mockStartOperation).not.toHaveBeenCalled();
+      expect(mockStartOperation).toHaveBeenCalled();
+      expect(mockCompleteOperation).toHaveBeenCalledWith('test-op-id');
       expect(mockExecuteClientAgent).not.toHaveBeenCalled();
       expect(mockExecuteGatewayAgent).not.toHaveBeenCalled();
+    });
+
+    it('fails the tracking operation when execution-target preflight rejects', async () => {
+      vi.spyOn(agentDispatcher, 'resolveRuntimeType').mockRejectedValueOnce(
+        new Error('preference lookup failed'),
+      );
+      const { useChatStore } = await import('@/store/chat');
+      vi.mocked(useChatStore.getState).mockReturnValue({
+        messagesMap: {},
+        operations: {},
+        operationsByMessage: {},
+        completeOperation: mockCompleteOperation,
+        executeClientAgent: mockExecuteClientAgent,
+        executeGatewayAgent: mockExecuteGatewayAgent,
+        failOperation: mockFailOperation,
+        isGatewayModeEnabled: vi.fn(() => false),
+        startOperation: mockStartOperation,
+      } as any);
+      const store = createStore({
+        context: { agentId: 'session-1', threadId: null, topicId: 'topic-1' },
+      });
+      act(() => {
+        store.setState({
+          displayMessages: [{ content: 'partial', id: 'block-1', role: 'assistant' }],
+        } as any);
+      });
+
+      await expect(
+        store.getState().continueGenerationMessage('block-1', 'block-1'),
+      ).rejects.toThrow('preference lookup failed');
+
+      expect(mockFailOperation).toHaveBeenCalledWith('test-op-id', {
+        message: 'preference lookup failed',
+        type: 'ContinueError',
+      });
     });
   });
 

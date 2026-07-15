@@ -511,18 +511,6 @@ export const generationSlice: StateCreator<
       if (shouldProceed === false) return;
     }
 
-    const runtimeType = await resolveRuntimeType({
-      agentId: context.agentId,
-      isGatewayMode: chatStore.isGatewayModeEnabled(context.agentId),
-      topicId: context.topicId,
-    });
-
-    // Hetero CLIs (CC / Codex) have no "continue a cut-off response" primitive
-    // — each prompt is a fresh user turn from their perspective. Bail out
-    // rather than synthesize a fake "please continue" turn that would pollute
-    // the session and confuse the model. The button is a no-op in this mode.
-    if (runtimeType === 'hetero') return;
-
     // Create continue operation with ConversationStore context (includes groupId)
     const { operationId } = chatStore.startOperation({
       context: { ...context, messageId: displayMessageId },
@@ -530,6 +518,21 @@ export const generationSlice: StateCreator<
     });
 
     try {
+      const runtimeType = await resolveRuntimeType({
+        agentId: context.agentId,
+        isGatewayMode: chatStore.isGatewayModeEnabled(context.agentId),
+        topicId: context.topicId,
+      });
+
+      // Hetero CLIs (CC / Codex) have no "continue a cut-off response" primitive
+      // — each prompt is a fresh user turn from their perspective. Bail out
+      // rather than synthesize a fake "please continue" turn that would pollute
+      // the session and confuse the model. The button is a no-op in this mode.
+      if (runtimeType === 'hetero') {
+        chatStore.completeOperation(operationId);
+        return;
+      }
+
       // ── Gateway mode: branch a server-side run from the cut-off message ──
       // `parentMessageId` triggers `resume: true` on the router, so the server
       // skips user-message creation and continues from the existing chain.
@@ -583,11 +586,18 @@ export const generationSlice: StateCreator<
 
     const agentConfig = agentSelectors.getAgentConfigById(context.agentId)(getAgentStoreState());
     const heterogeneousProvider = agentConfig?.agencyConfig?.heterogeneousProvider;
-    const runtimeType = await resolveRuntimeType({
-      agentId: context.agentId,
-      isGatewayMode: chatStore.isGatewayModeEnabled(context.agentId),
-      topicId: context.topicId,
-    });
+    let runtimeType: Awaited<ReturnType<typeof resolveRuntimeType>>;
+    try {
+      runtimeType = await resolveRuntimeType({
+        agentId: context.agentId,
+        isGatewayMode: chatStore.isGatewayModeEnabled(context.agentId),
+        topicId: context.topicId,
+      });
+    } catch (error) {
+      console.error('[continueHeteroAfterError] failed to resolve execution target:', error);
+      antdMessage.error(t('heteroAgent.executionTarget.loadFailed', { ns: 'chat' }));
+      return;
+    }
     const agentId = context.agentId;
 
     const resumeSessionId = agentId

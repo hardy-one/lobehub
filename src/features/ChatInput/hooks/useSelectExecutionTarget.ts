@@ -19,6 +19,7 @@ export const useExecutionTargetPreference = (agentId?: string, topicId?: string 
     hasTopicPreference,
     isExecutionTargetLoading,
     retryExecutionTarget,
+    workspaceScoped,
   } = useEffectiveAgentConfig({ agentId: agentId ?? '', topicId });
   const updateExecutionTargetPreference = useUserStore((s) => s.updateExecutionTargetPreference);
 
@@ -71,6 +72,7 @@ export const useExecutionTargetPreference = (agentId?: string, topicId?: string 
     retry: retryExecutionTarget,
     selectExecutionTarget,
     topicId: topicId ?? undefined,
+    workspaceScoped,
   };
 };
 

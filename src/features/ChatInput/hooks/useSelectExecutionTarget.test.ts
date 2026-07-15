@@ -12,6 +12,7 @@ const testState = vi.hoisted(() => ({
     agencyConfig: undefined as
       { boundDeviceId?: string; executionTarget?: string; workingDirByDevice?: object } | undefined,
     hasTopicPreference: false,
+    workspaceScoped: false,
   },
   user: {
     updateExecutionTargetPreference: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock('@/hooks/useEffectiveAgentConfig', () => ({
     hasTopicPreference: testState.effective.hasTopicPreference,
     isExecutionTargetLoading: false,
     retryExecutionTarget: vi.fn(),
+    workspaceScoped: testState.effective.workspaceScoped,
   }),
 }));
 
@@ -62,6 +64,7 @@ describe('useSelectExecutionTarget', () => {
     testState.user.updateExecutionTargetPreference = vi.fn().mockResolvedValue(undefined);
     testState.effective.agencyConfig = undefined;
     testState.effective.hasTopicPreference = false;
+    testState.effective.workspaceScoped = false;
   });
 
   it('stores a no-topic selection as the source-client Agent default', async () => {
@@ -73,6 +76,14 @@ describe('useSelectExecutionTarget', () => {
       agentId: 'agent-id',
       selection: { executionTarget: 'sandbox' },
     });
+  });
+
+  it('exposes workspace scoping to target consumers', () => {
+    testState.effective.workspaceScoped = true;
+
+    const { result } = renderHook(() => useSelectExecutionTarget('agent-id'));
+
+    expect(result.current.workspaceScoped).toBe(true);
   });
 
   it('stores an existing-topic selection in Topic scope', async () => {

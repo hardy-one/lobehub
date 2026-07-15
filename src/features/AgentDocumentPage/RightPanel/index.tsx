@@ -8,6 +8,8 @@ import { memo, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
 
+import AsyncError from '@/components/AsyncError';
+import NeuralNetworkLoading from '@/components/NeuralNetworkLoading';
 import { DESKTOP_HEADER_ICON_SMALL_SIZE } from '@/const/layoutTokens';
 import { isDesktop } from '@/const/version';
 import RightPanel from '@/features/RightPanel';
@@ -78,8 +80,13 @@ const AgentDocumentRightPanel = memo(() => {
   const toggleRightPanel = useGlobalStore((s) => s.toggleRightPanel);
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
   const context = { agentId: activeAgentId || '' };
-  const { config, executionTargetError, isExecutionTargetLoading, workspaceScoped } =
-    useEffectiveAgentConfig(context);
+  const {
+    config,
+    executionTargetError,
+    isExecutionTargetLoading,
+    retryExecutionTarget,
+    workspaceScoped,
+  } = useEffectiveAgentConfig(context);
   const agencyConfig = config?.agencyConfig;
   const isHetero = !!agencyConfig?.heterogeneousProvider;
   const workingDirectory = useEffectiveWorkingDirectory(context);
@@ -163,17 +170,28 @@ const AgentDocumentRightPanel = memo(() => {
           />
         </Flexbox>
         <Flexbox className={styles.body} width={'100%'}>
-          <AgentDocumentsGroup
-            activeFilter={activeTab}
-            deviceId={remoteDeviceId}
-            openMode="route"
-            showFilterTabs={false}
-            style={{ flex: 1, minHeight: 0 }}
-            workingDirectory={workingDirectory}
-            showLocalProjectSkills={
-              !executionTargetError && !isExecutionTargetLoading && effectiveTarget === 'local'
-            }
-          />
+          {activeTab === 'skills' && isExecutionTargetLoading ? (
+            <Flexbox align={'center'} flex={1} justify={'center'}>
+              <NeuralNetworkLoading size={24} />
+            </Flexbox>
+          ) : activeTab === 'skills' && executionTargetError ? (
+            <AsyncError
+              error={executionTargetError}
+              onRetry={() => {
+                void retryExecutionTarget();
+              }}
+            />
+          ) : (
+            <AgentDocumentsGroup
+              activeFilter={activeTab}
+              deviceId={remoteDeviceId}
+              openMode="route"
+              showFilterTabs={false}
+              showLocalProjectSkills={effectiveTarget === 'local'}
+              style={{ flex: 1, minHeight: 0 }}
+              workingDirectory={workingDirectory}
+            />
+          )}
         </Flexbox>
       </Flexbox>
     </RightPanel>

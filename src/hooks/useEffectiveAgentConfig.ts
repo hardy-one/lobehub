@@ -176,11 +176,11 @@ export const useEffectiveAgentConfig = (context: EffectiveAgentConfigContext) =>
     await Promise.all([retryAgentConfig(), retryTopicModel()]);
   }, [retryAgentConfig, retryTopicModel]);
   const retryExecutionTarget = useCallback(async () => {
-    await retryPreferences();
-  }, [retryPreferences]);
+    await Promise.all([retryAgentConfig(), retryPreferences()]);
+  }, [retryAgentConfig, retryPreferences]);
   const retry = useCallback(async () => {
-    await Promise.all([retryModel(), retryExecutionTarget()]);
-  }, [retryExecutionTarget, retryModel]);
+    await Promise.all([retryAgentConfig(), retryTopicModel(), retryPreferences()]);
+  }, [retryAgentConfig, retryPreferences, retryTopicModel]);
 
   return {
     config,

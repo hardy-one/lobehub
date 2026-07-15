@@ -23,7 +23,8 @@ import { authSelectors } from '@/store/user/selectors';
  * Combines the agent store (agencyConfig + legacy map), chat store (topic cwd),
  * device store (defaultCwd) and the current machine's deviceId. Use this instead
  * of the old `topicCwd || agentCwd` pattern so local and remote resolve the same
- * way. Returns `undefined` only on web with nothing configured.
+ * way. Returns `undefined` while execution-target preferences are unavailable,
+ * or on web when no working directory is configured.
  */
 export const useEffectiveWorkingDirectory = (
   context: EffectiveAgentConfigContext,

@@ -227,7 +227,7 @@ describe('useEffectiveAgentConfig', () => {
     expect(result.current.topicModelError).toBe(topicModelError);
   });
 
-  it('retries a missing Agent config through model recovery', async () => {
+  it('retries a missing Agent config through both model and execution-target recovery', async () => {
     testState.agent.agentMap = {};
     testState.agent.agentConfigErrorMap = { 'agent-1': 'agent config unavailable' };
 
@@ -237,8 +237,10 @@ describe('useEffectiveAgentConfig', () => {
     expect(result.current.executionTargetError).toBe('agent config unavailable');
 
     await act(() => result.current.retryModel());
+    await act(() => result.current.retryExecutionTarget());
 
-    expect(testState.agent.retryAgentConfigFetch).toHaveBeenCalledWith('agent-1');
+    expect(testState.agent.retryAgentConfigFetch).toHaveBeenNthCalledWith(1, 'agent-1');
+    expect(testState.agent.retryAgentConfigFetch).toHaveBeenNthCalledWith(2, 'agent-1');
   });
 
   it('keeps using cached Agent config when a background revalidation fails', () => {

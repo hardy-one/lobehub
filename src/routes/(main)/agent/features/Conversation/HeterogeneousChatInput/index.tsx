@@ -13,6 +13,7 @@ import { useNavigate, useParams } from 'react-router';
 import urlJoin from 'url-join';
 
 import { useHeteroAgentCloudConfig } from '@/business/client/hooks/useHeteroAgentCloudConfig';
+import AsyncError from '@/components/AsyncError';
 import { isDesktop } from '@/const/version';
 import { type ActionKeys } from '@/features/ChatInput';
 import HeteroModel from '@/features/ChatInput/ControlBar/HeteroModel';
@@ -96,6 +97,7 @@ const HeterogeneousChatInput = memo(() => {
     error: preferenceError,
     hasSourcePreference,
     isLoading: isPreferenceLoading,
+    retry: retryPreference,
   } = useExecutionTargetPreference(agentId, topicId);
   const providerType = agencyConfig?.heterogeneousProvider?.type;
   const isWorkspaceAgent = useAgentStore(agentByIdSelectors.isWorkspaceAgentById(agentId));
@@ -230,6 +232,19 @@ const HeterogeneousChatInput = memo(() => {
     <Flexbox>
       {renderCloudConfigGuard()}
       {renderDeviceGuard()}
+      {preferenceError && (
+        <WideScreenContainer>
+          <Flexbox paddingBlock={'0 8px'} paddingInline={12}>
+            <AsyncError
+              error={preferenceError}
+              variant={'inline'}
+              onRetry={() => {
+                void retryPreference();
+              }}
+            />
+          </Flexbox>
+        </WideScreenContainer>
+      )}
       <ChatInput
         allowExpand={false}
         controlBarSlot={<HeteroControlBar />}

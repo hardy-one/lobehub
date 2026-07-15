@@ -1067,6 +1067,7 @@ describe('AgentRuntimeService', () => {
     const mockMetadata = {
       agentConfig: {
         agencyConfig: { boundDeviceId: 'private-device', executionTarget: 'device' },
+        model: 'test-model',
       },
       createdAt: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
       lastActiveAt: new Date(Date.now() - 1800000).toISOString(), // 30 minutes ago
@@ -1094,6 +1095,7 @@ describe('AgentRuntimeService', () => {
           usage: { tokens: 100 },
         }),
         metadata: {
+          agentConfig: { agencyConfig: {}, model: 'test-model' },
           createdAt: mockMetadata.createdAt,
           lastActiveAt: mockMetadata.lastActiveAt,
           userId: mockMetadata.userId,
@@ -1114,8 +1116,10 @@ describe('AgentRuntimeService', () => {
 
     it('should include history when requested', async () => {
       const mockHistory = [{ stepIndex: 1, timestamp: Date.now() }];
+      const mockRecentEvents = Array.from({ length: 12 }, (_, index) => ({ index }));
 
       mockCoordinator.getExecutionHistory.mockResolvedValue(mockHistory);
+      mockStreamManager.getStreamHistory.mockResolvedValue(mockRecentEvents);
 
       const result = await service.getOperationStatus({
         operationId: 'test-operation-1',
@@ -1124,6 +1128,7 @@ describe('AgentRuntimeService', () => {
       });
 
       expect(result?.executionHistory).toEqual(mockHistory);
+      expect(result?.recentEvents).toEqual(mockRecentEvents.slice(0, 10));
     });
 
     it('should return null for missing operation', async () => {

@@ -10,7 +10,7 @@ import type {
 import type { ChatTopicBotContext, UserInterventionConfig } from '@lobechat/types';
 
 import type { ExecutionPlan } from '@/helpers/executionTarget';
-import type { AgentOperationMetadata } from '@/server/modules/AgentRuntime/AgentStateManager';
+import type { PublicAgentOperationMetadata } from '@/server/modules/AgentRuntime/AgentStateManager';
 import { type ServerUserMemoryConfig } from '@/server/modules/Mecha/ContextEngineering/types';
 import type { AgentSignalOperationMarker } from '@/server/services/agentSignal/operationMarker';
 import type { DeviceAccessReason } from '@/server/services/aiAgent/deviceAccessPolicy';
@@ -481,9 +481,10 @@ export interface OperationStatusResult {
   hasError: boolean;
   isActive: boolean;
   isCompleted: boolean;
-  metadata: Omit<AgentOperationMetadata, 'agentConfig' | 'sourceClientId'>;
+  metadata: PublicAgentOperationMetadata;
   needsHumanInput: boolean;
   operationId: string;
+  recentEvents?: any[];
   stats: {
     lastActiveTime: number;
     totalCost: number;

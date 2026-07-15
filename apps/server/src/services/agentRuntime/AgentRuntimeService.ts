@@ -45,6 +45,7 @@ import { type LobeChatDatabase } from '@/database/type';
 import { appEnv } from '@/envs/app';
 import { type AgentRuntimeCoordinatorOptions } from '@/server/modules/AgentRuntime';
 import { AgentRuntimeCoordinator, createStreamEventManager } from '@/server/modules/AgentRuntime';
+import { toPublicAgentOperationMetadata } from '@/server/modules/AgentRuntime/AgentStateManager';
 import { formatErrorForState } from '@/server/modules/AgentRuntime/formatErrorForState';
 import { hasNonPersistedMessage } from '@/server/modules/AgentRuntime/messagePersistence';
 import {
@@ -1527,6 +1528,18 @@ export class AgentRuntimeService {
         }
       }
 
+      // Keep the established status response contract while excluding private
+      // source/device routing fields from the public operation metadata.
+      let recentEvents;
+      if (includeHistory) {
+        try {
+          recentEvents = await this.streamManager.getStreamHistory(operationId, 20);
+        } catch (error) {
+          log('Failed to load recent events: %O', error);
+          recentEvents = [];
+        }
+      }
+
       // Calculate operation statistics
       const stats = {
         lastActiveTime: operationMetadata.lastActiveAt
@@ -1539,11 +1552,6 @@ export class AgentRuntimeService {
           ? Date.now() - new Date(operationMetadata.createdAt).getTime()
           : 0,
       };
-      const {
-        agentConfig: _agentConfig,
-        sourceClientId: _sourceClientId,
-        ...publicMetadata
-      } = operationMetadata;
 
       return {
         currentState: {
@@ -1564,9 +1572,10 @@ export class AgentRuntimeService {
         hasError: currentState.status === 'error',
         isActive: currentState.status === 'running' || isParkedStatus(currentState.status),
         isCompleted: currentState.status === 'done',
-        metadata: publicMetadata,
+        metadata: toPublicAgentOperationMetadata(operationMetadata),
         needsHumanInput: currentState.status === 'waiting_for_human',
         operationId,
+        recentEvents: recentEvents?.slice(0, 10),
         stats,
       };
     } catch (error) {

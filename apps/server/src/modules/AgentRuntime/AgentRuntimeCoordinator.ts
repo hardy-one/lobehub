@@ -2,7 +2,11 @@ import { type AgentState } from '@lobechat/agent-runtime';
 import { type UIChatMessage } from '@lobechat/types';
 import debug from 'debug';
 
-import { type AgentOperationMetadata, type StepResult } from './AgentStateManager';
+import {
+  type AgentOperationMetadata,
+  type StepResult,
+  toPublicAgentOperationMetadata,
+} from './AgentStateManager';
 import { createAgentStateManager, createStreamEventManager } from './factory';
 import { type IAgentStateManager, type IStreamEventManager } from './types';
 import { hasVisibleOutputEndPublished } from './visibleOutputEnd';
@@ -107,13 +111,11 @@ export class AgentRuntimeCoordinator {
       const metadata = await this.stateManager.getOperationMetadata(operationId);
 
       if (metadata) {
-        const {
-          agentConfig: _agentConfig,
-          sourceClientId: _sourceClientId,
-          ...publicMetadata
-        } = metadata;
         // Send agent runtime init event
-        await this.streamEventManager.publishAgentRuntimeInit(operationId, publicMetadata);
+        await this.streamEventManager.publishAgentRuntimeInit(
+          operationId,
+          toPublicAgentOperationMetadata(metadata),
+        );
         log('[%s] Agent operation created and initialized', operationId);
       }
     } catch (error) {

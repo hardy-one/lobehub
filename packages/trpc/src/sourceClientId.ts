@@ -31,6 +31,8 @@ export const getSourceClientId = () => {
 
     return sourceClientId;
   } catch {
+    // Restricted/private browser storage can throw. Keep the source stable for
+    // this page lifetime without logging the private identifier.
     return getProcessSourceClientId();
   }
 };

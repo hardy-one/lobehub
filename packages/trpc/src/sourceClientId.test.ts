@@ -63,6 +63,21 @@ describe('sourceClientId', () => {
     expect(parseSourceClientId(firstSourceClientId)).toBe(firstSourceClientId);
   });
 
+  it('uses a stable process UUID when localStorage throws', async () => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => {
+        throw new Error('storage blocked');
+      }),
+      setItem: vi.fn(),
+    });
+    const { getSourceClientId, parseSourceClientId } = await import('./sourceClientId');
+
+    const firstSourceClientId = getSourceClientId();
+
+    expect(getSourceClientId()).toBe(firstSourceClientId);
+    expect(parseSourceClientId(firstSourceClientId)).toBe(firstSourceClientId);
+  });
+
   it('rejects malformed UUID values', async () => {
     const { parseSourceClientId } = await import('./sourceClientId');
 

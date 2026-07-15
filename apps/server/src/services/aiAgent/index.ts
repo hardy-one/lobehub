@@ -414,7 +414,7 @@ interface InternalExecAgentParams extends ExecAgentParams {
   selectedToolIds?: string[];
   /** Abort startup before the agent runtime operation is created */
   signal?: AbortSignal;
-  /** Reuse the parent run's resolved target instead of reading this source client's preference. */
+  /** Bypass this source client's preference and use the target Agent's stored configuration. */
   skipSourceExecutionPreference?: boolean;
   /**
    * Whether the LLM call should use streaming.

@@ -53,6 +53,31 @@ export interface AgentOperationMetadata {
   workspaceId?: string;
 }
 
+export type PublicAgentOperationMetadata = Omit<AgentOperationMetadata, 'sourceClientId'>;
+
+export const toPublicAgentOperationMetadata = (
+  metadata: AgentOperationMetadata,
+): PublicAgentOperationMetadata => {
+  const { sourceClientId: _sourceClientId, ...publicMetadata } = metadata;
+  const agencyConfig = publicMetadata.agentConfig?.agencyConfig;
+  if (!agencyConfig) return publicMetadata;
+
+  const {
+    boundDeviceId: _boundDeviceId,
+    executionTarget: _executionTarget,
+    workingDirByDevice: _workingDirByDevice,
+    ...publicAgencyConfig
+  } = agencyConfig;
+
+  return {
+    ...publicMetadata,
+    agentConfig: {
+      ...publicMetadata.agentConfig,
+      agencyConfig: publicAgencyConfig,
+    },
+  };
+};
+
 export class AgentStateManager {
   private redis: Redis;
   private readonly STATE_PREFIX = 'agent_runtime_state';

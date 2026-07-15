@@ -2276,8 +2276,11 @@ table user_execution_target_preferences {
   updated_at "timestamp with time zone" [not null, default: `now()`]
 
   indexes {
+
     (user_id, source_client_id, agent_id) [name: 'user_execution_target_preferences_agent_scope_unique', unique]
     (user_id, source_client_id, topic_id) [name: 'user_execution_target_preferences_topic_scope_unique', unique]
+    agent_id [name: 'user_execution_target_preferences_agent_id_idx']
+    topic_id [name: 'user_execution_target_preferences_topic_id_idx']
   }
 }
 

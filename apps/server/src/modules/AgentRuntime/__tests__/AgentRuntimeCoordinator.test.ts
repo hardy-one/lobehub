@@ -51,7 +51,15 @@ describe('AgentRuntimeCoordinator', () => {
     it('should create operation metadata and publish init event', async () => {
       const operationId = 'test-operation-id';
       const data = {
-        agentConfig: { test: true },
+        agentConfig: {
+          agencyConfig: {
+            boundDeviceId: 'private-device',
+            executionTarget: 'device',
+            heterogeneousProvider: { type: 'codex' },
+            workingDirByDevice: { 'private-device': '/repo' },
+          },
+          model: 'test-model',
+        },
         modelRuntimeConfig: { model: 'gpt-4' },
         sourceClientId: '91a303c8-70b0-4e45-b05f-9df235574121',
         userId: 'user-123',
@@ -70,15 +78,18 @@ describe('AgentRuntimeCoordinator', () => {
 
       expect(mockStateManager.createOperationMetadata).toHaveBeenCalledWith(operationId, data);
       expect(mockStateManager.getOperationMetadata).toHaveBeenCalledWith(operationId);
-      const {
-        agentConfig: _agentConfig,
-        sourceClientId: _sourceClientId,
-        ...publicMetadata
-      } = metadata;
-      expect(mockStreamManager.publishAgentRuntimeInit).toHaveBeenCalledWith(
-        operationId,
-        publicMetadata,
-      );
+      expect(mockStreamManager.publishAgentRuntimeInit).toHaveBeenCalledWith(operationId, {
+        agentConfig: {
+          agencyConfig: { heterogeneousProvider: { type: 'codex' } },
+          model: 'test-model',
+        },
+        createdAt: metadata.createdAt,
+        modelRuntimeConfig: data.modelRuntimeConfig,
+        status: 'idle',
+        totalCost: 0,
+        totalSteps: 0,
+        userId: data.userId,
+      });
     });
 
     it('should not publish init event if metadata creation fails', async () => {

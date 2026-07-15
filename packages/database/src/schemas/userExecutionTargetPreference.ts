@@ -1,6 +1,6 @@
 import type { DeviceExecutionTarget } from '@lobechat/types';
 import { sql } from 'drizzle-orm';
-import { check, pgTable, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { check, index, pgTable, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 import { timestamps } from './_helpers';
 import { agents } from './agent';
@@ -36,6 +36,12 @@ export const userExecutionTargetPreferences = pgTable(
       .where(sql`${t.agentId} IS NOT NULL`),
     uniqueIndex('user_execution_target_preferences_topic_scope_unique')
       .on(t.userId, t.sourceClientId, t.topicId)
+      .where(sql`${t.topicId} IS NOT NULL`),
+    index('user_execution_target_preferences_agent_id_idx')
+      .on(t.agentId)
+      .where(sql`${t.agentId} IS NOT NULL`),
+    index('user_execution_target_preferences_topic_id_idx')
+      .on(t.topicId)
       .where(sql`${t.topicId} IS NOT NULL`),
   ],
 );

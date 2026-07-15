@@ -274,6 +274,25 @@ describe('useEffectiveAgentConfig', () => {
     expect(testState.chat.useFetchTopicModelOverride).toHaveBeenCalledWith(undefined);
   });
 
+  it('does not fetch or apply a Topic model for a legacy heterogeneous Agent', () => {
+    testState.agent.agentMap['agent-1'] = { ...baseConfig, model: 'codex' };
+    testState.chat.topicModelOverrideMap = {
+      'topic-1': { model: 'topic-model', provider: 'topic-provider' },
+    };
+
+    const { result } = renderHook(() =>
+      useEffectiveAgentConfig({ agentId: 'agent-1', topicId: 'topic-1' }),
+    );
+
+    expect(result.current.config).toMatchObject({
+      model: 'codex',
+      provider: 'agent-provider',
+    });
+    expect(result.current.isModelLoading).toBe(false);
+    expect(result.current.isModelUnavailable).toBe(false);
+    expect(testState.chat.useFetchTopicModelOverride).toHaveBeenCalledWith(undefined);
+  });
+
   it('retries a missing Agent config through both model and execution-target recovery', async () => {
     testState.agent.agentMap = {};
     testState.agent.agentConfigErrorMap = { 'agent-1': 'agent config unavailable' };

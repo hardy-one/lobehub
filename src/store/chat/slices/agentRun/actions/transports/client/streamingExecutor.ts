@@ -17,6 +17,7 @@ import { PageAgentIdentifier } from '@lobechat/builtin-tool-page-agent';
 import { manualModeExcludeToolIds } from '@lobechat/builtin-tools';
 import { isDesktop } from '@lobechat/const';
 import { type ToolsEngine } from '@lobechat/context-engine';
+import { getHeterogeneousAgentConfig } from '@lobechat/heterogeneous-agents';
 import { buildTaskDetailPrompt, buildTaskListPrompt } from '@lobechat/prompts';
 import {
   type ConversationContext,
@@ -199,6 +200,9 @@ export class StreamingExecutorActionImpl {
     });
 
     const { agentConfig: baseAgentConfig, plugins: pluginIds } = agentConfig;
+    const isHeterogeneousAgent =
+      !!baseAgentConfig?.agencyConfig?.heterogeneousProvider ||
+      !!getHeterogeneousAgentConfig(baseAgentConfig?.model ?? '');
     const agentState = getAgentStoreState();
     const userState = getUserStoreState();
     const isGroupMember = operation?.context.orchestrationRole === 'member';
@@ -230,7 +234,9 @@ export class StreamingExecutorActionImpl {
       { agentId, groupId, scope, topicId },
       effectiveAgentId,
     );
-    const effectiveModelOverride = modelOverride ?? storedTopicOverride;
+    const effectiveModelOverride = isHeterogeneousAgent
+      ? undefined
+      : (modelOverride ?? storedTopicOverride);
     const modelResolvedAgentConfig = effectiveModelOverride
       ? { ...baseAgentConfig, ...effectiveModelOverride }
       : baseAgentConfig;
@@ -543,6 +549,11 @@ export class StreamingExecutorActionImpl {
     // - subAgentId is used when present (behavior depends on scope)
     // - agentId: Default
     const effectiveAgentId = subAgentId || agentId;
+    const runtimeAgentConfig =
+      agentSelectors.getAgentConfigById(effectiveAgentId)(getAgentStoreState());
+    const isHeterogeneousAgent =
+      !!runtimeAgentConfig?.agencyConfig?.heterogeneousProvider ||
+      !!getHeterogeneousAgentConfig(runtimeAgentConfig?.model ?? '');
 
     // Generate message key from context
     const messageKey = messageMapKey(context);
@@ -614,14 +625,16 @@ export class StreamingExecutorActionImpl {
     try {
       await getAiInfraStoreState().ensureAiProviderRuntimeStateReady();
 
-      const [storedTopicOverride, isTopicModelOverrideLoaded] = this.#readTopicModelOverride(
-        context,
-        effectiveAgentId,
-      );
-      resolvedModelOverride = modelOverride ?? storedTopicOverride;
-      if (!modelOverride && !isTopicModelOverrideLoaded && topicId) {
-        resolvedModelOverride =
-          (await this.#get().internal_fetchTopicModelOverride(topicId)) ?? undefined;
+      if (!isHeterogeneousAgent) {
+        const [storedTopicOverride, isTopicModelOverrideLoaded] = this.#readTopicModelOverride(
+          context,
+          effectiveAgentId,
+        );
+        resolvedModelOverride = modelOverride ?? storedTopicOverride;
+        if (!modelOverride && !isTopicModelOverrideLoaded && topicId) {
+          resolvedModelOverride =
+            (await this.#get().internal_fetchTopicModelOverride(topicId)) ?? undefined;
+        }
       }
 
       const operationContext = this.#get().operations[operationId]?.context;

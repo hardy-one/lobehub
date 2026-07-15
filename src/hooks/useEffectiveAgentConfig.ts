@@ -1,5 +1,6 @@
 'use client';
 
+import { getHeterogeneousAgentConfig } from '@lobechat/heterogeneous-agents';
 import type {
   ChatTopicMetadata,
   ConversationContext,
@@ -44,7 +45,9 @@ export const resolveEffectiveAgentConfig = ({
 }: ResolveEffectiveAgentConfigParams): LobeAgentConfig | undefined => {
   if (!agentConfig) return;
 
-  const isHeterogeneousAgent = !!agentConfig.agencyConfig?.heterogeneousProvider;
+  const isHeterogeneousAgent =
+    !!agentConfig.agencyConfig?.heterogeneousProvider ||
+    !!getHeterogeneousAgentConfig(agentConfig.model);
   const agencyConfig = resolveEffectiveExecutionTargetConfig(
     agentConfig.agencyConfig,
     workspaceOverride,
@@ -85,7 +88,9 @@ export const useEffectiveAgentConfig = (context: EffectiveAgentConfigContext) =>
     s.retryAgentConfigFetch,
   ]);
   const canUseTopicModelOverride =
-    !!agentConfig && !agentConfig.agencyConfig?.heterogeneousProvider;
+    !!agentConfig &&
+    !agentConfig.agencyConfig?.heterogeneousProvider &&
+    !getHeterogeneousAgentConfig(agentConfig.model);
   const [cachedTopicModelOverride, topicInList, topicMetadata, useFetchTopicModelOverride] =
     useChatStore((s) => {
       if (!topicId) {

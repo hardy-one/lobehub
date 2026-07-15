@@ -2615,6 +2615,28 @@ describe('StreamingExecutor actions', () => {
       expect(member.agentConfig.agentConfig.model).not.toBe('topic-model');
     });
 
+    it('does not apply a Topic override to a legacy heterogeneous Agent', () => {
+      vi.spyOn(agentConfigResolver, 'resolveAgentConfig').mockReturnValue(
+        createMockResolvedAgentConfig({
+          agentConfig: createMockAgentConfig({ model: 'codex' }),
+        }),
+      );
+      useChatStore.setState({
+        topicModelOverrideMap: {
+          [TEST_IDS.TOPIC_ID]: { model: 'topic-model', provider: 'topic-provider' },
+        },
+      });
+
+      const resolved = useChatStore.getState().internal_createAgentState({
+        agentId: TEST_IDS.SESSION_ID,
+        messages: [createMockMessage({ role: 'user' })],
+        parentMessageId: TEST_IDS.USER_MESSAGE_ID,
+        topicId: TEST_IDS.TOPIC_ID,
+      });
+
+      expect(resolved.agentConfig.agentConfig.model).toBe('codex');
+    });
+
     it('uses an inherited parent model for a client sub-agent', () => {
       const { result } = renderHook(() => useChatStore());
 

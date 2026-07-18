@@ -537,7 +537,10 @@ const Controls = memo<ControlsProps>(({ setUpdating, updating, variant = 'popove
   );
   const [, refreshFormValues] = useState(0);
 
-  const compressionValue = form.getFieldValue(['chatConfig', 'compression']) ?? 'standard';
+  const compressionMode = form.getFieldValue(['chatConfig', 'compression']);
+  const legacyCompressionEnabled = form.getFieldValue(['chatConfig', 'enableContextCompression']);
+  const compressionValue =
+    compressionMode ?? (legacyCompressionEnabled === false ? 'off' : 'standard');
   const enableMaxTokens = form.getFieldValue(['chatConfig', 'enableMaxTokens']);
   const enableHistoryCount = form.getFieldValue(['chatConfig', 'enableHistoryCount']);
   const historyCountValue = form.getFieldValue(['chatConfig', 'historyCount']);
@@ -767,6 +770,9 @@ const Controls = memo<ControlsProps>(({ setUpdating, updating, variant = 'popove
                   value={compressionValue ?? 'standard'}
                   disabled={!canCreate}
                   onChange={(value) => {
+                    // Keep the legacy field in sync so older clients render the
+                    // same effective mode while new runtimes prefer `compression`.
+                    form.setFieldValue(['chatConfig', 'enableContextCompression'], value !== 'off');
                     handleFieldChange(['chatConfig', 'compression'], value);
                   }}
                 />

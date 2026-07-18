@@ -12,7 +12,14 @@ export interface TokenCountOptions {
   driftMultiplier?: number;
   /** Model's max context window token count */
   maxWindowToken?: number;
-  /** Threshold ratio for triggering compression, default 0.5 */
+  /**
+   * Enable smart threshold strategy:
+   * - Uses 70% threshold ratio (instead of default 50%) when `thresholdRatio` is unset
+   * - Applies 20k minimum free-buffer protection for small context models
+   * - Disables compression for models with ≤32k context
+   */
+  smartThreshold?: boolean;
+  /** Threshold ratio for triggering compression, default 0.5 (or 0.7 when smartThreshold is on) */
   thresholdRatio?: number;
   /**
    * Optional top-level tool definitions for the upcoming LLM call. When
@@ -29,13 +36,53 @@ export const DEFAULT_MAX_CONTEXT = 128_000;
 /** Default threshold ratio (50% of max context) */
 export const DEFAULT_THRESHOLD_RATIO = 0.5;
 
+/** Smart mode threshold ratio (70% of max context) */
+export const SMART_THRESHOLD_RATIO = 0.7;
+
+/**
+ * Smart mode keeps at least this many tokens free for model output / overhead
+ * by capping the compression threshold at `maxWindowToken - buffer`.
+ */
+export const SMART_MIN_BUFFER_TOKENS = 20_000;
+
+/**
+ * Models with a context window at or below this size skip compression entirely
+ * under smart threshold mode (summarization cost outweighs benefit).
+ */
+export const SMART_DISABLE_MAX_CONTEXT = 32_000;
+
+/**
+ * Resolve the effective threshold ratio, honouring an explicit override first.
+ */
+export function resolveThresholdRatio(options: TokenCountOptions = {}): number {
+  if (typeof options.thresholdRatio === 'number') return options.thresholdRatio;
+  return options.smartThreshold ? SMART_THRESHOLD_RATIO : DEFAULT_THRESHOLD_RATIO;
+}
+
 /**
  * Calculate the compression threshold based on max context window
  */
 export function getCompressionThreshold(options: TokenCountOptions = {}): number {
   const maxContext = options.maxWindowToken ?? DEFAULT_MAX_CONTEXT;
-  const ratio = options.thresholdRatio ?? DEFAULT_THRESHOLD_RATIO;
-  return Math.floor(maxContext * ratio);
+  const ratio = resolveThresholdRatio(options);
+  let threshold = Math.floor(maxContext * ratio);
+
+  if (options.smartThreshold) {
+    // Leave a free buffer for completion tokens / tokenizer drift on smaller windows.
+    const maxWithBuffer = Math.max(0, maxContext - SMART_MIN_BUFFER_TOKENS);
+    threshold = Math.min(threshold, maxWithBuffer);
+  }
+
+  return threshold;
+}
+
+/**
+ * Whether smart mode should skip compression for this context window size.
+ */
+export function isSmartCompressionDisabled(options: TokenCountOptions = {}): boolean {
+  if (!options.smartThreshold) return false;
+  const maxContext = options.maxWindowToken ?? DEFAULT_MAX_CONTEXT;
+  return maxContext <= SMART_DISABLE_MAX_CONTEXT;
 }
 
 /**
@@ -54,7 +101,7 @@ export interface CompressionCheckResult {
    * upstream tokenizers actually overflow the model's context window.
    */
   needsCompression: boolean;
-  /** Compression threshold (`maxWindowToken × thresholdRatio`) */
+  /** Compression threshold (`maxWindowToken × thresholdRatio`, with smart caps) */
   threshold: number;
 }
 
@@ -74,6 +121,17 @@ export function shouldCompress(
     options: { driftMultiplier: options.driftMultiplier ?? DEFAULT_DRIFT_MULTIPLIER },
     tools: options.tools,
   });
+
+  if (isSmartCompressionDisabled(options)) {
+    return {
+      currentTokenCount: accounting.rawTotal,
+      needsCompression: false,
+      // Surface the full window as the "threshold" so callers/logs don't treat
+      // the disabled path as "already over budget".
+      threshold: options.maxWindowToken ?? DEFAULT_MAX_CONTEXT,
+    };
+  }
+
   const threshold = getCompressionThreshold(options);
 
   return {

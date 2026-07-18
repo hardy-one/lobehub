@@ -1,7 +1,7 @@
 import type { AgentState } from '@lobechat/agent-runtime';
 import * as agentRuntime from '@lobechat/agent-runtime';
 import type * as LobeChatConst from '@lobechat/const';
-import { type UIChatMessage } from '@lobechat/types';
+import { type LobeAgentChatConfig, type UIChatMessage } from '@lobechat/types';
 import { act, renderHook } from '@testing-library/react';
 import { type EnabledAiModel, ModelProvider } from 'model-bank';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -528,6 +528,7 @@ describe('StreamingExecutor actions', () => {
       expect(getCreatedAgentCompressionConfig(stepSpy)).toEqual({
         enabled: true,
         maxWindowToken: 200_000,
+        smartThreshold: true,
       });
 
       streamSpy.mockRestore();
@@ -573,6 +574,71 @@ describe('StreamingExecutor actions', () => {
       expect(getCreatedAgentCompressionConfig(stepSpy)).toEqual({
         enabled: true,
         maxWindowToken: undefined,
+        smartThreshold: true,
+      });
+
+      streamSpy.mockRestore();
+    });
+
+    it.each([
+      ['disables compression when chatConfig.compression is off', { compression: 'off', enableContextCompression: true }, false],
+      [
+        'keeps an explicit standard mode enabled when the legacy toggle is false',
+        { compression: 'standard', enableContextCompression: false },
+        true,
+      ],
+      ['uses the legacy false toggle when no compression mode is persisted', { enableContextCompression: false }, false],
+    ] as const)('%s', async (_description, chatConfig, enabled) => {
+      act(() => {
+        useChatStore.setState({ executeClientAgent: realExecAgentRuntime });
+      });
+
+      useAiInfraStore.setState({
+        enabledAiModels: [
+          {
+            abilities: { functionCall: true },
+            contextWindowTokens: 200_000,
+            id: 'gpt-4o-mini',
+            providerId: 'openai',
+            type: 'chat',
+          } as EnabledAiModel,
+        ],
+      });
+      vi.spyOn(agentConfigResolver, 'resolveAgentConfig').mockReturnValue({
+        agentConfig: createMockAgentConfig({ model: 'gpt-4o-mini', provider: 'openai' }),
+        chatConfig: createMockChatConfig(chatConfig as Partial<LobeAgentChatConfig>),
+        isBuiltinAgent: false,
+        plugins: [],
+      });
+
+      const stepSpy = vi.spyOn(agentRuntime.AgentRuntime.prototype, 'step');
+      const { result } = renderHook(() => useChatStore());
+      const userMessage = {
+        id: TEST_IDS.USER_MESSAGE_ID,
+        role: 'user',
+        content: TEST_CONTENT.USER_MESSAGE,
+        sessionId: TEST_IDS.SESSION_ID,
+        topicId: TEST_IDS.TOPIC_ID,
+      } as UIChatMessage;
+
+      seedDbMessages({ agentId: TEST_IDS.SESSION_ID, topicId: TEST_IDS.TOPIC_ID }, [userMessage]);
+      const streamSpy = spyOnClientLLMStream(async ({ onFinish }) => {
+        await onFinish?.(TEST_CONTENT.AI_RESPONSE, {} as any);
+      });
+
+      await act(async () => {
+        await result.current.executeClientAgent({
+          context: { agentId: TEST_IDS.SESSION_ID, topicId: TEST_IDS.TOPIC_ID },
+          messages: [userMessage],
+          parentMessageId: userMessage.id,
+          parentMessageType: 'user',
+        });
+      });
+
+      expect(getCreatedAgentCompressionConfig(stepSpy)).toEqual({
+        enabled,
+        maxWindowToken: 200_000,
+        smartThreshold: undefined,
       });
 
       streamSpy.mockRestore();

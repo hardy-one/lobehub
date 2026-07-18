@@ -237,6 +237,38 @@ describe('MessagesEngine', () => {
       });
     });
 
+    it('should not inject agent documents into the model context', async () => {
+      const params = createBasicParams({
+        agentDocuments: [
+          {
+            content: 'This must only be available through readDocument.',
+            filename: 'cache-sensitive.md',
+            id: 'agent-doc-cache-sensitive',
+            loadPosition: 'before-first-user',
+            loadRules: { rule: 'always' },
+            policyLoad: 'always',
+            title: 'Cache Sensitive Document',
+          },
+          {
+            content: 'This must not produce an agent_documents_index.',
+            filename: 'progressive.md',
+            id: 'agent-doc-progressive',
+            loadPosition: 'context-end',
+            loadRules: { rule: 'always' },
+            policyLoad: 'progressive',
+            title: 'Progressive Document',
+          },
+        ],
+      });
+
+      const result = await new MessagesEngine(params).process();
+      const content = result.messages.map((message) => message.content).join('\n');
+
+      expect(content).not.toContain('This must only be available through readDocument.');
+      expect(content).not.toContain('This must not produce an agent_documents_index.');
+      expect(content).not.toContain('<agent_documents_index>');
+    });
+
     it('should inject system role when provided', async () => {
       const systemRole = 'You are a helpful assistant';
       const params = createBasicParams({ systemRole });

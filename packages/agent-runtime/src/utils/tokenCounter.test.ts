@@ -5,22 +5,42 @@ import {
   DEFAULT_MAX_CONTEXT,
   DEFAULT_THRESHOLD_RATIO,
   getCompressionThreshold,
+  isSmartCompressionDisabled,
+  resolveThresholdRatio,
   shouldCompress,
+  SMART_DISABLE_MAX_CONTEXT,
+  SMART_MIN_BUFFER_TOKENS,
+  SMART_THRESHOLD_RATIO,
 } from './tokenCounter';
 
 // Test fixtures only set the fields shouldCompress / countContextTokens read.
-const mkMsg = (m: Partial<UIChatMessage> & { role: UIChatMessage['role'] }): UIChatMessage =>
+const mkMsg = (partial: Partial<UIChatMessage> & { role: UIChatMessage['role'] }): UIChatMessage =>
   ({
     content: '',
-    createdAt: 0,
-    id: 'm',
-    updatedAt: 0,
-    ...m,
+    createdAt: Date.now(),
+    id: 'msg',
+    meta: {},
+    updatedAt: Date.now(),
+    ...partial,
   }) as UIChatMessage;
 
 describe('tokenCounter', () => {
+  describe('resolveThresholdRatio', () => {
+    it('defaults to 0.5', () => {
+      expect(resolveThresholdRatio()).toBe(DEFAULT_THRESHOLD_RATIO);
+    });
+
+    it('uses 0.7 when smartThreshold is on', () => {
+      expect(resolveThresholdRatio({ smartThreshold: true })).toBe(SMART_THRESHOLD_RATIO);
+    });
+
+    it('honours an explicit thresholdRatio over smartThreshold', () => {
+      expect(resolveThresholdRatio({ smartThreshold: true, thresholdRatio: 0.9 })).toBe(0.9);
+    });
+  });
+
   describe('getCompressionThreshold', () => {
-    it('should use default values', () => {
+    it('should use default max context and threshold ratio', () => {
       const threshold = getCompressionThreshold();
       expect(threshold).toBe(Math.floor(DEFAULT_MAX_CONTEXT * DEFAULT_THRESHOLD_RATIO));
       expect(threshold).toBe(64_000); // 128k * 0.5
@@ -50,6 +70,48 @@ describe('tokenCounter', () => {
         thresholdRatio: 0.33,
       });
       expect(threshold).toBe(33); // floor(100 * 0.33) = 33
+    });
+
+    it('should use 70% ratio under smartThreshold', () => {
+      const threshold = getCompressionThreshold({
+        maxWindowToken: 200_000,
+        smartThreshold: true,
+      });
+      expect(threshold).toBe(140_000); // 200k * 0.7; buffer (180k) does not bind
+    });
+
+    it('should cap threshold by min free buffer under smartThreshold', () => {
+      // 64k * 0.7 = 44_800, but maxWithBuffer = 64k - 20k = 44_000
+      const threshold = getCompressionThreshold({
+        maxWindowToken: 64_000,
+        smartThreshold: true,
+      });
+      expect(threshold).toBe(64_000 - SMART_MIN_BUFFER_TOKENS);
+      expect(threshold).toBe(44_000);
+    });
+  });
+
+  describe('isSmartCompressionDisabled', () => {
+    it('is false when smartThreshold is off', () => {
+      expect(isSmartCompressionDisabled({ maxWindowToken: 16_000 })).toBe(false);
+    });
+
+    it('is true at or below 32k with smartThreshold', () => {
+      expect(
+        isSmartCompressionDisabled({
+          maxWindowToken: SMART_DISABLE_MAX_CONTEXT,
+          smartThreshold: true,
+        }),
+      ).toBe(true);
+      expect(isSmartCompressionDisabled({ maxWindowToken: 16_000, smartThreshold: true })).toBe(
+        true,
+      );
+    });
+
+    it('is false above 32k with smartThreshold', () => {
+      expect(isSmartCompressionDisabled({ maxWindowToken: 32_001, smartThreshold: true })).toBe(
+        false,
+      );
     });
   });
 
@@ -162,6 +224,61 @@ describe('tokenCounter', () => {
 
       expect(withTools.needsCompression).toBe(true);
       expect(withTools.currentTokenCount).toBeGreaterThan(withoutTools.currentTokenCount);
+    });
+
+    it('should not compress ≤32k models under smartThreshold even when over 50% usage', () => {
+      const result = shouldCompress(
+        [
+          mkMsg({
+            role: 'assistant',
+            metadata: { usage: { totalOutputTokens: 30_000 } as any } as any,
+          }),
+        ],
+        {
+          driftMultiplier: 1,
+          maxWindowToken: 32_000,
+          smartThreshold: true,
+        },
+      );
+
+      expect(result.needsCompression).toBe(false);
+      expect(result.threshold).toBe(32_000);
+      expect(result.currentTokenCount).toBe(30_000);
+    });
+
+    it('should use smart 70% threshold for large windows', () => {
+      // 200k * 0.7 = 140k; 130k raw with drift=1 stays under
+      const under = shouldCompress(
+        [
+          mkMsg({
+            role: 'assistant',
+            metadata: { usage: { totalOutputTokens: 130_000 } as any } as any,
+          }),
+        ],
+        {
+          driftMultiplier: 1,
+          maxWindowToken: 200_000,
+          smartThreshold: true,
+        },
+      );
+      expect(under.needsCompression).toBe(false);
+      expect(under.threshold).toBe(140_000);
+
+      const over = shouldCompress(
+        [
+          mkMsg({
+            role: 'assistant',
+            metadata: { usage: { totalOutputTokens: 140_001 } as any } as any,
+          }),
+        ],
+        {
+          driftMultiplier: 1,
+          maxWindowToken: 200_000,
+          smartThreshold: true,
+        },
+      );
+      expect(over.needsCompression).toBe(true);
+      expect(over.threshold).toBe(140_000);
     });
   });
 });

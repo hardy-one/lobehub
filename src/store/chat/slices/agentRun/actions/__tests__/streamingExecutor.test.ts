@@ -527,6 +527,7 @@ describe('StreamingExecutor actions', () => {
       expect(getCreatedAgentCompressionConfig(stepSpy)).toEqual({
         enabled: true,
         maxWindowToken: 200_000,
+        smartThreshold: true,
       });
 
       streamSpy.mockRestore();
@@ -572,6 +573,63 @@ describe('StreamingExecutor actions', () => {
       expect(getCreatedAgentCompressionConfig(stepSpy)).toEqual({
         enabled: true,
         maxWindowToken: undefined,
+        smartThreshold: true,
+      });
+
+      streamSpy.mockRestore();
+    });
+
+    it('should disable compression when chatConfig.compression is off', async () => {
+      act(() => {
+        useChatStore.setState({ executeClientAgent: realExecAgentRuntime });
+      });
+
+      useAiInfraStore.setState({
+        enabledAiModels: [
+          {
+            abilities: { functionCall: true },
+            contextWindowTokens: 200_000,
+            id: 'gpt-4o-mini',
+            providerId: 'openai',
+            type: 'chat',
+          } as EnabledAiModel,
+        ],
+      });
+      vi.spyOn(agentConfigResolver, 'resolveAgentConfig').mockReturnValue({
+        agentConfig: createMockAgentConfig({ model: 'gpt-4o-mini', provider: 'openai' }),
+        chatConfig: createMockChatConfig({ compression: 'off', enableContextCompression: true }),
+        isBuiltinAgent: false,
+        plugins: [],
+      });
+
+      const stepSpy = vi.spyOn(agentRuntime.AgentRuntime.prototype, 'step');
+      const { result } = renderHook(() => useChatStore());
+      const userMessage = {
+        id: TEST_IDS.USER_MESSAGE_ID,
+        role: 'user',
+        content: TEST_CONTENT.USER_MESSAGE,
+        sessionId: TEST_IDS.SESSION_ID,
+        topicId: TEST_IDS.TOPIC_ID,
+      } as UIChatMessage;
+
+      seedDbMessages({ agentId: TEST_IDS.SESSION_ID, topicId: TEST_IDS.TOPIC_ID }, [userMessage]);
+      const streamSpy = spyOnClientLLMStream(async ({ onFinish }) => {
+        await onFinish?.(TEST_CONTENT.AI_RESPONSE, {} as any);
+      });
+
+      await act(async () => {
+        await result.current.executeClientAgent({
+          context: { agentId: TEST_IDS.SESSION_ID, topicId: TEST_IDS.TOPIC_ID },
+          messages: [userMessage],
+          parentMessageId: userMessage.id,
+          parentMessageType: 'user',
+        });
+      });
+
+      expect(getCreatedAgentCompressionConfig(stepSpy)).toEqual({
+        enabled: false,
+        maxWindowToken: 200_000,
+        smartThreshold: undefined,
       });
 
       streamSpy.mockRestore();

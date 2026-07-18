@@ -648,16 +648,20 @@ export class StreamingExecutorActionImpl {
     )(getAiInfraStoreState());
 
     // Derive compression config from agent settings with upstream backward compatibility.
-    // enableContextCompression is the master toggle (upstream compat, default: true).
-    // compression is the mode selector: 'standard' (50%), 'smart' (70% + 32k protection).
-    // Only enable smart threshold when compression mode is 'smart'.
-    const compressionMode = agentConfigData.chatConfig?.compression;
+    // enableContextCompression is the legacy master toggle (default: true).
+    // compression is the mode selector: 'off' | 'standard' (50%) | 'smart' (70% + 32k protection).
+    // Prefer the resolved top-level chatConfig (same source as skillActivateMode),
+    // falling back to nested agentConfig.chatConfig for partial mocks/legacy paths.
+    const chatConfig = agentConfig.chatConfig ?? agentConfigData.chatConfig;
+    const compressionMode = chatConfig?.compression;
+    const compressionEnabled =
+      compressionMode === 'off' ? false : (chatConfig?.enableContextCompression ?? true);
     const smartThreshold = compressionMode === 'smart' ? true : undefined;
 
     const agent = new GeneralChatAgent({
       agentConfig: { maxSteps: 1000 },
       compressionConfig: {
-        enabled: agentConfigData.chatConfig?.enableContextCompression ?? true,
+        enabled: compressionEnabled,
         maxWindowToken: contextWindowTokens ?? undefined,
         smartThreshold,
       },

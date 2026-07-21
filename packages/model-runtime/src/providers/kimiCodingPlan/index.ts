@@ -37,10 +37,6 @@ const isKimiToggleThinkingModel = (model: string) =>
 const isKimiNativeThinkingModel = (model: string) =>
   model === 'k2p7' || model === 'kimi-for-coding-highspeed' || model.startsWith('kimi-k2-thinking');
 
-// K2.5-class sampling defaults
-const isKimiK25Model = (model: string) =>
-  model === 'kimi-k2.5' || model === 'k2p5' || model === 'kimi-for-coding';
-
 const isKimiThinkingModel = (model: string) =>
   isKimiToggleThinkingModel(model) || isKimiNativeThinkingModel(model);
 const isEmptyContent = (content: any) =>
@@ -91,10 +87,10 @@ const buildKimiCodingPlanAnthropicPayload = async (
 ): Promise<Anthropic.MessageCreateParams> => {
   const resolvedMaxTokens = payload.max_tokens ?? KIMI_MODEL_MAX_OUTPUT[payload.model] ?? 8192;
 
-  const isK25 = isKimiK25Model(payload.model);
   const isNativeThinking = isKimiNativeThinkingModel(payload.model);
   const isThinkingEnabled =
-    isKimiThinkingModel(payload.model) && payload.thinking?.type !== 'disabled';
+    isNativeThinking ||
+    (isKimiToggleThinkingModel(payload.model) && payload.thinking?.type !== 'disabled');
 
   const basePayload = await buildDefaultAnthropicPayload({
     ...payload,
@@ -103,7 +99,7 @@ const buildKimiCodingPlanAnthropicPayload = async (
   });
 
   if (!isKimiThinkingModel(payload.model)) {
-    const { thinking, ...rest } = basePayload;
+    const { thinking: _thinking, ...rest } = basePayload;
     return rest;
   }
 

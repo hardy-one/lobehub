@@ -250,6 +250,32 @@ describe('LobeKimiCodingPlanAI', () => {
         ]);
       });
 
+      it.each(['k2p7', 'kimi-for-coding-highspeed', 'kimi-k2-thinking'])(
+        'should preserve thinking history for native thinking model %s when thinking is disabled',
+        async (model) => {
+          await instance.chat({
+            messages: [
+              { content: 'Hello', role: 'user' },
+              { content: 'Response', role: 'assistant' },
+              { content: 'Follow-up', role: 'user' },
+            ],
+            model,
+            thinking: { budget_tokens: 0, type: 'disabled' },
+          });
+
+          const payload = getLastRequestPayload();
+          const assistantMessage = payload.messages.find(
+            (message: any) => message.role === 'assistant',
+          );
+
+          expect(payload.thinking).toEqual({ budget_tokens: 1024, type: 'enabled' });
+          expect(assistantMessage?.content).toEqual([
+            { type: 'thinking', thinking: ' ' },
+            { type: 'text', text: 'Response' },
+          ]);
+        },
+      );
+
       it('should force thinking block on assistant messages for kimi-k2.5 with thinking enabled', async () => {
         await instance.chat({
           messages: [

@@ -52,8 +52,7 @@ describe('OpenCodeZen routers', () => {
     const anthropicRouter = routers.find((router) => router.apiType === 'anthropic');
     const googleRouter = routers.find((router) => router.apiType === 'google');
     const responseRouter = routers.find(
-      (router) =>
-        router.apiType === 'openai' && router.models?.includes('gateway-response-model'),
+      (router) => router.apiType === 'openai' && router.models?.includes('gateway-response-model'),
     );
 
     expect(anthropicRouter?.models).toContain('gateway-anthropic-model');
@@ -110,8 +109,8 @@ describe('OpenCodeZen models', () => {
     const models = await params.models({
       client: {
         models: { list: vi.fn().mockResolvedValue({ data: [{ id: 'test-reasoning-model' }] }) },
-      },
-    } as Parameters<typeof params.models>[0]);
+      } as any,
+    });
 
     expect(models).toEqual(
       expect.arrayContaining([

@@ -1,5 +1,4 @@
-import type { ModelProviderKey } from 'model-bank';
-
+import type { ModelProviderKey } from '../../types';
 import { processMultiProviderModelList } from '../../utils/modelParse';
 
 export const MODELS_DEV_URL = 'https://models.dev/api.json';

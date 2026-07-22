@@ -159,6 +159,61 @@ describe('GatewayStreamNotifier', () => {
       expect(urls).toContain(`${gatewayUrl}/api/operations/init`);
       expect(urls).toContain(`${gatewayUrl}/api/operations/push-event`);
     });
+
+    it('keeps init, step_start, and stream_start in delivery order', async () => {
+      const resolvers: Array<() => void> = [];
+      const pendingResponse = () =>
+        new Promise<{ ok: boolean; text: () => Promise<string> }>((resolve) => {
+          resolvers.push(() => resolve({ ok: true, text: () => Promise.resolve('') }));
+        });
+      const flush = async () => {
+        for (let i = 0; i < 10; i += 1) await Promise.resolve();
+      };
+      const resolveNext = () => {
+        const resolve = resolvers.shift();
+        if (!resolve) throw new Error('Expected a pending Gateway request');
+        resolve();
+      };
+
+      mockFetch
+        .mockImplementationOnce(pendingResponse)
+        .mockImplementationOnce(pendingResponse)
+        .mockImplementationOnce(pendingResponse)
+        .mockImplementationOnce(pendingResponse);
+
+      await notifier.publishAgentRuntimeInit('op-1', { userId: 'user-1' });
+      await notifier.publishStreamEvent('op-1', {
+        data: { uiMessages: [] },
+        stepIndex: 0,
+        type: 'step_start',
+      });
+      await notifier.publishStreamEvent('op-1', {
+        data: { assistantMessage: { id: 'assistant-1' } },
+        stepIndex: 0,
+        type: 'stream_start',
+      });
+
+      await flush();
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch.mock.calls[0][0]).toBe(`${gatewayUrl}/api/operations/init`);
+
+      resolveNext();
+      await flush();
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(JSON.parse(mockFetch.mock.calls[1][1].body).event.type).toBe('agent_runtime_init');
+
+      resolveNext();
+      await flush();
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(JSON.parse(mockFetch.mock.calls[2][1].body).event.type).toBe('step_start');
+
+      resolveNext();
+      await flush();
+      expect(mockFetch).toHaveBeenCalledTimes(4);
+      expect(JSON.parse(mockFetch.mock.calls[3][1].body).event.type).toBe('stream_start');
+
+      resolveNext();
+    });
   });
 
   describe('publishAgentRuntimeEnd', () => {

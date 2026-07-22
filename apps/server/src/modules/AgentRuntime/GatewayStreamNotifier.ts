@@ -15,15 +15,33 @@ const log = debug('lobe-server:agent-runtime:gateway-notifier');
 const POST_TIMEOUT = 5000; // 5s per request
 const MAX_INFLIGHT = 20; // bounded concurrency
 
+interface GatewayDeliveryState {
+  /** Latest lifecycle boundary that chunks must not overtake. */
+  barrier: Promise<void>;
+  /** All requests already scheduled for this operation. */
+  pending: Set<Promise<void>>;
+}
+
 /**
  * Decorator that wraps an IStreamEventManager and additionally
- * pushes events to the Agent Gateway via HTTP (fire-and-forget).
+ * pushes events to the Agent Gateway via HTTP.
  *
  * Redis SSE remains the primary event storage / subscription mechanism.
  * The Gateway is an additional push channel for WebSocket delivery.
  */
 export class GatewayStreamNotifier implements IStreamEventManager {
   private inflight = 0;
+
+  /**
+   * HTTP requests may reach the gateway in a different order from their
+   * publication order. Keep lifecycle boundaries ordered per operation so a
+   * client cannot receive `stream_start` before its `step_start` snapshot.
+   *
+   * Stream chunks only wait for the most recent boundary, then fan out in
+   * parallel. This keeps first-token latency and stream throughput independent
+   * of per-request Gateway round-trip time.
+   */
+  private readonly deliveryStates = new Map<string, GatewayDeliveryState>();
 
   /**
    * `operationId → mirrorOperationId`. When an operation declares a
@@ -41,7 +59,7 @@ export class GatewayStreamNotifier implements IStreamEventManager {
    *    empty. `pushEvent` then lazily resolves the target from PERSISTED op
    *    metadata via `resolveMirrorTarget` (Redis) on the op's first event and
    *    caches it — converging the worker onto the same mapping.
-   * Cleared at `publishAgentRuntimeEnd`.
+   * Cleared after the queued `publishAgentRuntimeEnd` delivery completes.
    */
   private mirrorTargets = new Map<string, string>();
   /** Ops whose mirror target has been resolved (target found OR confirmed none). */
@@ -73,11 +91,11 @@ export class GatewayStreamNotifier implements IStreamEventManager {
     const gatewayEvent = { ...event, operationId, timestamp: Date.now() };
     if (event.type === 'stream_end') {
       // `visible_output_end` may be published immediately after `stream_end`.
-      // Await the Gateway push for this boundary so the client applies
-      // stream_end.finalContent before closing visible loading/reasoning.
-      await this.pushEvent(operationId, gatewayEvent);
+      // Wait for all earlier chunks plus this boundary so the client applies
+      // finalContent before closing visible loading/reasoning.
+      await this.enqueueOrderedPush(operationId, gatewayEvent);
     } else {
-      void this.pushEvent(operationId, gatewayEvent);
+      void this.enqueueOrderedPush(operationId, gatewayEvent);
     }
     return result;
   }
@@ -88,7 +106,7 @@ export class GatewayStreamNotifier implements IStreamEventManager {
     chunkData: StreamChunkData,
   ): Promise<string> {
     const result = await this.inner.publishStreamChunk(operationId, stepIndex, chunkData);
-    void this.pushEvent(operationId, {
+    void this.enqueueChunkPush(operationId, {
       data: chunkData,
       operationId,
       stepIndex,
@@ -110,17 +128,18 @@ export class GatewayStreamNotifier implements IStreamEventManager {
       log('mirror registered: %s → %s', operationId, mirrorTo);
     }
 
-    this.httpPost('/api/operations/init', {
-      operationId,
-      userId: initialState?.userId || 'unknown',
-    });
-
-    void this.pushEvent(operationId, {
-      data: initialState,
-      operationId,
-      stepIndex: 0,
-      timestamp: Date.now(),
-      type: 'agent_runtime_init',
+    void this.enqueueOrderedDelivery(operationId, async () => {
+      await this.httpPost('/api/operations/init', {
+        operationId,
+        userId: initialState?.userId || 'unknown',
+      });
+      await this.pushEvent(operationId, {
+        data: initialState,
+        operationId,
+        stepIndex: 0,
+        timestamp: Date.now(),
+        type: 'agent_runtime_init',
+      });
     });
 
     return result;
@@ -133,7 +152,7 @@ export class GatewayStreamNotifier implements IStreamEventManager {
     const effectiveReasonDetail = reasonDetail || getDefaultReasonDetail(finalState, reason);
     const errorType = finalState?.error?.type || finalState?.error?.errorType;
 
-    void this.pushEvent(operationId, {
+    const terminalDelivery = this.enqueueOrderedPush(operationId, {
       // Forward `uiMessages` to the gateway push channel so terminal-state
       // clients consuming /push-event get the canonical UIChatMessage[]
       // snapshot — the final step has no later step_start to carry a fresh
@@ -151,11 +170,13 @@ export class GatewayStreamNotifier implements IStreamEventManager {
       type: 'agent_runtime_end',
     });
 
-    // Terminal event has been forwarded (including any mirror); drop the mapping
-    // so it can't leak across a reused operationId.
-    this.mirrorTargets.delete(operationId);
-    this.mirrorResolved.delete(operationId);
-    this.mirrorResolving.delete(operationId);
+    // Drop the mapping only after the queued terminal event has reached every
+    // delivery channel, otherwise its mirrored copy would be skipped.
+    void terminalDelivery.finally(() => {
+      this.mirrorTargets.delete(operationId);
+      this.mirrorResolved.delete(operationId);
+      this.mirrorResolving.delete(operationId);
+    });
 
     return result;
   }
@@ -207,6 +228,68 @@ export class GatewayStreamNotifier implements IStreamEventManager {
   }
 
   // ─── Gateway HTTP helpers ───
+
+  private enqueueOrderedPush(operationId: string, event: Record<string, unknown>): Promise<void> {
+    return this.enqueueOrderedDelivery(operationId, () => this.pushEvent(operationId, event));
+  }
+
+  private enqueueChunkPush(operationId: string, event: Record<string, unknown>): Promise<void> {
+    const state = this.getDeliveryState(operationId);
+    const delivery = state.barrier
+      .then(() => this.pushEvent(operationId, event))
+      .catch((error) => {
+        log('Gateway chunk push failed for operation %s: %O', operationId, error);
+      });
+
+    this.trackDelivery(operationId, state, delivery);
+    return delivery;
+  }
+
+  private enqueueOrderedDelivery(
+    operationId: string,
+    delivery: () => Promise<void>,
+  ): Promise<void> {
+    const state = this.getDeliveryState(operationId);
+    const previousDeliveries = [...state.pending];
+    const runDelivery = async () => {
+      try {
+        await delivery();
+      } catch (error) {
+        log('Gateway ordered push failed for operation %s: %O', operationId, error);
+      }
+    };
+    const queued =
+      previousDeliveries.length === 0
+        ? runDelivery()
+        : Promise.allSettled(previousDeliveries).then(runDelivery);
+
+    state.barrier = queued;
+    this.trackDelivery(operationId, state, queued);
+    return queued;
+  }
+
+  private getDeliveryState(operationId: string): GatewayDeliveryState {
+    let state = this.deliveryStates.get(operationId);
+    if (!state) {
+      state = { barrier: Promise.resolve(), pending: new Set() };
+      this.deliveryStates.set(operationId, state);
+    }
+    return state;
+  }
+
+  private trackDelivery(
+    operationId: string,
+    state: GatewayDeliveryState,
+    delivery: Promise<void>,
+  ): void {
+    state.pending.add(delivery);
+    void delivery.finally(() => {
+      state.pending.delete(delivery);
+      if (state.pending.size === 0 && this.deliveryStates.get(operationId) === state) {
+        this.deliveryStates.delete(operationId);
+      }
+    });
+  }
 
   private async pushEvent(operationId: string, event: Record<string, unknown>): Promise<void> {
     // Mirror the Redis publisher's chokepoint — strip

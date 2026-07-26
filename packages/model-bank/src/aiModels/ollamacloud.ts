@@ -367,62 +367,6 @@ const ollamaCloudModels: AIChatModelCard[] = [
     abilities: {
       functionCall: true,
       reasoning: true,
-      vision: true,
-    },
-    contextWindowTokens: 262_144,
-    description:
-      "Kimi K2.7 Code is Moonshot AI's coding-focused agentic model built upon Kimi K2.6, with substantial improvements on real-world long-horizon coding tasks and roughly 30% lower thinking-token usage.",
-    displayName: 'Kimi K2.7 Code',
-    enabled: true,
-    family: 'kimi',
-    generation: 'kimi-k2.7',
-    id: 'kimi-k2.7-code',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningEffort'],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
-      reasoning: true,
-      vision: true,
-    },
-    contextWindowTokens: 524_288,
-    description:
-      'MiniMax M3 achieves top-tier performance on coding and agentic benchmarks, with autonomous task decomposition, tool invocation, and multi-step reasoning capabilities. Powered by MiniMax Sparse Attention (MSA) architecture, it supports up to 1M tokens context window with a guaranteed minimum of 512K tokens.',
-    displayName: 'MiniMax M3',
-    enabled: true,
-    family: 'minimax',
-    generation: 'minimax-m3',
-    id: 'minimax-m3',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningEffort'],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
-      reasoning: true,
-    },
-    contextWindowTokens: 1_048_576,
-    description:
-      "GLM-5.2 is Z.ai's flagship model for the era of long-horizon tasks, with a truly usable 1M-token context window, stronger coding capabilities with multiple thinking effort levels, and an MIT open-source license.",
-    displayName: 'GLM-5.2',
-    enabled: true,
-    family: 'glm',
-    generation: 'glm-5.2',
-    id: 'glm-5.2',
-    settings: {
-      extendParams: ['enableReasoning', 'reasoningEffort'],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
-      reasoning: true,
     },
     contextWindowTokens: 262_144,
     description:

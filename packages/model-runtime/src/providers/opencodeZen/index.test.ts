@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { __resetModelsDevCacheForTests } from '../utils/modelsDev';
+import { __resetModelsDevCacheForTests, fetchModelsDevRoutingMetadata } from '../utils/modelsDev';
 import { params } from './index';
 
 const resolveRouters = async (model?: string) =>
@@ -48,6 +48,7 @@ describe('OpenCodeZen routers', () => {
       }),
     );
 
+    await fetchModelsDevRoutingMetadata('opencode');
     const routers = await resolveRouters('gateway-anthropic-model');
     const anthropicRouter = routers.find((router) => router.apiType === 'anthropic');
     const googleRouter = routers.find((router) => router.apiType === 'google');
@@ -106,6 +107,7 @@ describe('OpenCodeZen models', () => {
       }),
     );
 
+    await fetchModelsDevRoutingMetadata('opencode');
     const models = await params.models({
       client: {
         models: { list: vi.fn().mockResolvedValue({ data: [{ id: 'test-reasoning-model' }] }) },

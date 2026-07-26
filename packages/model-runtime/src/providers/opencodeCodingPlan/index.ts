@@ -1,4 +1,4 @@
-import { LOBE_DEFAULT_MODEL_LIST, ModelProvider } from 'model-bank';
+import { LOBE_DEFAULT_MODEL_LIST, ModelProvider, opencodecodingplan } from 'model-bank';
 import type OpenAI from 'openai';
 
 import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
@@ -10,7 +10,11 @@ import {
   isKimiReasoningEffortModel,
   isKimiReasoningModel,
 } from '../moonshot/modelId';
-import { fetchModelsDevRoutingMetadata, resolveModelsDevModelList } from '../utils/modelsDev';
+import {
+  getCachedModelsDevRoutingMetadata,
+  refreshModelsDevApi,
+  resolveModelsDevModelList,
+} from '../utils/modelsDev';
 import { resolveProviderRouteModels } from '../utils/resolveProviderRouteModels';
 
 // ============================================================================
@@ -60,8 +64,9 @@ const getInterleavedModelIds = (): ReadonlySet<string> => {
  * to call from `routers` (which receives `ClientOptions` only and has no
  * `client` property during normal chat routing).
  */
-const getRoutingMetadata = async () => {
-  const metadata = await fetchModelsDevRoutingMetadata('opencode-go');
+const getRoutingMetadata = () => {
+  const metadata = getCachedModelsDevRoutingMetadata('opencode-go');
+  refreshModelsDevApi();
 
   if (metadata.interleavedModelIds.size > 0) {
     cachedInterleavedIds = metadata.interleavedModelIds;
@@ -71,19 +76,14 @@ const getRoutingMetadata = async () => {
 
   // Fallback: prefix-match the static model-bank list. Equivalent to the
   // pre-refactor hard-coded behavior when models.dev is unreachable.
-  try {
-    const { opencodecodingplan } = await import('model-bank');
-    return {
-      ...metadata,
-      modelIdsBySdk: {
-        '@ai-sdk/anthropic': opencodecodingplan
-          .map((model) => model.id)
-          .filter((id) => ANTHROPIC_MODEL_PREFIXES.some((prefix) => id.startsWith(prefix))),
-      },
-    };
-  } catch {
-    return metadata;
-  }
+  return {
+    ...metadata,
+    modelIdsBySdk: {
+      '@ai-sdk/anthropic': opencodecodingplan
+        .map((model) => model.id)
+        .filter((id) => ANTHROPIC_MODEL_PREFIXES.some((prefix) => id.startsWith(prefix))),
+    },
+  };
 };
 
 // ============================================================================
@@ -307,10 +307,10 @@ export const params = {
       providerId: 'opencodecodingplan',
     });
   },
-  routers: async (options, runtimeContext?: { model?: string }) => {
+  routers: (options, runtimeContext?: { model?: string }) => {
     const baseURL = options.baseURL || GO_BASE_URL;
 
-    const { modelIdsBySdk } = await getRoutingMetadata();
+    const { modelIdsBySdk } = getRoutingMetadata();
     const anthropicModels = modelIdsBySdk['@ai-sdk/anthropic'] ?? [];
     const googleModels = modelIdsBySdk['@ai-sdk/google'] ?? [];
     const responseModels = modelIdsBySdk['@ai-sdk/openai'] ?? [];

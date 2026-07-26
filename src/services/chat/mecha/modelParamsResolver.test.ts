@@ -458,6 +458,29 @@ describe('resolveModelExtendParams', () => {
       });
     });
 
+    it.each([
+      ['glm5_2ReasoningEffort', 'glm5_2ReasoningEffort', 'max', 'glm-5.2'],
+      ['grok4_5ReasoningEffort', 'grok4_5ReasoningEffort', 'high', 'grok-4.5'],
+    ] as const)(
+      'uses the shared resolver for %s',
+      (extendParam, configKey, value, model) => {
+        vi.spyOn(aiModelSelectors.aiModelSelectors, 'isModelHasExtendParams').mockReturnValue(
+          () => true,
+        );
+        vi.spyOn(aiModelSelectors.aiModelSelectors, 'modelExtendParams').mockReturnValue(() => [
+          extendParam,
+        ]);
+
+        const result = resolveModelExtendParams({
+          chatConfig: { [configKey]: value } as any,
+          model,
+          provider: 'test-provider',
+        });
+
+        expect(result.reasoning_effort).toBe(value);
+      },
+    );
+
     describe('reasoningMode param', () => {
       beforeEach(() => {
         vi.spyOn(aiModelSelectors.aiModelSelectors, 'isModelHasExtendParams').mockReturnValue(

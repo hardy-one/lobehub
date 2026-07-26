@@ -3,6 +3,9 @@ import type { ModelProviderKey } from 'model-bank';
 import { processMultiProviderModelList } from '../../utils/modelParse';
 
 export const MODELS_DEV_URL = 'https://models.dev/api.json';
+export const MODELS_DEV_CACHE_TTL_MS = 5 * 60 * 1000;
+export const MODELS_DEV_RETRY_DELAY_MS = 30 * 1000;
+export const MODELS_DEV_TIMEOUT_MS = 2_000;
 
 export interface ModelsDevReasoningOption {
   max?: number;
@@ -50,24 +53,56 @@ type ModelsDevData = Record<
 >;
 
 let cachedApiJson: ModelsDevData | null = null;
-let fetchFailed = false;
+let cacheExpiresAt = 0;
+let fetchInFlight: Promise<ModelsDevData | null> | undefined;
+let nextRetryAt = 0;
 
 /**
- * Fetch and cache the full models.dev catalog for the process lifetime.
+ * Fetch and cache the full models.dev catalog. Callers on inference paths must
+ * use the synchronous cached accessors below and refresh in the background.
  */
 export const fetchModelsDevApi = async (): Promise<ModelsDevData | null> => {
-  if (cachedApiJson) return cachedApiJson;
-  if (fetchFailed) return null;
+  const now = Date.now();
+  if (cachedApiJson && now < cacheExpiresAt) return cachedApiJson;
+  if (fetchInFlight) return fetchInFlight;
+  if (now < nextRetryAt) return cachedApiJson;
 
-  try {
-    const res = await fetch(MODELS_DEV_URL);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    cachedApiJson = (await res.json()) as ModelsDevData;
-    return cachedApiJson;
-  } catch {
-    fetchFailed = true;
-    return null;
-  }
+  fetchInFlight = (async () => {
+    try {
+      const res = await fetch(MODELS_DEV_URL, {
+        signal: AbortSignal.timeout(MODELS_DEV_TIMEOUT_MS),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      cachedApiJson = (await res.json()) as ModelsDevData;
+      cacheExpiresAt = Date.now() + MODELS_DEV_CACHE_TTL_MS;
+      nextRetryAt = 0;
+      return cachedApiJson;
+    } catch {
+      nextRetryAt = Date.now() + MODELS_DEV_RETRY_DELAY_MS;
+      return cachedApiJson;
+    } finally {
+      fetchInFlight = undefined;
+    }
+  })();
+
+  return fetchInFlight;
+};
+
+/** Start a non-blocking refresh of the models.dev catalog. */
+export const refreshModelsDevApi = (): void => {
+  void fetchModelsDevApi();
+};
+
+const getCachedModelsDevData = (): ModelsDevData | null => cachedApiJson;
+
+/** Read cached provider metadata without making a network request. */
+export const getCachedModelsDevProvider = (
+  modelsDevProvider: string,
+): Record<string, ModelsDevModel> => {
+  const models = getCachedModelsDevData()?.[modelsDevProvider]?.models;
+  if (!models || typeof models !== 'object') return {};
+  return models;
 };
 
 /**
@@ -82,14 +117,9 @@ export const fetchModelsDevProvider = async (
   return models;
 };
 
-/**
- * Derive runtime routing metadata from a models.dev provider catalog.
- */
-export const fetchModelsDevRoutingMetadata = async (
-  modelsDevProvider: string,
-): Promise<ModelsDevRoutingMetadata> => {
-  const data = await fetchModelsDevApi();
-  const provider = data?.[modelsDevProvider];
+const toRoutingMetadata = (
+  provider: ModelsDevData[string] | undefined,
+): ModelsDevRoutingMetadata => {
   const models = Object.values(provider?.models ?? {});
   const modelIdsBySdk: Record<string, string[]> = {};
 
@@ -114,6 +144,21 @@ export const fetchModelsDevRoutingMetadata = async (
     ),
     modelIdsBySdk,
   };
+};
+
+/** Read cached routing metadata without making a network request. */
+export const getCachedModelsDevRoutingMetadata = (
+  modelsDevProvider: string,
+): ModelsDevRoutingMetadata => toRoutingMetadata(getCachedModelsDevData()?.[modelsDevProvider]);
+
+/**
+ * Derive runtime routing metadata from a models.dev provider catalog.
+ */
+export const fetchModelsDevRoutingMetadata = async (
+  modelsDevProvider: string,
+): Promise<ModelsDevRoutingMetadata> => {
+  const data = await fetchModelsDevApi();
+  return toRoutingMetadata(data?.[modelsDevProvider]);
 };
 
 /**
@@ -348,7 +393,8 @@ export const resolveModelsDevModelList = async ({
   modelsDevProvider,
   providerId,
 }: ResolveModelsDevModelListOptions) => {
-  const modelsDev = await fetchModelsDevProvider(modelsDevProvider);
+  const modelsDev = getCachedModelsDevProvider(modelsDevProvider);
+  refreshModelsDevApi();
   const bankById = new Map(bankModels.map((m) => [m.id, m]));
   const bankByIdLower = new Map(bankModels.map((m) => [m.id.toLowerCase(), m]));
 
@@ -383,5 +429,7 @@ export const resolveModelsDevModelList = async ({
 /** @internal test helper */
 export const __resetModelsDevCacheForTests = () => {
   cachedApiJson = null;
-  fetchFailed = false;
+  cacheExpiresAt = 0;
+  fetchInFlight = undefined;
+  nextRetryAt = 0;
 };

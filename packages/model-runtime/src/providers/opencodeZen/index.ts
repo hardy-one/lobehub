@@ -4,7 +4,11 @@ import { createRouterRuntime } from '../../core/RouterRuntime';
 import type { CreateRouterRuntimeOptions } from '../../core/RouterRuntime/createRuntime';
 import { detectModelProvider } from '../../utils/modelParse';
 import { responsesAPIModels } from '../openai/modelId';
-import { fetchModelsDevRoutingMetadata, resolveModelsDevModelList } from '../utils/modelsDev';
+import {
+  getCachedModelsDevRoutingMetadata,
+  refreshModelsDevApi,
+  resolveModelsDevModelList,
+} from '../utils/modelsDev';
 import { resolveProviderRouteModels } from '../utils/resolveProviderRouteModels';
 
 // ============================================================================
@@ -47,9 +51,10 @@ export const params = {
       providerId: 'opencodezen',
     });
   },
-  routers: async (options, runtimeContext?: { model?: string }) => {
+  routers: (options, runtimeContext?: { model?: string }) => {
     const baseURL = options.baseURL || ZEN_BASE_URL;
-    const { available, modelIdsBySdk } = await fetchModelsDevRoutingMetadata('opencode');
+    const { available, modelIdsBySdk } = getCachedModelsDevRoutingMetadata('opencode');
+    refreshModelsDevApi();
     const anthropicModels = available
       ? (modelIdsBySdk['@ai-sdk/anthropic'] ?? [])
       : fallbackAnthropicModels;

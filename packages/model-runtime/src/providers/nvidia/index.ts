@@ -4,8 +4,7 @@ import { type OpenAICompatibleFactoryOptions } from '../../core/openaiCompatible
 import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
 import { processMultiProviderModelList } from '../../utils/modelParse';
 
-// Thinking param patterns derived from build.nvidia.com page templates
-// Ref: /tmp/NVIDIA_28_Models_Analysis.md
+// Thinking parameter patterns derived from NVIDIA's published model templates.
 
 // Pattern A: chat_template_kwargs.thinking (boolean toggle)
 const chatTemplateKwargsThinkingModels = new Set(['moonshotai/kimi-k2.6']);
@@ -39,56 +38,6 @@ const forceReasoningModels = new Set([
   'deepseek-ai/deepseek-v4-pro',
   'moonshotai/kimi-k2.6',
 ]);
-
-// Nvidia's Kimi K2.6 NIM backend rejects:
-// 1. Property names matching JSON Schema keywords (e.g., `type` in properties)
-// 2. `type: ["string", "null"]` / `enum: ["a", null]` from Zod nullable
-// 3. `type: ["string", "number"]` multi-type arrays
-const renameTypeProperty = (schema: any): any => {
-  if (!schema || typeof schema !== 'object') return schema;
-  if (Array.isArray(schema)) return schema.map(renameTypeProperty);
-
-  const result: Record<string, any> = {};
-  for (const [key, value] of Object.entries(schema)) {
-    if (key === 'properties' && typeof value === 'object' && !Array.isArray(value)) {
-      const renamed: Record<string, any> = {};
-      for (const [propName, propValue] of Object.entries(value as Record<string, unknown>)) {
-        renamed[propName === 'type' ? '_type' : propName] = renameTypeProperty(propValue);
-      }
-      result.properties = renamed;
-      continue;
-    }
-    if (key === 'required' && Array.isArray(value)) {
-      result.required = value.map((v: any) => (v === 'type' ? '_type' : v));
-      continue;
-    }
-    if (['allOf', 'anyOf', 'oneOf'].includes(key) && Array.isArray(value)) {
-      result[key] = value.map(renameTypeProperty);
-      continue;
-    }
-    if (key === 'definitions' || key === '$defs') {
-      const nested: Record<string, any> = {};
-      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-        nested[k] = renameTypeProperty(v);
-      }
-      result[key] = nested;
-      continue;
-    }
-    if (
-      key === 'items' ||
-      key === 'additionalProperties' ||
-      key === 'not' ||
-      key === 'if' ||
-      key === 'then' ||
-      key === 'else'
-    ) {
-      result[key] = renameTypeProperty(value);
-      continue;
-    }
-    result[key] = renameTypeProperty(value);
-  }
-  return result;
-};
 
 const flattenTypeArrays = (schema: any): any => {
   if (!schema || typeof schema !== 'object') return schema;
@@ -266,13 +215,14 @@ export const params = {
         }
       }
 
-      // Schemas sanitization: only Kimi K2.6 needs renameTypeProperty et al.
+      // Kimi K2.6 rejects nullable/multi-type schema variants. Never rename
+      // user-defined property names here: streamed tool-call arguments have no
+      // provider-specific reverse mapper before they reach the executor.
       const tools =
         model === 'moonshotai/kimi-k2.6' && rest.tools
           ? (rest.tools as any[]).map((tool: any) => {
               if (!tool.function?.parameters) return tool;
-              let params = renameTypeProperty(tool.function.parameters);
-              params = removeEnumNull(params);
+              let params = removeEnumNull(tool.function.parameters);
               params = flattenTypeArrays(params);
               return {
                 ...tool,

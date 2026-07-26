@@ -520,6 +520,83 @@ describe('OllamaStream', () => {
       );
     });
 
+    it('keeps XML-looking text when it does not contain a valid tool invocation', async () => {
+      vi.spyOn(uuidModule, 'nanoid').mockReturnValueOnce('1');
+      const literalXml = '<tool_call>show this markup literally</tool_call>';
+      const mockOllamaStream = new ReadableStream<ChatResponse>({
+        start(controller) {
+          controller.enqueue({ message: { content: literalXml }, done: false } as ChatResponse);
+          controller.enqueue({ message: { content: '' }, done: true } as ChatResponse);
+          controller.close();
+        },
+      });
+      const onTextMock = vi.fn();
+
+      const protocolStream = OllamaStream(mockOllamaStream, { onText: onTextMock });
+      const decoder = new TextDecoder();
+      const chunks: string[] = [];
+
+      for await (const chunk of protocolStream) {
+        chunks.push(decoder.decode(chunk, { stream: true }));
+      }
+
+      expect(chunks).toEqual([
+        'id: chat_1\n',
+        'event: text\n',
+        `data: ${JSON.stringify(literalXml)}\n\n`,
+        'id: chat_1\n',
+        'event: stop\n',
+        'data: "finished"\n\n',
+      ]);
+      expect(onTextMock).toHaveBeenCalledWith(literalXml);
+    });
+
+    it('emits text that follows a recovered tool call', async () => {
+      vi.spyOn(uuidModule, 'nanoid').mockReturnValueOnce('1').mockReturnValueOnce('tcid6');
+      const mockOllamaStream = new ReadableStream<ChatResponse>({
+        start(controller) {
+          controller.enqueue({
+            message: {
+              content:
+                '<tool_call><invoke name="read_file"><parameter name="path">/tmp/a</parameter></invoke></tool_call>Done.',
+            },
+            done: false,
+          } as ChatResponse);
+          controller.enqueue({ message: { content: '' }, done: true } as ChatResponse);
+          controller.close();
+        },
+      });
+      const onTextMock = vi.fn();
+      const onToolCall = vi.fn();
+
+      const protocolStream = OllamaStream(mockOllamaStream, {
+        onText: onTextMock,
+        onToolsCalling: onToolCall,
+      });
+      const decoder = new TextDecoder();
+      const chunks: string[] = [];
+
+      for await (const chunk of protocolStream) {
+        chunks.push(decoder.decode(chunk, { stream: true }));
+      }
+
+      expect(chunks).toEqual(
+        [
+          'id: chat_1',
+          'event: tool_calls',
+          `data: [{"function":{"arguments":"{\\"path\\":\\"/tmp/a\\"}","name":"read_file"},"id":"read_file_0_tcid6","index":0,"type":"function"}]\n`,
+          'id: chat_1',
+          'event: text',
+          'data: "Done."\n',
+          'id: chat_1',
+          'event: stop',
+          'data: "finished"\n',
+        ].map((line) => `${line}\n`),
+      );
+      expect(onToolCall).toHaveBeenCalledOnce();
+      expect(onTextMock).toHaveBeenCalledWith('Done.');
+    });
+
     it('should not affect normal text content', async () => {
       vi.spyOn(uuidModule, 'nanoid').mockReturnValueOnce('1');
 

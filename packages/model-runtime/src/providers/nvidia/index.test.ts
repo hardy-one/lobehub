@@ -208,6 +208,50 @@ describe('LobeNvidiaAI - custom features', () => {
 
       expect(result).not.toHaveProperty('reasoning_effort');
     });
+
+    it('preserves a user-defined type property while sanitizing nullable schema values', () => {
+      const result = params.chatCompletion!.handlePayload!({
+        messages: [{ role: 'user', content: 'test' }],
+        model: 'moonshotai/kimi-k2.6',
+        tools: [
+          {
+            function: {
+              name: 'set_kind',
+              parameters: {
+                properties: {
+                  type: {
+                    enum: ['article', null],
+                    type: ['string', 'null'],
+                  },
+                },
+                required: ['type'],
+                type: 'object',
+              },
+            },
+            type: 'function',
+          },
+        ],
+      } as any);
+
+      expect(result.tools).toEqual([
+        {
+          function: {
+            name: 'set_kind',
+            parameters: {
+              properties: {
+                type: {
+                  enum: ['article'],
+                  type: 'string',
+                },
+              },
+              required: ['type'],
+              type: 'object',
+            },
+          },
+          type: 'function',
+        },
+      ]);
+    });
   });
 
   describe('models', () => {

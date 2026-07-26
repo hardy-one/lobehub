@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   __resetModelsDevCacheForTests,
   enrichWithModelsDev,
+  fetchModelsDevApi,
   fetchModelsDevRoutingMetadata,
   mapReasoningOptionsToExtendParams,
   resolveModelsDevModelList,
@@ -107,6 +108,66 @@ describe('fetchModelsDevRoutingMetadata', () => {
   });
 });
 
+describe('models.dev cache', () => {
+  beforeEach(() => {
+    __resetModelsDevCacheForTests();
+  });
+
+  afterEach(() => {
+    __resetModelsDevCacheForTests();
+    vi.useRealTimers();
+  });
+
+  it('keeps stale metadata during a failed refresh and retries after the cooldown', async () => {
+    vi.useFakeTimers();
+    const initialCatalog = { opencode: { models: { first: { id: 'first' } } } };
+    const refreshedCatalog = { opencode: { models: { second: { id: 'second' } } } };
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => initialCatalog })
+      .mockRejectedValueOnce(new Error('network unavailable'))
+      .mockResolvedValueOnce({ ok: true, json: async () => refreshedCatalog }) as any;
+
+    await expect(fetchModelsDevApi()).resolves.toEqual(initialCatalog);
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1);
+    await expect(fetchModelsDevApi()).resolves.toEqual(initialCatalog);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+
+    await expect(fetchModelsDevApi()).resolves.toEqual(initialCatalog);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(30 * 1000 + 1);
+    await expect(fetchModelsDevApi()).resolves.toEqual(refreshedCatalog);
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not wait for a remote refresh before resolving a model list', async () => {
+    let resolveFetch: (value: unknown) => void = () => undefined;
+    global.fetch = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        }),
+    ) as any;
+    const client = { models: { list: vi.fn().mockResolvedValue({ data: [{ id: 'model-a' }] }) } };
+
+    const result = await resolveModelsDevModelList({
+      bankModels: [{ id: 'model-a', settings: { extendParams: ['enableReasoning'] } }],
+      client,
+      modelsDevProvider: 'opencode',
+      providerId: 'opencodezen',
+    });
+
+    expect(result).toEqual([{ id: 'model-a', settings: { extendParams: ['enableReasoning'] } }]);
+    expect(client.models.list).toHaveBeenCalledOnce();
+    expect(global.fetch).toHaveBeenCalledOnce();
+
+    resolveFetch({ ok: true, json: async () => ({ opencode: { models: {} } }) });
+    await Promise.resolve();
+  });
+});
+
 describe('enrichWithModelsDev', () => {
   it('prefers models.dev extendParams over empty bank', () => {
     const result = enrichWithModelsDev('glm-5.1', {
@@ -152,6 +213,8 @@ describe('resolveModelsDevModelList', () => {
       }),
     }) as any;
 
+    await fetchModelsDevRoutingMetadata('zhipuai-coding-plan');
+
     const client = {
       models: {
         list: vi.fn().mockResolvedValue({ data: [{ id: 'glm-5.2' }] }),
@@ -193,6 +256,8 @@ describe('resolveModelsDevModelList', () => {
       }),
     }) as any;
 
+    await fetchModelsDevRoutingMetadata('stepfun-step-plan');
+
     const client = {
       models: {
         list: vi.fn().mockRejectedValue(new Error('no api')),
@@ -228,6 +293,8 @@ describe('resolveModelsDevModelList', () => {
         },
       }),
     }) as any;
+
+    await fetchModelsDevRoutingMetadata('alibaba-coding-plan-cn');
 
     const result = await resolveModelsDevModelList({
       bankModels: [

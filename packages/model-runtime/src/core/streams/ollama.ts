@@ -2,17 +2,17 @@ import type { ChatResponse } from 'ollama/browser';
 
 import type { ChatStreamCallbacks } from '../../types';
 import { nanoid } from '../../utils/uuid';
-import type { StreamProtocolChunk } from './protocol';
-import type { StreamContext as StreamContextBase } from './protocol';
-
-interface OllamaStreamContext extends StreamContextBase {
-  contentBuffer?: string;
-}
 import {
   createCallbacksTransformer,
   createSSEProtocolTransformer,
   generateToolCallId,
+  type StreamContext as StreamContextBase,
+  type StreamProtocolChunk,
 } from './protocol';
+
+interface OllamaStreamContext extends StreamContextBase {
+  contentBuffer?: string;
+}
 
 const parseTextualToolCalls = (
   content: string,
@@ -38,10 +38,10 @@ const parseTextualToolCalls = (
   };
 
   // Try <tool_call>...<invoke>...</invoke>...</tool_call> blocks first
-  const blockRe = /<([\w-]+:)?tool_call\s*>([\s\S]*?)<\/([\w-]+:)?tool_call\s*>/g;
+  const blockRe = /<(?:[\w-]+:)?tool_call\s*>([\s\S]*?)<\/(?:[\w-]+:)?tool_call\s*>/g;
   let m: RegExpExecArray | null;
   while ((m = blockRe.exec(content)) !== null) {
-    extract(m[2]);
+    extract(m[1]);
   }
 
   // If no <tool_call> wrapper, try standalone <invoke> blocks
@@ -88,10 +88,10 @@ const transformOllamaStream = (
   if (!stack.contentBuffer) stack.contentBuffer = '';
 
   // Check for complete <tool_call>...</tool_call> or <invoke>...</invoke> blocks
-  const hasBlock = /<([\w-]+:)?tool_call\s*>[\s\S]*?<\/([\w-]+:)?tool_call\s*>/.test(
+  const hasBlock = /<(?:[\w-]+:)?tool_call\s*>[\s\S]*?<\/(?:[\w-]+:)?tool_call\s*>/.test(
     stack.contentBuffer + cleaned,
   );
-  const hasInvoke = /<invoke\s+name\s*=\s*"([^"]*)"\s*>[\s\S]*?<\/invoke\s*>/.test(
+  const hasInvoke = /<invoke\s+name\s*=\s*"[^"]*"\s*>[\s\S]*?<\/invoke\s*>/.test(
     stack.contentBuffer + cleaned,
   );
 
@@ -99,6 +99,19 @@ const transformOllamaStream = (
     stack.contentBuffer += cleaned;
     const buffer = stack.contentBuffer;
     const results: StreamProtocolChunk[] = [];
+    const calls = parseTextualToolCalls(buffer);
+
+    // A literal XML-looking response must remain visible to the user when it
+    // does not contain a valid tool invocation. Treating every complete tag as
+    // a tool call previously discarded ordinary model text.
+    if (calls.length === 0) {
+      stack.contentBuffer = '';
+      return {
+        data: buffer,
+        id: stack.id,
+        type: stack?.thinkingInContent ? 'reasoning' : 'text',
+      };
+    }
 
     const tagStart = buffer.search(/<(?:[\w-]+:)?tool_call\s*>|<invoke\s+name\s*=\s*"/);
     if (tagStart > 0) {
@@ -109,7 +122,7 @@ const transformOllamaStream = (
       });
     }
 
-    for (const [i, call] of parseTextualToolCalls(buffer).entries()) {
+    for (const [i, call] of calls.entries()) {
       results.push({
         data: [
           {
@@ -124,14 +137,37 @@ const transformOllamaStream = (
       });
     }
 
-    // Keep trailing text after the last closing tag in buffer
+    // Emit text after a completed tool call in the same order it arrived. Only
+    // retain a trailing partial tool tag for the next stream chunk.
     const closeRe = /<\/(?:[\w-]+:)?(?:tool_call|invoke)\s*>/g;
     let lastEnd = 0;
     let cm: RegExpExecArray | null;
     while ((cm = closeRe.exec(buffer)) !== null) {
       lastEnd = cm.index + cm[0].length;
     }
-    stack.contentBuffer = lastEnd > 0 ? buffer.slice(lastEnd) : '';
+    const trailing = lastEnd > 0 ? buffer.slice(lastEnd) : '';
+    const nextTagStart = trailing.search(/<(?:[\w-]+:)?tool_call\b|<invoke\s+name\s*=\s*"/);
+
+    if (nextTagStart >= 0) {
+      const trailingText = trailing.slice(0, nextTagStart);
+      if (trailingText) {
+        results.push({
+          data: trailingText,
+          id: stack.id,
+          type: stack?.thinkingInContent ? 'reasoning' : 'text',
+        });
+      }
+      stack.contentBuffer = trailing.slice(nextTagStart);
+    } else {
+      if (trailing) {
+        results.push({
+          data: trailing,
+          id: stack.id,
+          type: stack?.thinkingInContent ? 'reasoning' : 'text',
+        });
+      }
+      stack.contentBuffer = '';
+    }
 
     return results;
   }

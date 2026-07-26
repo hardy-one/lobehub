@@ -20,6 +20,7 @@ import { AgentRuntimeError } from '../../utils/createError';
 import { debugStream } from '../../utils/debugStream';
 import { createErrorResponse } from '../../utils/errorResponse';
 import { StreamingResponse } from '../../utils/response';
+import { safeParseJSON } from '../../utils/safeParseJSON';
 import { parseDataUri } from '../../utils/uriParser';
 import type { OllamaMessage } from './type';
 
@@ -216,6 +217,19 @@ export class LobeOllamaAI implements LobeRuntimeAI {
     );
   }
 
+  private convertToolCalls(
+    toolCalls: OpenAIChatMessage['tool_calls'],
+  ): OllamaMessage['tool_calls'] {
+    if (!toolCalls?.length) return undefined;
+
+    return toolCalls.map((toolCall) => ({
+      function: {
+        arguments: safeParseJSON<Record<string, unknown>>(toolCall.function.arguments) ?? {},
+        name: toolCall.function.name,
+      },
+    }));
+  }
+
   private convertContentToOllamaMessage = async (
     message: OpenAIChatMessage,
     toolCallNameMap?: Map<string, string>,
@@ -229,13 +243,20 @@ export class LobeOllamaAI implements LobeRuntimeAI {
         tool_name: toolName,
       };
     }
+    const toolCalls = this.convertToolCalls(message.tool_calls);
+
     if (typeof message.content === 'string') {
-      return { content: message.content, role: message.role };
+      return {
+        content: message.content,
+        role: message.role,
+        ...(toolCalls ? { tool_calls: toolCalls } : {}),
+      };
     }
 
     const ollamaMessage: OllamaMessage = {
       content: '',
       role: message.role,
+      ...(toolCalls ? { tool_calls: toolCalls } : {}),
     };
 
     // Collect image processing tasks for parallel execution

@@ -328,9 +328,6 @@ describe('LobeOllamaAI', () => {
         const originalDebugValue = process.env.DEBUG_OLLAMA_CHAT_COMPLETION;
         process.env.DEBUG_OLLAMA_CHAT_COMPLETION = '1';
 
-        const mockProdStream = new ReadableStream() as any;
-        const mockDebugStream = new ReadableStream() as any;
-
         const mockAsyncIterator = {
           [Symbol.asyncIterator]: () => mockAsyncIterator,
           next: vi.fn().mockResolvedValue({ done: true, value: undefined }),
@@ -536,6 +533,44 @@ describe('LobeOllamaAI', () => {
   });
 
   describe('convertContentToOllamaMessage', () => {
+    it('converts assistant tool calls and preserves the matching tool result name', async () => {
+      const messages = await ollamaAI['buildOllamaMessages']([
+        {
+          content: '',
+          role: 'assistant',
+          tool_calls: [
+            {
+              function: { arguments: '{"city":"Hangzhou"}', name: 'get_weather' },
+              id: 'call_weather',
+              type: 'function',
+            },
+          ],
+        },
+        {
+          content: '{"temperature":25}',
+          role: 'tool',
+          tool_call_id: 'call_weather',
+        },
+      ] as any);
+
+      expect(messages).toEqual([
+        {
+          content: '',
+          role: 'assistant',
+          tool_calls: [
+            {
+              function: { arguments: { city: 'Hangzhou' }, name: 'get_weather' },
+            },
+          ],
+        },
+        {
+          content: '{"temperature":25}',
+          role: 'tool',
+          tool_name: 'get_weather',
+        },
+      ]);
+    });
+
     it('should convert string content to OllamaMessage', async () => {
       const message = { content: 'Hello', role: 'user' };
 

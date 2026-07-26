@@ -204,6 +204,14 @@ export class DeviceGateway {
 
       const { instructions, skills } = result.data;
       return {
+        approvedPreviewRoots: [
+          ...new Set(
+            (skills ?? [])
+              .filter((skill) => skill.scope === 'device')
+              .map((skill) => skill.previewRoot)
+              .filter((root): root is string => typeof root === 'string' && root.length > 0),
+          ),
+        ],
         instructions: instructions ?? [],
         skills: (skills ?? []).map(({ description, name, path, scope }) => ({
           description,

@@ -8,7 +8,11 @@ import { assertWorkspaceDeviceVisible, assertWorkspaceRootApproved } from '../de
 const mockModel = (
   row: {
     defaultCwd?: string | null;
-    workingDirs?: Array<{ path: string; git?: { activeWorktree?: string } }>;
+    workingDirs?: Array<{
+      git?: { activeWorktree?: string };
+      path: string;
+      workspace?: { approvedPreviewRoots?: string[] };
+    }>;
   } | null,
 ) =>
   ({
@@ -57,6 +61,21 @@ describe('assertWorkspaceRootApproved', () => {
     });
     await expect(
       assertWorkspaceRootApproved(model, 'dev-1', '/Users/me/proj-feat-x'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('allows a file-preview root reported by a device-scoped skill scan', async () => {
+    const model = mockModel({
+      workingDirs: [
+        {
+          path: '/Users/me/proj',
+          workspace: { approvedPreviewRoots: ['/Users/me/.agents/skills'] },
+        },
+      ],
+    });
+
+    await expect(
+      assertWorkspaceRootApproved(model, 'dev-1', '/Users/me/.agents/skills/reviewer'),
     ).resolves.toBeUndefined();
   });
 

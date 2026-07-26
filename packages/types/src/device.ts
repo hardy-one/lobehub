@@ -51,6 +51,12 @@ export interface WorkspaceInstructions {
  */
 export interface WorkspaceInitResult {
   /**
+   * Server-owned roots that may be used to preview files belonging to
+   * device-scoped skills. These paths originate from a device RPC result, are
+   * never accepted from a client update, and are omitted from device lists.
+   */
+  approvedPreviewRoots?: string[];
+  /**
    * Project-root agent instructions files (`AGENTS.md` / `CLAUDE.md`). Empty
    * when none are present.
    */

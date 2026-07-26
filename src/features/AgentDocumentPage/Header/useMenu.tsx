@@ -64,9 +64,11 @@ export const useMenu = ({
     const handleExportMarkdown = async () => {
       const { editor } = storeApi.getState();
       if (!editor) return;
-      const markdown = (editor.getDocument('markdown') as unknown as string) || '';
-      const fileName = `${title || 'Untitled'}.md`;
+
       try {
+        const markdown = (editor.getDocument('markdown') as unknown as string) || '';
+        const fileName = `${title || 'Untitled'}.md`;
+
         if (isDesktop) {
           const { desktopExportService } = await import('@/services/electron/desktopExportService');
           await desktopExportService.exportMarkdown({ content: markdown, fileName });

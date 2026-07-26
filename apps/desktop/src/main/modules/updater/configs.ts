@@ -6,20 +6,21 @@ import { getDesktopEnv } from '@/env';
 // Build-time default channel, can be overridden at runtime via store
 const rawChannel = getDesktopEnv().UPDATE_CHANNEL || 'stable';
 
-export const coerceStoredUpdateChannel = (channel?: string | null): UpdateChannel =>
-  channel === 'canary' || channel === 'Hardy' || channel === 'hardy' || channel === 'HARDY'
-    ? ('HARDY' as UpdateChannel)
-    : 'stable';
+export const coerceStoredUpdateChannel = (channel?: string | null): UpdateChannel => {
+  if (channel === 'Hardy' || channel === 'hardy' || channel === 'HARDY') return 'HARDY';
+  if (channel === 'canary') return 'canary';
+  return 'stable';
+};
 
 /** Raw build channel for display (stable, canary, beta, or Hardy). */
-export const BUILD_CHANNEL: string = rawChannel === 'Hardy' ? 'HARDY' : rawChannel;
+export const BUILD_CHANNEL: string =
+  rawChannel === 'Hardy' || rawChannel === 'hardy' || rawChannel === 'HARDY' ? 'HARDY' : rawChannel;
 export const UPDATE_CHANNEL: UpdateChannel =
-  rawChannel === 'canary' ||
-  rawChannel === 'beta' ||
-  rawChannel === 'Hardy' ||
-  rawChannel === 'HARDY'
-    ? ('HARDY' as UpdateChannel)
-    : 'stable';
+  rawChannel === 'canary'
+    ? 'canary'
+    : rawChannel === 'Hardy' || rawChannel === 'hardy' || rawChannel === 'HARDY'
+      ? 'HARDY'
+      : 'stable';
 
 // S3 base URL for all channels
 // e.g., https://releases.lobehub.com

@@ -158,6 +158,7 @@ import type { ConversationHistoryEntry } from '@/server/services/heterogeneousAg
 import { buildCloudHeteroContext } from '@/server/services/heterogeneousAgent/cloudHeteroContext';
 import { buildRemoteDeviceHeteroContext } from '@/server/services/heterogeneousAgent/remoteDeviceHeteroContext';
 import { MarketService } from '@/server/services/market';
+import { getMarketAccessToken } from '@/server/services/market/getMarketAccessToken';
 import { isResourceAuthorOrAdmin } from '@/server/services/resourcePermission';
 import {
   buildConnectorOwnershipPrompt,
@@ -587,14 +588,7 @@ export class AiAgentService {
   private async getMarketService(): Promise<MarketService> {
     if (this._marketService) return this._marketService;
 
-    let accessToken: string | undefined;
-    try {
-      const userModel = new UserModel(this.db, this.userId);
-      const settings = await userModel.getUserSettings();
-      accessToken = (settings?.market as any)?.accessToken;
-    } catch {
-      // non-fatal — MarketService will fall back to trustedClientToken
-    }
+    const accessToken = await getMarketAccessToken(this.db, this.userId);
 
     this._marketService = new MarketService({
       accessToken,

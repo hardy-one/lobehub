@@ -1,4 +1,5 @@
 import { type LobeChatDatabase } from '@lobechat/database';
+import { pickTrimmedString, toRecord } from '@lobechat/utils/object';
 
 import { UserModel } from '@/database/models/user';
 import { type TrustedClientUserInfo } from '@/libs/trusted-client';
@@ -40,7 +41,7 @@ export const resolveMarketUserContext = async (
     // Fetch market access token from user_settings.market
     const userModel = new UserModel(ctx.serverDB, ctx.userId);
     const userSettings = await userModel.getUserSettings();
-    const marketTokenFromDB = (userSettings?.market as any)?.accessToken;
+    const marketTokenFromDB = pickTrimmedString(toRecord(userSettings?.market)?.accessToken);
 
     return {
       // Prioritize database token over cookie token

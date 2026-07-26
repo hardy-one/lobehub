@@ -8,9 +8,9 @@ import {
 import { detectTruncatedJSON, safeParseJSON } from '@lobechat/utils';
 import debug from 'debug';
 
-import { UserModel } from '@/database/models/user';
 import { ComposioService } from '@/server/services/composio';
 import { MarketService } from '@/server/services/market';
+import { getMarketAccessToken } from '@/server/services/market/getMarketAccessToken';
 
 import { getServerRuntime, hasServerRuntime } from './serverRuntimes';
 import { type IToolExecutor, type ToolExecutionContext, type ToolExecutionResult } from './types';
@@ -64,14 +64,7 @@ export class BuiltinToolsExecutor implements IToolExecutor {
   private async getMarketService(): Promise<MarketService> {
     if (this._marketService) return this._marketService;
 
-    let accessToken: string | undefined;
-    try {
-      const userModel = new UserModel(this.db, this.userId);
-      const settings = await userModel.getUserSettings();
-      accessToken = (settings?.market as any)?.accessToken;
-    } catch {
-      // non-fatal — MarketService will fall back to trustedClientToken
-    }
+    const accessToken = await getMarketAccessToken(this.db, this.userId);
 
     this._marketService = new MarketService({
       accessToken,

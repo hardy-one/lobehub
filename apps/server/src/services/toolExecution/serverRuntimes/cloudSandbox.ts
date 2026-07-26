@@ -1,9 +1,9 @@
 import { CloudSandboxIdentifier } from '@lobechat/builtin-tool-cloud-sandbox';
 import { CloudSandboxExecutionRuntime } from '@lobechat/builtin-tool-cloud-sandbox/executionRuntime';
 
-import { UserModel } from '@/database/models/user';
 import { FileService } from '@/server/services/file';
 import { MarketService } from '@/server/services/market';
+import { getMarketAccessToken } from '@/server/services/market/getMarketAccessToken';
 import { createSandboxService } from '@/server/services/sandbox';
 
 import { type ServerRuntimeRegistration } from './types';
@@ -22,15 +22,7 @@ export const cloudSandboxRuntime: ServerRuntimeRegistration = {
       throw new Error('serverDB is required for Cloud Sandbox execution');
     }
 
-    // Read market accessToken from DB so server-side sandbox runtime can authenticate.
-    let accessToken: string | undefined;
-    try {
-      const userModel = new UserModel(context.serverDB, context.userId);
-      const settings = await userModel.getUserSettings();
-      accessToken = (settings?.market as any)?.accessToken;
-    } catch {
-      // non-fatal — MarketService will fall back to trustedClientToken
-    }
+    const accessToken = await getMarketAccessToken(context.serverDB, context.userId);
 
     const marketService = new MarketService({
       accessToken,

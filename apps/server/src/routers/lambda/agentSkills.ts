@@ -7,10 +7,10 @@ import { withScopedPermission } from '@/business/server/trpc-middlewares/rbacPer
 import { wsCompatProcedure } from '@/business/server/trpc-middlewares/workspaceAuth';
 import { AgentSkillModel } from '@/database/models/agentSkill';
 import { FileModel } from '@/database/models/file';
-import { UserModel } from '@/database/models/user';
 import { router } from '@/libs/trpc/lambda';
 import { serverDatabase } from '@/libs/trpc/lambda/middleware';
 import { FileService } from '@/server/services/file';
+import { getMarketAccessToken } from '@/server/services/market/getMarketAccessToken';
 import { MarketService } from '@/server/services/market';
 import {
   SkillImporter,
@@ -69,14 +69,7 @@ const skillProcedure = wsCompatProcedure.use(serverDatabase).use(async (opts) =>
   const workspaceId = ctx.workspaceId ?? undefined;
   const skillModel = new AgentSkillModel(ctx.serverDB, ctx.userId, workspaceId);
 
-  let marketAccessToken: string | undefined;
-  try {
-    const userModel = new UserModel(ctx.serverDB, ctx.userId);
-    const settings = await userModel.getUserSettings();
-    marketAccessToken = (settings?.market as any)?.accessToken;
-  } catch {
-    // non-fatal — MarketService will fall back to trustedClientToken
-  }
+  const marketAccessToken = await getMarketAccessToken(ctx.serverDB, ctx.userId);
 
   return opts.next({
     ctx: {

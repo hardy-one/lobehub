@@ -13,10 +13,10 @@ import {
 import type { LobeChatDatabase } from '@lobechat/database';
 import { z } from 'zod';
 
-import { UserModel } from '@/database/models/user';
 import { appEnv } from '@/envs/app';
 import { isTrustedClientEnabled } from '@/libs/trusted-client';
 import { MarketService } from '@/server/services/market';
+import { getMarketAccessToken } from '@/server/services/market/getMarketAccessToken';
 
 const clampRecommendationCount = (count?: number) =>
   Math.min(Math.max(1, count ?? TASK_TEMPLATE_RECOMMEND_COUNT), TASK_TEMPLATE_RECOMMEND_MAX_COUNT);
@@ -123,16 +123,9 @@ export class TaskTemplateService {
   private async getMarketService(): Promise<MarketService> {
     if (this.marketService) return this.marketService;
 
-    let accessToken: string | undefined;
-    if (this.db) {
-      try {
-        const userModel = new UserModel(this.db, this.userId);
-        const settings = await userModel.getUserSettings();
-        accessToken = (settings?.market as any)?.accessToken;
-      } catch {
-        // non-fatal — MarketService will fall back to trustedClientToken
-      }
-    }
+    const accessToken = this.db
+      ? await getMarketAccessToken(this.db, this.userId)
+      : undefined;
 
     this.marketService = new MarketService({
       accessToken,

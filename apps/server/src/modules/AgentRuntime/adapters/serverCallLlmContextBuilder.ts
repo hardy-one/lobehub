@@ -39,6 +39,7 @@ import { UserPersonaModel } from '@/database/models/userMemory/persona';
 import { serverMessagesEngine } from '@/server/modules/Mecha/ContextEngineering';
 import { AgentDocumentsService } from '@/server/services/agentDocuments';
 import { MarketService } from '@/server/services/market';
+import { getMarketAccessToken } from '@/server/services/market/getMarketAccessToken';
 import { OnboardingService } from '@/server/services/onboarding';
 import { toAgentContextDocuments } from '@/utils/agentDocumentContextMapping';
 
@@ -316,16 +317,9 @@ export const buildServerCallLlmContext = async ({
 
   let credsListStr = '';
   if (ctx.userId) {
-    let marketAccessToken: string | undefined;
-    if (ctx.serverDB) {
-      try {
-        const userModel = new UserModel(ctx.serverDB, ctx.userId);
-        const settings = await userModel.getUserSettings();
-        marketAccessToken = (settings?.market as any)?.accessToken;
-      } catch {
-        // non-fatal — MarketService will fall back to trustedClientToken
-      }
-    }
+    const marketAccessToken = ctx.serverDB
+      ? await getMarketAccessToken(ctx.serverDB, ctx.userId)
+      : undefined;
     try {
       const marketService = new MarketService({
         accessToken: marketAccessToken,

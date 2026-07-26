@@ -2752,13 +2752,14 @@ export class AgentRuntimeService {
     const providerId = metadata?.modelRuntimeConfig?.provider as string | undefined;
     const contextWindowTokens = await this.resolveContextWindowTokens(modelId, providerId);
 
-    // Derive compression config from agent chatConfig.
-    // enableContextCompression is the legacy master toggle (default: true).
-    // compression is the mode selector: 'off' | 'standard' (50%) | 'smart' (70% + 32k protection).
+    // An explicit compression mode supersedes the legacy toggle. The latter is
+    // only read for persisted configs created before `compression` existed.
     const chatConfig = metadata?.agentConfig?.chatConfig;
     const compressionMode = chatConfig?.compression as 'off' | 'standard' | 'smart' | undefined;
     const compressionEnabled =
-      compressionMode === 'off' ? false : (chatConfig?.enableContextCompression ?? true);
+      compressionMode !== undefined
+        ? compressionMode !== 'off'
+        : (chatConfig?.enableContextCompression ?? true);
     const smartThreshold = compressionMode === 'smart' ? true : undefined;
 
     // Create Agent instance — use custom factory if provided, otherwise default to GeneralChatAgent

@@ -676,6 +676,40 @@ describe('AgentRuntimeService', () => {
       );
     });
 
+    it.each([
+      [
+        'keeps an explicit standard mode enabled when the legacy toggle is false',
+        { compression: 'standard', enableContextCompression: false },
+        true,
+        undefined,
+      ],
+      ['uses the legacy false toggle when no compression mode is persisted', { enableContextCompression: false }, false, undefined],
+    ])('%s', async (_description, chatConfig, enabled, smartThreshold) => {
+      findByIdAndProviderMock.mockResolvedValueOnce(null);
+      vi.mocked(getModelPropertyWithFallback).mockResolvedValueOnce(200_000);
+
+      let capturedConfig: any;
+      const serviceWithFactory = new AgentRuntimeService(mockDb, mockUserId, {
+        agentFactory: (config) => {
+          capturedConfig = config;
+          return { runner: vi.fn() } as any;
+        },
+      });
+
+      await (serviceWithFactory as any).createAgentRuntime({
+        metadata: {
+          agentConfig: { chatConfig },
+          modelRuntimeConfig: { model: 'gpt-4o-mini', provider: 'openai' },
+        },
+        operationId: 'test-operation-1',
+        stepIndex: 1,
+      });
+
+      expect(capturedConfig.compressionConfig).toEqual(
+        expect.objectContaining({ enabled, maxWindowToken: 200_000, smartThreshold }),
+      );
+    });
+
     it('should fall back to undefined maxWindowToken when model lookup misses', async () => {
       findByIdAndProviderMock.mockResolvedValueOnce(null);
       vi.mocked(getModelPropertyWithFallback).mockResolvedValueOnce(undefined);

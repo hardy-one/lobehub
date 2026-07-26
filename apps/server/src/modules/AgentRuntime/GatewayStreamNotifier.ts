@@ -37,9 +37,9 @@ export class GatewayStreamNotifier implements IStreamEventManager {
    * publication order. Keep lifecycle boundaries ordered per operation so a
    * client cannot receive `stream_start` before its `step_start` snapshot.
    *
-   * Stream chunks only wait for the most recent boundary, then fan out in
-   * parallel. This keeps first-token latency and stream throughput independent
-   * of per-request Gateway round-trip time.
+   * Stream chunks wait for the most recent lifecycle boundary, then fan out in
+   * parallel. This preserves the init/step snapshot contract; subsequent chunk
+   * throughput does not serialize behind earlier chunks' Gateway round trips.
    */
   private readonly deliveryStates = new Map<string, GatewayDeliveryState>();
 

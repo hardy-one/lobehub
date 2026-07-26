@@ -1,7 +1,7 @@
 import type { AgentState } from '@lobechat/agent-runtime';
 import * as agentRuntime from '@lobechat/agent-runtime';
 import type * as LobeChatConst from '@lobechat/const';
-import { type UIChatMessage } from '@lobechat/types';
+import { type LobeAgentChatConfig, type UIChatMessage } from '@lobechat/types';
 import { act, renderHook } from '@testing-library/react';
 import { type EnabledAiModel, ModelProvider } from 'model-bank';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -579,7 +579,15 @@ describe('StreamingExecutor actions', () => {
       streamSpy.mockRestore();
     });
 
-    it('should disable compression when chatConfig.compression is off', async () => {
+    it.each([
+      ['disables compression when chatConfig.compression is off', { compression: 'off', enableContextCompression: true }, false],
+      [
+        'keeps an explicit standard mode enabled when the legacy toggle is false',
+        { compression: 'standard', enableContextCompression: false },
+        true,
+      ],
+      ['uses the legacy false toggle when no compression mode is persisted', { enableContextCompression: false }, false],
+    ] as const)('%s', async (_description, chatConfig, enabled) => {
       act(() => {
         useChatStore.setState({ executeClientAgent: realExecAgentRuntime });
       });
@@ -597,7 +605,7 @@ describe('StreamingExecutor actions', () => {
       });
       vi.spyOn(agentConfigResolver, 'resolveAgentConfig').mockReturnValue({
         agentConfig: createMockAgentConfig({ model: 'gpt-4o-mini', provider: 'openai' }),
-        chatConfig: createMockChatConfig({ compression: 'off', enableContextCompression: true }),
+        chatConfig: createMockChatConfig(chatConfig as Partial<LobeAgentChatConfig>),
         isBuiltinAgent: false,
         plugins: [],
       });
@@ -627,7 +635,7 @@ describe('StreamingExecutor actions', () => {
       });
 
       expect(getCreatedAgentCompressionConfig(stepSpy)).toEqual({
-        enabled: false,
+        enabled,
         maxWindowToken: 200_000,
         smartThreshold: undefined,
       });

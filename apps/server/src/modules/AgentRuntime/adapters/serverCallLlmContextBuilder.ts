@@ -12,7 +12,6 @@ import { builtinTools } from '@lobechat/builtin-tools';
 import { AGENT_PLAN_FILE_TYPE, COMPOSIO_APP_TYPES } from '@lobechat/const';
 import type {
   AgentBuilderContext,
-  AgentContextDocument,
   AgentGroupConfig,
   OfficialToolItem,
   OnboardingContext,
@@ -41,7 +40,6 @@ import { AgentDocumentsService } from '@/server/services/agentDocuments';
 import { MarketService } from '@/server/services/market';
 import { getMarketAccessToken } from '@/server/services/market/getMarketAccessToken';
 import { OnboardingService } from '@/server/services/onboarding';
-import { toAgentContextDocuments } from '@/utils/agentDocumentContextMapping';
 
 import type { RuntimeExecutorContext } from '../context';
 import { buildPostProcessUrl, log, resolveRuntimeHistoryCount } from '../executorHelpers';
@@ -101,6 +99,7 @@ export const buildServerCallLlmContext = async ({
     resolvedExtendParams,
     shouldReplayAssistantReasoning,
   } = contextHints;
+  const agentId = state.metadata?.agentId;
 
   // Extract <refer_topic> tags from messages and fetch summaries.
   // Skip if messages already contain injected topic_reference_context
@@ -129,26 +128,6 @@ export const buildServerCallLlmContext = async ({
         );
       },
     );
-  }
-
-  // Fetch agent documents for context injection.
-  let agentDocuments: AgentContextDocument[] | undefined;
-  const agentId = state.metadata?.agentId;
-  if (agentId && ctx.serverDB && ctx.userId) {
-    try {
-      const agentDocService = new AgentDocumentsService(
-        ctx.serverDB,
-        ctx.userId,
-        state.metadata?.workspaceId ?? ctx.workspaceId,
-      );
-      const docs = await agentDocService.getAgentContextDocuments(agentId);
-      if (docs.length > 0) {
-        agentDocuments = toAgentContextDocuments(docs);
-        log('Resolved %d agent documents for agent %s', agentDocuments.length, agentId);
-      }
-    } catch (error) {
-      log('Failed to resolve agent documents for agent %s: %O', agentId, error);
-    }
   }
 
   // Detect onboarding agent and build context injection.
@@ -471,7 +450,6 @@ export const buildServerCallLlmContext = async ({
   }
 
   const contextEngineInput = {
-    agentDocuments,
     ...(agentBuilderContext && { agentBuilderContext }),
     agentGroup: state.metadata?.agentGroup as AgentGroupConfig | undefined,
     agentManagementContext: (state as any).initialContext?.initialContext?.mentionedAgents?.length

@@ -28,11 +28,6 @@ import {
 import {
   ActiveTopicDocumentContextInjector,
   AgentBuilderContextInjector,
-  AgentDocumentBeforeSystemInjector,
-  AgentDocumentContextInjector,
-  AgentDocumentMessageInjector,
-  AgentDocumentSystemAppendInjector,
-  AgentDocumentSystemReplaceInjector,
   AgentManagementContextInjector,
   BotPlatformContextInjector,
   ContextSelectionsInjector,
@@ -160,7 +155,6 @@ export class MessagesEngine {
       capabilities,
       variableGenerators,
       fileContext,
-      messages,
       agentBuilderContext,
       botPlatformContext,
       discordContext,
@@ -169,7 +163,6 @@ export class MessagesEngine {
       agentManagementContext,
       groupAgentBuilderContext,
       agentGroup,
-      agentDocuments,
       planTodo,
       userMemory,
       initialContext,
@@ -191,13 +184,12 @@ export class MessagesEngine {
     const hasSelectedTools = (selectedTools?.length ?? 0) > 0;
 
     // Chat mode (`enableAgentMode === false`) suppresses agentic-only injectors:
-    // skill discovery (<available_skills>), agent documents, and the
-    // agent-management context (<current_agent> + <available_agents>).
+    // skill discovery (<available_skills>) and the agent-management context
+    // (<current_agent> + <available_agents>).
     // Anything else — system role, knowledge bases, memory, web-browsing tool
     // prompts — remains untouched.
     const isAgentMode = enableAgentMode !== false;
     const isAgentManagementEnabled = !!agentManagementContext && isAgentMode;
-    const hasAgentDocuments = !!agentDocuments && agentDocuments.length > 0 && isAgentMode;
     // Page editor is enabled if either direct pageContentContext or initialContext.pageEditor is provided
     const isPageEditorEnabled = !!pageContentContext || !!initialContext?.pageEditor;
     const hasActiveTopicDocument = !!initialContext?.activeTopicDocument;
@@ -217,18 +209,6 @@ export class MessagesEngine {
     const hasDateAwareTools =
       toolIds.includes('lobe-web-browsing') || toolIds.includes('lobe-user-memory');
     const isSystemDateEnabled = enableSystemDate !== false && !hasDateAwareTools;
-    const currentUserMessage = [...messages]
-      .reverse()
-      .find((m) => m.role === 'user' && typeof m.content === 'string')?.content as
-      string | undefined;
-
-    // Shared config for all agent document injectors
-    const agentDocConfig = {
-      currentUserMessage,
-      documents: agentDocuments,
-      enabled: hasAgentDocuments,
-    };
-
     return [
       // =============================================
       // Phase 0: Placeholder Residue Filtering
@@ -251,8 +231,6 @@ export class MessagesEngine {
       // Each provider appends content to a single system message via BaseSystemRoleProvider
       // =============================================
 
-      // Agent documents → before system (prepend as separate system message)
-      new AgentDocumentBeforeSystemInjector(agentDocConfig),
       // Agent's system role (creates the initial system message)
       new SystemRoleInjector({ systemRole }),
       // Eval context (appends envPrompt)
@@ -292,11 +270,6 @@ export class MessagesEngine {
       }),
       // History summary (conversation summary from compression)
       new HistorySummaryProvider({ formatHistorySummary, historySummary }),
-      // Agent documents → append to system message
-      new AgentDocumentSystemAppendInjector(agentDocConfig),
-      // Agent documents → replace entire system message (destructive, runs last)
-      new AgentDocumentSystemReplaceInjector(agentDocConfig),
-
       // =============================================
       // Phase 3: Context Injection (before first user message)
       // Providers consolidate into a single injection message via BaseFirstUserContentProvider
@@ -324,8 +297,6 @@ export class MessagesEngine {
         fileContents: knowledge?.fileContents,
         knowledgeBases: knowledge?.knowledgeBases,
       }),
-      // Agent documents → before first user message
-      new AgentDocumentContextInjector(agentDocConfig),
       // Tool Discovery (available tools for dynamic activation)
       new ToolDiscoveryProvider({
         availableTools: toolDiscoveryConfig?.availableTools,
@@ -358,8 +329,6 @@ export class MessagesEngine {
       // Injects context into specific user messages (last user, selected, etc.)
       // =============================================
 
-      // Agent documents → after-first-user, context-end
-      new AgentDocumentMessageInjector(agentDocConfig),
       // Active topic document → last user message, for continuing document work outside page scope
       new ActiveTopicDocumentContextInjector({
         activeTopicDocument: initialContext?.activeTopicDocument,

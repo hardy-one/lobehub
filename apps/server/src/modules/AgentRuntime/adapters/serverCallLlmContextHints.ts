@@ -7,7 +7,7 @@ import {
   isKimiAlwaysPreserveThinkingModel,
   type ModelExtendParams,
 } from '@lobechat/model-runtime';
-import { resolveModelExtendParamsConfig, type UIChatMessage } from '@lobechat/types';
+import { resolveModelScopedChatConfig, type UIChatMessage } from '@lobechat/types';
 import { type ExtendParamsType, ModelProvider } from 'model-bank';
 
 import { AiModelModel } from '@/database/models/aiModel';
@@ -45,7 +45,7 @@ export const resolveServerCallLlmContextHints = async ({
 }: ResolveServerCallLlmContextHintsInput): Promise<ServerCallLlmContextHints> => {
   const agentConfig = ctx.agentConfig;
   const modelChatConfig = agentConfig?.chatConfig
-    ? resolveModelExtendParamsConfig(agentConfig.chatConfig, provider, model)
+    ? resolveModelScopedChatConfig(agentConfig.chatConfig, provider, model)
     : undefined;
   const { loadModels } = await import('@/business/client/model-bank/loadModels');
   const builtinModels = await loadModels();

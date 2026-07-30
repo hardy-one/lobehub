@@ -7,6 +7,17 @@ describe('defineConfig', () => {
   it('disables Next.js agent rule injection', () => {
     expect(defineConfig({}).agentRules).toBe(false);
   });
+
+  it('caches SPA build artifacts', async () => {
+    const headers = await defineConfig({}).headers?.();
+    const spaHeaders = headers?.find(({ source }) => source === '/_spa/:path*');
+
+    expect(spaHeaders?.headers).toContainEqual({
+      key: 'Cache-Control',
+      value:
+        'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800, stale-if-error=86400, immutable',
+    });
+  });
 });
 
 describe('dockerCanvasTracingIncludes', () => {

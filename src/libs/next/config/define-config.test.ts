@@ -8,15 +8,16 @@ describe('defineConfig', () => {
     expect(defineConfig({}).agentRules).toBe(false);
   });
 
-  it('caches SPA build artifacts', async () => {
+  it('caches SPA and auth build artifacts', async () => {
     const headers = await defineConfig({}).headers?.();
-    const spaHeaders = headers?.find(({ source }) => source === '/_spa/:path*');
 
-    expect(spaHeaders?.headers).toContainEqual({
-      key: 'Cache-Control',
-      value:
-        'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800, stale-if-error=86400, immutable',
-    });
+    for (const source of ['/_spa/:path*', '/_spa-auth/:path*']) {
+      expect(headers?.find((header) => header.source === source)?.headers).toContainEqual({
+        key: 'Cache-Control',
+        value:
+          'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800, stale-if-error=86400, immutable',
+      });
+    }
   });
 });
 

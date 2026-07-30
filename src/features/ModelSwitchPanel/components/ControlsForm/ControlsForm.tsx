@@ -1,4 +1,4 @@
-import type { LobeAgentChatConfig } from '@lobechat/types';
+import { type LobeAgentChatConfig, resolveModelExtendParamsConfig } from '@lobechat/types';
 import { type FormItemProps } from '@lobehub/ui';
 import { Form } from '@lobehub/ui';
 import { Switch } from '@lobehub/ui/base-ui';
@@ -98,19 +98,23 @@ const ControlsForm = memo<ControlsFormProps>(
     );
 
     const modelExtendParams = useAiInfraStore(aiModelSelectors.modelExtendParams(model, provider));
+    const modelConfig = useMemo(
+      () => resolveModelExtendParamsConfig(config, provider, model),
+      [config, model, provider],
+    );
     const initialValues = useMemo(() => {
-      const enableReasoningInitialValue = resolveEnableReasoningInitialValue(config);
+      const enableReasoningInitialValue = resolveEnableReasoningInitialValue(modelConfig);
       const enableAdaptiveThinkingInitialValue = resolveEnableAdaptiveThinkingInitialValue(
-        config,
+        modelConfig,
         model,
       );
 
       return {
-        ...config,
+        ...modelConfig,
         enableAdaptiveThinking: enableAdaptiveThinkingInitialValue,
         enableReasoning: enableReasoningInitialValue,
       };
-    }, [config, model]);
+    }, [model, modelConfig]);
 
     useEffect(() => {
       form.setFieldsValue(initialValues);
@@ -601,7 +605,9 @@ const ControlsForm = memo<ControlsFormProps>(
             if (disabled) return;
             onUpdatingChange?.(true);
             try {
-              await updateAgentChatConfig(values);
+              await updateAgentChatConfig({
+                modelConfigs: { [provider]: { [model]: values } },
+              });
             } finally {
               onUpdatingChange?.(false);
             }

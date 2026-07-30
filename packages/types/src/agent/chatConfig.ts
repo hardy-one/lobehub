@@ -27,9 +27,11 @@ export interface AgentSelfIterationChatConfig {
   };
 }
 
-export type ModelExtendParamsConfig = Partial<Pick<LobeAgentChatConfig, ExtendParamsType>>;
+export type ModelScopedChatConfig = Partial<
+  Pick<LobeAgentChatConfig, ExtendParamsType | 'useModelBuiltinSearch'>
+>;
 
-export type ModelExtendParamsConfigs = Record<string, Record<string, ModelExtendParamsConfig>>;
+export type ModelScopedChatConfigs = Record<string, Record<string, ModelScopedChatConfig>>;
 
 export interface LobeAgentChatConfig extends AgentMemoryChatConfig, AgentSelfIterationChatConfig {
   codexMaxReasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
@@ -135,8 +137,8 @@ export interface LobeAgentChatConfig extends AgentMemoryChatConfig, AgentSelfIte
   imageResolution2?: '512' | '1K' | '2K' | '4K';
   inputTemplate?: string;
   kimiK3ReasoningEffort?: 'low' | 'high' | 'max';
-  /** Model-specific extended parameters, grouped by provider then model ID. */
-  modelConfigs?: ModelExtendParamsConfigs;
+  /** Model-specific settings, grouped by provider then model ID. */
+  modelConfigs?: ModelScopedChatConfigs;
   /**
    * Effort level for Claude Opus 4.7 and later (adds xhigh tier between high and max)
    */
@@ -216,8 +218,8 @@ export interface LobeAgentChatConfig extends AgentMemoryChatConfig, AgentSelfIte
   useModelBuiltinSearch?: boolean;
 }
 
-/** Resolve model-specific extended parameters while keeping legacy Agent-level values as fallback. */
-export const resolveModelExtendParamsConfig = (
+/** Resolve model-specific settings while keeping legacy Agent-level values as fallback. */
+export const resolveModelScopedChatConfig = (
   chatConfig: LobeAgentChatConfig,
   provider: string,
   model: string,

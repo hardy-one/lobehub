@@ -1,4 +1,4 @@
-import { type LobeAgentChatConfig, resolveModelExtendParamsConfig } from '@lobechat/types';
+import { type LobeAgentChatConfig, resolveModelScopedChatConfig } from '@lobechat/types';
 import { type FormItemProps } from '@lobehub/ui';
 import { Form } from '@lobehub/ui';
 import { Switch } from '@lobehub/ui/base-ui';
@@ -99,7 +99,7 @@ const ControlsForm = memo<ControlsFormProps>(
 
     const modelExtendParams = useAiInfraStore(aiModelSelectors.modelExtendParams(model, provider));
     const modelConfig = useMemo(
-      () => resolveModelExtendParamsConfig(config, provider, model),
+      () => resolveModelScopedChatConfig(config, provider, model),
       [config, model, provider],
     );
     const initialValues = useMemo(() => {

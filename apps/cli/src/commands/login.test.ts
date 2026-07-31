@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 
 import { Command } from 'commander';
@@ -17,6 +18,7 @@ vi.mock('../auth/credentials', () => ({
 }));
 vi.mock('../settings', () => ({
   loadSettings: vi.fn().mockReturnValue(null),
+  normalizeUrl: vi.fn((url: string) => url.replace(/\/$/, '')),
   saveSettings: vi.fn(),
 }));
 
@@ -31,12 +33,7 @@ vi.mock('../utils/logger', () => ({
 
 // Mock child_process to prevent browser opening
 vi.mock('node:child_process', () => ({
-  default: {
-    exec: vi.fn((_cmd: string, cb: any) => cb?.(null)),
-    execFile: vi.fn((_cmd: string, _args: string[], cb: any) => cb?.(null)),
-  },
-  exec: vi.fn((_cmd: string, cb: any) => cb?.(null)),
-  execFile: vi.fn((_cmd: string, _args: string[], cb: any) => cb?.(null)),
+  spawn: vi.fn(),
 }));
 
 describe('login command', () => {
@@ -139,6 +136,28 @@ describe('login command', () => {
     );
     expect(saveSettings).toHaveBeenCalledWith({ serverUrl: 'https://app.lobehub.com' });
     expect(log.info).toHaveBeenCalledWith(expect.stringContaining('Login successful'));
+  });
+
+  it('should poll without waiting for a URL handler to exit', async () => {
+    const unref = vi.fn();
+    vi.mocked(spawn).mockImplementationOnce(
+      () =>
+        ({
+          once: vi.fn(),
+          unref,
+        }) as ReturnType<typeof spawn>,
+    );
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(deviceAuthResponse())
+      .mockResolvedValueOnce(tokenSuccessResponse());
+
+    const program = createProgram();
+    await runLoginAndAdvanceTimers(program);
+
+    expect(fetch).toHaveBeenCalledWith('https://app.lobehub.com/oidc/token', expect.any(Object));
+    expect(saveCredentials).toHaveBeenCalled();
+    expect(unref).toHaveBeenCalledOnce();
+    expect(spawn).toHaveBeenCalledWith(expect.any(String), expect.any(Array), { stdio: 'ignore' });
   });
 
   it('should use environment api key without storing credentials', async () => {

@@ -233,15 +233,30 @@ describe('AiAgentService.execAgent - model/provider override', () => {
 
     await service.execAgent({
       agentId: 'agent-1',
+      appContext: { topicId: 'topic-1' },
       model: 'step-3.7-flash',
       prompt: 'Hello',
       provider: 'stepfun',
-      topicId: 'topic-1',
     });
 
     const callArgs = mockCreateOperation.mock.calls[0][0];
     expect(callArgs.agentConfig.model).toBe('step-3.7-flash');
     expect(callArgs.agentConfig.provider).toBe('stepfun');
+    expect(callArgs.modelRuntimeConfig).toEqual({ model: 'step-3.7-flash', provider: 'stepfun' });
+  });
+
+  it('keeps the topic provider when only the model is overridden', async () => {
+    mockGetAgentConfig.mockResolvedValue({ ...defaultAgentConfig });
+    mockTopicFindById.mockResolvedValue({ model: 'gpt-5.6-terra', provider: 'stepfun' });
+
+    await service.execAgent({
+      agentId: 'agent-1',
+      appContext: { topicId: 'topic-1' },
+      model: 'step-3.7-flash',
+      prompt: 'Hello',
+    });
+
+    const callArgs = mockCreateOperation.mock.calls[0][0];
     expect(callArgs.modelRuntimeConfig).toEqual({ model: 'step-3.7-flash', provider: 'stepfun' });
   });
 

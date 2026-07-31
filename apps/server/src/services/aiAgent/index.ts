@@ -1713,12 +1713,13 @@ export class AiAgentService {
       log('execAgent: reusing existing topic %s', topicId);
 
       // Honor a topic-pinned model (snapshotted on creation, updated when the
-      // user switched model while the topic was active) over the agent default.
+      // user switched model while the topic was active) over the agent default,
+      // but never over an explicit per-run override (such as callSubAgent).
       // The pinned model lives in the top-level `topics.model`/`provider` columns
       // (config source of truth), NOT in metadata.
       const existingTopic = await this.topicModel.findById(topicId);
       const pinnedModel = existingTopic?.model;
-      if (pinnedModel) {
+      if (pinnedModel && !modelOverride && !providerOverride) {
         model = pinnedModel;
         provider = existingTopic?.provider || provider;
         log(

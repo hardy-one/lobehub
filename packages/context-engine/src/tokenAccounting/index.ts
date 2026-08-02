@@ -2,6 +2,7 @@
 import type { AssistantContentBlock, UIChatMessage } from '@lobechat/types';
 import { estimateTokenCount } from 'tokenx';
 
+import { DEFAULT_TEMPLATE, formatTaskMessage } from '../processors/TaskMessage';
 import type {
   ContextTokenAccounting,
   CountContextTokensParams,
@@ -76,8 +77,8 @@ type AssistantTokenBlock =
  *
  *   `plugin`, `pluginState`, `pluginIntervention`, `pluginError`, `chunksList`,
  *   `editorData`, `extra`, `fileList`, `imageList`, `videoList`, `metadata`
- *   (other than `metadata.usage.totalOutputTokens` shortcut for assistant)
- *
+ *   (other than `metadata.usage.totalOutputTokens` shortcut for assistant and
+ *   `metadata.instruction` for `task` messages, which ship in the template)
  * Also NOT counted: in-bubble `council` blocks (`AssistantContentBlock.council`)
  * and `taskCompletions` on group wrappers — both are UI-only denormalizations
  * (broadcast member replies / folded subagent completions) that GroupMessageFlatten
@@ -184,17 +185,34 @@ export const countContextTokens = ({
     };
 
     // `task` messages (subagent execution results) are re-emitted by
-    // TaskMessageProcessor as assistant messages whose content is the
-    // instruction/result template (`{{agentName}}` + `{{instruction}}` +
-    // `{{content}}`), so `metadata.instruction` ships inside `content` and must
-    // be counted alongside the task's own result text. Standalone `task`
-    // messages and the entries of `tasks`/`groupTasks` containers share this
-    // shape.
+    // TaskMessageProcessor as assistant messages whose content is the full
+    // instruction/result template (`[Task Result from {{agentName}}]` +
+    // `{{instruction}}` + `{{content}}`). Mirror the processor exactly: when
+    // `metadata.instruction` is present, estimate the formatted template
+    // (static headings + agentName included), not just the two parts — short
+    // results would otherwise undercount the shipped payload.
     const countTaskMessage = (task: UIChatMessage) => {
-      bumpSource(bySource, 'content', estimate(task.content));
-
       const instruction = (task.metadata as { instruction?: unknown } | undefined)?.instruction;
-      bumpSource(bySource, 'content', estimate(instruction));
+
+      if (instruction) {
+        const taskWithIdentity = task as UIChatMessage & {
+          agentName?: string;
+          meta?: { avatar?: string };
+        };
+        // Same resolution as TaskMessageProcessor: agentName || meta.avatar || 'Sub Agent'
+        const agentName =
+          taskWithIdentity.agentName || taskWithIdentity.meta?.avatar || 'Sub Agent';
+        const formattedContent = formatTaskMessage(DEFAULT_TEMPLATE, {
+          agentName: String(agentName),
+          content: String(task.content || ''),
+          instruction: String(instruction),
+        });
+        bumpSource(bySource, 'content', estimate(formattedContent));
+      } else {
+        // No instruction: TaskMessageProcessor converts to a plain assistant
+        // message carrying only the result text.
+        bumpSource(bySource, 'content', estimate(task.content));
+      }
 
       const reasoning = task.reasoning;
       if (reasoning) {

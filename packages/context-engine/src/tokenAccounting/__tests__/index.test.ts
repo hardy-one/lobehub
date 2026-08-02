@@ -1,6 +1,8 @@
 import type { UIChatMessage } from '@lobechat/types';
+import { estimateTokenCount } from 'tokenx';
 import { describe, expect, it } from 'vitest';
 
+import { DEFAULT_TEMPLATE, formatTaskMessage } from '../../processors/TaskMessage';
 import { countContextTokens, DEFAULT_DRIFT_MULTIPLIER } from '../index';
 
 // Minimal helper — UIChatMessage has many optional fields; tests only set the
@@ -581,6 +583,42 @@ describe('countContextTokens', () => {
       });
 
       expect(r.bySource.content).toBeGreaterThan(0);
+    });
+
+    it('estimates the exact template text the processor emits (headings + agentName)', () => {
+      const content = 'short result';
+      const instruction = 'do the thing '.repeat(10);
+      const r = countContextTokens({
+        messages: [mkMsg({ role: 'task', content, metadata: { instruction } as any })],
+      });
+
+      // Mirror of TaskMessageProcessor output for a task without identity fields.
+      const expected = estimateTokenCount(
+        formatTaskMessage(DEFAULT_TEMPLATE, {
+          agentName: 'Sub Agent',
+          content,
+          instruction,
+        }),
+      );
+      expect(r.bySource.content).toBe(expected);
+    });
+
+    it('counts the task agentName inside the template', () => {
+      const anonymous = countContextTokens({
+        messages: [mkMsg({ role: 'task', content: 'r', metadata: { instruction: 'i' } as any })],
+      });
+      const named = countContextTokens({
+        messages: [
+          mkMsg({
+            role: 'task',
+            agentName: 'A rather long agent persona name '.repeat(10),
+            content: 'r',
+            metadata: { instruction: 'i' } as any,
+          } as any),
+        ],
+      });
+
+      expect(named.bySource.content).toBeGreaterThan(anonymous.bySource.content);
     });
   });
 

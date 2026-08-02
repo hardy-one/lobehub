@@ -1,4 +1,5 @@
 // cspell:ignore tokenx
+import type { AssistantContentBlock, UIChatMessage } from '@lobechat/types';
 import { estimateTokenCount } from 'tokenx';
 
 import type {
@@ -36,6 +37,10 @@ const bumpSource = (
   if (amount <= 0) return;
   bySource[key] = (bySource[key] ?? 0) + amount;
 };
+
+type AssistantTokenBlock =
+  | AssistantContentBlock
+  | Pick<UIChatMessage, 'content' | 'metadata' | 'reasoning' | 'tools' | 'usage'>;
 
 /**
  * Account every token that will be sent to the provider for one chat request,
@@ -104,33 +109,30 @@ export const countContextTokens = ({
   const messageBreakdowns: MessageTokenBreakdown[] = messages.map((msg, index) => {
     const bySource: Partial<Record<TokenSourceType, number>> = {};
 
-    // Group nodes (`assistantGroup`, `compareGroup`, …) carry their conversation
-    // content in `children` — the request builder flattens them back into the
-    // provider payload, so they must be counted recursively. Without this,
-    // tool results hidden inside an assistantGroup are invisible to the
-    // compression trigger (the group's own `content` is empty).
-    const countMessage = (
-      message: UIChatMessage,
-      acc: Partial<Record<TokenSourceType, number>>,
-    ) => {
-      const children = (message as UIChatMessage & { children?: UIChatMessage[] }).children;
-      if (Array.isArray(children) && children.length > 0) {
-        for (const child of children) countMessage(child, acc);
-      }
+    const countToolResults = (tools: AssistantTokenBlock['tools']) => {
+      if (!Array.isArray(tools) || tools.length === 0) return;
 
+      for (const tool of tools) {
+        const result = (tool as { result?: { content?: unknown } }).result;
+        if (!result) continue;
+
+        bumpSource(bySource, 'content', estimate(result.content));
+        bumpSource(bySource, 'toolCallId', estimate(tool.id));
+      }
+    };
+
+    const countAssistant = (message: AssistantTokenBlock) => {
       // Assistant fast-path: recorded usage covers content + tool_calls + reasoning
       // produced by THIS turn's generation. Use it directly when available. Prefer
       // the dedicated `usage` field, falling back to legacy `metadata.usage`.
       const recordedOutputTokens =
-        message.role === 'assistant'
-          ? (message.usage?.totalOutputTokens ?? message.metadata?.usage?.totalOutputTokens)
-          : undefined;
+        message.usage?.totalOutputTokens ?? message.metadata?.usage?.totalOutputTokens;
 
       if (recordedOutputTokens && recordedOutputTokens > 0) {
-        bumpSource(acc, 'content', recordedOutputTokens);
+        bumpSource(bySource, 'content', recordedOutputTokens);
       } else {
         // Per-field estimation
-        bumpSource(acc, 'content', estimate(message.content));
+        bumpSource(bySource, 'content', estimate(message.content));
 
         // Tool calls: lobe stores these on `msg.tools` (NOT OpenAI's `tool_calls`)
         // We project to what's actually sent: id + apiName + arguments + type.
@@ -139,11 +141,7 @@ export const countContextTokens = ({
         // Gemini's `thoughtSignature` is preserved by ToolCallProcessor and
         // forwarded by the Google context builder — count it under its own
         // bucket since it's provider-specific and can be sizeable on every call.
-        if (
-          message.role === 'assistant' &&
-          Array.isArray(message.tools) &&
-          message.tools.length > 0
-        ) {
+        if (Array.isArray(message.tools) && message.tools.length > 0) {
           let tcSum = 0;
           let sigSum = 0;
           for (const tc of message.tools) {
@@ -153,15 +151,37 @@ export const countContextTokens = ({
             tcSum += estimate(tc.type);
             sigSum += estimate(tc.thoughtSignature);
           }
-          bumpSource(acc, 'toolCalls', tcSum);
-          bumpSource(acc, 'thoughtSignature', sigSum);
+          bumpSource(bySource, 'toolCalls', tcSum);
+          bumpSource(bySource, 'thoughtSignature', sigSum);
         }
 
         // Reasoning trace (thinking-mode models echo this back next turn)
         const reasoning = message.reasoning;
         if (reasoning) {
           const reasoningContent = typeof reasoning === 'string' ? reasoning : reasoning.content;
-          bumpSource(acc, 'reasoning', estimate(reasoningContent));
+          bumpSource(bySource, 'reasoning', estimate(reasoningContent));
+        }
+      }
+    };
+
+    // assistantGroup / supervisor are display-only wrappers. Their children are
+    // AssistantContentBlocks, which the context pipeline restores to assistant
+    // messages followed by their inline tool results.
+    if ((msg.role === 'assistantGroup' || msg.role === 'supervisor') && msg.children) {
+      for (const child of msg.children) {
+        countAssistant(child);
+        countToolResults(child.tools);
+      }
+    } else {
+      if (msg.role === 'assistant') {
+        countAssistant(msg);
+      } else {
+        bumpSource(bySource, 'content', estimate(msg.content));
+
+        const reasoning = msg.reasoning;
+        if (reasoning) {
+          const reasoningContent = typeof reasoning === 'string' ? reasoning : reasoning.content;
+          bumpSource(bySource, 'reasoning', estimate(reasoningContent));
         }
       }
 
@@ -169,22 +189,14 @@ export const countContextTokens = ({
       // group children carry it inline on `tools[].result.content`. Count it
       // regardless of the fast-path above (recorded assistant usage never covers
       // the results of its own tool calls).
-      if (Array.isArray(message.tools) && message.tools.length > 0) {
-        let resultSum = 0;
-        for (const tc of message.tools) {
-          resultSum += estimate((tc as { result?: { content?: unknown } }).result?.content);
-        }
-        bumpSource(acc, 'content', resultSum);
-      }
+      countToolResults(msg.tools);
 
       // tool_call_id is sent regardless of fast-path (it's on `tool` role messages,
       // not assistant)
-      if (message.tool_call_id) {
-        bumpSource(acc, 'toolCallId', estimate(message.tool_call_id));
+      if (msg.tool_call_id) {
+        bumpSource(bySource, 'toolCallId', estimate(msg.tool_call_id));
       }
-    };
-
-    countMessage(msg, bySource);
+    }
 
     let total = 0;
     for (const v of Object.values(bySource)) total += v ?? 0;

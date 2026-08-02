@@ -415,10 +415,7 @@ describe('countContextTokens', () => {
   });
 
   describe('assistantGroup children (conversation-flow flattened lists)', () => {
-    it('recursively counts children content and tool results hidden in the group', () => {
-      // state.messages on both runtimes is the parsed display list: assistant +
-      // tool messages are folded into assistantGroup nodes whose own `content` is
-      // empty — without recursion the compression trigger would miss all of them.
+    it('counts the real assistant blocks and inline tool results', () => {
       const r = countContextTokens({
         messages: [
           mkMsg({ role: 'user', content: 'user prompt' }),
@@ -429,34 +426,27 @@ describe('countContextTokens', () => {
               {
                 content: 'assistant text',
                 id: 'a1',
-                role: 'assistant',
                 tools: [
                   {
                     apiName: 'readFile',
-                    arguments: '{"path":"/x"}',
+                    arguments: '{"path":"/x","padding":"' + 'x'.repeat(1000) + '"}',
                     id: 't1',
                     identifier: 'fs',
-                    result: { content: 'big file content '.repeat(100) },
+                    result: { content: 'big file content '.repeat(100), id: 'result-1' },
                     type: 'default',
                   },
                 ],
               },
-              {
-                content: 'tool result text '.repeat(50),
-                id: 'a2',
-                role: 'tool',
-                tool_call_id: 't1',
-              },
+              { content: '', id: 'a2', usage: { totalOutputTokens: 42 } },
             ],
-          } as any),
+          }),
         ],
       });
 
-      // Group's own empty content contributes nothing, but children do.
       expect(r.messages).toHaveLength(2);
       expect(r.messages[1].bySource.content).toBeGreaterThan(100);
       expect(r.messages[1].bySource.toolCalls).toBeGreaterThan(0);
-      // Top-level total must reflect the children's tokens.
+      expect(r.messages[1].bySource.toolCallId).toBeGreaterThan(0);
       expect(r.rawTotal).toBeGreaterThan(150);
     });
 

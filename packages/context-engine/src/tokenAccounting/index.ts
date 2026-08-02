@@ -53,8 +53,23 @@ type AssistantTokenBlock =
  * | `toolCalls`        | `msg.tools[]` (lobe internal, not OpenAI's `tool_calls`)   | `message.tool_calls`             |
  * | `thoughtSignature` | `msg.tools[N].thoughtSignature` (Gemini-specific)          | echoed back per tool call        |
  * | `reasoning`        | `msg.reasoning.content` / `msg.reasoning` (string variant) | echoed back next turn (thinking) |
- * | `toolCallId`       | `msg.tool_call_id`                                         | `message.tool_call_id`           |
+ * | `toolCallId`       | `msg.tool_call_id` + `tools[].id` (result-bearing)     | `message.tool_call_id`           |
  * | `toolDefinition`   | top-level `tools[]` param                                  | request `tools` array            |
+ *
+ * **Container messages** — the conversation-flow flatteners pack real
+ * conversation content into display-only wrappers that the context pipeline
+ * restores before sending. Counting mirrors each flattening:
+ *
+ *   - `assistantGroup` / `supervisor` → `children[]` (AssistantContentBlock:
+ *     content + tools + thoughtSignature + reasoning + `tools[].result.content` +
+ *     `tools[].id` as tool_call_id) — restored by GroupMessageFlatten
+ *   - `tasks` / `groupTasks` → `tasks[]` (real task messages; `content` +
+ *     `metadata.instruction` are re-emitted inside one assistant template by
+ *     TasksFlatten + TaskMessageProcessor)
+ *   - `agentCouncil` → `members[]` (assistant or nested assistantGroup)
+ *     — restored by AgentCouncilFlatten
+ *   - standalone `role: 'task'` messages use the same accounting as one
+ *     entry of a `tasks` container
  *
  * **What's NOT counted (intentionally)** — these are DB-only fields the
  * harness stores but doesn't ship to the provider:
@@ -63,7 +78,11 @@ type AssistantTokenBlock =
  *   `editorData`, `extra`, `fileList`, `imageList`, `videoList`, `metadata`
  *   (other than `metadata.usage.totalOutputTokens` shortcut for assistant)
  *
- * Counting them would over-estimate and trigger compression too early.
+ * Also NOT counted: in-bubble `council` blocks (`AssistantContentBlock.council`)
+ * and `taskCompletions` on group wrappers — both are UI-only denormalizations
+ * (broadcast member replies / folded subagent completions) that GroupMessageFlatten
+ * drops and never reach the provider. Counting them would over-estimate and
+ * trigger compression too early.
  *
  * **Token estimation accuracy**
  *
@@ -164,14 +183,74 @@ export const countContextTokens = ({
       }
     };
 
+    // `task` messages (subagent execution results) are re-emitted by
+    // TaskMessageProcessor as assistant messages whose content is the
+    // instruction/result template (`{{agentName}}` + `{{instruction}}` +
+    // `{{content}}`), so `metadata.instruction` ships inside `content` and must
+    // be counted alongside the task's own result text. Standalone `task`
+    // messages and the entries of `tasks`/`groupTasks` containers share this
+    // shape.
+    const countTaskMessage = (task: UIChatMessage) => {
+      bumpSource(bySource, 'content', estimate(task.content));
+
+      const instruction = (task.metadata as { instruction?: unknown } | undefined)?.instruction;
+      bumpSource(bySource, 'content', estimate(instruction));
+
+      const reasoning = task.reasoning;
+      if (reasoning) {
+        const reasoningContent = typeof reasoning === 'string' ? reasoning : reasoning.content;
+        bumpSource(bySource, 'reasoning', estimate(reasoningContent));
+      }
+    };
+
     // assistantGroup / supervisor are display-only wrappers. Their children are
     // AssistantContentBlocks, which the context pipeline restores to assistant
     // messages followed by their inline tool results.
-    if ((msg.role === 'assistantGroup' || msg.role === 'supervisor') && msg.children) {
-      for (const child of msg.children) {
+    const countGroupChildren = (children: AssistantContentBlock[]) => {
+      for (const child of children) {
         countAssistant(child);
         countToolResults(child.tools);
       }
+    };
+
+    if (
+      (msg.role === 'assistantGroup' || msg.role === 'supervisor') &&
+      Array.isArray(msg.children) &&
+      msg.children.length > 0
+    ) {
+      countGroupChildren(msg.children);
+    } else if (
+      (msg.role === 'tasks' || msg.role === 'groupTasks') &&
+      Array.isArray(msg.tasks) &&
+      msg.tasks.length > 0
+    ) {
+      // TasksFlatten re-emits every entry as a `task` message, which
+      // TaskMessageProcessor turns into an assistant template — count each
+      // task the same way a standalone `task` message is counted.
+      for (const task of msg.tasks) countTaskMessage(task);
+    } else if (
+      msg.role === 'agentCouncil' &&
+      Array.isArray(msg.members) &&
+      msg.members.length > 0
+    ) {
+      // AgentCouncilFlatten expands members into assistant + tool messages; a
+      // member can itself be a nested assistantGroup container.
+      for (const member of msg.members) {
+        if (
+          (member.role === 'assistantGroup' || member.role === 'supervisor') &&
+          Array.isArray(member.children) &&
+          member.children.length > 0
+        ) {
+          countGroupChildren(member.children);
+        } else {
+          countAssistant(member);
+          countToolResults(member.tools);
+        }
+      }
+    } else if (msg.role === 'task') {
+      // Standalone task message (single subagent result) — same accounting as
+      // one entry of a `tasks` container.
+      countTaskMessage(msg);
     } else {
       if (msg.role === 'assistant') {
         countAssistant(msg);

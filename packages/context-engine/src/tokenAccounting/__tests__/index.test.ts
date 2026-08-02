@@ -499,6 +499,165 @@ describe('countContextTokens', () => {
     });
   });
 
+  describe('tasks / groupTasks containers (subagent executions)', () => {
+    it('counts each task content + metadata.instruction inside a tasks container', () => {
+      const r = countContextTokens({
+        messages: [
+          mkMsg({
+            role: 'tasks',
+            content: '',
+            tasks: [
+              mkMsg({
+                role: 'task',
+                content: 'result text '.repeat(50),
+                metadata: { instruction: 'very long subagent instruction '.repeat(80) } as any,
+              }),
+              mkMsg({ role: 'task', content: 'another result '.repeat(40) }),
+            ],
+          }),
+        ],
+      });
+
+      // Both results AND both instructions ship inside the re-emitted template
+      expect(r.bySource.content).toBeGreaterThan(500);
+      expect(r.messages[0].bySource.content).toBe(r.bySource.content);
+      expect(r.messages[0].bySource.reasoning).toBeUndefined();
+    });
+
+    it('counts groupTasks containers the same way', () => {
+      const r = countContextTokens({
+        messages: [
+          mkMsg({
+            role: 'groupTasks',
+            content: '',
+            tasks: [
+              mkMsg({
+                role: 'task',
+                content: 'group task result '.repeat(45),
+                metadata: { instruction: 'group task instruction '.repeat(45) } as any,
+              }),
+            ],
+          }),
+        ],
+      });
+
+      expect(r.bySource.content).toBeGreaterThan(200);
+    });
+
+    it('counts a standalone task message (content + instruction)', () => {
+      const r = countContextTokens({
+        messages: [
+          mkMsg({
+            role: 'task',
+            content: 'result '.repeat(30),
+            metadata: { instruction: 'instruction '.repeat(60) } as any,
+          }),
+        ],
+      });
+
+      expect(r.bySource.content).toBeGreaterThan(100);
+
+      // instruction is counted on top of content (re-emitted inside the template)
+      const withInstruction = countContextTokens({
+        messages: [
+          mkMsg({
+            role: 'task',
+            content: 'same',
+            metadata: { instruction: 'long instruction '.repeat(50) } as any,
+          }),
+        ],
+      });
+      const withoutInstruction = countContextTokens({
+        messages: [mkMsg({ role: 'task', content: 'same' })],
+      });
+      expect(withInstruction.bySource.content).toBeGreaterThan(withoutInstruction.bySource.content);
+    });
+
+    it('counts task content without instruction (TaskMessage fallback)', () => {
+      // TaskMessageProcessor converts to assistant with plain content when no
+      // instruction is present — the result text must still count.
+      const r = countContextTokens({
+        messages: [mkMsg({ role: 'task', content: 'plain result '.repeat(20) })],
+      });
+
+      expect(r.bySource.content).toBeGreaterThan(0);
+    });
+  });
+
+  describe('agentCouncil members (broadcast)', () => {
+    it('counts plain assistant members with tool results', () => {
+      const r = countContextTokens({
+        messages: [
+          mkMsg({
+            role: 'agentCouncil',
+            content: '',
+            members: [
+              mkMsg({
+                role: 'assistant',
+                content: 'member reply '.repeat(40),
+                tools: [
+                  {
+                    apiName: 'search',
+                    arguments: '{"q":"x"}',
+                    id: 'm1',
+                    identifier: 'p',
+                    result: { content: 'member result payload '.repeat(60) },
+                    type: 'default',
+                  } as any,
+                ],
+              }),
+            ],
+          }),
+        ],
+      });
+
+      expect(r.bySource.content).toBeGreaterThan(200);
+      expect(r.bySource.toolCalls).toBeGreaterThan(0);
+      // tool.id ships as the flattened tool message's tool_call_id
+      expect(r.bySource.toolCallId).toBeGreaterThan(0);
+      expect(r.bySource.content).toBeGreaterThan(150);
+      expect(r.bySource.toolCalls).toBeGreaterThan(0);
+      expect(r.bySource.toolCallId).toBeGreaterThan(0);
+    });
+
+    it('counts nested assistantGroup members', () => {
+      const r = countContextTokens({
+        messages: [
+          mkMsg({
+            role: 'agentCouncil',
+            content: '',
+            members: [
+              mkMsg({
+                role: 'assistantGroup',
+                content: '',
+                children: [
+                  {
+                    content: 'nested assistant text '.repeat(30),
+                    id: 'n1',
+                    tools: [
+                      {
+                        apiName: 'readFile',
+                        arguments: '{}',
+                        id: 'n2',
+                        identifier: 'fs',
+                        result: { content: 'nested result '.repeat(50) },
+                        type: 'default',
+                      } as any,
+                    ],
+                  },
+                ],
+              }),
+            ],
+          }),
+        ],
+      });
+
+      expect(r.bySource.content).toBeGreaterThan(150);
+      expect(r.bySource.toolCalls).toBeGreaterThan(0);
+      expect(r.bySource.toolCallId).toBeGreaterThan(0);
+    });
+  });
+
   describe('aggregation', () => {
     it('sums bySource across multiple messages and tools', () => {
       const r = countContextTokens({

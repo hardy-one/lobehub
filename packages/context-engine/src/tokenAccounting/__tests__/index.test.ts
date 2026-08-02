@@ -414,6 +414,101 @@ describe('countContextTokens', () => {
     });
   });
 
+  describe('assistantGroup children (conversation-flow flattened lists)', () => {
+    it('recursively counts children content and tool results hidden in the group', () => {
+      // state.messages on both runtimes is the parsed display list: assistant +
+      // tool messages are folded into assistantGroup nodes whose own `content` is
+      // empty — without recursion the compression trigger would miss all of them.
+      const r = countContextTokens({
+        messages: [
+          mkMsg({ role: 'user', content: 'user prompt' }),
+          mkMsg({
+            role: 'assistantGroup',
+            content: '',
+            children: [
+              {
+                content: 'assistant text',
+                id: 'a1',
+                role: 'assistant',
+                tools: [
+                  {
+                    apiName: 'readFile',
+                    arguments: '{"path":"/x"}',
+                    id: 't1',
+                    identifier: 'fs',
+                    result: { content: 'big file content '.repeat(100) },
+                    type: 'default',
+                  },
+                ],
+              },
+              {
+                content: 'tool result text '.repeat(50),
+                id: 'a2',
+                role: 'tool',
+                tool_call_id: 't1',
+              },
+            ],
+          } as any),
+        ],
+      });
+
+      // Group's own empty content contributes nothing, but children do.
+      expect(r.messages).toHaveLength(2);
+      expect(r.messages[1].bySource.content).toBeGreaterThan(100);
+      expect(r.messages[1].bySource.toolCalls).toBeGreaterThan(0);
+      // Top-level total must reflect the children's tokens.
+      expect(r.rawTotal).toBeGreaterThan(150);
+    });
+
+    it('counts tool result content (tools[].result.content) on plain assistant messages', () => {
+      const r = countContextTokens({
+        messages: [
+          mkMsg({
+            role: 'assistant',
+            content: 'short',
+            tools: [
+              {
+                apiName: 'search',
+                arguments: '{}',
+                id: 'c1',
+                identifier: 'p',
+                result: { content: 'search result payload '.repeat(200) },
+                type: 'default',
+              } as any,
+            ],
+          }),
+        ],
+      });
+
+      expect(r.bySource.content).toBeGreaterThan(500);
+    });
+
+    it('keeps counting result content even on the assistant usage fast-path', () => {
+      const r = countContextTokens({
+        messages: [
+          mkMsg({
+            role: 'assistant',
+            content: '',
+            metadata: { usage: { totalOutputTokens: 42 } as any } as any,
+            tools: [
+              {
+                apiName: 'search',
+                arguments: '{}',
+                id: 'c1',
+                identifier: 'p',
+                result: { content: 'result payload '.repeat(100) },
+                type: 'default',
+              } as any,
+            ],
+          }),
+        ],
+      });
+
+      // 42 (recorded output) + result payload tokens
+      expect(r.bySource.content).toBeGreaterThan(42);
+    });
+  });
+
   describe('aggregation', () => {
     it('sums bySource across multiple messages and tools', () => {
       const r = countContextTokens({

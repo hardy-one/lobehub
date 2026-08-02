@@ -104,54 +104,87 @@ export const countContextTokens = ({
   const messageBreakdowns: MessageTokenBreakdown[] = messages.map((msg, index) => {
     const bySource: Partial<Record<TokenSourceType, number>> = {};
 
-    // Assistant fast-path: recorded usage covers content + tool_calls + reasoning
-    // produced by THIS turn's generation. Use it directly when available. Prefer
-    // the dedicated `usage` field, falling back to legacy `metadata.usage`.
-    const recordedOutputTokens =
-      msg.role === 'assistant'
-        ? (msg.usage?.totalOutputTokens ?? msg.metadata?.usage?.totalOutputTokens)
-        : undefined;
+    // Group nodes (`assistantGroup`, `compareGroup`, …) carry their conversation
+    // content in `children` — the request builder flattens them back into the
+    // provider payload, so they must be counted recursively. Without this,
+    // tool results hidden inside an assistantGroup are invisible to the
+    // compression trigger (the group's own `content` is empty).
+    const countMessage = (
+      message: UIChatMessage,
+      acc: Partial<Record<TokenSourceType, number>>,
+    ) => {
+      const children = (message as UIChatMessage & { children?: UIChatMessage[] }).children;
+      if (Array.isArray(children) && children.length > 0) {
+        for (const child of children) countMessage(child, acc);
+      }
 
-    if (recordedOutputTokens && recordedOutputTokens > 0) {
-      bumpSource(bySource, 'content', recordedOutputTokens);
-    } else {
-      // Per-field estimation
-      bumpSource(bySource, 'content', estimate(msg.content));
+      // Assistant fast-path: recorded usage covers content + tool_calls + reasoning
+      // produced by THIS turn's generation. Use it directly when available. Prefer
+      // the dedicated `usage` field, falling back to legacy `metadata.usage`.
+      const recordedOutputTokens =
+        message.role === 'assistant'
+          ? (message.usage?.totalOutputTokens ?? message.metadata?.usage?.totalOutputTokens)
+          : undefined;
 
-      // Tool calls: lobe stores these on `msg.tools` (NOT OpenAI's `tool_calls`)
-      // We project to what's actually sent: id + apiName + arguments + type.
-      // Skipping internal-only fields (intervention, source, executor, result_msg_id)
-      // which don't ship to the provider.
-      // Gemini's `thoughtSignature` is preserved by ToolCallProcessor and
-      // forwarded by the Google context builder — count it under its own
-      // bucket since it's provider-specific and can be sizeable on every call.
-      if (msg.role === 'assistant' && Array.isArray(msg.tools) && msg.tools.length > 0) {
-        let tcSum = 0;
-        let sigSum = 0;
-        for (const tc of msg.tools) {
-          tcSum += estimate(tc.id);
-          tcSum += estimate(tc.apiName);
-          tcSum += estimate(tc.arguments);
-          tcSum += estimate(tc.type);
-          sigSum += estimate(tc.thoughtSignature);
+      if (recordedOutputTokens && recordedOutputTokens > 0) {
+        bumpSource(acc, 'content', recordedOutputTokens);
+      } else {
+        // Per-field estimation
+        bumpSource(acc, 'content', estimate(message.content));
+
+        // Tool calls: lobe stores these on `msg.tools` (NOT OpenAI's `tool_calls`)
+        // We project to what's actually sent: id + apiName + arguments + type.
+        // Skipping internal-only fields (intervention, source, executor, result_msg_id)
+        // which don't ship to the provider.
+        // Gemini's `thoughtSignature` is preserved by ToolCallProcessor and
+        // forwarded by the Google context builder — count it under its own
+        // bucket since it's provider-specific and can be sizeable on every call.
+        if (
+          message.role === 'assistant' &&
+          Array.isArray(message.tools) &&
+          message.tools.length > 0
+        ) {
+          let tcSum = 0;
+          let sigSum = 0;
+          for (const tc of message.tools) {
+            tcSum += estimate(tc.id);
+            tcSum += estimate(tc.apiName);
+            tcSum += estimate(tc.arguments);
+            tcSum += estimate(tc.type);
+            sigSum += estimate(tc.thoughtSignature);
+          }
+          bumpSource(acc, 'toolCalls', tcSum);
+          bumpSource(acc, 'thoughtSignature', sigSum);
         }
-        bumpSource(bySource, 'toolCalls', tcSum);
-        bumpSource(bySource, 'thoughtSignature', sigSum);
+
+        // Reasoning trace (thinking-mode models echo this back next turn)
+        const reasoning = message.reasoning;
+        if (reasoning) {
+          const reasoningContent = typeof reasoning === 'string' ? reasoning : reasoning.content;
+          bumpSource(acc, 'reasoning', estimate(reasoningContent));
+        }
       }
 
-      // Reasoning trace (thinking-mode models echo this back next turn)
-      const reasoning = msg.reasoning;
-      if (reasoning) {
-        const reasoningContent = typeof reasoning === 'string' ? reasoning : reasoning.content;
-        bumpSource(bySource, 'reasoning', estimate(reasoningContent));
+      // Tool result content is shipped to the provider as the `tool` message —
+      // group children carry it inline on `tools[].result.content`. Count it
+      // regardless of the fast-path above (recorded assistant usage never covers
+      // the results of its own tool calls).
+      if (Array.isArray(message.tools) && message.tools.length > 0) {
+        let resultSum = 0;
+        for (const tc of message.tools) {
+          resultSum += estimate((tc as { result?: { content?: unknown } }).result?.content);
+        }
+        bumpSource(acc, 'content', resultSum);
       }
-    }
 
-    // tool_call_id is sent regardless of fast-path (it's on `tool` role messages,
-    // not assistant)
-    if (msg.tool_call_id) {
-      bumpSource(bySource, 'toolCallId', estimate(msg.tool_call_id));
-    }
+      // tool_call_id is sent regardless of fast-path (it's on `tool` role messages,
+      // not assistant)
+      if (message.tool_call_id) {
+        bumpSource(acc, 'toolCallId', estimate(message.tool_call_id));
+      }
+    };
+
+    countMessage(msg, bySource);
 
     let total = 0;
     for (const v of Object.values(bySource)) total += v ?? 0;

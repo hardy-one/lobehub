@@ -514,6 +514,7 @@ export const buildServerCallLlmContext = async ({
       skillsConfig: { enabledSkills: resolvedSkills.enabledSkills },
     }),
     enableAgentMode: agentConfig.chatConfig?.enableAgentMode,
+    promptMode: agentConfig.chatConfig?.promptMode,
     ...(topicReferences && { topicReferences }),
     ...(onboardingContext && { onboardingContext }),
   };

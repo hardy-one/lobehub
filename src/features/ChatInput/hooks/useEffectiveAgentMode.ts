@@ -5,7 +5,21 @@ import { agentByIdSelectors } from '@/store/agent/selectors';
 import { aiProviderSelectors, useAiInfraStore } from '@/store/aiInfra';
 import { useUserStore } from '@/store/user';
 
-export type ChatInputMode = 'agent' | 'chat';
+export type ChatInputMode = 'agent' | 'efficient' | 'chat';
+
+/**
+ * Chat input mode derived from `enableAgentMode` × `promptMode`:
+ *   - agent:     agent + full prompt (upstream-identical)
+ *   - efficient: agent + lean prompt (the only divergence from upstream)
+ *   - chat:      chat + full prompt (upstream-identical)
+ */
+export const resolveChatMode = (
+  enableAgentMode: boolean,
+  promptMode?: 'full' | 'lean',
+): ChatInputMode => {
+  if (enableAgentMode) return promptMode === 'lean' ? 'efficient' : 'agent';
+  return 'chat';
+};
 
 interface ResolveEffectiveAgentModeParams {
   enableAgentMode: boolean;
@@ -15,12 +29,14 @@ interface ResolveEffectiveAgentModeParams {
    * the prior behaviour.
    */
   isModelListReady?: boolean;
+  promptMode?: 'full' | 'lean';
   supportToolUse: boolean;
 }
 
 export const resolveEffectiveAgentMode = ({
   enableAgentMode,
   isModelListReady = true,
+  promptMode,
   supportToolUse,
 }: ResolveEffectiveAgentModeParams) => {
   // While the model list is not ready, `supportToolUse` is `false` only because
@@ -31,9 +47,13 @@ export const resolveEffectiveAgentMode = ({
   // capability re-evaluates once the list loads.
   const effectiveSupportToolUse = isModelListReady ? supportToolUse : true;
 
-  const currentMode: ChatInputMode = enableAgentMode && effectiveSupportToolUse ? 'agent' : 'chat';
+  // Agent modes require tool-calling support; otherwise fall back to chat-family mode.
+  const currentMode: ChatInputMode =
+    enableAgentMode && effectiveSupportToolUse
+      ? resolveChatMode(enableAgentMode, promptMode)
+      : resolveChatMode(false, promptMode);
   // Example: stored Agent mode + a model without tool calling should render chat-only runtime UI.
-  const isAgentRuntimeMode = currentMode === 'agent';
+  const isAgentRuntimeMode = currentMode === 'agent' || currentMode === 'efficient';
 
   return {
     canSelectAgentMode: effectiveSupportToolUse,
@@ -45,8 +65,9 @@ export const resolveEffectiveAgentMode = ({
 };
 
 export const useEffectiveAgentMode = (agentId: string) => {
-  const [sharedEnableAgentMode, model, provider, agent] = useAgentStore((s) => [
+  const [sharedEnableAgentMode, sharedPromptMode, model, provider, agent] = useAgentStore((s) => [
     agentByIdSelectors.getAgentEnableModeById(agentId)(s),
+    agentByIdSelectors.getAgentPromptModeById(agentId)(s),
     agentByIdSelectors.getAgentModelById(agentId)(s),
     agentByIdSelectors.getAgentModelProviderById(agentId)(s),
     agentByIdSelectors.getAgentById(agentId)(s),
@@ -63,11 +84,12 @@ export const useEffectiveAgentMode = (agentId: string) => {
     ? preference.agentModeOverrides?.[agentId]
     : undefined;
   const enableAgentMode = memberModeOverride ?? sharedEnableAgentMode;
+  const promptMode = memberModeOverride === undefined ? sharedPromptMode : undefined;
   const supportToolUse = useModelSupportToolUse(model, provider);
   const isModelListReady = useAiInfraStore(aiProviderSelectors.isInitAiProviderRuntimeState);
 
   return {
-    ...resolveEffectiveAgentMode({ enableAgentMode, isModelListReady, supportToolUse }),
+    ...resolveEffectiveAgentMode({ enableAgentMode, isModelListReady, promptMode, supportToolUse }),
     isPreferenceLoading: isAccessLoading || (usesWorkspaceMemberMode && isLoading),
     usesWorkspaceMemberMode,
   };

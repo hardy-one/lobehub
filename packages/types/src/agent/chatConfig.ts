@@ -69,6 +69,7 @@ export interface LobeAgentChatConfig extends AgentMemoryChatConfig, AgentSelfIte
    * Treat undefined as `true` — agent mode is the default.
    */
   enableAgentMode?: boolean;
+
   /**
    * Whether to auto-scroll during AI streaming output
    * undefined = use global setting
@@ -150,12 +151,22 @@ export interface LobeAgentChatConfig extends AgentMemoryChatConfig, AgentSelfIte
    * Effort level for Claude Opus 4.7 and later (adds xhigh tier between high and max)
    */
   opus47Effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-
   /**
    * Whether to preserve and pass historical thinking content to the model
    * (provider support required, e.g. Qwen preserve_thinking)
    */
   preserveThinking?: boolean;
+
+  /**
+   * Prompt construction mode. Together with `enableAgentMode` it selects one
+   * of the three chat modes:
+   *   - Lobe (agent + full prompt): enableAgentMode=true,  promptMode=full
+   *   - 智能 (agent + lean prompt): enableAgentMode=true,  promptMode=lean
+   *   - 对话 (chat, no tools):      enableAgentMode=false, promptMode=lean
+   * `lean` drops the per-plugin teaching blocks / persona sections to save
+   * tokens. Undefined means full (legacy behaviour).
+   */
+  promptMode?: 'full' | 'lean';
   reasoningBudgetToken?: number;
   /**
    * Reasoning budget token for models with 32k max (GLM-5/GLM-4.7)
@@ -271,6 +282,7 @@ export const AgentChatConfigSchema = z
     effort: z.enum(['low', 'medium', 'high', 'max']).optional(),
     enableAdaptiveThinking: z.boolean().optional(),
     enableAgentMode: z.boolean().optional(),
+    promptMode: z.enum(['full', 'lean']).optional(),
     toolMode: z.enum(['agent', 'chat', 'custom']).optional(),
     enableAutoScrollOnStreaming: z.boolean().optional(),
     enableCompressHistory: z.boolean().optional(),

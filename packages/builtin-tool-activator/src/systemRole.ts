@@ -1,4 +1,21 @@
-export const systemPrompt = `You have access to a Tools Activator that allows you to dynamically activate tools on demand. Not all tools are loaded by default — you must activate them before use.
+/**
+ * Tools Activator system role.
+ *
+ * Split into two parts for lean-prompt mode:
+ * - `coreSystemPrompt`: how activation works, tool selection, skill-store
+ *   discovery, best practices — the activator's own responsibilities.
+ * - `credentialsManagementPrompt`: teaching for the lobe-creds plugin's tools
+ *   (getPlaintextCred / saveCreds / injectCredsToSandbox / initiateOAuthConnect
+ *   / connectComposioService). These tools belong to the unactivated
+ *   `lobe-creds` plugin — they are NOT in the current tool schema until
+ *   lobe-creds is activated, and lobe-creds ships its own systemRole
+ *   (`packages/builtin-tool-creds/src/systemRole.ts`) that is injected when it
+ *   is activated. So this block is both premature (teaching tools the model
+ *   cannot call yet) and duplicated (re-taught on activation). Lean mode drops
+ *   it; full mode keeps it byte-identical to the legacy prompt.
+ */
+
+const header = `You have access to a Tools Activator that allows you to dynamically activate tools on demand. Not all tools are loaded by default — you must activate them before use.
 
 <how_it_works>
 1. Available tools are listed in the \`<available_tools>\` section of your system prompt
@@ -49,9 +66,9 @@ export const systemPrompt = `You have access to a Tools Activator that allows yo
 - Do NOT manually curl/fetch SKILL.md files or try to parse them yourself
 - For \`lobehub.com/skills/xxx/skill.md\` URLs, ALWAYS extract the identifier and use \`importFromMarket\`, NOT \`importSkill\`
 - \`importSkill\` is only for GitHub repository URLs or ZIP packages, not for lobehub.com skill URLs
-</skill_store_discovery>
+</skill_store_discovery>`;
 
-<credentials_management>
+export const credentialsManagementPrompt = `<credentials_management>
 **CRITICAL: Activate \`lobe-creds\` when ANY of the following conditions are met:**
 
 **Trigger conditions (MUST activate lobe-creds immediately):**
@@ -94,7 +111,9 @@ When sandbox mode is false (\`lobe-cloud-sandbox\` does not exist in this sessio
 - Use \`getPlaintextCred\` to retrieve values, then pass as inline env vars in \`runCommand\`
 - Example: \`runCommand({ command: "GITHUB_TOKEN='xxx' gh repo list" })\`
 - File credentials: use \`getPlaintextCred\` to get the file path from the response state
-</credentials_management>
+</credentials_management>`;
+
+const footer = `
 
 <best_practices>
 - **IMPORTANT: Plan ahead and activate all needed tools upfront in a single call.** Before responding to the user, analyze their request and determine ALL tools you will need, then activate them together. Do NOT activate tools incrementally during a multi-step task.
@@ -106,3 +125,15 @@ When sandbox mode is false (\`lobe-cloud-sandbox\` does not exist in this sessio
 - After activation, use the tools' APIs directly — no need to call activateTools again for the same tools
 </best_practices>
 `;
+
+/**
+ * Full prompt (legacy): header + credentials teaching + best practices.
+ * Byte-identical to the pre-split systemPrompt.
+ */
+export const systemPrompt = `${header}\n\n${credentialsManagementPrompt}${footer}`;
+
+/**
+ * Lean prompt: drops the credentials block. The lobe-creds plugin ships its
+ * own systemRole that is injected on activation, so no information is lost.
+ */
+export const coreSystemPrompt = `${header}${footer}`;

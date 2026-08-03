@@ -243,3 +243,58 @@ describe('ToolSystemRoleProvider', () => {
     expect(systemMessage).toBeUndefined();
   });
 });
+
+describe('ToolSystemRoleProvider lean mode', () => {
+  it('injects LEAN_TOOL_USAGE_POLICY instead of the teaching blocks when promptMode is lean', async () => {
+    const provider = new ToolSystemRoleProvider({
+      manifests: [
+        {
+          identifier: 'demo',
+          api: [{ name: 'action', description: 'demo action', parameters: {} }],
+          meta: { title: 'demo' },
+          systemRole: 'Instructions for demo',
+          type: 'default',
+        },
+      ],
+      model: 'gpt-4',
+      promptMode: 'lean',
+      provider: 'openai',
+      isCanUseFC: () => true,
+    });
+
+    const ctx = createContext([{ id: 'u1', role: 'user', content: 'hi' }]);
+    const result = await provider.process(ctx);
+    const systemMessage = result.messages.find((msg) => msg.role === 'system');
+    expect(systemMessage).toBeDefined();
+    expect(systemMessage!.content).toContain('<lobe_tool_policy>');
+    expect(systemMessage!.content).toContain('Search citations');
+    // Teaching blocks are gone
+    expect(systemMessage!.content).not.toContain('<tool name="demo">');
+    expect(systemMessage!.content).not.toContain('Instructions for demo');
+  });
+
+  it('keeps the teaching blocks when promptMode is full or undefined', async () => {
+    const provider = new ToolSystemRoleProvider({
+      manifests: [
+        {
+          identifier: 'demo',
+          api: [{ name: 'action', description: 'demo action', parameters: {} }],
+          meta: { title: 'demo' },
+          systemRole: 'Instructions for demo',
+          type: 'default',
+        },
+      ],
+      model: 'gpt-4',
+      provider: 'openai',
+      isCanUseFC: () => true,
+    });
+
+    const ctx = createContext([{ id: 'u1', role: 'user', content: 'hi' }]);
+    const result = await provider.process(ctx);
+    const systemMessage = result.messages.find((msg) => msg.role === 'system');
+    expect(systemMessage).toBeDefined();
+    expect(systemMessage!.content).toContain('<tool name="demo">');
+    expect(systemMessage!.content).toContain('Instructions for demo');
+    expect(systemMessage!.content).not.toContain('<lobe_tool_policy>');
+  });
+});

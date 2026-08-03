@@ -23,7 +23,11 @@ import {
   shouldExposeSelfFeedbackIntentTool,
 } from '@lobechat/builtin-tool-self-iteration';
 import { TaskIdentifier } from '@lobechat/builtin-tool-task';
-import { builtinTools, manualModeExcludeToolIds } from '@lobechat/builtin-tools';
+import {
+  builtinTools,
+  efficientDeferredPluginIds,
+  manualModeExcludeToolIds,
+} from '@lobechat/builtin-tools';
 import { isHeterogeneousAgentModelId, LOADING_FLAT } from '@lobechat/const';
 import {
   type AgentGroupConfig,
@@ -3377,11 +3381,32 @@ export class AiAgentService {
       toolsResult = toolsEngine.generateToolsDetailed({
         excludeDefaultToolIds: isManualMode ? manualModeExcludeToolIds : undefined,
         model,
+        promptMode: agentConfig.chatConfig?.promptMode,
         provider,
         toolIds: pluginIds,
       });
 
       tools = toolsResult.tools;
+      // Efficient mode (agent + lean prompt): long-tail plugins stay out of
+      // tools[] and surface in <available_tools> for on-demand activation.
+      if (
+        agentConfig.chatConfig?.enableAgentMode !== false &&
+        agentConfig.chatConfig?.promptMode === 'lean' &&
+        toolsResult.enabledToolIds
+      ) {
+        const deferredSet = new Set(efficientDeferredPluginIds);
+        const deferredTools = tools?.filter((t) => {
+          const pluginId = (t.function?.name ?? '').split('____')[0];
+          return !deferredSet.has(pluginId);
+        });
+        const deferredToolIds = toolsResult.enabledToolIds.filter((id) => !deferredSet.has(id));
+        tools = deferredTools;
+        toolsResult.enabledToolIds = deferredToolIds;
+        log(
+          'execAgent: efficient mode deferred %d plugins to available_tools',
+          toolsResult.enabledToolIds.length,
+        );
+      }
       log('execAgent: enabled tool ids: %O', toolsResult.enabledToolIds);
 
       // Single guard for every `toolManifestMap[id] = ...` ingest below.
@@ -3891,6 +3916,7 @@ export class AiAgentService {
         ? toolsEngine.generateToolsDetailed({
             context: { isExplicitActivation: true },
             model,
+            promptMode: agentConfig.chatConfig?.promptMode,
             provider,
             skipDefaultTools: true,
             toolIds: historicalActivatedToolIds,

@@ -21,6 +21,13 @@ export interface LobeChatPluginApi {
    * - [{ match: { command: "git add:*" }, policy: "never" }, { policy: "always" }]
    */
   humanIntervention?: ExtendedHumanInterventionConfig;
+  /**
+   * Lean-mode description override. When set and the prompt is built in
+   * 'lean' mode, this replaces `description` in the generated tool schema —
+   * so the legacy (full) mode stays byte-identical to upstream while lean
+   * gets the enriched usage hints.
+   */
+  leanDescription?: string;
   name: string;
   parameters: Record<string, any>;
   url?: string;
@@ -82,6 +89,11 @@ export interface GenerateToolsParams {
   excludeDefaultToolIds?: string[];
   /** Model name */
   model: string;
+  /**
+   * Prompt construction mode. 'lean' uses `leanDescription` overrides for tool
+   * schemas. Undefined/'full' = legacy descriptions.
+   */
+  promptMode?: 'full' | 'lean';
   /** Provider name */
   provider: string;
   /**

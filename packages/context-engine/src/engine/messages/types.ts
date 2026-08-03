@@ -236,6 +236,12 @@ export interface MessagesEngineParams {
    * Undefined / true → agent mode (default).
    */
   enableAgentMode?: boolean;
+
+  /**
+   * Prompt construction mode. 'lean' drops the per-plugin teaching blocks and
+   * persona sections to save tokens. Undefined / 'full' = legacy behaviour.
+   */
+  promptMode?: 'full' | 'lean';
   /** Whether to enable history message count limit */
   enableHistoryCount?: boolean;
   /** Force finish flag: when true, injects summary prompt for max-steps completion */

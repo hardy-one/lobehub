@@ -8,6 +8,7 @@ import {
   SearchIcon,
   TerminalIcon,
   WrenchIcon,
+  ZapIcon,
 } from 'lucide-react';
 import { memo, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -15,7 +16,10 @@ import { useTranslation } from 'react-i18next';
 import { useBusinessAgentModeSync } from '@/business/client/hooks/useBusinessAgentMode';
 import { useAgentId } from '@/features/ChatInput/hooks/useAgentId';
 import { useChatInputResourceAccess } from '@/features/ChatInput/hooks/useChatInputResourceAccess';
-import { useEffectiveAgentMode } from '@/features/ChatInput/hooks/useEffectiveAgentMode';
+import {
+  type ChatInputMode,
+  useEffectiveAgentMode,
+} from '@/features/ChatInput/hooks/useEffectiveAgentMode';
 import { useToggleAgentMode } from '@/features/ChatInput/hooks/useToggleAgentMode';
 import { usePermission } from '@/hooks/usePermission';
 
@@ -149,15 +153,20 @@ const ModeSelector = memo(() => {
 
   const { canSelectAgentMode, currentMode, isAgentModeUnavailable, isPreferenceLoading } =
     useEffectiveAgentMode(agentId);
-  const CurrentIcon = currentMode === 'agent' ? InfinityIcon : MessageCircleIcon;
+  const MODE_ICONS: Record<ChatInputMode, typeof InfinityIcon> = {
+    agent: InfinityIcon,
+    efficient: ZapIcon,
+    chat: MessageCircleIcon,
+  };
+  const CurrentIcon = MODE_ICONS[currentMode];
 
   const handleSelect = useCallback(
-    async (mode: 'chat' | 'agent') => {
+    async (mode: ChatInputMode) => {
       if (disabled) return;
-      if (mode === 'agent' && !canSelectAgentMode) return;
+      if ((mode === 'agent' || mode === 'efficient') && !canSelectAgentMode) return;
 
       setOpen(false);
-      await toggleAgentMode(mode === 'agent');
+      await toggleAgentMode(mode);
     },
     [disabled, canSelectAgentMode, toggleAgentMode],
   );
@@ -184,62 +193,52 @@ const ModeSelector = memo(() => {
   );
 
   const chatTooltip = t('chatMode.chatDesc');
+  const isAgentFamily = currentMode === 'agent' || currentMode === 'efficient';
   const buttonTooltip = isAgentModeUnavailable
     ? t('chatMode.agentUnsupported')
-    : currentMode === 'agent'
+    : isAgentFamily
       ? agentTooltip
       : chatTooltip;
-  const agentDesc = canSelectAgentMode ? t('chatMode.agentDesc') : t('chatMode.agentUnsupported');
+  const MODE_OPTIONS: Array<{
+    disabled?: boolean;
+    icon: typeof InfinityIcon;
+    key: ChatInputMode;
+  }> = [
+    { icon: InfinityIcon, key: 'agent' },
+    { disabled: !canSelectAgentMode, icon: ZapIcon, key: 'efficient' },
+    { icon: MessageCircleIcon, key: 'chat' },
+  ];
 
   const popoverContent = (
     <Flexbox gap={4} style={{ maxWidth: 320, minWidth: 280 }}>
-      <Flexbox
-        horizontal
-        align="center"
-        gap={12}
-        className={cx(
-          styles.option,
-          currentMode === 'agent' && styles.activeOption,
-          !canSelectAgentMode && styles.optionDisabled,
-        )}
-        onClick={() => handleSelect('agent')}
-      >
+      {MODE_OPTIONS.map(({ disabled: optionDisabled, icon: OptionIcon, key }) => (
         <Flexbox
+          horizontal
           align="center"
-          className={styles.optionIcon}
-          height={32}
-          justify="center"
-          width={32}
+          gap={12}
+          key={key}
+          className={cx(
+            styles.option,
+            currentMode === key && styles.activeOption,
+            optionDisabled && styles.optionDisabled,
+          )}
+          onClick={() => handleSelect(key)}
         >
-          <Icon icon={InfinityIcon} size={16} />
+          <Flexbox
+            align="center"
+            className={styles.optionIcon}
+            height={32}
+            justify="center"
+            width={32}
+          >
+            <Icon icon={OptionIcon} size={16} />
+          </Flexbox>
+          <Flexbox flex={1}>
+            <div className={styles.optionTitle}>{t(`chatMode.${key}`)}</div>
+            <div className={styles.optionDesc}>{t(`chatMode.${key}Desc`)}</div>
+          </Flexbox>
         </Flexbox>
-        <Flexbox flex={1}>
-          <div className={styles.optionTitle}>{t('chatMode.agent')}</div>
-          <div className={styles.optionDesc}>{agentDesc}</div>
-        </Flexbox>
-      </Flexbox>
-
-      <Flexbox
-        horizontal
-        align="center"
-        className={cx(styles.option, currentMode === 'chat' && styles.activeOption)}
-        gap={12}
-        onClick={() => handleSelect('chat')}
-      >
-        <Flexbox
-          align="center"
-          className={styles.optionIcon}
-          height={32}
-          justify="center"
-          width={32}
-        >
-          <Icon icon={MessageCircleIcon} size={16} />
-        </Flexbox>
-        <Flexbox flex={1}>
-          <div className={styles.optionTitle}>{t('chatMode.chat')}</div>
-          <div className={styles.optionDesc}>{t('chatMode.chatDesc')}</div>
-        </Flexbox>
-      </Flexbox>
+      ))}
     </Flexbox>
   );
 

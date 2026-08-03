@@ -48,6 +48,7 @@ vi.mock('@/store/agent/selectors', () => ({
     getAgentEnableModeById: () => (s: typeof testState.agent) => s.enableAgentMode,
     getAgentModelById: () => (s: typeof testState.agent) => s.model,
     getAgentModelProviderById: () => (s: typeof testState.agent) => s.provider,
+    getAgentPromptModeById: () => (s: typeof testState.agent) => s.promptMode,
   },
 }));
 

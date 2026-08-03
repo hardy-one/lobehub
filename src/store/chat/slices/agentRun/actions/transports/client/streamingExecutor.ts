@@ -14,7 +14,7 @@ import {
 import { LobeAgentManifest } from '@lobechat/builtin-tool-lobe-agent';
 import { createPathScopeAudit } from '@lobechat/builtin-tool-local-system';
 import { PageAgentIdentifier } from '@lobechat/builtin-tool-page-agent';
-import { manualModeExcludeToolIds } from '@lobechat/builtin-tools';
+import { efficientDeferredPluginIds, manualModeExcludeToolIds } from '@lobechat/builtin-tools';
 import { isDesktop, resolveSubAgentModel } from '@lobechat/const';
 import { type ToolsEngine } from '@lobechat/context-engine';
 import { buildTaskDetailPrompt, buildTaskListPrompt } from '@lobechat/prompts';
@@ -263,6 +263,7 @@ export class StreamingExecutorActionImpl {
     const toolsDetailed = toolsEngine.generateToolsDetailed({
       excludeDefaultToolIds: isManualMode ? manualModeExcludeToolIds : undefined,
       model: agentConfigData.model,
+      promptMode: agentConfig.chatConfig?.promptMode,
       provider: agentConfigData.provider!,
       skipDefaultTools: disableTools || undefined,
       toolIds: mergedToolIds,
@@ -277,17 +278,39 @@ export class StreamingExecutorActionImpl {
       toolsDetailed,
     });
 
+    // Efficient mode (agent + lean prompt): long-tail plugins are NOT
+    // auto-injected — their schemas stay out of `tools[]` and they surface in
+    // <available_tools> so the model can activateTools them on demand.
+    const isEfficientMode =
+      agentConfig.chatConfig?.enableAgentMode !== false &&
+      agentConfig.chatConfig?.promptMode === 'lean';
+    const deferredSet = isEfficientMode ? new Set(efficientDeferredPluginIds) : undefined;
+    const isDeferred = (identifier: string) => !!deferredSet?.has(identifier);
+    const effectiveEnabledManifests = deferredSet
+      ? enabledManifests.filter((m) => !isDeferred(m.identifier))
+      : enabledManifests;
+    const effectiveEnabledToolIds = deferredSet
+      ? enabledToolIds.filter((id) => !isDeferred(id))
+      : enabledToolIds;
+    const effectiveTools = deferredSet
+      ? tools?.filter((t) => {
+          const name = t.function?.name ?? '';
+          const pluginId = name.split('____')[0];
+          return !isDeferred(pluginId);
+        })
+      : tools;
+
     // Use enabledManifests directly to avoid getEnabledPluginManifests adding default tools again
     const toolManifestMap = Object.fromEntries(
-      enabledManifests.map((manifest) => [manifest.identifier, manifest]),
+      effectiveEnabledManifests.map((manifest) => [manifest.identifier, manifest]),
     );
 
     // Merge tools generation result into agentConfig for chatService to use
     const agentConfigWithTools = {
       ...agentConfig,
-      enabledManifests,
-      enabledToolIds,
-      tools,
+      enabledManifests: effectiveEnabledManifests,
+      enabledToolIds: effectiveEnabledToolIds,
+      tools: effectiveTools,
     };
 
     log(
@@ -338,10 +361,10 @@ export class StreamingExecutorActionImpl {
         modelRuntimeConfig,
         operationId: operationId ?? agentId,
         operationToolSet: {
-          enabledToolIds,
+          enabledToolIds: effectiveEnabledToolIds,
           manifestMap: toolManifestMap,
           sourceMap: {},
-          tools: toolsDetailed.tools ?? [],
+          tools: effectiveTools ?? [],
         },
         toolManifestMap,
         userInterventionConfig,

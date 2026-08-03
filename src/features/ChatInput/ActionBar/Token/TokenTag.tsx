@@ -1,5 +1,11 @@
-import { ToolNameResolver } from '@lobechat/context-engine';
-import { pluginPrompts } from '@lobechat/prompts';
+import { efficientDeferredPluginIds } from '@lobechat/builtin-tools';
+import { LEAN_TOOL_USAGE_POLICY, ToolNameResolver } from '@lobechat/context-engine';
+import {
+  availableToolsPrompts,
+  pluginPrompts,
+  promptUserMemory,
+  skillsPrompts,
+} from '@lobechat/prompts';
 import { resolveModelScopedChatConfig } from '@lobechat/types';
 import { Center, Flexbox, Tooltip } from '@lobehub/ui';
 import { TokenTag } from '@lobehub/ui/chat';
@@ -12,14 +18,20 @@ import { createAgentToolsEngine } from '@/helpers/toolEngineering';
 import { useModelContextWindowTokens } from '@/hooks/useModelContextWindowTokens';
 import { useModelSupportToolUse } from '@/hooks/useModelSupportToolUse';
 import { useTokenCount } from '@/hooks/useTokenCount';
+import {
+  combineUserMemoryData,
+  resolveTopicMemories,
+  resolveUserPersona,
+} from '@/services/chat/mecha/memoryManager';
 import { useAgentStore } from '@/store/agent';
 import { agentByIdSelectors, chatConfigByIdSelectors } from '@/store/agent/selectors';
 import { useAiInfraStore } from '@/store/aiInfra';
 import { aiModelSelectors, aiProviderSelectors } from '@/store/aiInfra/selectors';
 import { useChatStore } from '@/store/chat';
 import { topicSelectors } from '@/store/chat/selectors';
-import { useToolStore } from '@/store/tool';
+import { getToolStoreState, useToolStore } from '@/store/tool';
 import { pluginHelpers } from '@/store/tool/helpers';
+import { toolSelectors } from '@/store/tool/selectors';
 import { useUserStore } from '@/store/user';
 import { settingsSelectors, userGeneralSettingsSelectors } from '@/store/user/selectors';
 
@@ -49,6 +61,7 @@ const Token = memo(() => {
     activeAgentId,
     systemRole,
     enableAgentMode,
+    promptMode,
     searchMode,
     useModelBuiltinSearch,
     skillActivateMode,
@@ -63,6 +76,7 @@ const Token = memo(() => {
       s.activeAgentId,
       agentByIdSelectors.getAgentSystemRoleById(agentId)(s),
       chatConfig.enableAgentMode,
+      chatConfig.promptMode,
       chatConfig.searchMode,
       modelChatConfig.useModelBuiltinSearch,
       chatConfigByIdSelectors.getSkillActivateModeById(agentId)(s),
@@ -101,21 +115,45 @@ const Token = memo(() => {
   const canUseTool = useModelSupportToolUse(model, provider);
   const pluginIds = useAgentStore((s) => agentByIdSelectors.getAgentPluginsById(agentId)(s));
 
+  // Efficient mode (agent + lean): mirror the runtime — long-tail plugins
+  // deferred to <available_tools> and teaching blocks replaced by the compact
+  // policy, so the breakdown matches the real request instead of the legacy
+  // full-prompt estimate.
+  // Lean prompt (mirrors ToolSystemRoleProvider: promptMode==='lean' → compact
+  // policy + persona regardless of agent/chat mode). Efficient mode additionally
+  // defers long-tail plugins to <available_tools> (agent + lean only).
+  const isLeanPrompt = promptMode === 'lean';
+  const isEfficientMode = enableAgentMode !== false && isLeanPrompt;
   const toolsString = useToolStore(
     useCallback(() => {
-      const toolsEngine = createAgentToolsEngine({ model, provider });
+      const toolsEngine = createAgentToolsEngine(
+        { model, provider },
+        pluginIds,
+        // Mirror the agent being rendered, not the active agent — in
+        // group/supervisor/page sessions the two differ and the breakdown
+        // must follow the agent whose config this TokenTag reads.
+        undefined,
+        agentId,
+      );
 
       const { tools, enabledManifests } = toolsEngine.generateToolsDetailed({
         excludeDefaultToolIds: getToolExcludeDefaultToolIds(skillActivateMode),
         model,
+        promptMode,
         provider,
         toolIds: pluginIds,
       });
-      const schemaNumber = tools?.map((i) => JSON.stringify(i)).join('') || '';
+      // Efficient mode drops the deferred long-tail plugins from the schema count.
+      const deferredSet = isEfficientMode ? new Set(efficientDeferredPluginIds) : undefined;
+      const countedTools = deferredSet
+        ? tools?.filter((t) => !deferredSet.has((t.function?.name ?? '').split('____')[0]))
+        : tools;
+      const schemaNumber = countedTools?.map((i) => JSON.stringify(i)).join('') || '';
 
-      // Generate plugin system roles from enabledManifests
-      const toolsSystemRole =
-        enabledManifests.length > 0
+      // Efficient mode: teaching blocks are replaced by the compact policy.
+      const toolsSystemRole = isLeanPrompt
+        ? LEAN_TOOL_USAGE_POLICY
+        : enabledManifests.length > 0
           ? pluginPrompts({
               tools: enabledManifests.map((manifest) => ({
                 apis: manifest.api.map((api) => ({
@@ -129,10 +167,30 @@ const Token = memo(() => {
             })
           : '';
 
-      return toolsSystemRole + schemaNumber;
+      // Skills index (<available_skills>) — mirrors SkillContextProvider using
+      // the store's builtin + agent skills (sync, no content fetch).
+      const toolState = getToolStoreState();
+      const skillItems = [...(toolState.builtinSkills || []), ...(toolState.agentSkills || [])]
+        .filter((s) => s.description)
+        .map((s) => ({
+          description: s.description ?? '',
+          identifier: s.identifier,
+          name: s.name,
+        }));
+      const skillsText = skillsPrompts(skillItems, isLeanPrompt);
+
+      // <available_tools> directory: not-yet-enabled tools (full mode) plus the
+      // deferred long-tail plugins (efficient mode).
+      const enabledToolIdsForDiscovery = new Set(countedTools?.map((t) => t.function?.name) ?? []);
+      const discoveryTools = toolSelectors
+        .availableToolsForDiscovery(toolState)
+        .filter((tool) => !enabledToolIdsForDiscovery.has(tool.identifier));
+      const toolsDirectoryText = availableToolsPrompts(discoveryTools, isEfficientMode);
+
+      return toolsSystemRole + schemaNumber + skillsText + toolsDirectoryText;
       // toolContextRefreshKey tracks implicit createAgentToolsEngine inputs from other stores.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [model, pluginIds, provider, skillActivateMode, toolContextRefreshKey]),
+    }, [model, pluginIds, promptMode, provider, skillActivateMode, toolContextRefreshKey]),
   );
 
   const toolsToken = useTokenCount(canUseTool ? toolsString : '');
@@ -146,8 +204,11 @@ const Token = memo(() => {
       .join('') || '';
   const chatsToken = useTokenCount(messageString) + inputTokenCount;
 
-  // SystemRole token
-  const systemRoleToken = useTokenCount(systemRole);
+  // SystemRole token — include the injected persona (user_memory) so the
+  // breakdown matches the real request.
+  const personaMemories = combineUserMemoryData(resolveTopicMemories(), resolveUserPersona());
+  const personaText = promptUserMemory({ memories: personaMemories }, isLeanPrompt);
+  const systemRoleToken = useTokenCount(systemRole + personaText);
   const historySummaryToken = useTokenCount(historySummary);
 
   // Total token

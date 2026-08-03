@@ -24,6 +24,8 @@ export interface ToolDiscoveryMeta {
 export interface ToolDiscoveryProviderConfig {
   availableTools?: ToolDiscoveryMeta[];
   enabled?: boolean;
+  /** 'lean' truncates tool descriptions to one-line gists. Undefined/'full' = legacy. */
+  promptMode?: 'full' | 'lean';
 }
 
 export class ToolDiscoveryProvider extends BaseFirstUserContentProvider {
@@ -52,7 +54,7 @@ export class ToolDiscoveryProvider extends BaseFirstUserContentProvider {
       name: tool.name,
     }));
 
-    const content = availableToolsPrompts(tools);
+    const content = availableToolsPrompts(tools, this.config.promptMode === 'lean');
 
     if (!content) {
       log('No tool content generated, skipping injection');

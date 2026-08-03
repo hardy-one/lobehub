@@ -107,6 +107,8 @@ export interface ServerMessagesEngineParams {
    * true → agent mode.
    */
   enableAgentMode?: boolean;
+  /** 'lean' drops teaching blocks / persona sections. Undefined/'full' = legacy. */
+  promptMode?: 'full' | 'lean';
 
   /** Whether to enable history message count limit */
   enableHistoryCount?: boolean;

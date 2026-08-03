@@ -80,3 +80,26 @@ export const systemPrompt = `You have access to a Skills tool that can activate 
 - If activateSkill returns an error with available skills, inform the user what skills are available
 </best_practices>
 `;
+
+/**
+ * Lean prompt: drops the exportFile teaching.
+ *
+ * exportFile belongs to the cloud-sandbox surface. `resolveSkillsManifest`
+ * filters it out of the API schema on device-routed runs (DEVICE_HIDDEN_API_NAMES),
+ * but the teaching below lives in systemRole and is NOT filtered — so on a
+ * device run the model is taught a tool whose schema is absent. Lean mode
+ * drops these 4 occurrences (the exportFileApi schema description still
+ * carries the essentials when the sandbox surface is actually active).
+ */
+export const coreSystemPrompt = systemPrompt
+  // <core_capabilities> item 5
+  .replace('\n5. Export files generated during skill execution to cloud storage (exportFile)', '')
+  // <workflow> item 6
+  .replace(
+    '\n6. If the skill execution generates output files, use exportFile to save them for the user',
+    '',
+  )
+  // <tool_selection_guidelines> exportFile block
+  .replace(/\n\n- \*\*exportFile\*\*:[\s\S]*?(?=\n<\/tool_selection_guidelines>)/, '')
+  // <best_practices> exportFile line
+  .replace('\n- Use exportFile when the skill generates output files that need to be saved', '');

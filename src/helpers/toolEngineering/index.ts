@@ -18,13 +18,18 @@ import {
   type ToolManifest,
   type WorkingModel,
 } from '@lobechat/types';
+import { getActivePluginIds, getDisabledPluginIds } from '@lobechat/types';
 
 import type { ConnectorToolPermission } from '@/database/schemas';
 import { applyToolNameMaxLength } from '@/helpers/applyToolNameMaxLength';
 import { isToolAvailableInCurrentEnv } from '@/helpers/toolAvailability';
 import { patchManifestWithPermissions } from '@/libs/mcp/patchManifestPermissions';
 import { getAgentStoreState } from '@/store/agent';
-import { agentChatConfigSelectors, agentSelectors } from '@/store/agent/selectors';
+import {
+  agentByIdSelectors,
+  agentSelectors,
+  chatConfigByIdSelectors,
+} from '@/store/agent/selectors';
 import { aiModelSelectors, getAiInfraStoreState } from '@/store/aiInfra';
 import { getToolStoreState } from '@/store/tool';
 import {
@@ -214,25 +219,38 @@ export const createAgentToolsEngine = (
   pluginIds?: string[],
   /** Conversation context for context-aware builtin manifests (scope, isSubAgent). */
   manifestContext?: BuiltinToolResolveContext,
+  /**
+   * Optional agentId override. When provided, the engine reads that agent's
+   * config instead of the active agent — used by the TokenTag UI breakdown so
+   * its tool-set mirrors the agent it renders for, even when the active agent
+   * differs (group/supervisor/page sessions).
+   */
+  agentId?: string,
 ) => {
   const searchConfig = getSearchConfig(workingModel.model, workingModel.provider);
   const agentState = getAgentStoreState();
-  // `currentAgentPlugins` already resolves to pinned-only identifiers — disabled
+  // Every `currentXxx` selector is `xxxById(activeAgentId || '')` — resolve the
+  // effective agent once so an explicit override and the active agent share one
+  // code path.
+  const effectiveAgentId = agentId ?? agentState.activeAgentId ?? '';
+  const agentConfig = agentSelectors.getAgentConfigById(effectiveAgentId)(agentState);
+  // `getActivePluginIds` already resolves to pinned-only identifiers — disabled
   // entries never reach the tools-engine whitelist.
-  const userPlugins = agentSelectors.currentAgentPlugins(agentState);
-  const disabledPluginIds = agentSelectors.currentAgentDisabledPlugins(agentState);
+  const userPlugins = getActivePluginIds(agentConfig?.plugins);
+  const disabledPluginIds = getDisabledPluginIds(agentConfig?.plugins);
+  const chatConfig = chatConfigByIdSelectors.getChatConfigById(effectiveAgentId)(agentState);
   const isChatMode =
-    agentChatConfigSelectors.currentChatConfig(agentState).enableAgentMode === false ||
-    !isCanUseFC(workingModel.model, workingModel.provider);
+    chatConfig.enableAgentMode === false || !isCanUseFC(workingModel.model, workingModel.provider);
 
   // Each entry below still respects its own runtime gate; in chat mode this
   // is the entire whitelist. `allowExplicitActivation` and user plugins /
   // `alwaysOnToolIds` are deliberately omitted in chat mode so the activator
   // can't smuggle additional tools in.
-  const kbEnabled = agentSelectors.hasEnabledKnowledgeBases(agentState);
+  const kbEnabled = agentByIdSelectors
+    .getAgentKnowledgeBasesById(effectiveAgentId)(agentState)
+    .some((item) => item.enabled);
   const memoryEnabled =
-    agentChatConfigSelectors.currentChatConfig(agentState).memory?.enabled ??
-    settingsSelectors.memoryEnabled(useUserStore.getState());
+    chatConfig.memory?.enabled ?? settingsSelectors.memoryEnabled(useUserStore.getState());
   const webBrowsingEnabled = searchConfig.useApplicationBuiltinSearchTool;
   const imageGenerationEnabled =
     isCanUseFC(workingModel.model, workingModel.provider) &&
@@ -264,11 +282,13 @@ export const createAgentToolsEngine = (
     // Labs toggle that also governs the sidebar tab — with the lab off the
     // tool would drive a pane the user can't see.
     [BrowserManifest.identifier]:
-      agentChatConfigSelectors.isLocalSystemEnabled(agentState) &&
+      chatConfigByIdSelectors.isLocalSystemEnabledById(effectiveAgentId)(agentState) &&
       labPreferSelectors.enableInAppBrowser(useUserStore.getState()),
-    [CloudSandboxManifest.identifier]: agentChatConfigSelectors.isCloudSandboxEnabled(agentState),
+    [CloudSandboxManifest.identifier]:
+      chatConfigByIdSelectors.getRuntimeModeById(effectiveAgentId)(agentState) === 'cloud',
     [KnowledgeBaseManifest.identifier]: kbEnabled,
-    [LocalSystemManifest.identifier]: agentChatConfigSelectors.isLocalSystemEnabled(agentState),
+    [LocalSystemManifest.identifier]:
+      chatConfigByIdSelectors.isLocalSystemEnabledById(effectiveAgentId)(agentState),
     [MemoryManifest.identifier]: memoryEnabled,
     [WebBrowsingManifest.identifier]: webBrowsingEnabled,
   };

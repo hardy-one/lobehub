@@ -122,6 +122,8 @@ interface ContextEngineeringContext {
   model: string;
   /** Agent's enabled plugin/tool/skill identifiers (from agentConfig.plugins) */
   plugins?: string[];
+  /** 'lean' drops teaching blocks/persona sections. Undefined/'full' = legacy. */
+  promptMode?: 'full' | 'lean';
   provider: string;
   sessionId?: string;
   /**
@@ -154,6 +156,7 @@ export const contextEngineering = async ({
   disabledPluginIds,
   enableAgentMode,
   groupId,
+  promptMode,
   initialContext,
   plugins,
   stepContext,
@@ -743,6 +746,7 @@ export const contextEngineering = async ({
     // is `false` (chat mode). ChatService resolves it from stored user intent
     // plus the selected model's function-call ability.
     enableAgentMode: effectiveEnableAgentMode,
+    promptMode,
 
     // Skills configuration (resolved above)
     skillsConfig: {

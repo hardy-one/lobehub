@@ -104,6 +104,7 @@ export const serverMessagesEngine = async ({
   systemRole,
   inputTemplate,
   enableAgentMode,
+  promptMode,
   enableHistoryCount,
   forceFinish,
   historyCount,
@@ -141,6 +142,7 @@ export const serverMessagesEngine = async ({
 
     // Agent configuration
     enableAgentMode,
+    promptMode,
     enableHistoryCount,
 
     // Server-side file access URLs resolve to stable file-proxy URLs in production.

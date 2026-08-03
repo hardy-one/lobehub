@@ -115,6 +115,22 @@ export const chatModeAllowedToolIds = [
 ];
 
 /**
+ * Plugins whose schemas are NOT auto-injected in efficient mode (agent + lean
+ * prompt). They stay discoverable in `<available_tools>` — the model activates
+ * them via `activateTools` when needed, then their schemas load on the next
+ * turn. Mirrors OpenClaw / Hermes tool-search: core tools stay directly
+ * injected, the long tail is pulled in on demand.
+ *
+ * Smart mode (full prompt) and chat mode are unaffected.
+ */
+export const efficientDeferredPluginIds = [
+  LobeAgentManifest.identifier,
+  MemoryManifest.identifier,
+  SkillStoreManifest.identifier,
+  UserInteractionManifest.identifier,
+];
+
+/**
  * Tool IDs that make up the group supervisor's orchestration toolset:
  * dispatching members (speak / broadcast / delegate / executeAgentTask).
  *

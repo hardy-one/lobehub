@@ -54,6 +54,23 @@ describe('toChatInputMessages', () => {
       { content: '', role: 'user' },
     ]);
   });
+
+  it('keeps compressedGroup summaries with their real content', () => {
+    const compressedMessages = [
+      { content: 'compressed summary', id: 'msg-0', role: 'compressedGroup' },
+      { content: 'user message', id: 'msg-1', role: 'user' },
+    ] as any[];
+
+    // Regression: compressedGroup is a UI-only role that the server converts
+    // to a user message before sending — it must stay in the context window
+    // (and its summary content counted), otherwise compressed history
+    // silently disappears from the token details. The role is normalized to
+    // 'user' exactly like the server's CompressedGroupRoleTransform.
+    expect(toChatInputMessages(compressedMessages)).toEqual([
+      { content: 'compressed summary', role: 'user' },
+      { content: 'user message', role: 'user' },
+    ]);
+  });
 });
 
 describe('getContextWindowMessages', () => {
@@ -78,6 +95,43 @@ describe('getContextWindowMessages', () => {
   it('returns no historical chat messages when history count is zero', () => {
     expect(
       getContextWindowMessages(tokenMessages, {
+        enableHistoryCount: true,
+        historyCount: 0,
+      }),
+    ).toEqual([]);
+  });
+
+  it('keeps compressedGroup summaries without consuming history slots', () => {
+    // Regression: a compressed summary represents an entire chunk of history,
+    // so it must survive truncation without occupying a historyCount slot
+    // (mirrors the server, where the compressed group is one logical group
+    // and its content is sent as a user message).
+    const messagesWithCompression = [
+      { content: 'compressed summary', id: 'msg-0', role: 'compressedGroup' },
+      { content: 'old user', id: 'msg-1', role: 'user' },
+      { content: 'old assistant', id: 'msg-2', role: 'assistant' },
+      { content: 'latest tool', id: 'msg-3', role: 'tool' },
+      { content: 'latest user', id: 'msg-4', role: 'user' },
+    ] as UIChatMessage[];
+
+    expect(
+      getContextWindowMessages(messagesWithCompression, {
+        enableHistoryCount: true,
+        historyCount: 2,
+      }).map((message) => message.content),
+    ).toEqual(['compressed summary', 'latest tool', 'latest user']);
+  });
+
+  it('drops compressedGroup summaries when history count is zero', () => {
+    // historyCount <= 0 means the server sends no history at all, so the
+    // summary must not be counted either.
+    const messagesWithCompression = [
+      { content: 'compressed summary', id: 'msg-0', role: 'compressedGroup' },
+      { content: 'latest user', id: 'msg-1', role: 'user' },
+    ] as UIChatMessage[];
+
+    expect(
+      getContextWindowMessages(messagesWithCompression, {
         enableHistoryCount: true,
         historyCount: 0,
       }),

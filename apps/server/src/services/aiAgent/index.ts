@@ -4312,6 +4312,11 @@ export class AiAgentService {
       log('execAgent: failed to build operationSkillSet: %O', error);
     }
 
+    // Stored real context baseline for compression — carry the topic's
+    // `contextTokens` into operation metadata so AgentRuntimeService reuses it
+    // in the compression budget.
+    const topicForContext = topicId ? await this.topicModel.findById(topicId) : undefined;
+
     // 19. Create operation using AgentRuntimeService
     log(
       'execAgent: creating operation %s — agentDocuments=%d, knowledgeBases=%s, tools=%d, skills=%d',
@@ -4377,6 +4382,8 @@ export class AiAgentService {
           threadId: appContext?.threadId,
           topicId,
           trigger,
+          // Stored context baseline for compression (reused by AgentRuntimeService).
+          contextTokens: topicForContext?.metadata?.contextTokens,
         },
         autoStart,
         botContext,

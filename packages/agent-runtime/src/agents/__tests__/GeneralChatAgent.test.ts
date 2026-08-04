@@ -187,6 +187,30 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual(expectCompressionInstruction(state.messages));
     });
 
+    it('should trigger compression from a stored baseline when model matches', async () => {
+      const agent = new GeneralChatAgent({
+        agentConfig: { maxSteps: 100 },
+        compressionConfig: {
+          enabled: true,
+          maxWindowToken: 64_000,
+          storedContextLastMsgId: 'anchor',
+          storedContextTokens: 70_000, // > 64k 阈值，即使消息极少
+        },
+        operationId: 'test-session',
+        modelRuntimeConfig: mockModelRuntimeConfig,
+      });
+
+      const state = createMockState({
+        messages: [{ content: 'x', id: 'anchor', role: 'assistant' }] as any,
+      });
+      const context = createMockContext('init', { model: 'gpt-4o-mini', provider: 'openai' });
+
+      const result = await agent.runner(context, state);
+
+      expect((result as any).type).toBe('compress_context');
+      expect((result as any).payload.currentTokenCount).toBe(70_000);
+    });
+
     it('should not compress ≤32k models when smartThreshold is enabled', async () => {
       const agent = new GeneralChatAgent({
         agentConfig: { maxSteps: 100 },

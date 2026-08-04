@@ -1,6 +1,7 @@
 import type { AgentState } from '@lobechat/agent-runtime';
 import * as agentRuntime from '@lobechat/agent-runtime';
 import type * as LobeChatConst from '@lobechat/const';
+import { signAgentConfig } from '@lobechat/context-engine';
 import { type LobeAgentChatConfig, type UIChatMessage } from '@lobechat/types';
 import { act, renderHook } from '@testing-library/react';
 import { type EnabledAiModel, ModelProvider } from 'model-bank';
@@ -11,6 +12,7 @@ import { chatService } from '@/services/chat';
 import * as agentConfigResolver from '@/services/chat/mecha/agentConfigResolver';
 import { useAgentStore } from '@/store/agent';
 import { useAiInfraStore } from '@/store/aiInfra';
+import { topicMapKey } from '@/store/chat/utils/topicMapKey';
 import { pageAgentRuntime } from '@/store/tool/slices/builtin/executors/pageAgentRuntime';
 
 import { useChatStore } from '../../../../store';
@@ -581,13 +583,21 @@ describe('StreamingExecutor actions', () => {
     });
 
     it.each([
-      ['disables compression when chatConfig.compression is off', { compression: 'off', enableContextCompression: true }, false],
+      [
+        'disables compression when chatConfig.compression is off',
+        { compression: 'off', enableContextCompression: true },
+        false,
+      ],
       [
         'keeps an explicit standard mode enabled when the legacy toggle is false',
         { compression: 'standard', enableContextCompression: false },
         true,
       ],
-      ['uses the legacy false toggle when no compression mode is persisted', { enableContextCompression: false }, false],
+      [
+        'uses the legacy false toggle when no compression mode is persisted',
+        { compression: undefined, enableContextCompression: false },
+        false,
+      ],
     ] as const)('%s', async (_description, chatConfig, enabled) => {
       act(() => {
         useChatStore.setState({ executeClientAgent: realExecAgentRuntime });
@@ -642,6 +652,208 @@ describe('StreamingExecutor actions', () => {
       });
 
       streamSpy.mockRestore();
+    });
+
+    it('passes the stored context baseline into compression config when topic metadata matches', async () => {
+      act(() => {
+        useChatStore.setState({
+          executeClientAgent: realExecAgentRuntime,
+          activeAgentId: TEST_IDS.SESSION_ID,
+          activeTopicId: TEST_IDS.TOPIC_ID,
+          topicDataMap: {
+            [topicMapKey({ agentId: TEST_IDS.SESSION_ID })]: {
+              currentPage: 1,
+              hasMore: false,
+              items: [
+                {
+                  id: TEST_IDS.TOPIC_ID,
+                  metadata: {
+                    contextTokens: {
+                      lastMsgId: 'anchor-msg',
+                      signature: signAgentConfig(
+                        createMockAgentConfig({ model: 'gpt-4o-mini', provider: 'openai' }),
+                      ),
+                      tokens: 42_000,
+                    },
+                  },
+                },
+              ],
+            } as any,
+          },
+        });
+      });
+
+      vi.spyOn(agentConfigResolver, 'resolveAgentConfig').mockReturnValue({
+        agentConfig: createMockAgentConfig({ model: 'gpt-4o-mini', provider: 'openai' }),
+        chatConfig: createMockChatConfig({}),
+        isBuiltinAgent: false,
+        plugins: [],
+      });
+
+      const stepSpy = vi.spyOn(agentRuntime.AgentRuntime.prototype, 'step');
+      const { result } = renderHook(() => useChatStore());
+      const userMessage = {
+        id: TEST_IDS.USER_MESSAGE_ID,
+        role: 'user',
+        content: TEST_CONTENT.USER_MESSAGE,
+        sessionId: TEST_IDS.SESSION_ID,
+        topicId: TEST_IDS.TOPIC_ID,
+      } as UIChatMessage;
+
+      seedDbMessages({ agentId: TEST_IDS.SESSION_ID, topicId: TEST_IDS.TOPIC_ID }, [userMessage]);
+      const streamSpy = spyOnClientLLMStream(async ({ onFinish }) => {
+        await onFinish?.(TEST_CONTENT.AI_RESPONSE, {} as any);
+      });
+
+      await act(async () => {
+        await result.current.executeClientAgent({
+          context: { agentId: TEST_IDS.SESSION_ID, topicId: TEST_IDS.TOPIC_ID },
+          messages: [userMessage],
+          parentMessageId: userMessage.id,
+          parentMessageType: 'user',
+        });
+      });
+
+      expect(getCreatedAgentCompressionConfig(stepSpy)).toMatchObject({
+        storedContextLastMsgId: 'anchor-msg',
+        storedContextTokens: 42_000,
+      });
+
+      streamSpy.mockRestore();
+    });
+    it('persists the measured context baseline after a completed run', async () => {
+      act(() => {
+        useChatStore.setState({ executeClientAgent: realExecAgentRuntime });
+      });
+
+      useAiInfraStore.setState({
+        enabledAiModels: [
+          {
+            abilities: { functionCall: true },
+            contextWindowTokens: 200_000,
+            id: 'gpt-4o-mini',
+            providerId: 'openai',
+            type: 'chat',
+          } as EnabledAiModel,
+        ],
+      });
+      vi.spyOn(agentConfigResolver, 'resolveAgentConfig').mockReturnValue({
+        agentConfig: createMockAgentConfig({ model: 'gpt-4o-mini', provider: 'openai' }),
+        chatConfig: createMockChatConfig({}),
+        isBuiltinAgent: false,
+        plugins: [],
+      });
+
+      // The runtime's in-memory state messages carry no usage (buildFinalState),
+      // so the persistence point must read the last assistant message that does —
+      // here the seeded previous-turn assistant with metadata.usage.
+      const prevAssistant = {
+        content: 'previous answer',
+        id: 'prev-assistant',
+        metadata: { usage: { totalTokens: 42_000 } },
+        role: 'assistant',
+        sessionId: TEST_IDS.SESSION_ID,
+        topicId: TEST_IDS.TOPIC_ID,
+      } as unknown as UIChatMessage;
+      const userMessage = {
+        content: TEST_CONTENT.USER_MESSAGE,
+        id: TEST_IDS.USER_MESSAGE_ID,
+        role: 'user',
+        sessionId: TEST_IDS.SESSION_ID,
+        topicId: TEST_IDS.TOPIC_ID,
+      } as UIChatMessage;
+
+      const updateTopicMetadataSpy = vi
+        .spyOn(useChatStore.getState(), 'updateTopicMetadata')
+        .mockResolvedValue(undefined);
+      const streamSpy = spyOnClientLLMStream(async ({ onFinish }) => {
+        await onFinish?.(TEST_CONTENT.AI_RESPONSE, {} as any);
+      });
+
+      const { result } = renderHook(() => useChatStore());
+      await act(async () => {
+        await result.current.executeClientAgent({
+          context: { agentId: TEST_IDS.SESSION_ID, topicId: TEST_IDS.TOPIC_ID },
+          messages: [prevAssistant, userMessage],
+          parentMessageId: userMessage.id,
+          parentMessageType: 'user',
+        });
+      });
+
+      expect(updateTopicMetadataSpy).toHaveBeenCalledWith(TEST_IDS.TOPIC_ID, {
+        contextTokens: {
+          lastMsgId: 'prev-assistant',
+          signature: signAgentConfig(
+            createMockAgentConfig({ model: 'gpt-4o-mini', provider: 'openai' }),
+          ),
+          tokens: 42_000,
+        },
+      });
+
+      streamSpy.mockRestore();
+      updateTopicMetadataSpy.mockRestore();
+    });
+
+    it('skips baseline persistence when compression is disabled', async () => {
+      act(() => {
+        useChatStore.setState({ executeClientAgent: realExecAgentRuntime });
+      });
+
+      useAiInfraStore.setState({
+        enabledAiModels: [
+          {
+            abilities: { functionCall: true },
+            contextWindowTokens: 200_000,
+            id: 'gpt-4o-mini',
+            providerId: 'openai',
+            type: 'chat',
+          } as EnabledAiModel,
+        ],
+      });
+      vi.spyOn(agentConfigResolver, 'resolveAgentConfig').mockReturnValue({
+        agentConfig: createMockAgentConfig({ model: 'gpt-4o-mini', provider: 'openai' }),
+        chatConfig: createMockChatConfig({ compression: 'off' }),
+        isBuiltinAgent: false,
+        plugins: [],
+      });
+
+      const prevAssistant = {
+        content: 'previous answer',
+        id: 'prev-assistant',
+        metadata: { usage: { totalTokens: 42_000 } },
+        role: 'assistant',
+        sessionId: TEST_IDS.SESSION_ID,
+        topicId: TEST_IDS.TOPIC_ID,
+      } as unknown as UIChatMessage;
+      const userMessage = {
+        content: TEST_CONTENT.USER_MESSAGE,
+        id: TEST_IDS.USER_MESSAGE_ID,
+        role: 'user',
+        sessionId: TEST_IDS.SESSION_ID,
+        topicId: TEST_IDS.TOPIC_ID,
+      } as UIChatMessage;
+
+      const updateTopicMetadataSpy = vi
+        .spyOn(useChatStore.getState(), 'updateTopicMetadata')
+        .mockResolvedValue(undefined);
+      const streamSpy = spyOnClientLLMStream(async ({ onFinish }) => {
+        await onFinish?.(TEST_CONTENT.AI_RESPONSE, {} as any);
+      });
+
+      const { result } = renderHook(() => useChatStore());
+      await act(async () => {
+        await result.current.executeClientAgent({
+          context: { agentId: TEST_IDS.SESSION_ID, topicId: TEST_IDS.TOPIC_ID },
+          messages: [prevAssistant, userMessage],
+          parentMessageId: userMessage.id,
+          parentMessageType: 'user',
+        });
+      });
+
+      expect(updateTopicMetadataSpy).not.toHaveBeenCalled();
+
+      streamSpy.mockRestore();
+      updateTopicMetadataSpy.mockRestore();
     });
 
     it('should resolve aborted tools when cancelled after LLM returns tool calls', async () => {

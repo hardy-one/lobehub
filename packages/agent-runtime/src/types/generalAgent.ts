@@ -99,6 +99,27 @@ export interface GeneralAgentConfig {
     smartThreshold?: boolean;
     /** Threshold ratio for triggering compression (default: 0.5, or 0.7 when smartThreshold is on) */
     thresholdRatio?: number;
+    /**
+     * Stored real context tokens from the previous completed request on this
+     * topic (`usage.totalTokens`). When present with a matching
+     * `storedContextLastMsgId`, the compression estimate reuses this real value
+     * and only estimates messages added since — see `shouldCompress` in
+     * utils/tokenCounter.ts.
+     *
+     * Freshness is handled by the application layer via the agent-config
+     * signature stored alongside the baseline (`signAgentConfig` in
+     * context-engine): any config change (including model/provider, since they
+     * are part of `agentConfig`) invalidates the baseline, and the estimate
+     * falls back to full estimation until the next request re-measures it.
+     */
+    storedContextTokens?: number;
+    /** Id of the last message covered by `storedContextTokens` (anchor). */
+    storedContextLastMsgId?: string;
+    /**
+     * NOTE: freshness across model/provider switches is the caller's job —
+     * the application layer must clear/omit the stored value when the
+     * model/provider changed since it was measured (different tokenizer).
+     */
   };
   /**
    * Dynamic intervention audits registry (per-tool)

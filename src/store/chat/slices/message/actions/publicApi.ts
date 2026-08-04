@@ -115,6 +115,17 @@ export class MessagePublicApiActionImpl {
       ids = ids.concat(toolMessageIds);
     }
 
+    // Deleting messages invalidates the stored context baseline: the anchor
+    // check only covers deletion of the anchor itself, while deleting earlier
+    // messages leaves a stale over-count (premature, irreversible compression).
+    // Fire-and-forget; failure only costs one full estimation.
+    const topicId = message.topicId;
+    if (topicId) {
+      void this.#get()
+        .updateTopicMetadata(topicId, { contextTokens: undefined })
+        .catch((error) => console.error('[message] Failed to clear context baseline:', error));
+    }
+
     await this.#get().optimisticDeleteMessages(ids, context);
   };
 
@@ -136,6 +147,17 @@ export class MessagePublicApiActionImpl {
         return child.tools.filter((tool) => tool.result?.id).map((tool) => tool.result!.id);
       });
       ids = ids.concat(toolResultIds);
+    }
+
+    // Deleting messages invalidates the stored context baseline: the anchor
+    // check only covers deletion of the anchor itself, while deleting earlier
+    // messages leaves a stale over-count (premature, irreversible compression).
+    // Fire-and-forget; failure only costs one full estimation.
+    const topicId = message.topicId;
+    if (topicId) {
+      void this.#get()
+        .updateTopicMetadata(topicId, { contextTokens: undefined })
+        .catch((error) => console.error('[message] Failed to clear context baseline:', error));
     }
 
     await this.#get().optimisticDeleteMessages(ids, context);
@@ -238,6 +260,18 @@ export class MessagePublicApiActionImpl {
       eventType: TraceEventType.ModifyMessage,
       nextContent: content,
     });
+
+    // Edited content invalidates the stored context baseline — the measured
+    // tokens describe the old content. Drop it so the next compression check
+    // falls back to full estimation (fire-and-forget; failure only costs one
+    // estimation). Use the edited message's own topic, not the active one.
+    const editedMessage = displayMessageSelectors.getDisplayMessageById(id)(this.#get());
+    const topicId = editedMessage?.topicId;
+    if (topicId) {
+      void this.#get()
+        .updateTopicMetadata(topicId, { contextTokens: undefined })
+        .catch((error) => console.error('[message] Failed to clear context baseline:', error));
+    }
 
     await this.#get().optimisticUpdateMessageContent(id, content, undefined, context);
   };

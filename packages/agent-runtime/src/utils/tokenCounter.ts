@@ -19,8 +19,31 @@ export interface TokenCountOptions {
    * - Disables compression for models with ≤32k context
    */
   smartThreshold?: boolean;
+  /**
+   * Id of the last message covered by `storedContextTokens` — the anchor for
+   * the incremental estimate. Must exist in `messages` for the baseline path;
+   * otherwise the whole set is estimated (fallback).
+   */
+  storedContextLastMsgId?: string;
+
+  /**
+   * Stored real context tokens from the previous completed request
+   * (`usage.totalTokens` = input + output; the output is already part of the
+   * history being sent this turn). When provided together with a matching
+   * `storedContextLastMsgId`, the compression estimate becomes:
+   *
+   *     current = storedContextTokens + estimate(messages after the anchor)
+   *
+   * so the (large) history portion carries zero estimation error and only the
+   * delta since the last request is estimated. Falls back to full estimation
+   * when the anchor message is no longer present (compressed / deleted) or the
+   * value is absent (first turn).
+   */
+  storedContextTokens?: number;
+
   /** Threshold ratio for triggering compression, default 0.5 (or 0.7 when smartThreshold is on) */
   thresholdRatio?: number;
+
   /**
    * Optional top-level tool definitions for the upcoming LLM call. When
    * provided, tool definition tokens are counted toward the budget — matches
@@ -116,15 +139,45 @@ export function shouldCompress(
   messages: UIChatMessage[],
   options: TokenCountOptions = {},
 ): CompressionCheckResult {
-  const accounting = countContextTokens({
-    messages,
-    options: { driftMultiplier: options.driftMultiplier ?? DEFAULT_DRIFT_MULTIPLIER },
-    tools: options.tools,
-  });
+  const drift = options.driftMultiplier ?? DEFAULT_DRIFT_MULTIPLIER;
+
+  // Baseline path: a stored real-token value plus a live anchor message in the
+  // set. The anchor must still exist — after compression/deletion the stored
+  // value no longer corresponds to the visible history, so fall back.
+  const { storedContextLastMsgId, storedContextTokens } = options;
+  // The caller (application layer) is responsible for baseline freshness:
+  // it must clear/omit `storedContextTokens` when the model/provider changed
+  // since the value was measured (a different tokenizer would make the stored
+  // count incomparable). Here we only require a positive value + a live anchor.
+  const anchorIndex =
+    typeof storedContextTokens === 'number' &&
+    storedContextTokens > 0 &&
+    typeof storedContextLastMsgId === 'string'
+      ? messages.findIndex((m) => m.id === storedContextLastMsgId)
+      : -1;
+  const useBaseline = anchorIndex >= 0;
+
+  // Tools definitions: in baseline mode the stored value already includes the
+  // previous request's tool schemas (the provider tokenized them), so counting
+  // them again on the delta would double-count. Fallback counts them (legacy).
+  const baselineDeltaRaw = useBaseline
+    ? countContextTokens({
+        messages: messages.slice(anchorIndex + 1),
+        options: { driftMultiplier: 1 },
+      }).rawTotal
+    : 0;
 
   if (isSmartCompressionDisabled(options)) {
+    const currentTokenCount = useBaseline
+      ? storedContextTokens! + baselineDeltaRaw
+      : countContextTokens({
+          messages,
+          options: { driftMultiplier: 1 },
+          tools: options.tools,
+        }).rawTotal;
+
     return {
-      currentTokenCount: accounting.rawTotal,
+      currentTokenCount,
       needsCompression: false,
       // Surface the full window as the "threshold" so callers/logs don't treat
       // the disabled path as "already over budget".
@@ -133,6 +186,26 @@ export function shouldCompress(
   }
 
   const threshold = getCompressionThreshold(options);
+
+  if (useBaseline) {
+    // Real baseline + estimated delta. Drift applies to the delta only — the
+    // baseline is the provider's own tokenization and needs no headroom.
+    const currentTokenCount = storedContextTokens! + baselineDeltaRaw;
+    const adjustedTotal = storedContextTokens! + Math.ceil(baselineDeltaRaw * drift);
+
+    return {
+      currentTokenCount,
+      needsCompression: adjustedTotal > threshold,
+      threshold,
+    };
+  }
+
+  // Fallback: estimate the whole set (legacy behaviour, drift on everything).
+  const accounting = countContextTokens({
+    messages,
+    options: { driftMultiplier: drift },
+    tools: options.tools,
+  });
 
   return {
     currentTokenCount: accounting.rawTotal,

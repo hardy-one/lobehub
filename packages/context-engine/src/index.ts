@@ -35,6 +35,13 @@ export {
   estimateSentMessageAttachmentTokenBuckets,
   isTextLikeUploadFile,
 } from './tokenAccounting';
+// Stored real context baseline for compression (topic.metadata.contextTokens)
+export {
+  buildStoredContext,
+  readStoredContext,
+  signAgentConfig,
+  type StoredContextEntry,
+} from './tokenAccounting/contextBudget';
 // Processors
 export type { PlaceholderValue, PlaceholderValueMap } from './processors';
 export {

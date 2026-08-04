@@ -17,6 +17,7 @@ import { PageAgentIdentifier } from '@lobechat/builtin-tool-page-agent';
 import { efficientDeferredPluginIds, manualModeExcludeToolIds } from '@lobechat/builtin-tools';
 import { isDesktop, resolveSubAgentModel } from '@lobechat/const';
 import { type ToolsEngine } from '@lobechat/context-engine';
+import { buildStoredContext, readStoredContext, signAgentConfig } from '@lobechat/context-engine';
 import { buildTaskDetailPrompt, buildTaskListPrompt } from '@lobechat/prompts';
 import {
   type ConversationContext,
@@ -685,12 +686,32 @@ export class StreamingExecutorActionImpl {
         : (chatConfig?.enableContextCompression ?? true);
     const smartThreshold = compressionMode === 'smart' ? true : undefined;
 
+    // Stored real context baseline from the previous completed request on this
+    // topic — reuses the measured size (zero history estimation error) and only
+    // estimates messages added since. No freshness tracking: a stale value
+    // biases at most one decision and self-corrects on the next request.
+    const storedContext = readStoredContext(
+      topicId ? topicSelectors.getTopicById(topicId)(this.#get())?.metadata : undefined,
+      signAgentConfig(agentConfigData),
+    );
+    if (topicId && !storedContext) {
+      log('[executeClientAgent] No usable stored context baseline — full estimation');
+    }
+
     const agent = new GeneralChatAgent({
       agentConfig: { maxSteps: 1000 },
       compressionConfig: {
         enabled: compressionEnabled,
         maxWindowToken: contextWindowTokens ?? undefined,
         smartThreshold,
+        // Only carry the stored baseline when present — omitting the keys keeps
+        // the config shape unchanged when there is nothing stored.
+        ...(storedContext
+          ? {
+              storedContextLastMsgId: storedContext.lastMsgId,
+              storedContextTokens: storedContext.tokens,
+            }
+          : {}),
       },
       dynamicInterventionAudits,
       operationId: `${messageKey}/${params.parentMessageId}`,
@@ -946,6 +967,42 @@ export class StreamingExecutorActionImpl {
     if (requeued) return;
 
     await runLifecycle.afterRunComplete(completeEvent);
+
+    // Persist the real context size of this request (the last assistant turn's
+    // provider-measured usage) so the next compression check can reuse it as
+    // baseline + incremental delta. Skipped when compression is off, usage or
+    // anchor is unavailable — the previous stored value (if any) is left
+    // untouched.
+    // NOTE: the runtime's final state message carries no usage (buildFinalState
+    // pushes {content, id, ...}); the persisted message does (metadata.usage,
+    // written by persistFinalMessage). So find the last assistant message that
+    // actually carries usage — the anchor then covers everything up to the
+    // previous turn, and the final output lands in the estimated delta.
+    if (compressionEnabled) {
+      const lastAssistant = state.messages.findLast(
+        (m): m is UIChatMessage =>
+          m.role === 'assistant' && Boolean((m as any).usage ?? (m as any).metadata?.usage),
+      );
+      const lastAssistantUsage = (lastAssistant?.usage ??
+        (lastAssistant as any)?.metadata?.usage) as { totalTokens?: number } | undefined;
+      const storedEntry = buildStoredContext(
+        lastAssistantUsage,
+        lastAssistant?.id,
+        signAgentConfig(agentConfigData),
+      );
+      // Sub-agent runs measure a different context than the main conversation —
+      // their usage would pollute the topic's baseline. The main run's own
+      // completion writes the authoritative value.
+      // Fire-and-forget: a persistence failure must never fail the run
+      // completion itself — it only costs one full estimation next turn.
+      if (storedEntry && topicId && !context?.isSubAgent) {
+        try {
+          await this.#get().updateTopicMetadata(topicId, { contextTokens: storedEntry });
+        } catch (error) {
+          log('[executeClientAgent] Failed to persist context baseline (non-fatal): %O', error);
+        }
+      }
+    }
 
     // Return usage and cost data for caller to use
     return { cost: state.cost, model, provider: provider ?? undefined, usage: state.usage };

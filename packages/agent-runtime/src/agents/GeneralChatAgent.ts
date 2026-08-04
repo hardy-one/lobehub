@@ -516,6 +516,8 @@ export class GeneralChatAgent implements Agent {
       maxWindowToken: this.config.compressionConfig?.maxWindowToken,
       smartThreshold: this.config.compressionConfig?.smartThreshold,
       thresholdRatio: this.config.compressionConfig?.thresholdRatio,
+      storedContextLastMsgId: this.config.compressionConfig?.storedContextLastMsgId,
+      storedContextTokens: this.config.compressionConfig?.storedContextTokens,
       tools: state.forceFinish ? undefined : payloadWithAllowedToolNames.tools,
     };
 
@@ -588,6 +590,8 @@ export class GeneralChatAgent implements Agent {
           maxWindowToken: this.config.compressionConfig?.maxWindowToken,
           smartThreshold: this.config.compressionConfig?.smartThreshold,
           thresholdRatio: this.config.compressionConfig?.thresholdRatio,
+          storedContextLastMsgId: this.config.compressionConfig?.storedContextLastMsgId,
+          storedContextTokens: this.config.compressionConfig?.storedContextTokens,
           tools: state.forceFinish ? undefined : this.getTools(state),
         };
 

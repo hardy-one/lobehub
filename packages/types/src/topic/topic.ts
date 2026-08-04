@@ -113,6 +113,22 @@ export interface OnboardingSessionSnapshot {
 export interface ChatTopicMetadata {
   bot?: ChatTopicBotContext;
   boundDeviceId?: string;
+  /**
+   * Stored real context tokens from the most recent completed request on this
+   * topic (`usage.totalTokens` = input + output; output is already part of the
+   * history sent next turn). The compression budget reuses this real value and
+   * only estimates messages added since — see `contextBudget` (application
+   * layer) and `shouldCompress` (agent-runtime).
+   *
+   * Deliberately no freshness tracking: a stale value (model switch, config
+   * edit) biases at most one decision and self-corrects on the next request.
+   */
+  contextTokens?: {
+    tokens: number;
+    lastMsgId: string;
+    /** Agent-config signature at measurement time — see `signAgentConfig`. */
+    signature: string;
+  };
   cronJobId?: string;
   /**
    * Scoped pointer to the currently active assistant message for a running

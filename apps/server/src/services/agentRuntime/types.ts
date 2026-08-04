@@ -338,6 +338,16 @@ export interface OperationCreationParams {
   appContext: {
     agentId?: string;
     /**
+     * Stored real context baseline for compression — carried from the topic's
+     * `contextTokens` into `state.metadata`, where AgentRuntimeService reuses
+     * it in the compression budget.
+     */
+    contextTokens?: {
+      tokens: number;
+      lastMsgId: string;
+      signature: string;
+    };
+    /**
      * Run-scoped Agent Signal marker. Stamped at dispatch for background
      * self-iteration / memory runs; lands in `state.metadata.agentSignal` and is
      * read on the completion path to project receipts.

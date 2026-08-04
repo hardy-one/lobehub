@@ -1,4 +1,5 @@
 import { isParkedStatus } from '@lobechat/agent-runtime';
+import { buildStoredContext, signAgentConfig } from '@lobechat/context-engine';
 import { deserializeParts } from '@lobechat/utils';
 import { isRecord } from '@lobechat/utils/object';
 import debug from 'debug';
@@ -10,6 +11,7 @@ import {
   type RecordOperationStartParams,
 } from '@/database/models/agentOperation';
 import { MessageModel } from '@/database/models/message';
+import { TopicModel } from '@/database/models/topic';
 import { recomputeTopicUsage } from '@/database/models/topicUsage';
 import { VerifyRunModel } from '@/database/models/verifyRun';
 import { type LobeChatDatabase } from '@/database/type';
@@ -126,6 +128,7 @@ export class CompletionLifecycle {
    * (instantiation is fire-and-forget at start and may not have settled yet).
    */
   private readonly verifyPlanInstantiations = new Map<string, Promise<void>>();
+  private readonly topicModel: TopicModel;
 
   constructor(
     private readonly serverDB: LobeChatDatabase,
@@ -135,6 +138,7 @@ export class CompletionLifecycle {
     this.workspaceId = workspaceId;
     this.messageModel = new MessageModel(serverDB, userId, workspaceId);
     this.agentOperationModel = new AgentOperationModel(serverDB, userId, workspaceId);
+    this.topicModel = new TopicModel(serverDB, userId, workspaceId);
   }
 
   /**
@@ -295,6 +299,54 @@ export class CompletionLifecycle {
         );
       } catch (error) {
         log('[%s] Failed to recompute topic usage rollup (non-fatal): %O', operationId, error);
+      }
+    }
+
+    // Persist the real context size of the last request (last assistant turn's
+    // provider-measured usage — input + output; the output is already part of
+    // the history sent next turn) so the next compression check reuses it as a
+    // baseline + incremental delta instead of re-estimating the whole set.
+    // NOTE: runtime state messages carry no usage (buildFinalState pushes
+    // {content, id, ...}); DB messages carry it as the promoted `usage` column.
+    // Find the last assistant message that actually carries usage — the anchor
+    // then covers everything up to the previous turn, and the final output
+    // lands in the estimated delta.
+    // Skip persistence when compression is disabled for this agent config.
+    const chatConfig = metadata?.agentConfig?.chatConfig as
+      | { compression?: 'off' | 'standard' | 'smart'; enableContextCompression?: boolean }
+      | undefined;
+    const compressionMode = chatConfig?.compression;
+    const compressionEnabled =
+      compressionMode !== undefined
+        ? compressionMode !== 'off'
+        : (chatConfig?.enableContextCompression ?? true);
+
+    // Sub-agent / background / group-member runs measure a different context
+    // than the main conversation — their usage would pollute the topic's
+    // baseline (undercount → delayed compression → overflow risk). The main
+    // run's own completion writes the authoritative value.
+    const isScopedRun = Boolean(
+      metadata?.isSubAgent || metadata?.agentSignal || metadata?.orchestrationRole === 'member',
+    );
+
+    if (topicId && compressionEnabled && !isScopedRun) {
+      try {
+        const lastAssistant = state?.messages?.findLast(
+          (m: { role?: string; usage?: unknown; metadata?: { usage?: unknown } }) =>
+            m.role === 'assistant' && Boolean(m.usage ?? m.metadata?.usage),
+        );
+        const lastAssistantUsage = (lastAssistant?.usage ?? lastAssistant?.metadata?.usage) as
+          { totalTokens?: number } | undefined;
+        const storedEntry = buildStoredContext(
+          lastAssistantUsage,
+          lastAssistant?.id,
+          signAgentConfig(metadata?.agentConfig),
+        );
+        if (storedEntry) {
+          await this.topicModel.updateMetadata(topicId, { contextTokens: storedEntry });
+        }
+      } catch (error) {
+        log('[%s] Failed to persist stored context baseline (non-fatal): %O', operationId, error);
       }
     }
   }

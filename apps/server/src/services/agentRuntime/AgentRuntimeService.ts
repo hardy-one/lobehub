@@ -15,6 +15,7 @@ import {
 } from '@lobechat/agent-runtime';
 import type { ISnapshotStore } from '@lobechat/agent-tracing';
 import { dynamicInterventionAudits } from '@lobechat/builtin-tools/dynamicInterventionAudits';
+import { readStoredContext, signAgentConfig } from '@lobechat/context-engine';
 import { parse } from '@lobechat/conversation-flow';
 import { getModelPropertyWithFallback } from '@lobechat/model-runtime';
 import {
@@ -2762,6 +2763,17 @@ export class AgentRuntimeService {
         : (chatConfig?.enableContextCompression ?? true);
     const smartThreshold = compressionMode === 'smart' ? true : undefined;
 
+    // Stored real context baseline injected by the application layer (topic
+    // metadata via aiAgent). No freshness tracking: a stale value biases at
+    // most one decision and self-corrects on the next completed request.
+    const storedContext = readStoredContext(
+      metadata?.contextTokens,
+      signAgentConfig(metadata?.agentConfig),
+    );
+    if (!storedContext) {
+      log('[%s] No usable stored context baseline — full estimation', operationId);
+    }
+
     // Create Agent instance — use custom factory if provided, otherwise default to GeneralChatAgent
     const generalConfig = {
       agentConfig: metadata?.agentConfig,
@@ -2769,6 +2781,13 @@ export class AgentRuntimeService {
         enabled: compressionEnabled,
         maxWindowToken: contextWindowTokens ?? undefined,
         smartThreshold,
+        // Only carry the baseline when present — config shape unchanged otherwise.
+        ...(storedContext
+          ? {
+              storedContextLastMsgId: storedContext.lastMsgId,
+              storedContextTokens: storedContext.tokens,
+            }
+          : {}),
       },
       dynamicInterventionAudits,
       modelRuntimeConfig: metadata?.modelRuntimeConfig,

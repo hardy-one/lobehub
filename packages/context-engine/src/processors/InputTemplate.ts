@@ -17,6 +17,22 @@ export interface InputTemplateConfig {
   inputTemplate?: string;
 }
 
+const INPUT_TEMPLATE_INTERPOLATE = /\{\{\s*(text)\s*\}\}/g;
+const createInputTemplateCompiler = (inputTemplate: string) =>
+  template(inputTemplate, { interpolate: INPUT_TEMPLATE_INTERPOLATE });
+
+/** Apply the same user-message template used by InputTemplateProcessor to one draft. */
+export const applyInputTemplate = (content: string, inputTemplate?: string): string => {
+  if (!inputTemplate) return content;
+
+  try {
+    return createInputTemplateCompiler(inputTemplate)({ text: content });
+  } catch (error) {
+    log.extend('error')(`Error applying input template to draft: ${error}`);
+    return content;
+  }
+};
+
 /**
  * Input Template Processor
  * Responsible for applying input message templates to user messages
@@ -44,10 +60,7 @@ export class InputTemplateProcessor extends BaseProcessor {
 
     try {
       // Compile the template
-      const compiler = template(this.config.inputTemplate, {
-        interpolate: /\{\{\s*(text)\s*\}\}/g,
-      });
-
+      const compiler = createInputTemplateCompiler(this.config.inputTemplate);
       log(`Applying input template: ${this.config.inputTemplate}`);
 
       // Process each message

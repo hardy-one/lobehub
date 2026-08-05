@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { InputTemplateProcessor } from '../InputTemplate';
+import { applyInputTemplate, InputTemplateProcessor } from '../InputTemplate';
 
 describe('InputTemplateProcessor', () => {
+  it('applies the same template to a standalone draft as the pipeline', () => {
+    expect(applyInputTemplate('hello world', 'Please respond to: {{text}}')).toBe(
+      'Please respond to: hello world',
+    );
+    expect(applyInputTemplate('hello world')).toBe('hello world');
+  });
   it('should apply template to user messages', async () => {
     const processor = new InputTemplateProcessor({
       inputTemplate: 'Template: {{text}} - End',

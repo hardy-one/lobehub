@@ -1,23 +1,13 @@
-import { efficientDeferredPluginIds } from '@lobechat/builtin-tools';
-import { LEAN_TOOL_USAGE_POLICY, ToolNameResolver } from '@lobechat/context-engine';
-import {
-  availableToolsPrompts,
-  pluginPrompts,
-  promptUserMemory,
-  skillsPrompts,
-} from '@lobechat/prompts';
-import { resolveModelScopedChatConfig } from '@lobechat/types';
+import { applyInputTemplate } from '@lobechat/context-engine';
+import { promptUserMemory } from '@lobechat/prompts';
 import { Center, Flexbox, Tooltip } from '@lobehub/ui';
 import { TokenTag } from '@lobehub/ui/chat';
 import { cssVar } from 'antd-style';
 import numeral from 'numeral';
-import { memo, useCallback } from 'react';
+import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { createAgentToolsEngine } from '@/helpers/toolEngineering';
 import { useModelContextWindowTokens } from '@/hooks/useModelContextWindowTokens';
-import { useModelSupportToolUse } from '@/hooks/useModelSupportToolUse';
-import { useTokenCount } from '@/hooks/useTokenCount';
 import {
   combineUserMemoryData,
   resolveTopicMemories,
@@ -25,24 +15,17 @@ import {
 } from '@/services/chat/mecha/memoryManager';
 import { useAgentStore } from '@/store/agent';
 import { agentByIdSelectors, chatConfigByIdSelectors } from '@/store/agent/selectors';
-import { useAiInfraStore } from '@/store/aiInfra';
-import { aiModelSelectors, aiProviderSelectors } from '@/store/aiInfra/selectors';
 import { useChatStore } from '@/store/chat';
 import { topicSelectors } from '@/store/chat/selectors';
-import { getToolStoreState, useToolStore } from '@/store/tool';
-import { pluginHelpers } from '@/store/tool/helpers';
-import { toolSelectors } from '@/store/tool/selectors';
 import { useUserStore } from '@/store/user';
-import { settingsSelectors, userGeneralSettingsSelectors } from '@/store/user/selectors';
+import { userGeneralSettingsSelectors } from '@/store/user/selectors';
 
 import { useAgentId } from '../../hooks/useAgentId';
 import { useEffectiveModel } from '../../hooks/useEffectiveModel';
 import { useChatInputStore } from '../../store';
 import ActionPopover from '../components/ActionPopover';
 import TokenProgress from './TokenProgress';
-import { getToolContextRefreshKey, getToolExcludeDefaultToolIds } from './utils';
-
-const toolNameResolver = new ToolNameResolver();
+import { countText, estimateTokenBreakdown } from './utils';
 
 const Token = memo(() => {
   const { t } = useTranslation(['chat', 'components']);
@@ -57,164 +40,75 @@ const Token = memo(() => {
 
   const agentId = useAgentId();
   const { model, provider } = useEffectiveModel(agentId);
-  const [
-    activeAgentId,
-    systemRole,
-    enableAgentMode,
-    promptMode,
-    searchMode,
-    useModelBuiltinSearch,
-    skillActivateMode,
-    agentMemoryEnabled,
-    runtimeMode,
-    hasEnabledKnowledgeBases,
-  ] = useAgentStore((s) => {
-    const chatConfig = chatConfigByIdSelectors.getChatConfigById(agentId)(s);
-    const modelChatConfig = resolveModelScopedChatConfig(chatConfig, provider, model);
-
+  const [systemRole, chatConfig, skillActivateMode] = useAgentStore((s) => {
+    const config = chatConfigByIdSelectors.getChatConfigById(agentId)(s);
     return [
-      s.activeAgentId,
       agentByIdSelectors.getAgentSystemRoleById(agentId)(s),
-      chatConfig.enableAgentMode,
-      chatConfig.promptMode,
-      chatConfig.searchMode,
-      modelChatConfig.useModelBuiltinSearch,
+      config,
       chatConfigByIdSelectors.getSkillActivateModeById(agentId)(s),
-      chatConfig.memory?.enabled,
-      chatConfigByIdSelectors.getRuntimeModeById(agentId)(s),
-      agentByIdSelectors
-        .getAgentKnowledgeBasesById(agentId)(s)
-        .some((item) => item.enabled),
     ];
   });
-  const globalMemoryEnabled = useUserStore(settingsSelectors.memoryEnabled);
-  const effectiveMemoryEnabled = agentMemoryEnabled ?? globalMemoryEnabled;
-  const [isProviderHasBuiltinSearch, isModelHasBuiltinSearch, isModelBuiltinSearchInternal] =
-    useAiInfraStore((s) => [
-      aiProviderSelectors.isProviderHasBuiltinSearch(provider)(s),
-      aiModelSelectors.isModelHasBuiltinSearch(model, provider)(s),
-      aiModelSelectors.isModelBuiltinSearchInternal(model, provider)(s),
-    ]);
-  const toolContextRefreshKey = getToolContextRefreshKey({
-    agentId: activeAgentId || agentId,
-    enableAgentMode,
-    hasEnabledKnowledgeBases,
-    isModelBuiltinSearchInternal,
-    isModelHasBuiltinSearch,
-    isProviderHasBuiltinSearch,
-    memoryEnabled: effectiveMemoryEnabled,
-    runtimeMode,
-    searchMode,
-    skillActivateMode,
-    useModelBuiltinSearch,
-  });
-
-  const maxTokens = useModelContextWindowTokens(model, provider);
-
-  // Tool usage token
-  const canUseTool = useModelSupportToolUse(model, provider);
   const pluginIds = useAgentStore((s) => agentByIdSelectors.getAgentPluginsById(agentId)(s));
 
-  // Efficient mode (agent + lean): mirror the runtime — long-tail plugins
-  // deferred to <available_tools> and teaching blocks replaced by the compact
-  // policy, so the breakdown matches the real request instead of the legacy
-  // full-prompt estimate.
-  // Lean prompt (mirrors ToolSystemRoleProvider: promptMode==='lean' → compact
-  // policy + persona regardless of agent/chat mode). Efficient mode additionally
-  // defers long-tail plugins to <available_tools> (agent + lean only).
-  const isLeanPrompt = promptMode === 'lean';
-  const isEfficientMode = enableAgentMode !== false && isLeanPrompt;
-  const toolsString = useToolStore(
-    useCallback(() => {
-      const toolsEngine = createAgentToolsEngine(
-        { model, provider },
-        pluginIds,
-        // Mirror the agent being rendered, not the active agent — in
-        // group/supervisor/page sessions the two differ and the breakdown
-        // must follow the agent whose config this TokenTag reads.
-        undefined,
+  const maxTokens = useModelContextWindowTokens(model, provider);
+  const isDevMode = useUserStore((s) => userGeneralSettingsSelectors.config(s).isDevMode);
+
+  // Persona + topic memories — the same injection the real send embeds in the
+  // system prompt (baseline behavior kept).
+  const personaText = useMemo(() => {
+    const personaMemories = combineUserMemoryData(resolveTopicMemories(), resolveUserPersona());
+    return promptUserMemory({ memories: personaMemories }, chatConfig.promptMode === 'lean');
+  }, [chatConfig.promptMode]);
+
+  // Buckets that do NOT change while typing: tools (real send generation),
+  // systemRole, historySummary. Recomputed only when config/plugins/model
+  // change — never per keystroke.
+  const staticBreakdown = useMemo(
+    () =>
+      estimateTokenBreakdown({
         agentId,
-      );
-
-      const { tools, enabledManifests } = toolsEngine.generateToolsDetailed({
-        excludeDefaultToolIds: getToolExcludeDefaultToolIds(skillActivateMode),
         model,
-        promptMode,
         provider,
-        toolIds: pluginIds,
-      });
-      // Efficient mode drops the deferred long-tail plugins from the schema count.
-      const deferredSet = isEfficientMode ? new Set(efficientDeferredPluginIds) : undefined;
-      const countedTools = deferredSet
-        ? tools?.filter((t) => !deferredSet.has((t.function?.name ?? '').split('____')[0]))
-        : tools;
-      const schemaNumber = countedTools?.map((i) => JSON.stringify(i)).join('') || '';
-
-      // Efficient mode: teaching blocks are replaced by the compact policy.
-      const toolsSystemRole = isLeanPrompt
-        ? LEAN_TOOL_USAGE_POLICY
-        : enabledManifests.length > 0
-          ? pluginPrompts({
-              tools: enabledManifests.map((manifest) => ({
-                apis: manifest.api.map((api) => ({
-                  desc: api.description,
-                  name: toolNameResolver.generate(manifest.identifier, api.name, manifest.type),
-                })),
-                identifier: manifest.identifier,
-                name: pluginHelpers.getPluginTitle(manifest.meta) || manifest.identifier,
-                systemRole: manifest.systemRole,
-              })),
-            })
-          : '';
-
-      // Skills index (<available_skills>) — mirrors SkillContextProvider using
-      // the store's builtin + agent skills (sync, no content fetch).
-      const toolState = getToolStoreState();
-      const skillItems = [...(toolState.builtinSkills || []), ...(toolState.agentSkills || [])]
-        .filter((s) => s.description)
-        .map((s) => ({
-          description: s.description ?? '',
-          identifier: s.identifier,
-          name: s.name,
-        }));
-      const skillsText = skillsPrompts(skillItems, isLeanPrompt);
-
-      // <available_tools> directory: not-yet-enabled tools (full mode) plus the
-      // deferred long-tail plugins (efficient mode).
-      const enabledToolIdsForDiscovery = new Set(countedTools?.map((t) => t.function?.name) ?? []);
-      const discoveryTools = toolSelectors
-        .availableToolsForDiscovery(toolState)
-        .filter((tool) => !enabledToolIdsForDiscovery.has(tool.identifier));
-      const toolsDirectoryText = availableToolsPrompts(discoveryTools, isEfficientMode);
-
-      return toolsSystemRole + schemaNumber + skillsText + toolsDirectoryText;
-      // toolContextRefreshKey tracks implicit createAgentToolsEngine inputs from other stores.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [model, pluginIds, promptMode, provider, skillActivateMode, toolContextRefreshKey]),
+        pluginIds,
+        promptMode: chatConfig.promptMode,
+        enableAgentMode: chatConfig.enableAgentMode,
+        skillActivateMode,
+        systemRole: systemRole ?? undefined,
+        personaText,
+        historySummary,
+        messages: [],
+      }),
+    [
+      agentId,
+      chatConfig.enableAgentMode,
+      chatConfig.promptMode,
+      historySummary,
+      model,
+      personaText,
+      pluginIds,
+      provider,
+      skillActivateMode,
+      systemRole,
+    ],
   );
 
-  const toolsToken = useTokenCount(canUseTool ? toolsString : '');
+  // Chats bucket: the display window (same truncation the send uses) plus the
+  // templated draft. Cheap string counting — safe on every keystroke.
+  const chatsToken = useMemo(() => {
+    const messageText =
+      contextWindowMessages
+        ?.map((message) => (typeof message.content === 'string' ? message.content : ''))
+        .join('') || '';
+    const draftText = applyInputTemplate(input, chatConfig.inputTemplate);
+    return countText(messageText) + countText(draftText);
+  }, [chatConfig.inputTemplate, contextWindowMessages, input]);
 
-  // Chat usage token
-  const inputTokenCount = useTokenCount(input);
-
-  const messageString =
-    contextWindowMessages
-      ?.map((message) => (typeof message.content === 'string' ? message.content : ''))
-      .join('') || '';
-  const chatsToken = useTokenCount(messageString) + inputTokenCount;
-
-  // SystemRole token — include the injected persona (user_memory) so the
-  // breakdown matches the real request.
-  const personaMemories = combineUserMemoryData(resolveTopicMemories(), resolveUserPersona());
-  const personaText = promptUserMemory({ memories: personaMemories }, isLeanPrompt);
-  const systemRoleToken = useTokenCount(systemRole + personaText);
-  const historySummaryToken = useTokenCount(historySummary);
+  const systemRoleToken = staticBreakdown.systemRole;
+  const toolsToken = staticBreakdown.tools;
+  const historySummaryToken = staticBreakdown.historySummary;
 
   // Total token
   const totalToken = systemRoleToken + historySummaryToken + toolsToken + chatsToken;
-
-  const isDevMode = useUserStore((s) => userGeneralSettingsSelectors.config(s).isDevMode);
 
   // Keep the composer quiet for regular users until context pressure is real;
   // dev mode always shows the tag for inspection.
@@ -317,5 +211,7 @@ const Token = memo(() => {
     </ActionPopover>
   );
 });
+
+Token.displayName = 'Token';
 
 export default Token;

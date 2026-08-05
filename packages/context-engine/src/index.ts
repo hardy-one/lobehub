@@ -45,6 +45,7 @@ export {
 // Processors
 export type { PlaceholderValue, PlaceholderValueMap } from './processors';
 export {
+  applyInputTemplate,
   buildPlaceholderGenerators,
   formatPlaceholderValues,
   getSlicedMessages,

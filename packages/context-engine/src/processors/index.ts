@@ -10,7 +10,7 @@ export {
 } from './GroupOrchestrationFilter';
 export { GroupRoleTransformProcessor } from './GroupRoleTransform';
 export { getSlicedMessages, HistoryTruncateProcessor } from './HistoryTruncate';
-export { InputTemplateProcessor } from './InputTemplate';
+export { applyInputTemplate, InputTemplateProcessor } from './InputTemplate';
 export { MessageCleanupProcessor } from './MessageCleanup';
 export { MessageContentProcessor } from './MessageContent';
 export { PlaceholderMessageFilterProcessor } from './PlaceholderMessageFilter';

@@ -17,7 +17,12 @@ import { PageAgentIdentifier } from '@lobechat/builtin-tool-page-agent';
 import { efficientDeferredPluginIds, manualModeExcludeToolIds } from '@lobechat/builtin-tools';
 import { isDesktop, resolveSubAgentModel } from '@lobechat/const';
 import { type ToolsEngine } from '@lobechat/context-engine';
-import { buildStoredContext, readStoredContext, signAgentConfig } from '@lobechat/context-engine';
+import {
+  buildStoredContext,
+  estimateUiBreakdown,
+  readStoredContext,
+  signAgentConfig,
+} from '@lobechat/context-engine';
 import { buildTaskDetailPrompt, buildTaskListPrompt } from '@lobechat/prompts';
 import {
   type ConversationContext,
@@ -985,10 +990,33 @@ export class StreamingExecutorActionImpl {
       );
       const lastAssistantUsage = (lastAssistant?.usage ??
         (lastAssistant as any)?.metadata?.usage) as { totalTokens?: number } | undefined;
+      // The adapter recorded the breakdown of the exact sent payload on the
+      // state (system prompt + persona + skills + tools — `state.messages`
+      // alone lacks the injected system parts). Fall back to estimating from
+      // the runtime messages when the record is absent (older runtimes).
+      const breakdown =
+        state.metadata?.contextBreakdown ??
+        estimateUiBreakdown({
+          messages: state.messages,
+          tools: state.tools ?? state.operationToolSet?.tools,
+        });
+      // TEMP-DEBUG: client persistence diagnostics (remove after fix)
+      // eslint-disable-next-line no-console
+      console.log('[ContextBaseline-debug] client:', {
+        breakdown,
+        compressionEnabled,
+        isSubAgent: !!context?.isSubAgent,
+        lastAssistantId: lastAssistant?.id ?? null,
+        lastAssistantUsage: lastAssistantUsage ?? null,
+        stateMessages: state.messages.length,
+        stateTools: (state.tools ?? state.operationToolSet?.tools)?.length ?? 0,
+        topicId: topicId ?? null,
+      });
       const storedEntry = buildStoredContext(
         lastAssistantUsage,
         lastAssistant?.id,
         signAgentConfig(agentConfigData),
+        breakdown,
       );
       // Sub-agent runs measure a different context than the main conversation —
       // their usage would pollute the topic's baseline. The main run's own

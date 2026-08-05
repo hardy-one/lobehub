@@ -1,5 +1,5 @@
 import { isParkedStatus } from '@lobechat/agent-runtime';
-import { buildStoredContext, signAgentConfig } from '@lobechat/context-engine';
+import { buildStoredContext, estimateUiBreakdown, signAgentConfig } from '@lobechat/context-engine';
 import { deserializeParts } from '@lobechat/utils';
 import { isRecord } from '@lobechat/utils/object';
 import debug from 'debug';
@@ -337,10 +337,43 @@ export class CompletionLifecycle {
         );
         const lastAssistantUsage = (lastAssistant?.usage ?? lastAssistant?.metadata?.usage) as
           { totalTokens?: number } | undefined;
+        // UI bucket breakdown of the request that was actually sent (system
+        // prompt preamble + persona / skills+policy+schema / summary / chats),
+        // computed once at completion from the runtime's final messages and
+        // tool set — the same payload the provider saw. TokenTag reads this
+        // instead of re-estimating from the client store (which cannot
+        // reproduce a gateway/server-side send).
+        // The adapter recorded the breakdown of the exact sent payload on the
+        // state (system prompt + persona + skills + tools — `state.messages`
+        // alone lacks the injected system parts). Fall back to estimating from
+        // the runtime messages when the record is absent (older runtimes).
+        const breakdown =
+          state?.metadata?.contextBreakdown ??
+          estimateUiBreakdown({
+            messages: state?.messages,
+            tools: state?.tools ?? state?.operationToolSet?.tools,
+          });
+        // TEMP-DEBUG: server persistence diagnostics (remove after fix)
+        // eslint-disable-next-line no-console
+        console.log('[ContextBaseline-debug] server:', {
+          breakdown,
+          compressionEnabled,
+          isScopedRun,
+          lastAssistantId: lastAssistant?.id ?? null,
+          lastAssistantUsage: lastAssistantUsage ?? null,
+          stateMessages: state?.messages?.length ?? 0,
+          stateTools: (state?.tools ?? state?.operationToolSet?.tools)?.length ?? 0,
+          topicId: topicId ?? null,
+          messagesRoleSample: state?.messages?.slice(0, 2).map((m: any) => ({
+            content: typeof m.content === 'string' ? m.content.slice(0, 40) : typeof m.content,
+            role: m.role,
+          })),
+        });
         const storedEntry = buildStoredContext(
           lastAssistantUsage,
           lastAssistant?.id,
           signAgentConfig(metadata?.agentConfig),
+          breakdown,
         );
         if (storedEntry) {
           await this.topicModel.updateMetadata(topicId, { contextTokens: storedEntry });

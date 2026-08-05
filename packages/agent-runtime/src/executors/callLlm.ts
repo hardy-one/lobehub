@@ -1,3 +1,5 @@
+import { estimateUiBreakdown } from '@lobechat/context-engine';
+
 import type {
   AgentRuntimeHost,
   ContextBuildOutput,
@@ -78,6 +80,30 @@ const executePreparedCall = async (
   let terminalError: unknown;
 
   try {
+    // The adapter-built context is the exact payload sent to the provider
+    // (system prompt injection, persona, skills index and tool schemas all
+    // land here). Record its UI bucket breakdown on the state so the
+    // completion lifecycle can persist it next to the measured total — the
+    // runtime's `state.messages` alone lacks the injected system parts.
+    const breakdown = estimateUiBreakdown({
+      messages: prepared.context.messages,
+      tools: prepared.context.resolvedTools?.tools,
+    });
+    // TEMP-DEBUG: payload shape vs the probe capture (remove after fix)
+    // eslint-disable-next-line no-console
+    console.log('[ContextBaseline-debug] payload:', {
+      breakdown,
+      messages: prepared.context.messages.map((m: any) => ({
+        role: m.role,
+        content: typeof m.content === 'string' ? m.content.slice(0, 50) : typeof m.content,
+        len: typeof m.content === 'string' ? m.content.length : 'n/a',
+      })),
+      toolsCount: prepared.context.resolvedTools?.tools?.length ?? 0,
+      toolsJsonLen: JSON.stringify(prepared.context.resolvedTools?.tools ?? []).length,
+    });
+    if (prepared.state.metadata && Object.keys(breakdown).length > 0) {
+      prepared.state.metadata.contextBreakdown = breakdown;
+    }
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const execution = await runWithTrace(trace, () =>
         llm.runAttempt({

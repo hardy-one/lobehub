@@ -1,5 +1,6 @@
 import type { ChatTopicMetadata } from '@lobechat/types';
 
+import type { UiTokenBreakdown } from './contextBreakdown';
 /**
  * Stored real context tokens on `topic.metadata.contextTokens` — the measured
  * size of the most recent completed request on this topic (`usage.totalTokens`,
@@ -51,6 +52,12 @@ const hashString = (input: string): string => {
 };
 
 export interface StoredContextEntry {
+  /**
+   * UI-facing bucket breakdown of the measured request (systemRole/persona,
+   * tools+skills+policy, history summary, chats). Optional — older entries
+   * and entries persisted before this field existed carry none.
+   */
+  breakdown?: UiTokenBreakdown;
   /** Id of the last message covered by `tokens` — the anchor for the incremental estimate. */
   lastMsgId: string;
   /** Agent-config signature at measurement time — see `signAgentConfig`. */
@@ -81,12 +88,12 @@ export const MAX_STORED_CONTEXT_TOKENS = 3_000_000;
 export const readStoredContext = (
   topicMeta: Pick<ChatTopicMetadata, 'contextTokens'> | undefined,
   signature?: string,
-): { tokens: number; lastMsgId: string } | undefined => {
+): { tokens: number; lastMsgId: string; breakdown?: UiTokenBreakdown } | undefined => {
   const stored = topicMeta?.contextTokens;
   if (!stored || !stored.tokens || !stored.lastMsgId) return undefined;
   if (stored.tokens > MAX_STORED_CONTEXT_TOKENS) return undefined;
   if (signature !== undefined && stored.signature !== signature) return undefined;
-  return { lastMsgId: stored.lastMsgId, tokens: stored.tokens };
+  return { breakdown: stored.breakdown, lastMsgId: stored.lastMsgId, tokens: stored.tokens };
 };
 
 /**
@@ -99,10 +106,12 @@ export const buildStoredContext = (
   usage: { totalTokens?: number } | undefined,
   lastMsgId: string | undefined,
   signature: string,
+  breakdown?: UiTokenBreakdown,
 ): StoredContextEntry | undefined => {
   if (!usage?.totalTokens || !lastMsgId) return undefined;
 
   return {
+    ...(breakdown && Object.keys(breakdown).length > 0 ? { breakdown } : {}),
     lastMsgId,
     signature,
     tokens: usage.totalTokens,

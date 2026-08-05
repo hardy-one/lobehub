@@ -30,6 +30,8 @@ export type SlashPlacement = 'top' | 'bottom';
 
 export interface ContextWindowMessage {
   content: string;
+  /** Message id — lets the TokenTag baseline anchor on the window. */
+  id: string;
 }
 
 export interface ChatInputFeature {

@@ -128,6 +128,18 @@ export interface ChatTopicMetadata {
     lastMsgId: string;
     /** Agent-config signature at measurement time — see `signAgentConfig`. */
     signature: string;
+    /**
+     * UI-facing bucket breakdown of the measured request (assistant profile /
+     * skill setup / history summary / chats), persisted by the send side so
+     * the TokenTag can display real buckets instead of client re-estimation.
+     * Optional — older entries carry none.
+     */
+    breakdown?: {
+      chats?: number;
+      historySummary?: number;
+      systemRole?: number;
+      tools?: number;
+    };
   };
   cronJobId?: string;
   /**

@@ -7,6 +7,8 @@ type SupportedChatInputRole = Extract<OpenAIChatMessage['role'], 'assistant' | '
 
 interface ChatInputMessage {
   content: string;
+  /** Message id — carried so the TokenTag baseline can anchor on it. */
+  id: string;
   role: SupportedChatInputRole;
 }
 
@@ -20,6 +22,7 @@ const isSupportedChatInputMessage = (
 export const toChatInputMessages = (messages: UIChatMessage[]): ChatInputMessage[] =>
   messages.filter(isSupportedChatInputMessage).map((m) => ({
     content: typeof m.content === 'string' ? m.content : '',
+    id: m.id,
     // `compressedGroup` is a UI-only role: the server transforms it into a
     // user message before sending (CompressedGroupRoleTransform). Normalize it
     // here the same way so compressed summaries are counted in the context

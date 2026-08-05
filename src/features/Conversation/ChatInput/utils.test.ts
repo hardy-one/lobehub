@@ -33,9 +33,9 @@ describe('toChatInputMessages', () => {
     ] as any[];
 
     expect(toChatInputMessages(mixedMessages)).toEqual([
-      { content: 'user message', role: 'user' },
-      { content: 'assistant message', role: 'assistant' },
-      { content: 'tool message', role: 'tool' },
+      { content: 'user message', id: 'msg-1', role: 'user' },
+      { content: 'assistant message', id: 'msg-2', role: 'assistant' },
+      { content: 'tool message', id: 'msg-3', role: 'tool' },
     ]);
   });
 
@@ -48,10 +48,10 @@ describe('toChatInputMessages', () => {
     ] as any[];
 
     expect(toChatInputMessages(invalidContentMessages)).toEqual([
-      { content: '', role: 'user' },
-      { content: '', role: 'assistant' },
-      { content: '', role: 'tool' },
-      { content: '', role: 'user' },
+      { content: '', id: 'msg-1', role: 'user' },
+      { content: '', id: 'msg-2', role: 'assistant' },
+      { content: '', id: 'msg-3', role: 'tool' },
+      { content: '', id: 'msg-4', role: 'user' },
     ]);
   });
 
@@ -67,8 +67,8 @@ describe('toChatInputMessages', () => {
     // silently disappears from the token details. The role is normalized to
     // 'user' exactly like the server's CompressedGroupRoleTransform.
     expect(toChatInputMessages(compressedMessages)).toEqual([
-      { content: 'compressed summary', role: 'user' },
-      { content: 'user message', role: 'user' },
+      { content: 'compressed summary', id: 'msg-0', role: 'user' },
+      { content: 'user message', id: 'msg-1', role: 'user' },
     ]);
   });
 });

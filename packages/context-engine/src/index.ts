@@ -36,6 +36,7 @@ export {
   isTextLikeUploadFile,
 } from './tokenAccounting';
 // Stored real context baseline for compression (topic.metadata.contextTokens)
+export { estimateUiBreakdown, type UiTokenBreakdown } from './tokenAccounting/contextBreakdown';
 export {
   buildStoredContext,
   readStoredContext,

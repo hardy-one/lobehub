@@ -758,6 +758,22 @@ export class GatewayActionImpl {
         // terminal-missing fallback so the op never sticks `running`.
         if (!terminalReceived) this.#get().completeOperation(gatewayOpId);
         if (result.topicId) {
+          // The gateway run completes server-side: the real context baseline
+          // (topic.metadata.contextTokens, incl. its bucket breakdown) is
+          // persisted by the server's completion lifecycle. Refresh the topic
+          // list so the client store picks it up without a reload — TokenTag
+          // then shows the measured total/buckets immediately.
+          // The server persists the baseline as part of its completion
+          // handling, which can land a beat after this WS event — refresh a
+          // few times so the first fetch doesn't win the race and cache a
+          // null baseline.
+          const refreshBaseline = async (attempt = 0) => {
+            await this.#get().refreshTopic();
+            if (attempt < 3) {
+              window.setTimeout(() => void refreshBaseline(attempt + 1), 500);
+            }
+          };
+          void refreshBaseline();
           // A clean completion the user isn't watching is owned by
           // `markTopicUnread` (status: 'unread'); skip the 'active' write so
           // the two never race over the status field. Every other case (viewing,

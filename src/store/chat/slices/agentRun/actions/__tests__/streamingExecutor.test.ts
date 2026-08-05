@@ -781,13 +781,14 @@ describe('StreamingExecutor actions', () => {
       });
 
       expect(updateTopicMetadataSpy).toHaveBeenCalledWith(TEST_IDS.TOPIC_ID, {
-        contextTokens: {
+        contextTokens: expect.objectContaining({
+          breakdown: expect.any(Object),
           lastMsgId: 'prev-assistant',
           signature: signAgentConfig(
             createMockAgentConfig({ model: 'gpt-4o-mini', provider: 'openai' }),
           ),
           tokens: 42_000,
-        },
+        }),
       });
 
       streamSpy.mockRestore();

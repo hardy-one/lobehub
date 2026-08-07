@@ -195,7 +195,7 @@ it('threads the sub-agent id into the tool operation context', async () => {
 
   await transport.run(call, context);
 
-  const startContext = vi.mocked(store.startOperation).mock.calls[0][0].context;
-  expect(startContext.agentId).toBe('supervisor-1');
-  expect(startContext.subAgentId).toBe('member-1');
+  const startContext = vi.mocked(store.startOperation).mock.calls[0]?.[0].context;
+  expect(startContext?.agentId).toBe('supervisor-1');
+  expect(startContext?.subAgentId).toBe('member-1');
 });

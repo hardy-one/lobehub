@@ -27,7 +27,10 @@ const WORKFLOW_PATH = 'api/workflows/memory-user-memory/call-cron-hourly-analysi
 
 const { webhook, upstashWorkflowExtraHeaders } = parseMemoryExtractionConfig();
 
-const resolveBaseUrl = () => webhook.baseUrl || appEnv.INTERNAL_APP_URL || appEnv.APP_URL;
+const resolveBaseUrl = () =>
+  // QStash/Upstash workflow entry URLs must be publicly resolvable; APP_URL
+  // takes precedence over the docker-network-only INTERNAL_APP_URL.
+  webhook.baseUrl || appEnv.APP_URL || appEnv.INTERNAL_APP_URL;
 
 export const hourlyWorkflowHandler = async (
   context: WorkflowContext<MemoryExtractionHourlyWorkflowPayload>,

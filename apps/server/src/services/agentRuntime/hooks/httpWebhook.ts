@@ -30,9 +30,13 @@ class HookHttpError extends Error {
   }
 }
 
-function resolveUrl(url: string): string {
+function resolveUrl(url: string, delivery: 'fetch' | 'qstash' = 'fetch'): string {
   try {
-    const resolved = new URL(url, process.env.INTERNAL_APP_URL || process.env.APP_URL || undefined);
+    const baseUrl =
+      delivery === 'qstash'
+        ? process.env.APP_URL || process.env.INTERNAL_APP_URL
+        : process.env.INTERNAL_APP_URL || process.env.APP_URL;
+    const resolved = new URL(url, baseUrl || undefined);
     if (
       !['http:', 'https:'].includes(resolved.protocol) ||
       resolved.username ||
@@ -154,7 +158,7 @@ export async function deliverWebhook(
     return;
   }
 
-  const url = resolveUrl(webhook.url);
+  const url = resolveUrl(webhook.url, 'qstash');
   const headers = resolveWebhookHeaders(webhook);
   try {
     if (!process.env.QSTASH_TOKEN)

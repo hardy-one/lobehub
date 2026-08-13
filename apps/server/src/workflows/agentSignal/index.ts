@@ -19,10 +19,12 @@ const normalizeFlowControlKeySegment = (value: string) => {
 };
 
 const getWorkflowUrl = (path: string): string => {
-  const baseUrl = appEnv.INTERNAL_APP_URL || appEnv.APP_URL;
+  // QStash/Upstash workflow entry URLs must be publicly resolvable; APP_URL
+  // takes precedence over the docker-network-only INTERNAL_APP_URL.
+  const baseUrl = appEnv.APP_URL || appEnv.INTERNAL_APP_URL;
 
   if (!baseUrl) {
-    throw new Error('INTERNAL_APP_URL or APP_URL is required to trigger agent signal workflows');
+    throw new Error('APP_URL or INTERNAL_APP_URL is required to trigger agent signal workflows');
   }
 
   return new URL(path, baseUrl).toString();

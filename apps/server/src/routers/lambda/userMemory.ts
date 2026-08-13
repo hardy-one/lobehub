@@ -303,7 +303,9 @@ export const userMemoryRouter = router({
       }
 
       const { webhook, upstashWorkflowExtraHeaders } = parseMemoryExtractionConfig();
-      const baseUrl = webhook.baseUrl || appEnv.INTERNAL_APP_URL || appEnv.APP_URL;
+      // QStash/Upstash workflow entry URLs must be publicly resolvable; APP_URL
+      // takes precedence over the docker-network-only INTERNAL_APP_URL.
+      const baseUrl = webhook.baseUrl || appEnv.APP_URL || appEnv.INTERNAL_APP_URL;
 
       try {
         const { workflowRunId } = await MemoryExtractionWorkflowService.triggerProcessUsers(

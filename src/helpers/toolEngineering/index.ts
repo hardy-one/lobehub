@@ -1,6 +1,7 @@
 /**
  * Tools Engineering - Unified tools processing using ToolsEngine
  */
+import { AgentDocumentsManifest } from '@lobechat/builtin-tool-agent-documents';
 import { AuvManifest } from '@lobechat/builtin-tool-auv';
 import { createEnableChecker, type PluginEnableChecker } from '@lobechat/context-engine';
 import { ToolsEngine } from '@lobechat/context-engine';
@@ -225,6 +226,13 @@ export const createAgentToolsEngine = (
    * differs (group/supervisor/page sessions).
    */
   agentId?: string,
+  /**
+   * TokenTag-only estimation options. The agent-documents toolset is a
+   * gateway-side builtin (the client has no executor for it), so it is
+   * included in the UI estimate when the agent has documents — mirroring
+   * what the server actually sends — but never in client sends.
+   */
+  estimateOptions?: { includeAgentDocuments?: boolean },
 ) => {
   const searchConfig = getSearchConfig(workingModel.model, workingModel.provider);
   const agentState = getAgentStoreState();
@@ -273,6 +281,14 @@ export const createAgentToolsEngine = (
     useApplicationBuiltinSearchTool: searchConfig.useApplicationBuiltinSearchTool,
   });
 
+  // The documents toolset is gateway-side. Keep it out of browser sends, but
+  // add it to TokenTag estimates when the server will expose agent documents.
+  // This preserves the TokenTag accounting intent on top of the shared rules.
+  const includeAgentDocuments =
+    resolved.toolMode === 'agent' &&
+    estimateOptions?.includeAgentDocuments === true &&
+    (agentSelectors.getAgentDocumentsById(effectiveAgentId)(agentState)?.length ?? 0) > 0;
+
   return createToolsEngine({
     defaultToolIds: resolved.defaultToolIds,
     disabledPluginIds: [...resolved.excludedIdentifiers],
@@ -293,8 +309,11 @@ export const createAgentToolsEngine = (
 
         return undefined; // fall through to rules
       },
-      rules: resolved.rules,
+      rules: includeAgentDocuments
+        ? { ...resolved.rules, [AgentDocumentsManifest.identifier]: true }
+        : resolved.rules,
     }),
+    ...(includeAgentDocuments && { additionalManifests: [AgentDocumentsManifest] }),
   });
 };
 

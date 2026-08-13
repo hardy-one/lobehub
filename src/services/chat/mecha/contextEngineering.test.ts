@@ -115,6 +115,7 @@ const setupDocument = {
 
 describe('contextEngineering', () => {
   it('should read the agent documents from the store cache without refetching', async () => {
+  it('does not inject provided agent documents into the context (tool-only access)', async () => {
     const messages = [{ content: 'Summarize the setup', role: 'user' }] as UIChatMessage[];
     useAgentStore.setState({
       agentDocumentsMap: {
@@ -134,6 +135,19 @@ describe('contextEngineering', () => {
     const ensureSpy = vi.spyOn(useAgentStore.getState(), 'ensureAgentDocuments');
 
     const output = await contextEngineering({
+    const { messages: output } = await contextEngineering({
+      agentDocuments: [
+        {
+          content: 'Project setup steps',
+          filename: 'setup.md',
+          id: 'doc-1',
+          // `always` would keep this doc in the inline bucket upstream; the
+          // fork keeps documents tool-only (listDocuments/readDocument), so
+          // even `always` docs must not be inlined into the context.
+          policyLoad: 'always',
+          title: 'Setup',
+        },
+      ],
       agentId: 'agent-1',
       messages,
       model: 'gpt-4',
@@ -150,15 +164,22 @@ describe('contextEngineering', () => {
         message.content.includes('Project setup steps'),
     );
 
-    expect(documentsMessage).toEqual({
-      content: expect.stringContaining('Project setup steps'),
-      role: 'user',
-    });
+    expect(documentsMessage).toBeUndefined();
   });
 
   it('should suppress agent documents when runtime agent mode is disabled', async () => {
     useAgentStore.setState({ agentDocumentsMap: { 'agent-1': [setupDocument] } } as any);
     const output = await contextEngineering({
+    const { messages: output } = await contextEngineering({
+      agentDocuments: [
+        {
+          content: 'Project setup steps',
+          filename: 'setup.md',
+          id: 'doc-1',
+          policyLoad: 'always',
+          title: 'Setup',
+        },
+      ],
       agentId: 'agent-1',
       enableAgentMode: false,
       messages: [{ content: 'Summarize the setup', role: 'user' }] as UIChatMessage[],
@@ -191,6 +212,16 @@ describe('contextEngineering', () => {
 
     const output = await contextEngineering({
       agentId: 'agent-1',
+    const { messages: output } = await contextEngineering({
+      agentDocuments: [
+        {
+          content: 'Project setup steps',
+          filename: 'setup.md',
+          id: 'doc-1',
+          policyLoad: 'always',
+          title: 'Setup',
+        },
+      ],
       messages: [{ content: 'Summarize the setup', role: 'user' }] as UIChatMessage[],
       model: 'gpt-4',
       provider: 'openai',
@@ -279,7 +310,7 @@ describe('contextEngineering', () => {
   it('should inject runtime model knowledge cutoff', async () => {
     vi.spyOn(helpers, 'getRuntimeModelKnowledgeCutoff').mockReturnValue('2024-06');
 
-    const output = await contextEngineering({
+    const { messages: output } = await contextEngineering({
       messages: [{ content: 'Hello', role: 'user' }] as UIChatMessage[],
       model: 'gpt-4',
       provider: 'openai',
@@ -296,7 +327,7 @@ describe('contextEngineering', () => {
   it('should inject runtime model name and id', async () => {
     vi.spyOn(helpers, 'getRuntimeModelDisplayName').mockReturnValue('Fable 5');
 
-    const output = await contextEngineering({
+    const { messages: output } = await contextEngineering({
       messages: [{ content: 'Hello', role: 'user' }] as UIChatMessage[],
       model: 'claude-fable-5',
       provider: 'lobehub',
@@ -347,7 +378,7 @@ describe('contextEngineering', () => {
         { content: 'Hey', role: 'assistant' }, // Regular user message
       ] as UIChatMessage[];
 
-      const output = await contextEngineering({
+      const { messages: output } = await contextEngineering({
         messages,
         model: 'gpt-4o',
         provider: 'openai',
@@ -415,7 +446,7 @@ describe('contextEngineering', () => {
         }, // Message with files
         { content: 'Hey', role: 'assistant' }, // Regular user message
       ] as UIChatMessage[];
-      const output = await contextEngineering({
+      const { messages: output } = await contextEngineering({
         messages,
         provider: 'openai',
         model: 'gpt-4-vision-preview',
@@ -474,7 +505,7 @@ describe('contextEngineering', () => {
       },
     ] as UIChatMessage[];
 
-    const result = await contextEngineering({
+    const { messages: result } = await contextEngineering({
       messages,
       model: 'gpt-4',
       provider: 'openai',
@@ -506,7 +537,7 @@ describe('contextEngineering', () => {
       },
     ] as UIChatMessage[];
 
-    const result = await contextEngineering({
+    const { messages: result } = await contextEngineering({
       messages,
       model: 'gpt-4',
       provider: 'openai',
@@ -548,7 +579,7 @@ describe('contextEngineering', () => {
       },
     ];
 
-    const result = await contextEngineering({
+    const { messages: result } = await contextEngineering({
       messages,
       model: 'gpt-4',
       historySummary,
@@ -576,7 +607,7 @@ describe('contextEngineering', () => {
       },
     ];
 
-    const result = await contextEngineering({
+    const { messages: result } = await contextEngineering({
       messages,
       model: 'gpt-4',
       provider: 'openai',
@@ -607,7 +638,7 @@ describe('contextEngineering', () => {
           updatedAt: Date.now(),
         },
       ];
-      const result = await contextEngineering({
+      const { messages: result } = await contextEngineering({
         messages,
         model: 'gpt-4-vision-preview',
         provider: 'openai',
@@ -637,7 +668,7 @@ describe('contextEngineering', () => {
           updatedAt: Date.now(),
         },
       ];
-      const result = await contextEngineering({
+      const { messages: result } = await contextEngineering({
         messages,
         model: 'gpt-4-vision-preview',
         provider: 'openai',
@@ -676,7 +707,7 @@ describe('contextEngineering', () => {
       },
     ];
 
-    const result = await contextEngineering({
+    const { messages: result } = await contextEngineering({
       messages,
       model: 'some-model-without-fc',
       provider: 'openai',
@@ -711,7 +742,7 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const { messages: result } = await contextEngineering({
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -799,7 +830,7 @@ describe('contextEngineering', () => {
         },
       ] as any;
 
-      const result = await contextEngineering({
+      const { messages: result } = await contextEngineering({
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -861,7 +892,7 @@ describe('contextEngineering', () => {
       });
       vi.spyOn(memoryManager, 'resolveUserPersona').mockReturnValue(undefined);
 
-      const result = await contextEngineering({
+      const { messages: result } = await contextEngineering({
         enableUserMemories: true,
         messages,
         model: 'gpt-4',
@@ -898,7 +929,7 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const { messages: result } = await contextEngineering({
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -922,7 +953,7 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const { messages: result } = await contextEngineering({
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -958,7 +989,7 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const { messages: result } = await contextEngineering({
         messages,
         model: 'gpt-4o',
         provider: 'openai',
@@ -1027,7 +1058,7 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const { messages: result } = await contextEngineering({
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -1063,7 +1094,7 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const { messages: result } = await contextEngineering({
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -1096,7 +1127,7 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const { messages: result } = await contextEngineering({
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -1140,7 +1171,7 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const { messages: result } = await contextEngineering({
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -1180,7 +1211,7 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const { messages: result } = await contextEngineering({
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -1221,7 +1252,7 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const { messages: result } = await contextEngineering({
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -1261,7 +1292,7 @@ describe('contextEngineering', () => {
       ];
 
       // This should not throw an error, but handle it gracefully
-      const result = await contextEngineering({
+      const { messages: result } = await contextEngineering({
         messages,
         model: 'gpt-4',
         provider: 'openai',

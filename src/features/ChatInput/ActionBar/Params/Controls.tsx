@@ -4,6 +4,7 @@ import {
   resolveSubAgentModel,
 } from '@lobechat/const';
 import { resolveEffectiveReasoningChatConfig } from '@lobechat/model-runtime/utils/modelExtendParams';
+import { resolveCompressionMode } from '@lobechat/types';
 import { Flexbox, Icon, TextArea } from '@lobehub/ui';
 import { Select, SliderWithInput, Switch } from '@lobehub/ui/base-ui';
 import { Form as AntdForm } from 'antd';
@@ -568,7 +569,10 @@ const Controls = ({ variant = 'popover' }: ControlsProps) => {
   );
   const [, refreshFormValues] = useState(0);
 
-  const enableContextCompression = form.getFieldValue(['chatConfig', 'enableContextCompression']);
+  const compressionValue = resolveCompressionMode({
+    compression: form.getFieldValue(['chatConfig', 'compression']),
+    enableContextCompression: form.getFieldValue(['chatConfig', 'enableContextCompression']),
+  });
   const enableMaxTokens = form.getFieldValue(['chatConfig', 'enableMaxTokens']);
   const enableHistoryCount = form.getFieldValue(['chatConfig', 'enableHistoryCount']);
   const historyCountValue = form.getFieldValue(['chatConfig', 'historyCount']);
@@ -855,12 +859,21 @@ const Controls = ({ variant = 'popover' }: ControlsProps) => {
               title={t('settingModel.params.panel.contextCompression')}
               tooltip={t('settingModel.enableContextCompression.desc')}
               action={
-                <Switch
-                  checked={Boolean(enableContextCompression)}
+                <Select
                   disabled={!canCreate}
                   size={'small'}
-                  onChange={(checked) => {
-                    handleFieldChange(['chatConfig', 'enableContextCompression'], checked);
+                  style={{ width: 110 }}
+                  value={compressionValue ?? 'standard'}
+                  options={[
+                    { label: t('settingModel.compression.options.off'), value: 'off' },
+                    { label: t('settingModel.compression.options.standard'), value: 'standard' },
+                    { label: t('settingModel.compression.options.smart'), value: 'smart' },
+                  ]}
+                  onChange={(value) => {
+                    // Keep the legacy field in sync so older clients render the
+                    // same effective mode while new runtimes prefer `compression`.
+                    form.setFieldValue(['chatConfig', 'enableContextCompression'], value !== 'off');
+                    handleFieldChange(['chatConfig', 'compression'], value);
                   }}
                 />
               }

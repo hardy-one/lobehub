@@ -642,6 +642,8 @@ export interface BuiltinToolResult {
  * Context passed to builtin tool executors
  */
 export interface BuiltinToolContext {
+  /** Resolved run device pool, independent of the agent's content workspace. */
+  activeDeviceScope?: 'personal' | 'workspace';
   /**
    * The current agent ID executing this tool (supervisor agent in group context)
    * Used to identify which agent called the tool for orchestration purposes

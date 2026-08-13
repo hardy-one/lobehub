@@ -37,6 +37,9 @@ import {
 import debug from 'debug';
 import i18n from 'i18next';
 
+import { getRuntimeCanManageAgent } from '@/helpers/agentManagementAccess';
+import { resolveBrowserDeviceScope } from '@/helpers/deviceScope';
+import { getTopicBoundDeviceId } from '@/helpers/executionTarget';
 import { createAgentToolsEngine } from '@/helpers/toolEngineering';
 import { aiAgentService } from '@/services/aiAgent';
 import { isCanUseAudio, isCanUseVideo, isCanUseVision } from '@/services/chat/helper';
@@ -67,7 +70,7 @@ import { getServerConfigStoreState, serverConfigSelectors } from '@/store/server
 import { getTaskStoreState } from '@/store/task';
 import { pageAgentRuntime } from '@/store/tool/slices/builtin/executors/pageAgentRuntime';
 import { type StoreSetter } from '@/store/types';
-import { toolInterventionSelectors } from '@/store/user/selectors';
+import { toolInterventionSelectors, userProfileSelectors } from '@/store/user/selectors';
 import { getUserStoreState } from '@/store/user/store';
 
 import { buildRunLifecycle } from '../../lifecycle/buildRunLifecycle';
@@ -347,6 +350,26 @@ export class StreamingExecutorActionImpl {
     const agentWorkingDirectory =
       agentSelectors.currentAgentWorkingDirectory(currentDeviceId)(getAgentStoreState());
     const workingDirectory = topicWorkingDirectory ?? agentWorkingDirectory;
+    const runAgent = getAgentStoreState().agentMap[effectiveAgentId];
+    const runUser = getUserStoreState();
+    const deviceOverride = runUser.workspaceUserPreference.agentDeviceOverrides?.[effectiveAgentId];
+    const activeDeviceScope = resolveBrowserDeviceScope({
+      agencyConfig: agentConfigData.agencyConfig,
+      canManage: getRuntimeCanManageAgent({
+        agentId: effectiveAgentId,
+        agentUserId: runAgent?.userId,
+        currentUserId: userProfileSelectors.userId(runUser),
+      }),
+      currentDeviceId: isDesktop ? currentDeviceId : undefined,
+      deviceOverride,
+      preferenceWorkspaceId: runUser.workspaceUserPreferenceWorkspaceId,
+      topicDeviceId: getTopicBoundDeviceId(
+        topicId ? topicSelectors.getTopicById(topicId)(this.#get()) : undefined,
+        effectiveAgentId,
+      ),
+      visibility: runAgent?.visibility,
+      workspaceId: runAgent?.workspaceId,
+    });
 
     // Create initial state or use provided state
     const baseState =
@@ -374,10 +397,20 @@ export class StreamingExecutorActionImpl {
           tools: tools ?? [],
         },
         // What this run may do — the approval mode its tool calls answer to.
-        principal: { policy: { userIntervention: userInterventionConfig } },
+        principal: {
+          actor: { deviceScope: activeDeviceScope },
+          policy: { userIntervention: userInterventionConfig },
+        },
       });
     const state: AgentState = {
       ...baseState,
+      principal: {
+        ...baseState.principal,
+        actor: {
+          ...baseState.principal?.actor,
+          deviceScope: baseState.principal?.actor?.deviceScope ?? activeDeviceScope,
+        },
+      },
       metadata: {
         ...baseState.metadata,
         agentId,

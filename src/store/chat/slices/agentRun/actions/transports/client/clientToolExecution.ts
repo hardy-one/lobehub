@@ -157,6 +157,7 @@ export class ClientToolExecutionActionImpl {
       if (await hasExecutor(identifier, apiName)) {
         const ctx: BuiltinToolContext = {
           agentId: agentId ?? operation?.context?.agentId,
+          activeDeviceScope: operation?.context?.activeDeviceScope,
           anchorMessageId: assistantMessageId,
           documentId: documentId ?? operation?.context?.documentId,
           groupId: groupId ?? operation?.context?.groupId,

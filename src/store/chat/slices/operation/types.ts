@@ -90,6 +90,7 @@ export type OperationStatus =
  * the server resolves its persisted topic/thread id; all other context changes create a new op.
  */
 export interface OperationContext extends Partial<ConversationContext> {
+  activeDeviceScope?: 'personal' | 'workspace';
   agentId?: string; // Associated agent ID (specific agent in Group Chat)
   groupId?: string; // Associated group ID (Group Chat)
   messageId?: string; // Associated message ID

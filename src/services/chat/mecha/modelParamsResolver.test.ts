@@ -120,6 +120,28 @@ describe('resolveBrowserModelParams', () => {
     expect(resolved.modelDisplayName).toBe('GPT-4 (mine)');
   });
 
+  it.each([
+    ['glm5_2ReasoningEffort', 'max', 'glm-5.2'],
+    ['grok4_5ReasoningEffort', 'high', 'grok-4.5'],
+  ] as const)('resolves $0 through the shared model-parameter rules', async (extendParam, value, model) => {
+    const provider = 'test-provider';
+    useAiInfraStore.setState({
+      enabledAiModels: [
+        {
+          ...reasoningCard,
+          id: model,
+          providerId: provider,
+          settings: { extendParams: [extendParam] },
+        },
+      ],
+      modelReasoningConfigMap: { [`${provider}/${model}`]: { [extendParam]: value } },
+    } as any);
+
+    const resolved = await resolveBrowserModelParams({ chatConfig: {}, model, provider });
+
+    expect(resolved.resolvedExtendParams).toMatchObject({ reasoning_effort: value });
+  });
+
   it('lets the topic pin win only when it belongs to the answering agent', async () => {
     useChatStore.setState({
       topicDataMap: {

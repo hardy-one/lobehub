@@ -110,7 +110,7 @@ describe('LobeKimiCodingPlanAI', () => {
         });
 
         const payload = getLastRequestPayload();
-        expect(payload.max_tokens).toBe(65_536);
+        expect(payload.max_tokens).toBe(32_768);
       });
 
       it('should use default 8192 for unknown models', async () => {

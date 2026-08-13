@@ -1,6 +1,6 @@
 import { type AgentState } from '@lobechat/agent-runtime';
 import { dispatchWorkRegistrationIntent } from '@lobechat/builtin-tools/workRegistration';
-import { getSubAgentChatConfigOverride, resolveSubAgentModel } from '@lobechat/const';
+import { getSubAgentChatConfigOverride, resolveSubAgentModelWithCallOverride } from '@lobechat/const';
 import { type ToolType } from '@lobechat/observability-otel/modules/agent-runtime';
 import {
   type ChatToolPayload,
@@ -211,7 +211,7 @@ export const buildServerVirtualSubAgentRunner = (
     state.modelRuntimeConfig ?? state.metadata?.modelRuntimeConfig ?? parentAgentConfig;
 
   return {
-    run: async ({ agentId: targetAgentId, description, instruction, timeout }) => {
+    run: async ({ agentId: targetAgentId, description, instruction, model, provider, timeout }) => {
       // This runner serves two tools, and only one of them may swap the model:
       //   - `callSubAgent` names no agent, so the child is an anonymous clone of
       //     the parent — it takes the parent's `agencyConfig.subagent` override,
@@ -224,7 +224,11 @@ export const buildServerVirtualSubAgentRunner = (
       // re-derive it from the parent config.
       const subAgentModel = targetAgentId
         ? undefined
-        : resolveSubAgentModel(parentAgentConfig?.agencyConfig?.subagent, parentEffectiveModel);
+        : resolveSubAgentModelWithCallOverride(
+            { model, provider },
+            parentAgentConfig?.agencyConfig?.subagent,
+            parentEffectiveModel,
+          );
       // Thinking / reasoning-effort overrides configured for the sub-agent
       // model; same callSubAgent-only carve-out as the model above.
       const subAgentChatConfig = targetAgentId

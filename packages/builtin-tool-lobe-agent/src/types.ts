@@ -56,6 +56,17 @@ export interface CallSubAgentParams {
   description: string;
   inheritMessages?: boolean;
   instruction: string;
+  /**
+   * Optional model the sub-agent should run on, overriding the agent's
+   * configured sub-agent model for this call. Falls back to the configured
+   * sub-agent model, then the parent's effective model.
+   */
+  model?: string;
+  /**
+   * Optional provider paired with `model`. Falls back to the configured
+   * sub-agent provider, then the parent's provider, then the default.
+   */
+  provider?: string;
   runInClient?: boolean;
   timeout?: number;
 }

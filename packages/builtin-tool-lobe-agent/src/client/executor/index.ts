@@ -392,7 +392,7 @@ class LobeAgentExecutor extends BaseExecutor<typeof LobeAgentApiName> {
       return nestedSubAgentDisabledResult();
     }
 
-    const { description, instruction, inheritMessages, timeout } = params;
+    const { description, instruction, inheritMessages, timeout, model, provider } = params;
 
     if (!description || !instruction) {
       return { content: 'Sub-agent description and instruction are required.', success: false };
@@ -407,7 +407,7 @@ class LobeAgentExecutor extends BaseExecutor<typeof LobeAgentApiName> {
       threadId,
       success,
       error,
-      model,
+      model: runModel,
       totalCost,
       totalInputTokens,
       totalOutputTokens,
@@ -418,6 +418,8 @@ class LobeAgentExecutor extends BaseExecutor<typeof LobeAgentApiName> {
       inheritMessages,
       instruction,
       timeout,
+      model,
+      provider,
       toolMessageId: ctx.messageId,
     });
 
@@ -433,7 +435,7 @@ class LobeAgentExecutor extends BaseExecutor<typeof LobeAgentApiName> {
     return {
       content: result,
       state: {
-        model,
+        model: runModel,
         threadId,
         totalCost,
         totalInputTokens,

@@ -700,6 +700,36 @@ describe('lobeAgentRuntime', () => {
       expect(result).toMatchObject({ error: { code: 'INVALID_ARGUMENTS' } });
       expect(run).not.toHaveBeenCalled();
     });
+
+    it('forwards per-call model/provider overrides to the injected runner', async () => {
+      const runtime = lobeAgentRuntime.factory(baseContext);
+      const run = vi
+        .fn()
+        .mockResolvedValue({ started: true, subOperationId: 'sub-op-1', threadId: 'thread-1' });
+
+      const result = await runtime.callSubAgent(
+        {
+          description: 'Research',
+          instruction: 'Find the answer',
+          model: 'deepseek-v4-pro',
+          provider: 'deepseek',
+        },
+        { ...baseContext, subAgent: { run } } as ToolExecutionContext,
+      );
+
+      expect(run).toHaveBeenCalledWith({
+        description: 'Research',
+        instruction: 'Find the answer',
+        model: 'deepseek-v4-pro',
+        provider: 'deepseek',
+      });
+      expect(result).toMatchObject({
+        content: '',
+        deferred: true,
+        state: { status: 'pending', subOperationId: 'sub-op-1', threadId: 'thread-1' },
+        success: true,
+      });
+    });
   });
 
   describe('todos', () => {

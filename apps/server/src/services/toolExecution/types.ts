@@ -25,6 +25,10 @@ export interface ServerSubAgentRunParams {
   description: string;
   /** Detailed instruction/prompt for the sub-agent run. */
   instruction: string;
+  /** Optional per-call model override for the spawned sub-agent run. */
+  model?: string;
+  /** Optional per-call provider override paired with `model`. */
+  provider?: string;
   /** Optional per-run timeout in milliseconds. */
   timeout?: number;
 }

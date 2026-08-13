@@ -20,7 +20,7 @@ import {
   getSubAgentModelDeniedPair,
   isDesktop,
   resolveSubAgentChatConfig,
-  resolveSubAgentModel,
+  resolveSubAgentModelWithCallOverride,
 } from '@lobechat/const';
 import { type ToolsEngine } from '@lobechat/context-engine';
 import { buildTaskDetailPrompt, buildTaskListPrompt } from '@lobechat/prompts';
@@ -978,6 +978,8 @@ export class StreamingExecutorActionImpl {
     description: string;
     inheritMessages?: boolean;
     instruction: string;
+    model?: string;
+    provider?: string;
     parentOperationId?: string;
     toolMessageId: string;
     topicId: string;
@@ -990,6 +992,8 @@ export class StreamingExecutorActionImpl {
       inheritMessages,
       toolMessageId,
       parentOperationId,
+      model,
+      provider,
     } = params;
 
     const logId = `runClientSubAgent:${toolMessageId}`;
@@ -1065,7 +1069,8 @@ export class StreamingExecutorActionImpl {
       const parentAgentConfig = agentSelectors.getAgentConfigById(agentId)(getAgentStoreState());
       const parentEffectiveModel =
         topicSelectors.getTopicModelById(topicId)(this.#get()) ?? parentAgentConfig;
-      const subAgentModel = resolveSubAgentModel(
+      const subAgentModel = resolveSubAgentModelWithCallOverride(
+        { model, provider },
         parentAgentConfig?.agencyConfig?.subagent,
         parentEffectiveModel,
       );
@@ -1097,7 +1102,7 @@ export class StreamingExecutorActionImpl {
       const lastAssistant = subTaskMessages.findLast((m) => m.role === 'assistant');
       const resultContent = lastAssistant?.content || 'Task completed';
       const totalToolCalls = subTaskMessages.filter((m) => m.role === 'tool').length;
-      const { usage, cost, model } = runtimeResult || {};
+      const { usage, cost, model: runModel } = runtimeResult || {};
       const totalCost = cost?.total;
       const totalInputTokens = usage?.llm?.tokens?.input;
       const totalOutputTokens = usage?.llm?.tokens?.output;
@@ -1125,7 +1130,7 @@ export class StreamingExecutorActionImpl {
       // parent never loads). Returning tokens alone makes a client sub-agent read as
       // free.
       return {
-        model,
+        model: runModel,
         result: resultContent,
         success: true,
         threadId,

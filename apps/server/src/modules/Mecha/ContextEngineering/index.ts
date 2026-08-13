@@ -1,4 +1,5 @@
-import { type ContextSnapshot, runContextEngineering } from '@lobechat/mecha';
+import { type ContextBuckets, MessagesEngine } from '@lobechat/context-engine';
+import { buildMessagesEngineParams, type ContextSnapshot } from '@lobechat/mecha';
 import { type OpenAIChatMessage } from '@lobechat/types';
 
 import { type ServerMessagesEngineParams } from './types';
@@ -37,6 +38,7 @@ export const toContextSnapshot = ({
   model,
   modelDisplayName,
   modelKnowledgeCutoff,
+  promptMode,
   onboardingContext,
   pageContentContext,
   planTodo,
@@ -44,7 +46,6 @@ export const toContextSnapshot = ({
   provider,
   skillsConfig,
   systemRole,
-  toolDiscoveryConfig,
   toolsConfig,
   topicReferences,
   userMemory,
@@ -78,6 +79,7 @@ export const toContextSnapshot = ({
     additionalContexts,
     enableAgentMode,
     enableExpertise,
+    promptMode,
     expertise,
     forceFinish,
     formatHistorySummary,
@@ -100,7 +102,6 @@ export const toContextSnapshot = ({
     enabledSkills: skillsConfig?.enabledSkills,
     enabledToolIds: toolsConfig?.tools,
     manifests: toolsConfig?.manifests,
-    toolDiscoveryConfig,
   },
   variables: additionalVariables,
   world: {
@@ -126,7 +127,16 @@ export const toContextSnapshot = ({
  */
 export const serverMessagesEngine = async (
   params: ServerMessagesEngineParams,
-): Promise<OpenAIChatMessage[]> => runContextEngineering(toContextSnapshot(params));
+): Promise<{
+  contextBuckets?: ContextBuckets;
+  messages: OpenAIChatMessage[];
+}> => {
+  const result = await new MessagesEngine(buildMessagesEngineParams(toContextSnapshot(params))).process();
+  return {
+    contextBuckets: result.metadata.contextBuckets,
+    messages: result.messages,
+  };
+};
 
 // Re-export types
 export type {

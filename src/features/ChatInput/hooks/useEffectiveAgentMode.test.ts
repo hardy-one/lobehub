@@ -1,7 +1,12 @@
 import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { resolveEffectiveAgentMode, useEffectiveAgentMode } from './useEffectiveAgentMode';
+import {
+  resolveChatMode,
+  resolveEffectiveAgentMode,
+  resolveModeFlags,
+  useEffectiveAgentMode,
+} from './useEffectiveAgentMode';
 
 const testState = vi.hoisted(() => ({
   access: {
@@ -12,6 +17,7 @@ const testState = vi.hoisted(() => ({
     agent: undefined as { visibility?: 'private' | 'public'; workspaceId?: string } | undefined,
     enableAgentMode: true,
     model: 'model-1',
+    promptMode: 'full' as 'full' | 'lean',
     provider: 'provider-1',
   },
   aiInfra: {
@@ -48,6 +54,7 @@ vi.mock('@/store/agent/selectors', () => ({
     getAgentEnableModeById: () => (s: typeof testState.agent) => s.enableAgentMode,
     getAgentModelById: () => (s: typeof testState.agent) => s.model,
     getAgentModelProviderById: () => (s: typeof testState.agent) => s.provider,
+    getAgentPromptModeById: () => (s: typeof testState.agent) => s.promptMode,
   },
 }));
 
@@ -202,5 +209,36 @@ describe('useEffectiveAgentMode', () => {
     const { result } = renderHook(() => useEffectiveAgentMode('agent-1'));
 
     expect(result.current.isPreferenceLoading).toBe(true);
+  });
+});
+
+describe('resolveChatMode × resolveModeFlags round-trip', () => {
+  it.each([
+    [true, 'full'],
+    [true, 'lean'],
+    [false, 'full'],
+  ] as const)(
+    'is idempotent for enableAgentMode=%s promptMode=%s',
+    (enableAgentMode, promptMode) => {
+      expect(resolveModeFlags(resolveChatMode(enableAgentMode, promptMode))).toEqual({
+        enableAgentMode,
+        promptMode,
+      });
+    },
+  );
+
+  it('normalizes non-reachable inputs to the canonical flag pair', () => {
+    // chat mode never keeps lean (chat + lean is not a reachable combination).
+    expect(resolveModeFlags(resolveChatMode(false, 'lean'))).toEqual({
+      enableAgentMode: false,
+      promptMode: 'full',
+    });
+    // undefined promptMode means full (legacy default)…
+    const normalized = resolveModeFlags(resolveChatMode(true, undefined));
+    expect(normalized).toEqual({ enableAgentMode: true, promptMode: 'full' });
+    // …and a second application is a fixed point.
+    expect(
+      resolveModeFlags(resolveChatMode(normalized.enableAgentMode, normalized.promptMode)),
+    ).toEqual(normalized);
   });
 });

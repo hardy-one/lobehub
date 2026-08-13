@@ -28,6 +28,7 @@ export const buildMessagesEngineParams = (snapshot: ContextSnapshot): MessagesEn
     // --- conversation + runtime flags ---
     additionalContexts: run.additionalContexts,
     enableAgentMode: run.enableAgentMode,
+    promptMode: run.promptMode,
     enableExpertise: run.enableExpertise,
     expertise: run.expertise,
     forceFinish: run.forceFinish,
@@ -56,7 +57,6 @@ export const buildMessagesEngineParams = (snapshot: ContextSnapshot): MessagesEn
     // --- tools + skills ---
     selectedSkills: tools?.selectedSkills,
     selectedTools: tools?.selectedTools,
-    toolDiscoveryConfig: tools?.toolDiscoveryConfig,
     toolsConfig: {
       disabledToolIdentifiers,
       manifests: tools?.manifests,

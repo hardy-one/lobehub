@@ -63,18 +63,119 @@ import {
   SystemRoleInjector,
   TaskManagerContextInjector,
   TodoInjector,
-  ToolDiscoveryProvider,
   ToolSystemRoleProvider,
   TopicReferenceContextInjector,
   UserMemoryInjector,
   WorkspaceContextInjector,
 } from '../../providers';
 import { SelectedToolInjector } from '../../providers/SelectedToolInjector';
-import type { ContextProcessor } from '../../types';
+import type { ContextBuckets, ContextProcessor, PipelineContext } from '../../types';
 import { ToolNameResolver } from '../tools';
 import type { MessagesEngineParams, MessagesEngineResult } from './types';
 
 const log = debug('context-engine:MessagesEngine');
+
+/**
+ * Which recorded bucket each system-prompt provider feeds, and which message
+ * container it appends to:
+ *   - `system`   = the single system message assembled by BaseSystemRoleProvider
+ *   - `injection` = the `systemInjection` user message assembled by
+ *     BaseFirstUserContentProvider
+ *   - `lastUser` = the last real user message (skipping the injection row),
+ *     targeted by BaseLastUserContentProvider injectors
+ */
+const CONTEXT_BUCKET_RULES: Record<
+  string,
+  { bucket: keyof ContextBuckets; container: 'injection' | 'lastUser' | 'system' }
+> = {
+  // assistant profile: agent persona + date + model info + user memory +
+  // the agent's environment/resource context (agent management, builder,
+  // onboarding) — everything the model sees as its identity & surroundings.
+  SystemRoleInjector: { bucket: 'systemRole', container: 'system' },
+  SystemDateProvider: { bucket: 'systemRole', container: 'system' },
+  ModelInfoProvider: { bucket: 'systemRole', container: 'system' },
+  UserMemoryInjector: { bucket: 'systemRole', container: 'injection' },
+  AgentBuilderContextInjector: { bucket: 'systemRole', container: 'injection' },
+  AgentManagementContextInjector: { bucket: 'systemRole', container: 'injection' },
+  GroupAgentBuilderContextInjector: { bucket: 'systemRole', container: 'injection' },
+  OnboardingContextInjector: { bucket: 'systemRole', container: 'injection' },
+  // skills: teaching blocks + schemas + skill index + discovery + knowledge
+  SkillContextProvider: { bucket: 'tools', container: 'system' },
+  ToolSystemRoleProvider: { bucket: 'tools', container: 'system' },
+  KnowledgeInjector: { bucket: 'tools', container: 'injection' },
+  // history summary
+  HistorySummaryProvider: { bucket: 'historySummary', container: 'system' },
+  // chats: conversation-environment injectors that ride the rows
+  GroupContextInjector: { bucket: 'chats', container: 'injection' },
+  DiscordContextProvider: { bucket: 'chats', container: 'injection' },
+  PlanInjector: { bucket: 'chats', container: 'injection' },
+  ActiveTopicDocumentContextInjector: { bucket: 'chats', container: 'lastUser' },
+  SelectedSkillInjector: { bucket: 'chats', container: 'lastUser' },
+  SelectedToolInjector: { bucket: 'chats', container: 'lastUser' },
+  ContextSelectionsInjector: { bucket: 'chats', container: 'lastUser' },
+  PageSelectionsInjector: { bucket: 'chats', container: 'lastUser' },
+  LocalSystemToolSnapshotInjector: { bucket: 'chats', container: 'lastUser' },
+  PageEditorContextInjector: { bucket: 'chats', container: 'lastUser' },
+  TaskManagerContextInjector: { bucket: 'chats', container: 'lastUser' },
+  TodoInjector: { bucket: 'chats', container: 'lastUser' },
+  TopicReferenceContextInjector: { bucket: 'chats', container: 'lastUser' },
+};
+
+/**
+ * Extract the plain text of a message container for diffing.
+ */
+const containerText = (
+  messages: PipelineContext['messages'],
+  container: 'injection' | 'lastUser' | 'system',
+) => {
+  const msg =
+    container === 'system'
+      ? messages.find((m) => m.role === 'system')
+      : container === 'injection'
+        ? messages.find((m) => m.meta?.systemInjection === true)
+        : [...messages]
+            .reverse()
+            .find((m) => m.role === 'user' && m.meta?.systemInjection !== true);
+  if (!msg) return '';
+  const content = msg.content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((part) => part?.type === 'text')
+      .map((part) => part.text ?? '')
+      .join('');
+  }
+  return '';
+};
+
+/**
+ * Wrap a provider so the text it appends to its container is recorded into
+ * `metadata.contextBuckets` — the send side then counts those texts with the
+ * tokenx estimator, matching exactly what the LLM will receive.
+ */
+const withContextBucket = (
+  processor: ContextProcessor,
+  rule: { bucket: keyof ContextBuckets; container: 'injection' | 'lastUser' | 'system' },
+): ContextProcessor => ({
+  name: processor.name,
+  process: async (context) => {
+    const before = containerText(context.messages, rule.container);
+    const next = await processor.process(context);
+    const after = containerText(next.messages, rule.container);
+    if (after === before) return next;
+    const added = after.startsWith(before) ? after.slice(before.length) : '';
+    if (!added) return next;
+    const metadata = next.metadata;
+    const buckets = (metadata.contextBuckets ??= {
+      chats: '',
+      historySummary: '',
+      systemRole: '',
+      tools: '',
+    });
+    buckets[rule.bucket] += added;
+    return next;
+  },
+});
 
 /**
  * MessagesEngine - High-level message processing engine
@@ -116,6 +217,13 @@ export class MessagesEngine {
     const pipeline = this.buildPipeline();
     const result = await pipeline.process({ messages: this.params.messages });
 
+    // Combine the chats bucket: conversation rows captured after truncation
+    // plus per-request injectors that ride the user messages.
+    if (result.metadata.contextBuckets) {
+      result.metadata.contextBuckets.chats =
+        (result.metadata.contextChatsBase ?? '') + result.metadata.contextBuckets.chats;
+    }
+
     return {
       messages: result.messages as OpenAIChatMessage[],
       metadata: result.metadata,
@@ -154,6 +262,7 @@ export class MessagesEngine {
       agentIdentity,
       inputTemplate,
       enableAgentMode,
+      promptMode,
       enableHistoryCount,
       historyCount,
       forceFinish,
@@ -163,7 +272,6 @@ export class MessagesEngine {
       skillsConfig,
       selectedSkills,
       selectedTools,
-      toolDiscoveryConfig,
       toolsConfig,
       capabilities,
       variableGenerators,
@@ -240,13 +348,11 @@ export class MessagesEngine {
       (toolsConfig?.manifests?.length ?? 0) > 0 && !!canUseFC(model, provider)
         ? selectToolPromptManifests(toolsConfig?.manifests)
         : [];
-
     // The skill-import route is only actionable when the Skill Store is reachable this
-    // run — either already enabled, or listed for the activator to turn on.
-    const isSkillStoreReachable =
-      (toolsConfig?.manifests ?? []).some((m) => m.identifier === SKILL_STORE_TOOL_ID) ||
-      (toolDiscoveryConfig?.availableTools ?? []).some((t) => t.identifier === SKILL_STORE_TOOL_ID);
-
+    // run via an enabled skill-store manifest.
+    const isSkillStoreReachable = (toolsConfig?.manifests ?? []).some(
+      (m) => m.identifier === SKILL_STORE_TOOL_ID,
+    );
     const processors = [
       // =============================================
       // Phase 0: Placeholder Residue Filtering
@@ -320,6 +426,7 @@ export class MessagesEngine {
       // Disabled in chat mode — pairs with the tools-engine gate so the LLM
       // sees neither the manifests nor the discovery prompt.
       new SkillContextProvider({
+        promptMode,
         enabled:
           isAgentMode && !!(skillsConfig?.enabledSkills && skillsConfig.enabledSkills.length > 0),
         enabledSkills: skillsConfig?.enabledSkills,
@@ -330,6 +437,7 @@ export class MessagesEngine {
         isCanUseFC: capabilities?.isCanUseFC || (() => true),
         manifests: toolsConfig?.manifests,
         model,
+        promptMode,
         provider,
       }),
       // History summary (conversation summary from compression)
@@ -341,7 +449,7 @@ export class MessagesEngine {
       // =============================================
 
       // User memory
-      new UserMemoryInjector({ ...userMemory, enabled: isUserMemoryEnabled }),
+      new UserMemoryInjector({ ...userMemory, enabled: isUserMemoryEnabled, promptMode }),
       // Operation-scoped learned expertise (captured once and reused verbatim across steps)
       new ExpertiseContextInjector({
         enabled: this.params.enableExpertise,
@@ -365,12 +473,6 @@ export class MessagesEngine {
       new KnowledgeInjector({
         fileContents: knowledge?.fileContents,
         knowledgeBases: knowledge?.knowledgeBases,
-      }),
-      // Tool Discovery (available tools for dynamic activation)
-      new ToolDiscoveryProvider({
-        availableTools: toolDiscoveryConfig?.availableTools,
-        enabled:
-          !!toolDiscoveryConfig?.availableTools && toolDiscoveryConfig.availableTools.length > 0,
       }),
       // Agent Builder context (current agent config/meta for editing)
       new AgentBuilderContextInjector({
@@ -582,8 +684,31 @@ export class MessagesEngine {
       new ToolMessageReorder(),
       // Force finish summary (when maxSteps exceeded)
       new ForceFinishSummaryInjector({ enabled: !!forceFinish }),
-      // Message cleanup (final step)
       new MessageCleanupProcessor(),
     ];
+
+    // Wrap system-prompt providers so the text they append lands in
+    // `metadata.contextBuckets` for exact send-side token counting. The
+    // truncation step additionally snapshots the surviving conversation rows
+    // (history + current input) as the base of the `chats` bucket — captured
+    // here, before any injection creates the systemInjection row.
+    return processors.map((processor) => {
+      if (processor.name === 'HistoryTruncateProcessor') {
+        return {
+          name: processor.name,
+          process: async (context) => {
+            const next = await processor.process(context);
+            if (!next.metadata.contextChatsBase) {
+              next.metadata.contextChatsBase = next.messages
+                .map((m) => containerText([m], 'lastUser'))
+                .join('');
+            }
+            return next;
+          },
+        };
+      }
+      const rule = CONTEXT_BUCKET_RULES[processor.name];
+      return rule ? withContextBucket(processor, rule) : processor;
+    });
   }
 }

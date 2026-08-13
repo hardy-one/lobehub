@@ -15,7 +15,6 @@ import type {
   PlanTodoConfig,
   ProjectInstructionFile,
   SkillMeta,
-  ToolDiscoveryConfig,
   TopicReferenceItem,
   UserMemoryConfig,
   WorkspaceContext,
@@ -74,6 +73,8 @@ export interface ContextRunSnapshot {
    * documents are not injected) regardless of the stored chat config.
    */
   enableAgentMode?: boolean;
+  /** 'lean' drops teaching blocks / persona sections. Undefined/'full' = legacy. */
+  promptMode?: 'full' | 'lean';
   enableExpertise?: boolean;
   expertise?: ExpertiseContextSnapshot;
   /** maxSteps exceeded: tools are stripped and a summary prompt is injected. */
@@ -101,7 +102,6 @@ export interface ContextToolsSnapshot {
   selectedSkills?: RuntimeSelectedSkill[];
   /** Tools the user pinned for this request. */
   selectedTools?: RuntimeSelectedTool[];
-  toolDiscoveryConfig?: ToolDiscoveryConfig;
 }
 
 /**

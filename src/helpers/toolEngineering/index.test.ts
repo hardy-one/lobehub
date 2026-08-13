@@ -175,15 +175,26 @@ vi.mock('@/store/agent', () => ({
 
 vi.mock('@/store/agent/selectors', () => ({
   agentSelectors: {
-    currentAgentDisabledPlugins: () => mockCurrentAgentDisabledPlugins,
-    currentAgentPlugins: () => mockCurrentAgentPlugins,
-    hasEnabledKnowledgeBases: () => false,
+    getAgentConfigById: () => () => ({
+      plugins: [
+        ...mockCurrentAgentPlugins,
+        ...mockCurrentAgentDisabledPlugins.map((id) => ({ identifier: id, mode: 'disabled' })),
+      ],
+    }),
   },
   agentChatConfigSelectors: {
     currentChatConfig: () => mockCurrentChatConfig,
     isCloudSandboxEnabled: () => false,
     isLocalSystemEnabled: () => desktopEnv.enabled,
     isMemoryToolEnabled: () => false,
+  },
+  agentByIdSelectors: {
+    getAgentKnowledgeBasesById: () => () => [],
+  },
+  chatConfigByIdSelectors: {
+    getChatConfigById: () => () => mockCurrentChatConfig,
+    getRuntimeModeById: () => () => '',
+    isLocalSystemEnabledById: () => () => false,
   },
 }));
 

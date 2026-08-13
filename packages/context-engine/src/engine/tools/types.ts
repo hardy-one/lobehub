@@ -1,30 +1,8 @@
-import type { ExtendedHumanInterventionConfig } from '@/types/index';
+import type { LobeChatPluginApi } from '@lobechat/types';
 
-export interface LobeChatPluginApi {
-  /**
-   * Default execution timeout in milliseconds for this API.
-   * Falls back to the global default (120_000 ms) when omitted.
-   * The resolver reads this when the LLM does not supply `arguments.timeout`.
-   */
-  defaultTimeoutMs?: number;
-  description: string;
-  /**
-   * Human intervention configuration
-   * Controls when and how the tool requires human approval/selection
-   *
-   * Can be either:
-   * - Simple: A policy string ('never', 'always', 'first')
-   * - Complex: Array of rules for parameter-level control
-   *
-   * Examples:
-   * - 'always' - always require intervention
-   * - [{ match: { command: "git add:*" }, policy: "never" }, { policy: "always" }]
-   */
-  humanIntervention?: ExtendedHumanInterventionConfig;
-  name: string;
-  parameters: Record<string, any>;
-  url?: string;
-}
+// Single source of truth for `LobeChatPluginApi` (incl. `leanDescription`) is
+// the @lobechat/types package (packages/types/src/tool/builtin.ts).
+export type { LobeChatPluginApi };
 
 export interface LobeToolManifest {
   api: LobeChatPluginApi[];
@@ -82,6 +60,11 @@ export interface GenerateToolsParams {
   excludeDefaultToolIds?: string[];
   /** Model name */
   model: string;
+  /**
+   * Prompt construction mode. 'lean' uses `leanDescription` overrides for tool
+   * schemas. Undefined/'full' = legacy descriptions.
+   */
+  promptMode?: 'full' | 'lean';
   /** Provider name */
   provider: string;
   /**

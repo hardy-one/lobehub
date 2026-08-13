@@ -9,6 +9,9 @@ export const WebBrowsingManifest: BuiltinToolManifest = {
     {
       description:
         'a search service with automatic engine selection. Useful for when you need to answer questions about current events. Input should be a search query. Output is a JSON array of the query results. An empty result is a completed search, not an error: never resend the same query — rewrite it instead (fewer quoted phrases, no site:/language modifiers, more general keywords).',
+      // Lean-mode override (see builtin-tool-local-system editFile for rationale).
+      leanDescription:
+        'a search service with automatic engine selection. Useful for when you need to answer questions about current events. Input should be a search query. Supports !category query modifiers (e.g. `!science`, `!images`, `!map`) and optional searchCategories / searchTimeRange filters. Output is a JSON array of the query results',
       name: WebBrowsingApiName.search,
       parameters: {
         properties: {

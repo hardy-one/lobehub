@@ -109,6 +109,21 @@ const getAgentEnableModeById =
   };
 
 /**
+ * Get the prompt construction mode ('full' | 'lean') by agentId.
+ * Undefined means full (legacy).
+ */
+const getAgentPromptModeById =
+  (agentId: string) =>
+  (s: AgentStoreState): 'full' | 'lean' | undefined => {
+    const config = agentSelectors.getAgentConfigById(agentId)(s);
+    return config?.chatConfig?.promptMode;
+  };
+
+/**
+ * Get runtime env config by agentId
+ * Now reads from chatConfig.runtimeEnv
+ */
+/**
  * Get runtime env config by agentId
  * Now reads from chatConfig.runtimeEnv
  */
@@ -216,6 +231,7 @@ export const agentByIdSelectors = {
   getAgentConfigById: agentSelectors.getAgentConfigById,
   getAgentConfigErrorById,
   getAgentEnableModeById,
+  getAgentPromptModeById,
   getAgentFilesById,
   getAgentKnowledgeBasesById,
   getAgentRuntimeEnvConfigById,

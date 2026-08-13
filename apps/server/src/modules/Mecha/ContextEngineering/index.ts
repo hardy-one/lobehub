@@ -126,6 +126,7 @@ export const serverMessagesEngine = async ({
   inputTemplate,
   enableAgentMode,
   enableExpertise,
+  promptMode,
   enableHistoryCount,
   forceFinish,
   historyCount,
@@ -135,7 +136,6 @@ export const serverMessagesEngine = async ({
   knowledge,
   agentDocuments,
   skillsConfig,
-  toolDiscoveryConfig,
   toolsConfig,
   capabilities,
   userMemory,
@@ -168,6 +168,7 @@ export const serverMessagesEngine = async ({
     // Agent configuration
     enableAgentMode,
     enableExpertise,
+    promptMode,
     enableHistoryCount,
     expertise,
 
@@ -211,7 +212,6 @@ export const serverMessagesEngine = async ({
     timezone: userTimezone,
 
     // Tools configuration
-    toolDiscoveryConfig,
     toolsConfig: {
       disabledToolIdentifiers:
         toolsConfig?.disabledToolIdentifiers ??

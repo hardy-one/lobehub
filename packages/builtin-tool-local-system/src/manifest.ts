@@ -195,7 +195,11 @@ export const LocalSystemManifest: BuiltinToolManifest = {
     {
       defaultTimeoutMs: 30_000,
       description:
-        'Perform exact string replacements in files. Must read the file first before editing. old_string must match exactly once unless replace_all is set.',
+        'Perform exact string replacements in files. Must read the file first before editing.',
+      // Lean-mode override: enriched usage hints without touching the legacy
+      // (full) description, so the smart mode stays byte-identical to upstream.
+      leanDescription:
+        'Perform exact string replacements in files. Read the file first, then replace one exact occurrence: old_string must match the file content byte-for-byte (including whitespace) or the edit fails. Use replace_all only when every occurrence should change.',
       humanIntervention: {
         dynamic: {
           default: 'never',

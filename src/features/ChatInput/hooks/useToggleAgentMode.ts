@@ -9,7 +9,10 @@ import { agentByIdSelectors } from '@/store/agent/selectors';
 import { useUserStore } from '@/store/user';
 
 import { useAgentId } from './useAgentId';
+import { type ChatInputMode, resolveModeFlags } from './useEffectiveAgentMode';
 import { useUpdateAgentConfig } from './useUpdateAgentConfig';
+
+export { resolveModeFlags };
 
 /**
  * Toggle between chat mode and agent mode.
@@ -29,18 +32,20 @@ export const useToggleAgentMode = () => {
   const updateWorkspaceUserPreference = useUserStore((s) => s.updateWorkspaceUserPreference);
 
   return useCallback(
-    async (enable: boolean) => {
+    async (mode: ChatInputMode) => {
       if (isAccessLoading) return;
 
-      const enableAgentMode = enable && canEnableBusinessAgentMode;
+      const { enableAgentMode, promptMode } = resolveModeFlags(mode);
+      const effectiveEnableAgentMode = enableAgentMode && canEnableBusinessAgentMode;
       if (usesWorkspaceMemberMode) {
+        // Workspace member mode only carries the agent/chat flag today.
         await updateWorkspaceUserPreference({
-          agentModeOverrides: { [agentId]: enableAgentMode },
+          agentModeOverrides: { [agentId]: effectiveEnableAgentMode },
         });
         return;
       }
 
-      await updateAgentChatConfig({ enableAgentMode });
+      await updateAgentChatConfig({ enableAgentMode: effectiveEnableAgentMode, promptMode });
     },
     [
       agentId,

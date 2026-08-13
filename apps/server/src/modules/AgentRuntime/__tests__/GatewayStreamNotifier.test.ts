@@ -159,6 +159,61 @@ describe('GatewayStreamNotifier', () => {
       expect(urls).toContain(`${gatewayUrl}/api/operations/init`);
       expect(urls).toContain(`${gatewayUrl}/api/operations/push-event`);
     });
+
+    it('keeps init, step_start, and stream_start in delivery order', async () => {
+      const resolvers: Array<() => void> = [];
+      const pendingResponse = () =>
+        new Promise<{ ok: boolean; text: () => Promise<string> }>((resolve) => {
+          resolvers.push(() => resolve({ ok: true, text: () => Promise.resolve('') }));
+        });
+      const flush = async () => {
+        for (let i = 0; i < 10; i += 1) await Promise.resolve();
+      };
+      const resolveNext = () => {
+        const resolve = resolvers.shift();
+        if (!resolve) throw new Error('Expected a pending Gateway request');
+        resolve();
+      };
+
+      mockFetch
+        .mockImplementationOnce(pendingResponse)
+        .mockImplementationOnce(pendingResponse)
+        .mockImplementationOnce(pendingResponse)
+        .mockImplementationOnce(pendingResponse);
+
+      await notifier.publishAgentRuntimeInit('op-1', { userId: 'user-1' });
+      await notifier.publishStreamEvent('op-1', {
+        data: { uiMessages: [] },
+        stepIndex: 0,
+        type: 'step_start',
+      });
+      await notifier.publishStreamEvent('op-1', {
+        data: { assistantMessage: { id: 'assistant-1' } },
+        stepIndex: 0,
+        type: 'stream_start',
+      });
+
+      await flush();
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch.mock.calls[0][0]).toBe(`${gatewayUrl}/api/operations/init`);
+
+      resolveNext();
+      await flush();
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(JSON.parse(mockFetch.mock.calls[1][1].body).event.type).toBe('agent_runtime_init');
+
+      resolveNext();
+      await flush();
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(JSON.parse(mockFetch.mock.calls[2][1].body).event.type).toBe('step_start');
+
+      resolveNext();
+      await flush();
+      expect(mockFetch).toHaveBeenCalledTimes(4);
+      expect(JSON.parse(mockFetch.mock.calls[3][1].body).event.type).toBe('stream_start');
+
+      resolveNext();
+    });
   });
 
   describe('publishAgentRuntimeEnd', () => {
@@ -475,6 +530,44 @@ describe('GatewayStreamNotifier', () => {
     });
   });
 
+  describe('reliability-critical events bypass the inflight cap', () => {
+    beforeEach(() => {
+      // Earlier tests in this file install hanging mockImplementations that
+      // clearAllMocks doesn't reset — restore the default behavior here.
+      mockFetch.mockReset();
+      mockFetch.mockResolvedValue({ ok: true, text: () => Promise.resolve('') });
+    });
+
+    it('stream_end still reaches the gateway when inflight is saturated', async () => {
+      (notifier as any).inflight = 20;
+
+      await notifier.publishStreamEvent('op-1', {
+        data: {},
+        stepIndex: 0,
+        type: 'stream_end' as const,
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${gatewayUrl}/api/operations/push-event`,
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+
+    it('stream_chunk is dropped when inflight is saturated', async () => {
+      (notifier as any).inflight = 20;
+
+      await notifier.publishStreamChunk('op-1', 0, {
+        chunkType: 'text',
+        content: 'hi',
+      } as StreamChunkData);
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+  });
   describe('sendToolExecute', () => {
     const toolExecuteData = {
       apiName: 'readFile',

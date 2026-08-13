@@ -16,6 +16,7 @@ import { resolveAgentAgencyConfig } from '@lobechat/types';
 
 import { isDesktop } from '@/const/version';
 import { resolveExecutionTarget, resolveWorkspaceScoped } from '@/helpers/executionTarget';
+import { getTokenTagMode } from '@/helpers/tokenTagMode';
 import {
   aiAgentService,
   type ResumeApprovalParam,
@@ -181,6 +182,14 @@ export interface ConnectGatewayParams {
    */
   token: string;
   /**
+   * Agent mode (`agent|chat` + promptMode) the run's payload was assembled
+   * for, stamped onto the `context_metrics` contextTokens entry. TokenTag
+   * invalidates the recorded counts when the user switches mode (Smart ↔
+   * Efficient ↔ Chat); an entry WITHOUT this stamp is treated as legacy and
+   * stays current forever, so every context_metrics write must carry it.
+   */
+  tokenTagMode: string;
+  /**
    * Topic this op runs against. Used to refresh the Gateway JWT via
    * `aiAgentService.refreshGatewayToken(topicId)` when the server signals
    * `auth_expired`. Every Gateway op has a topic, so this is required.
@@ -209,8 +218,16 @@ export class GatewayActionImpl {
    * Creates an AgentStreamClient, manages its lifecycle, and wires up event callbacks.
    */
   connectToGateway = (params: ConnectGatewayParams): void => {
-    const { operationId, gatewayUrl, token, topicId, onEvent, onSessionComplete, resumeOnConnect } =
-      params;
+    const {
+      operationId,
+      gatewayUrl,
+      token,
+      tokenTagMode,
+      topicId,
+      onEvent,
+      onSessionComplete,
+      resumeOnConnect,
+    } = params;
 
     // Disconnect existing connection for this operation if any
     this.disconnectFromGateway(operationId);
@@ -269,10 +286,35 @@ export class GatewayActionImpl {
     // treat as this op's to preserve prior behavior).
     client.on('agent_event', (event) => {
       const isOwnOp = !event.operationId || event.operationId === operationId;
+      // Exact assembled-payload token counts from the server send — render
+      // TokenTag from real content instead of an estimate.
+      if (isOwnOp && event.type === 'context_metrics' && event.data) {
+        this.#set(
+          (state) => ({
+            contextTokens: {
+              ...(event.data as {
+                chats: number;
+                historySummary: number;
+                systemRole: number;
+                tools: number;
+              }),
+              // Stamp the agent mode the run's payload was assembled for
+              // (captured at send time in executeGatewayAgent / reconnect) —
+              // TokenTag invalidates these counts when the mode switches and
+              // falls back to the live estimate. Without the stamp the entry
+              // reads as legacy and stays current forever.
+              mode: tokenTagMode,
+              topicId: state.activeTopicId,
+            },
+          }),
+          false,
+          'context_metrics',
+        );
+      }
       if (isOwnOp && (event.type === 'agent_runtime_end' || event.type === 'error')) {
         receivedTerminalEvent = true;
       }
-      // Only a clean completion counts as success — a cancel ('interrupted') or
+      // Only a clean completion counts as success
       // deferred-tool park ('waiting_for_async_tool') must take the non-success
       // branch so onSessionComplete clears the run back to 'active' instead of
       // leaving the topic persisted as an unread completion.
@@ -510,6 +552,17 @@ export class GatewayActionImpl {
       mentionedAgents,
       tempMessageIds,
     } = params;
+
+    // Agent mode the server will assemble the payload for, captured at SEND
+    // time for the context_metrics stamp. ConversationContext carries no
+    // chatConfig, so read the execution agent's config from the agent store —
+    // same derivation TokenTag's currentMode uses (getTokenTagMode), so the
+    // stamp matches until the user switches mode (Smart ↔ Efficient ↔ Chat)
+    // and TokenTag falls back to the live estimate.
+    const sendChatConfig = chatConfigByIdSelectors.getChatConfigById(executionContext.agentId)(
+      getAgentStoreState(),
+    );
+    const tokenTagMode = getTokenTagMode(sendChatConfig.enableAgentMode, sendChatConfig.promptMode);
 
     const agentGatewayUrl =
       window.global_serverConfigStore!.getState().serverConfig.agentGatewayUrl!;
@@ -897,6 +950,7 @@ export class GatewayActionImpl {
       },
       operationId: result.operationId,
       token: result.token || '',
+      tokenTagMode,
       topicId: result.topicId,
     });
 
@@ -978,6 +1032,18 @@ export class GatewayActionImpl {
       threadId: threadId ?? null,
       topicId,
     };
+
+    // Mode stamp for a replayed `context_metrics`: a reload reset the store,
+    // so the send-time mode is gone — fall back to the agent's CURRENT config
+    // (same getTokenTagMode derivation as the fresh-send path), which keeps
+    // the replayed entry mode-aware instead of a legacy never-invalidating one.
+    const reconnectChatConfig = chatConfigByIdSelectors.getChatConfigById(context.agentId)(
+      getAgentStoreState(),
+    );
+    const tokenTagMode = getTokenTagMode(
+      reconnectChatConfig.enableAgentMode,
+      reconnectChatConfig.promptMode,
+    );
 
     // Anchor the operation to the run's real start: the assistant message was
     // created when the run began. Defaulting to Date.now() here would reset
@@ -1098,6 +1164,7 @@ export class GatewayActionImpl {
       operationId,
       resumeOnConnect: true,
       token,
+      tokenTagMode,
       topicId,
     });
   };

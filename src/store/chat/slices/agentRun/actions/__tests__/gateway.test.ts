@@ -241,6 +241,7 @@ describe('GatewayActionImpl', () => {
         gatewayUrl: 'https://gateway.test.com',
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -256,6 +257,7 @@ describe('GatewayActionImpl', () => {
         gatewayUrl: 'https://gateway.test.com',
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -272,6 +274,7 @@ describe('GatewayActionImpl', () => {
         onEvent: (e) => events.push(e),
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -297,6 +300,7 @@ describe('GatewayActionImpl', () => {
         onSessionComplete: onComplete,
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -312,6 +316,7 @@ describe('GatewayActionImpl', () => {
         gatewayUrl: 'https://gateway.test.com',
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -326,6 +331,7 @@ describe('GatewayActionImpl', () => {
         gatewayUrl: 'https://gateway.test.com',
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -350,6 +356,7 @@ describe('GatewayActionImpl', () => {
         onSessionComplete,
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -371,6 +378,7 @@ describe('GatewayActionImpl', () => {
         onSessionComplete,
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -392,6 +400,7 @@ describe('GatewayActionImpl', () => {
           onSessionComplete,
           operationId: 'op-1',
           token: 'old-token',
+          tokenTagMode: 'agent:full',
           topicId: TEST_TOPIC_ID,
         });
 
@@ -419,6 +428,7 @@ describe('GatewayActionImpl', () => {
           onSessionComplete,
           operationId: 'op-1',
           token: 'old-token',
+          tokenTagMode: 'agent:full',
           topicId: TEST_TOPIC_ID,
         });
 
@@ -444,6 +454,7 @@ describe('GatewayActionImpl', () => {
         gatewayUrl: 'https://gateway.test.com',
         operationId: 'op-1',
         token: 'token-1',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -454,6 +465,7 @@ describe('GatewayActionImpl', () => {
         gatewayUrl: 'https://gateway.test.com',
         operationId: 'op-1',
         token: 'token-2',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -470,6 +482,7 @@ describe('GatewayActionImpl', () => {
         gatewayUrl: 'https://gateway.test.com',
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -492,6 +505,7 @@ describe('GatewayActionImpl', () => {
         gatewayUrl: 'https://gateway.test.com',
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -513,6 +527,7 @@ describe('GatewayActionImpl', () => {
         gatewayUrl: 'https://gateway.test.com',
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 

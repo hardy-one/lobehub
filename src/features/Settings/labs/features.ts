@@ -20,6 +20,7 @@ type LabFeatureI18nKey =
   | 'deviceTunnel'
   | 'evalCapture'
   | 'heteroSessionImport'
+  | 'htmlRender'
   | 'imessage'
   | 'inputMarkdown'
   | 'integrations'
@@ -89,6 +90,12 @@ export const LAB_FEATURES: LabFeatureItem[] = [
     i18nKey: 'deviceTunnel',
     searchKeywords: ['tunnel', 'port forwarding', 'dev server', 'localhost'],
     stage: 'alpha',
+  },
+  {
+    flag: 'enableHtmlRender',
+    i18nKey: 'htmlRender',
+    searchKeywords: ['html', 'html render', 'embedded html'],
+    stage: 'beta',
   },
   {
     flag: 'enableProjects',

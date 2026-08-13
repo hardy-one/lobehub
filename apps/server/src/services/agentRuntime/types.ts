@@ -430,6 +430,13 @@ export interface OperationCreationParams {
     documentId?: string | null;
     editingAgentId?: string;
     editingGroupId?: string;
+    /**
+     * User lab preference `lab.enableHtmlRender`, spread onto
+     * `state.metadata.enableHtmlRender`. The per-step context engine appends
+     * the embedded-HTML rendering preset to the developer/system message when
+     * enabled.
+     */
+    enableHtmlRender?: boolean;
     groupId?: string | null;
     isSubAgent?: boolean;
     /**

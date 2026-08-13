@@ -17,6 +17,8 @@ export const labPreferSelectors = {
   enableEvalCapture: (s: UserState): boolean => s.preference.lab?.enableEvalCapture ?? false,
   enableHeteroSessionImport: (s: UserState): boolean =>
     s.preference.lab?.enableHeteroSessionImport ?? false,
+  enableHtmlRender: (s: UserState): boolean =>
+    s.preference.lab?.enableHtmlRender ?? DEFAULT_PREFERENCE.lab?.enableHtmlRender ?? false,
   enableImessage: (s: UserState): boolean => s.preference.lab?.enableImessage ?? false,
   enableIntegrations: (s: UserState): boolean => s.preference.lab?.enableIntegrations ?? false,
   enableInputMarkdown: (s: UserState): boolean =>

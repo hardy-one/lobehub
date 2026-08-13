@@ -226,6 +226,10 @@ export const UserLabSchema = z.object({
    * to the client's declared protocol, which removes this field.
    */
   enableGatewayMux: z.boolean().optional(),
+   * render raw HTML fragments wrapped in `<!-- html-render-start -->` /
+   * `<!-- html-render-end -->` markers inline in assistant messages
+   */
+  enableHtmlRender: z.boolean().optional(),
   /**
    * enable the per-topic acceptance tray above the composer (author a topic's
    * delivery checklist inline)

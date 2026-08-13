@@ -42,6 +42,12 @@ export interface RuntimeExecutorContext {
   allowEarlyFinalAnswerVisibleOutputEnd?: boolean;
   botContext?: unknown;
   /**
+   * User lab preference `lab.enableHtmlRender`, resolved at operation start.
+   * When enabled the embedded-HTML rendering preset is appended to the
+   * developer/system message (see `htmlRenderPrompt.ts`).
+   */
+  enableHtmlRender?: boolean;
+  /**
    * Callback to fork a group member ("call agent member") under a
    * `lobe-group-management` tool call. Injected by AiAgentService; powers the
    * per-tool `agentMember` runner (in-group + isolated members, K=N barrier).

@@ -44,6 +44,31 @@ export const resolveSubAgentModel = (
 };
 
 /**
+ * Resolve the model a `callSubAgent` run executes on when the caller may pass
+ * an explicit per-call override (tool arguments), in precedence order:
+ *
+ * 1. Per-call `model` / `provider` from the tool arguments. A missing per-call
+ *    provider falls back to the configured sub-agent provider, then the
+ *    parent's provider, then the global default.
+ * 2. Otherwise the static precedence of {@link resolveSubAgentModel}.
+ */
+export const resolveSubAgentModelWithCallOverride = (
+  callOverride: { model?: string | null; provider?: string | null } | undefined,
+  subagent: LobeAgentAgencyConfig['subagent'],
+  parentModel?: { model?: string | null; provider?: string | null },
+): { model: string; provider: string } => {
+  if (callOverride?.model) {
+    return {
+      model: callOverride.model,
+      provider:
+        callOverride.provider || subagent?.provider || parentModel?.provider || DEFAULT_PROVIDER,
+    };
+  }
+
+  return resolveSubAgentModel(subagent, parentModel);
+};
+
+/**
  * Resolve the effective chatConfig for a `callSubAgent` run: the parent's
  * chatConfig with the agent's `agencyConfig.subagent.chatConfig` overrides
  * (thinking / reasoning-effort extend params) merged on top.

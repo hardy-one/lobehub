@@ -64,6 +64,7 @@ export enum ModelProvider {
   SiliconCloud = 'siliconcloud',
   Spark = 'spark',
   Stepfun = 'stepfun',
+  StepFunCodingPlan = 'stepfuncodingplan',
   Straico = 'straico',
   StreamLake = 'streamlake',
   SuperGrok = 'supergrok',

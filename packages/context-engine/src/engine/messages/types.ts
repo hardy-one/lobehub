@@ -268,7 +268,10 @@ export interface MessagesEngineParams {
   // ========== Knowledge ==========
   /** Knowledge configuration */
   knowledge?: KnowledgeConfig;
-  /** Agent document configuration for context injection */
+  /**
+   * @deprecated Agent documents are accessed through tools and are no longer
+   * injected into the model context. Kept temporarily for caller compatibility.
+   */
   agentDocuments?: AgentContextDocument[];
 
   // ========== Skills ==========

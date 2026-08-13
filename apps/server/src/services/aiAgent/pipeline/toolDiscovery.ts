@@ -67,6 +67,7 @@ import {
   collectBorrowedConnectors,
   resolveUserDisplayMap,
 } from '@/server/utils/connectorAttribution';
+import { resolveSubAgentModelGuidance } from '@/server/utils/subAgentModelGuidance';
 
 import {
   buildAllowedBuiltinTools,
@@ -1122,6 +1123,29 @@ export const discoverTools = async (
       ...toolManifestMap[RemoteDeviceManifest.identifier],
       systemRole: generateSystemPrompt(onlineDevices),
     };
+  }
+
+  // Append enabled model guidance to the always-on lobe-agent manifest. Dynamic
+  // activations receive the same guidance from the activator runtime; this covers
+  // the manifest that is present from the first turn. Skip trimmed sub-agent/group
+  // manifests, whose system role intentionally has no nested-agent section.
+  const lobeAgentManifest = toolManifestMap[LobeAgentManifest.identifier];
+  if (
+    lobeAgentManifest &&
+    typeof lobeAgentManifest.systemRole === 'string' &&
+    lobeAgentManifest.systemRole.includes('<sub_agents>')
+  ) {
+    const subAgentModelGuidance = await resolveSubAgentModelGuidance(
+      deps.db,
+      deps.userId,
+      deps.workspaceId,
+    );
+    if (subAgentModelGuidance) {
+      toolManifestMap[LobeAgentManifest.identifier] = {
+        ...lobeAgentManifest,
+        systemRole: `${lobeAgentManifest.systemRole}\n\n${subAgentModelGuidance}`,
+      };
+    }
   }
 
   return {

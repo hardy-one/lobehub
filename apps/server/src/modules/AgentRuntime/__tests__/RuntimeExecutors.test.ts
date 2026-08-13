@@ -178,6 +178,12 @@ vi.mock('@/database/models/topicDocument', () => ({
   })),
 }));
 
+const mockIsSubAgentModelEnabled = vi.hoisted(() => vi.fn().mockResolvedValue(true));
+
+vi.mock('@/server/utils/subAgentModelGuidance', () => ({
+  isSubAgentModelEnabled: (...args: any[]) => mockIsSubAgentModelEnabled(...args),
+}));
+
 describe('RuntimeExecutors', { timeout: 60_000 }, () => {
   let mockMessageModel: any;
   let mockStreamManager: any;
@@ -198,6 +204,8 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
     mockRegisterTask.mockResolvedValue({ id: 'work-1' });
     mockFindPlanDocuments.mockReset();
     mockFindPlanDocuments.mockResolvedValue([]);
+    mockIsSubAgentModelEnabled.mockReset();
+    mockIsSubAgentModelEnabled.mockResolvedValue(true);
     vi.mocked(initModelRuntimeFromDB).mockReset();
     mockCreateCompressionGroup.mockReset();
     mockCancelCompression.mockReset();
@@ -6350,6 +6358,137 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
         }),
       ]);
       expect(result.nextContext).toBeUndefined();
+    });
+
+    it('rejects a model-only callSubAgent override whose resolved provider pair is not enabled', async () => {
+      const mockExecVirtualSubAgent = vi
+        .fn()
+        .mockResolvedValue({ success: true, operationId: 'child-op', threadId: 'thread-child' });
+      const ctxWithCallback = {
+        ...ctx,
+        execVirtualSubAgent: mockExecVirtualSubAgent,
+        topicId: 'topic-123',
+      };
+
+      mockIsSubAgentModelEnabled.mockResolvedValue(false);
+      mockToolExecutionService.executeTool.mockImplementation(
+        async (_payload: any, context: any) => {
+          const subAgent = await context.subAgent.run({
+            description: 'Research',
+            instruction: 'Find the answer',
+            model: 'deepseek-v4-pro',
+            timeout: 1_800_000,
+          });
+
+          return {
+            content: subAgent.started ? '' : ((subAgent as any).error ?? 'failed'),
+            executionTime: 10,
+            success: subAgent.started,
+          };
+        },
+      );
+
+      const executors = createRuntimeExecutors(ctxWithCallback);
+      const state = createMockState();
+      const instruction = {
+        payload: {
+          parentMessageId: 'assistant-msg-id',
+          toolCalling: {
+            apiName: 'callSubAgent',
+            arguments: JSON.stringify({
+              description: 'Research',
+              instruction: 'Find the answer',
+              model: 'deepseek-v4-pro',
+              timeout: 1_800_000,
+            }),
+            id: 'tool-call-2',
+            identifier: 'lobe-agent',
+            type: 'default' as const,
+          },
+        },
+        type: 'call_tool' as const,
+      };
+
+      const result = await executors.call_tool!(instruction, state);
+
+      // Model-only override: provider falls back to the parent's provider
+      // (openai); the resolved pair must be validated before any fork work.
+      expect(mockIsSubAgentModelEnabled).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        undefined,
+        'openai',
+        'deepseek-v4-pro',
+      );
+      expect(mockExecVirtualSubAgent).not.toHaveBeenCalled();
+      expect(result.newState.status).not.toBe('waiting_for_async_tool');
+    });
+
+    it('rejects a stale agencyConfig.subagent pair even without any override', async () => {
+      const mockExecVirtualSubAgent = vi
+        .fn()
+        .mockResolvedValue({ success: true, operationId: 'child-op', threadId: 'thread-child' });
+      const ctxWithCallback = {
+        ...ctx,
+        execVirtualSubAgent: mockExecVirtualSubAgent,
+        topicId: 'topic-123',
+      };
+
+      mockIsSubAgentModelEnabled.mockResolvedValue(false);
+      mockToolExecutionService.executeTool.mockImplementation(
+        async (_payload: any, context: any) => {
+          const subAgent = await context.subAgent.run({
+            description: 'Research',
+            instruction: 'Find the answer',
+            timeout: 1_800_000,
+          });
+
+          return {
+            content: subAgent.started ? '' : ((subAgent as any).error ?? 'failed'),
+            executionTime: 10,
+            success: subAgent.started,
+          };
+        },
+      );
+
+      const executors = createRuntimeExecutors(ctxWithCallback);
+      // Parent config carries a stale sub-agent override (e.g. the provider
+      // got disabled after the config was saved) — no per-call override here.
+      const state = createMockState();
+      (state.metadata as any).agentConfig = {
+        agencyConfig: {
+          subagent: { model: 'mimo-v2.5', provider: 'xiaomimimo' },
+        },
+      };
+      const instruction = {
+        payload: {
+          parentMessageId: 'assistant-msg-id',
+          toolCalling: {
+            apiName: 'callSubAgent',
+            arguments: JSON.stringify({
+              description: 'Research',
+              instruction: 'Find the answer',
+              timeout: 1_800_000,
+            }),
+            id: 'tool-call-3',
+            identifier: 'lobe-agent',
+            type: 'default' as const,
+          },
+        },
+        type: 'call_tool' as const,
+      };
+
+      const result = await executors.call_tool!(instruction, state);
+
+      expect(mockIsSubAgentModelEnabled).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        undefined,
+        'xiaomimimo',
+        'mimo-v2.5',
+      );
+      expect(mockExecVirtualSubAgent).not.toHaveBeenCalled();
+      expect(result.newState.status).not.toBe('waiting_for_async_tool');
     });
 
     it('exec_sub_agent executor dispatches from the source parent message', async () => {

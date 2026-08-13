@@ -56,7 +56,14 @@ export const assertWorkspaceRootApproved = async (
   const device = await deviceModel.findByDeviceId(deviceId);
 
   const approvedRoots = (device?.workingDirs ?? [])
-    .flatMap((dir) => [dir.path, dir.git?.activeWorktree])
+    .flatMap((dir) => [
+      dir.path,
+      dir.git?.activeWorktree,
+      // Persisted device-reported skill preview roots (server-owned workspace cache).
+      // Kept together with the in-memory `deviceSkillRoots` fallback below so previews
+      // stay authorized both immediately and across server restarts.
+      ...(dir.workspace?.approvedPreviewRoots ?? []),
+    ])
     .concat(device?.defaultCwd ? [device.defaultCwd] : [])
     .filter((root): root is string => Boolean(root));
 

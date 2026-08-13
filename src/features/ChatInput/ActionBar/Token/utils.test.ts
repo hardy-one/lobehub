@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { getToolContextRefreshKey, getToolExcludeDefaultToolIds } from './utils';
+import {
+  getToolContextRefreshKey,
+  getToolExcludeDefaultToolIds,
+  isContextTokensCurrent,
+} from './utils';
 
 describe('Token tool utils', () => {
   describe('getToolContextRefreshKey', () => {
@@ -60,6 +64,39 @@ describe('Token tool utils', () => {
 
     it('keeps default tools in auto skill mode', () => {
       expect(getToolExcludeDefaultToolIds('auto')).toBeUndefined();
+    });
+  });
+
+  describe('isContextTokensCurrent', () => {
+    const entry = {
+      chats: 1,
+      historySummary: 0,
+      mode: 'agent:full',
+      systemRole: 100,
+      tools: 200,
+      topicId: 'topic-1',
+    };
+
+    it('accepts matching topic and mode', () => {
+      expect(isContextTokensCurrent(entry, 'topic-1', 'agent:full')).toBe(true);
+    });
+
+    it('rejects a different topic', () => {
+      expect(isContextTokensCurrent(entry, 'topic-2', 'agent:full')).toBe(false);
+    });
+
+    it('rejects when the mode switched since the measurement', () => {
+      expect(isContextTokensCurrent(entry, 'topic-1', 'agent:lean')).toBe(false);
+      expect(isContextTokensCurrent(entry, 'topic-1', 'chat:full')).toBe(false);
+    });
+
+    it('keeps legacy entries without a mode stamp valid', () => {
+      const { mode: _mode, ...legacy } = entry;
+      expect(isContextTokensCurrent(legacy, 'topic-1', 'chat:full')).toBe(true);
+    });
+
+    it('rejects undefined entries', () => {
+      expect(isContextTokensCurrent(undefined, 'topic-1', 'agent:full')).toBe(false);
     });
   });
 });

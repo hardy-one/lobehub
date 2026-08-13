@@ -218,7 +218,7 @@ describe('ChatService', () => {
     it('should pass chat mode to context engineering when the selected model lacks function calling', async () => {
       const contextEngineeringSpy = vi
         .spyOn(mechaModule, 'contextEngineering')
-        .mockResolvedValue([]);
+        .mockResolvedValue({ messages: [] });
       vi.mocked(isCanUseFC).mockReturnValue(false);
       const messages = [{ content: 'Hello', role: 'user' }] as UIChatMessage[];
 
@@ -1631,7 +1631,7 @@ describe('ChatService', () => {
       it('should respect agent-level memory disabled even when user-level memory is enabled', async () => {
         const contextEngineeringSpy = vi
           .spyOn(mechaModule, 'contextEngineering')
-          .mockResolvedValue([]);
+          .mockResolvedValue({ messages: [] });
         // user-level memory is enabled
         vi.spyOn(settingsSelectors, 'memoryEnabled').mockReturnValue(true);
 
@@ -1653,7 +1653,7 @@ describe('ChatService', () => {
       it('should enable memory when agent-level is on even if user-level memory is disabled', async () => {
         const contextEngineeringSpy = vi
           .spyOn(mechaModule, 'contextEngineering')
-          .mockResolvedValue([]);
+          .mockResolvedValue({ messages: [] });
         // user-level memory is disabled
         vi.spyOn(settingsSelectors, 'memoryEnabled').mockReturnValue(false);
 
@@ -1675,7 +1675,7 @@ describe('ChatService', () => {
       it('should fall back to user-level setting when agent-level memory is not configured', async () => {
         const contextEngineeringSpy = vi
           .spyOn(mechaModule, 'contextEngineering')
-          .mockResolvedValue([]);
+          .mockResolvedValue({ messages: [] });
         // user-level memory is disabled
         vi.spyOn(settingsSelectors, 'memoryEnabled').mockReturnValue(false);
 
@@ -1699,7 +1699,7 @@ describe('ChatService', () => {
       it('should ensure agent documents before assistant generation when cache is empty', async () => {
         const contextEngineeringSpy = vi
           .spyOn(mechaModule, 'contextEngineering')
-          .mockResolvedValue([]);
+          .mockResolvedValue({ messages: [] });
         vi.spyOn(chatService, 'getChatCompletion').mockResolvedValue(new Response(''));
         vi.spyOn(agentDocumentService, 'getContextDocuments').mockResolvedValue([
           {
@@ -1740,7 +1740,7 @@ describe('ChatService', () => {
       it('should resolve agent builder documents from the edited agent', async () => {
         const contextEngineeringSpy = vi
           .spyOn(mechaModule, 'contextEngineering')
-          .mockResolvedValue([]);
+          .mockResolvedValue({ messages: [] });
         vi.spyOn(chatService, 'getChatCompletion').mockResolvedValue(new Response(''));
         vi.spyOn(agentDocumentService, 'getContextDocuments').mockResolvedValue([
           {

@@ -25,6 +25,7 @@ import type {
   AgentContextDocument,
   AgentGroupConfig,
   AgentManagementContext,
+  ContextBuckets,
   GroupAgentBuilderContext,
   GroupOfficialToolItem,
   LobeToolManifest,
@@ -167,7 +168,10 @@ export const contextEngineering = async ({
   stepContext,
   topicId,
   memoryContext,
-}: ContextEngineeringContext): Promise<OpenAIChatMessage[]> => {
+}: ContextEngineeringContext): Promise<{
+  contextBuckets?: ContextBuckets;
+  messages: OpenAIChatMessage[];
+}> => {
   log('tools: %o', tools);
 
   // Check if Agent Builder tool is enabled
@@ -843,7 +847,10 @@ export const contextEngineering = async ({
     );
   }
 
-  return result.messages;
+  return {
+    contextBuckets: result.metadata.contextBuckets,
+    messages: result.messages,
+  };
 };
 
 const resolveClientAppOrigin = (): string | undefined => {

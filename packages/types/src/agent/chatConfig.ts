@@ -27,6 +27,13 @@ export interface AgentSelfIterationChatConfig {
 export interface LobeAgentChatConfig extends AgentMemoryChatConfig, AgentSelfIterationChatConfig {
   codexMaxReasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
   /**
+   * Context compression mode.
+   * - 'off': No compression
+   * - 'standard': Basic 50% threshold compression (default)
+   * - 'smart': Model-aware compression with 70% threshold and 32k disable protection
+   */
+  compression?: 'off' | 'standard' | 'smart';
+  /**
    * Model ID to use for generating compression summaries
    */
   compressionModelId?: string;
@@ -207,6 +214,21 @@ export interface LobeAgentChatConfig extends AgentMemoryChatConfig, AgentSelfIte
 }
 
 /**
+ * Resolve the effective context-compression mode from a chat config.
+ *
+ * An explicit `compression` mode supersedes the legacy toggle; the latter is
+ * only read for persisted configs created before `compression` existed.
+ * `enableContextCompression === false` maps to 'off', while `true` / `undefined`
+ * fall back to 'standard' — matching the legacy default of enabled. Shared by
+ * the server runtime, the client runtime and the settings UI so all three
+ * resolve the same mode.
+ */
+export const resolveCompressionMode = (
+  chatConfig?: Pick<LobeAgentChatConfig, 'compression' | 'enableContextCompression'> | null,
+): 'off' | 'standard' | 'smart' =>
+  chatConfig?.compression ?? (chatConfig?.enableContextCompression === false ? 'off' : 'standard');
+
+/**
  * Zod schema for RuntimeEnvConfig
  */
 export const RuntimeEnvConfigSchema = z.object({
@@ -234,6 +256,7 @@ export const SelfIterationChatConfigSchema = z.object({
 export const AgentChatConfigSchema = z
   .object({
     codexMaxReasoningEffort: z.enum(['low', 'medium', 'high', 'xhigh']).optional(),
+    compression: z.enum(['off', 'standard', 'smart']).optional(),
     deepseekV4GAReasoningEffort: z.enum(['none', 'low', 'high', 'max']).optional(),
     deepseekV4ReasoningEffort: z.enum(['none', 'high', 'max']).optional(),
     qwen38ReasoningEffort: z.enum(['none', 'low', 'medium', 'xhigh']).optional(),

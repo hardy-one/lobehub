@@ -554,6 +554,82 @@ export class GeneralChatAgent implements Agent {
   }
 
   /**
+   * Find the last assistant message carrying real provider-measured usage
+   * (`usage.totalTokens`, persisted on the message by the transport). Reused
+   * as the compression baseline — the large history portion then carries zero
+   * estimation error and only messages after the anchor are estimated.
+   *
+   * The anchor naturally moves forward across sends (fresh messages are
+   * persisted with usage), so no separate topic-level persistence is needed: a
+   * missing anchor (first turn, compressed/cleaned history) falls back to
+   * full estimation.
+   *
+   * A message whose generating model differs from the current one is skipped:
+   * its token count was measured by a different tokenizer and is not
+   * comparable. Skipping (instead of abandoning) lets a model switch back to a
+   * previously used model reuse the older baseline.
+   */
+  private resolveCompressionBaseline(
+    messages: Array<{
+      id?: string;
+      metadata?: { usage?: { totalTokens?: number } };
+      model?: string | null;
+      role?: string;
+      usage?: { totalTokens?: number };
+    }>,
+    currentModel?: string,
+  ): { lastMsgId: string; tokens: number } | undefined {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      if (message?.role !== 'assistant') continue;
+      const totalTokens = message.usage?.totalTokens ?? message.metadata?.usage?.totalTokens;
+      if (typeof totalTokens !== 'number' || totalTokens <= 0 || !message.id) continue;
+      // 模型切换 → tokenizer 不同 → 旧计数不可比，跳过（继续向前找同模型的消息）
+      if (currentModel && message.model && message.model !== currentModel) {
+        continue;
+      }
+      return { lastMsgId: message.id, tokens: totalTokens };
+    }
+    return undefined;
+  }
+
+  /**
+   * Resolve compression options for the upcoming LLM call. The baseline is
+   * derived from the last real-usage assistant message in the current
+   * `messages` (see `resolveCompressionBaseline`), never from persisted
+   * topic state. The threshold goes through `getCompressionThresholdRatio` so
+   * post-compression hysteresis applies on top of the smart/default ratio:
+   * before any summary exists it returns the raw config value (possibly
+   * `undefined`, letting `smartThreshold` pick its own ratio), and only pins an
+   * explicit watermark once a summary is present.
+   */
+  private resolveCompressionOptions(
+    messages: Array<{
+      id?: string;
+      metadata?: { usage?: { totalTokens?: number } };
+      model?: string | null;
+      role?: string;
+      usage?: { totalTokens?: number };
+    }>,
+    tools: unknown[] | undefined,
+    currentModel?: string,
+  ) {
+    const baseline = this.resolveCompressionBaseline(messages, currentModel);
+    return {
+      maxWindowToken: this.config.compressionConfig?.maxWindowToken,
+      smartThreshold: this.config.compressionConfig?.smartThreshold,
+      thresholdRatio: this.getCompressionThresholdRatio(messages),
+      ...(baseline
+        ? {
+            storedContextLastMsgId: baseline.lastMsgId,
+            storedContextTokens: baseline.tokens,
+          }
+        : {}),
+      tools,
+    };
+  }
+
+  /**
    * Proceed to the next LLM call, inserting compression first when needed.
    */
   private toLLMCall(
@@ -569,11 +645,11 @@ export class GeneralChatAgent implements Agent {
     // executor strips all tools via buildStepToolDelta (deactivatedToolIds: ['*']),
     // so they must not count against the compression budget either — otherwise
     // we'd burn an extra summarization pass on tool tokens that won't be sent.
-    const compressionOptions = {
-      maxWindowToken: this.config.compressionConfig?.maxWindowToken,
-      thresholdRatio: this.getCompressionThresholdRatio(payloadWithAllowedToolNames.messages),
-      tools: state.forceFinish ? undefined : payloadWithAllowedToolNames.tools,
-    };
+    const compressionOptions = this.resolveCompressionOptions(
+      payloadWithAllowedToolNames.messages,
+      state.forceFinish ? undefined : payloadWithAllowedToolNames.tools,
+      payload.model ?? state.modelRuntimeConfig?.model,
+    );
 
     if (compressionEnabled) {
       const messages = payloadWithAllowedToolNames.messages;
@@ -640,11 +716,11 @@ export class GeneralChatAgent implements Agent {
         const compressionEnabled = this.config.compressionConfig?.enabled ?? true; // Default to enabled
         // Mirror RuntimeExecutors.callLlm: force-finish steps ship without tools,
         // so they must not count against the compression budget here either.
-        const compressionOptions = {
-          maxWindowToken: this.config.compressionConfig?.maxWindowToken,
-          thresholdRatio: this.getCompressionThresholdRatio(state.messages),
-          tools: state.forceFinish ? undefined : this.getTools(state),
-        };
+        const compressionOptions = this.resolveCompressionOptions(
+          state.messages,
+          state.forceFinish ? undefined : this.getTools(state),
+          state.modelRuntimeConfig?.model,
+        );
 
         if (compressionEnabled) {
           const compressionCheck = shouldCompress(state.messages, compressionOptions);

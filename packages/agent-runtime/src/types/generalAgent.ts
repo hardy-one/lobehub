@@ -92,10 +92,31 @@ export interface GeneralAgentConfig {
     enabled?: boolean;
     /** Model's max context window token count (default: 128k) */
     maxWindowToken?: number;
+    /**
+     * Enable smart threshold strategy:
+     * - Uses 70% threshold ratio (instead of default 50%)
+     * - Applies 20k minimum buffer protection for small context models
+     * - Disables compression for models with ≤32k context
+     */
+    smartThreshold?: boolean;
     /** Explicit threshold after a compression summary exists; default 0.65 reserves prompt headroom. */
     recompressionThresholdRatio?: number;
-    /** Threshold ratio for triggering compression (default: 0.5) */
+    /** Threshold ratio for triggering compression (default: 0.5, or 0.7 when smartThreshold is on) */
     thresholdRatio?: number;
+    /**
+     * Real context tokens from the last assistant message that carries
+     * provider-measured usage (`usage.totalTokens`). When present with a
+     * matching `storedContextLastMsgId`, the compression estimate reuses this
+     * real value and only estimates messages added since — see
+     * `shouldCompress` in utils/tokenCounter.ts.
+     *
+     * The agent runtime resolves this baseline itself from the conversation
+     * messages (last assistant message carrying usage), so application layers
+     * do not need to persist or inject it.
+     */
+    storedContextTokens?: number;
+    /** Id of the last message covered by `storedContextTokens` (anchor). */
+    storedContextLastMsgId?: string;
   };
   /**
    * Dynamic intervention audits registry (per-tool)

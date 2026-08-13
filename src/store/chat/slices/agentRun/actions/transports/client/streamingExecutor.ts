@@ -17,6 +17,7 @@ import { PageAgentIdentifier } from '@lobechat/builtin-tool-page-agent';
 import { manualModeExcludeToolIds } from '@lobechat/builtin-tools';
 import {
   getSubAgentChatConfigOverride,
+  getSubAgentModelDeniedPair,
   isDesktop,
   resolveSubAgentChatConfig,
   resolveSubAgentModel,
@@ -28,11 +29,13 @@ import {
   type ConversationContext,
   type LobeAgentChatConfig,
   type MessageMetadata,
+  resolveCompressionMode,
   type RunSubAgentResult,
   type RuntimeInitialContext,
   type UIChatMessage,
 } from '@lobechat/types';
 import debug from 'debug';
+import i18n from 'i18next';
 
 import { createAgentToolsEngine } from '@/helpers/toolEngineering';
 import { aiAgentService } from '@/services/aiAgent';
@@ -696,11 +699,24 @@ export class StreamingExecutorActionImpl {
       provider!,
     )(getAiInfraStoreState());
 
+    // An explicit compression mode supersedes the legacy toggle. The latter is
+    // only read for persisted configs created before `compression` existed.
+    // Prefer the resolved top-level chatConfig (same source as skillActivateMode),
+    // falling back to nested agentConfig.chatConfig for partial mocks/legacy paths.
+    const chatConfig = agentConfig.chatConfig ?? agentConfigData.chatConfig;
+    const compressionMode = resolveCompressionMode(chatConfig);
+    const compressionEnabled = compressionMode !== 'off';
+    const smartThreshold = compressionMode === 'smart' ? true : undefined;
+
     const agent = new GeneralChatAgent({
       agentConfig: { maxSteps: 1000 },
+      // The compression baseline (last real provider-measured usage) is
+      // resolved inside the agent runtime from the conversation messages —
+      // no topic-level persistence needed.
       compressionConfig: {
-        enabled: agentConfigData.chatConfig?.enableContextCompression ?? true, // Default to enabled
+        enabled: compressionEnabled,
         maxWindowToken: contextWindowTokens ?? undefined,
+        smartThreshold,
       },
       dynamicInterventionAudits,
       operationId: `${messageKey}/${params.parentMessageId}`,
@@ -957,7 +973,12 @@ export class StreamingExecutorActionImpl {
 
     await runLifecycle.afterRunComplete(completeEvent);
 
+    // The compression baseline is resolved by the agent runtime from the
+    // conversation messages themselves (last assistant message carrying real
+    // provider usage) — no topic-level persistence is needed here.
+    //
     // Return usage and cost data for caller to use
+
     return { cost: state.cost, model, provider: provider ?? undefined, usage: state.usage };
   };
 

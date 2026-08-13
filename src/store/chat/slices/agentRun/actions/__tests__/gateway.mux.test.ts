@@ -220,6 +220,7 @@ describe('GatewayActionImpl (multiplexed gateway transport)', () => {
       const { action, mux, muxClient, state, v1Client } = createTestAction();
 
       action.connectToGateway({
+        tokenTagMode: 'agent:full',
         agentShareId: 'share-1',
         executor: true,
         gatewayUrl: GATEWAY_URL,
@@ -248,6 +249,7 @@ describe('GatewayActionImpl (multiplexed gateway transport)', () => {
       const { action, state, v1Client } = createTestAction();
 
       action.connectToGateway({
+        tokenTagMode: 'agent:full',
         executor: true,
         gatewayUrl: GATEWAY_URL,
         operationId: 'op-1',
@@ -272,6 +274,7 @@ describe('GatewayActionImpl (multiplexed gateway transport)', () => {
       const { action, mux, muxClient, state, v1Client } = createTestAction();
 
       action.connectToGateway({
+        tokenTagMode: 'agent:full',
         agentShareId: 'share-1',
         executor: true,
         gatewayUrl: GATEWAY_URL,
@@ -299,6 +302,7 @@ describe('GatewayActionImpl (multiplexed gateway transport)', () => {
       action.resolveGatewayMux = getGatewayMux;
 
       action.connectToGateway({
+        tokenTagMode: 'agent:full',
         gatewayUrl: GATEWAY_URL,
         operationId: 'op-1',
         token: 'tok',
@@ -317,6 +321,7 @@ describe('GatewayActionImpl (multiplexed gateway transport)', () => {
       const { action, muxClient } = createTestAction();
 
       action.connectToGateway({
+        tokenTagMode: 'agent:full',
         gatewayUrl: GATEWAY_URL,
         onEvent,
         operationId: 'op-1',
@@ -338,12 +343,14 @@ describe('GatewayActionImpl (multiplexed gateway transport)', () => {
       const { action, mux, state } = createTestAction();
 
       action.connectToGateway({
+        tokenTagMode: 'agent:full',
         gatewayUrl: GATEWAY_URL,
         operationId: 'op-1',
         token: 'tok',
         topicId: 'topic-1',
       });
       action.connectToGateway({
+        tokenTagMode: 'agent:full',
         gatewayUrl: GATEWAY_URL,
         operationId: 'op-2',
         token: 'tok',
@@ -378,6 +385,7 @@ describe('GatewayActionImpl (multiplexed gateway transport)', () => {
       const { action, muxClient, state } = createTestAction();
 
       action.connectToGateway({
+        tokenTagMode: 'agent:full',
         gatewayUrl: GATEWAY_URL,
         operationId: 'op-1',
         token: 'tok',
@@ -394,6 +402,7 @@ describe('GatewayActionImpl (multiplexed gateway transport)', () => {
 
   describe('fallback to v1 when the mux is unavailable', () => {
     const connectParams = (operationId: string) => ({
+      tokenTagMode: 'agent:full',
       executor: true,
       gatewayUrl: GATEWAY_URL,
       operationId,

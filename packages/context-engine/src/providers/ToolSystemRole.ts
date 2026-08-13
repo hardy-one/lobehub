@@ -21,6 +21,33 @@ declare module '../types' {
 const log = debug('context-engine:provider:ToolSystemRoleProvider');
 
 /**
+ * Lean ("generalized tools") mode, driven by `config.promptMode === 'lean'`.
+ *
+ * In lean mode the nine per-plugin teaching blocks (core_capabilities /
+ * workflow / best_practices …) are NOT injected. Tools are treated as
+ * ordinary tools: their contract lives in the `tools[]` schema, and only a
+ * compact cross-tool usage policy (product rules the schema cannot carry)
+ * stays in the system prompt.
+ */
+/**
+ * Compact cross-tool usage policy for lean mode.
+ *
+ * Only product-level rules are kept here — the things the `tools[]` schema
+ * cannot express (output quality, behavior tuning, tool arbitration, security
+ * conventions). Everything that is "how to use this tool" lives in the tool
+ * schema description instead.
+ */
+export const LEAN_TOOL_USAGE_POLICY = `<lobe_tool_policy>
+- **Search citations**: all web search results must cite sources with markdown footnotes ([^1]) and list referenced URLs at the end. (lobe-web-browsing)
+- **Memory writes**: default to medium memory effort; search existing memories before writing to avoid duplicates; never persist security-sensitive data. (lobe-user-memory)
+- **Command arbitration**: run skill-bundled scripts with execScript; use runCommand for general CLI commands; prefer lobe-local-system runCommand on a routed device. (lobe-skills / lobe-local-system)
+- **Credentials**: when a task needs third-party auth, API keys or secrets, activate lobe-creds first and never ask the user to paste keys in chat. (lobe-activator)
+- **Skill activation**: when the task matches an available skill, call activateSkill to load its instructions, then follow them. (lobe-skills)
+- **Plan/Todo**: keep plans stable (strategic "what/why"); split work into actionable todos. (lobe-agent)
+- **Media fallback**: for audio/video or other media the active model cannot inspect natively, activate lobe-agent and answer via its analyzeMedia tool. (lobe-agent)
+</lobe_tool_policy>`;
+
+/**
  * Tool System Role Configuration
  */
 export interface ToolSystemRoleConfig {
@@ -31,6 +58,8 @@ export interface ToolSystemRoleConfig {
   manifests?: LobeToolManifest[];
   /** Model name */
   model: string;
+  /** 'lean' drops the teaching blocks (generalized tools). Undefined/'full' = legacy. */
+  promptMode?: 'full' | 'lean';
   /** Provider name */
   provider: string;
 }
@@ -65,6 +94,15 @@ export class ToolSystemRoleProvider extends BaseSystemRoleProvider {
 
   protected buildSystemRoleContent(_context: PipelineContext): string | null {
     if (this.config.enabled === false) return null;
+
+    // Lean mode: tools are ordinary tools — drop the nine teaching blocks,
+    // keep only the compact cross-tool usage policy.
+    const isLean = this.config.promptMode === 'lean';
+    if (isLean) {
+      if (!this.config.manifests?.length) return null;
+      log('Lean mode: injecting compact tool usage policy only');
+      return LEAN_TOOL_USAGE_POLICY;
+    }
 
     const toolSystemRole = this.getToolSystemRole();
 

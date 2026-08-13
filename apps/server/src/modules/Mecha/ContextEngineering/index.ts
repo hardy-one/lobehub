@@ -1,8 +1,5 @@
-import {
-  type ContextEngineeringResult,
-  type ContextSnapshot,
-  runContextEngineering,
-} from '@lobechat/mecha';
+import type { ContextEngineeringResult, ContextSnapshot } from '@lobechat/mecha';
+import { runContextEngineering } from '@lobechat/mecha';
 
 import { type ServerMessagesEngineParams } from './types';
 
@@ -41,6 +38,7 @@ export const toContextSnapshot = ({
   model,
   modelDisplayName,
   modelKnowledgeCutoff,
+  promptMode,
   onboardingContext,
   pageContentContext,
   planTodo,
@@ -48,7 +46,6 @@ export const toContextSnapshot = ({
   provider,
   skillsConfig,
   systemRole,
-  toolDiscoveryConfig,
   toolsConfig,
   topicReferences,
   userMemory,
@@ -83,6 +80,7 @@ export const toContextSnapshot = ({
     additionalContexts,
     enableAgentMode,
     enableExpertise,
+    promptMode,
     expertise,
     forceFinish,
     formatHistorySummary,
@@ -105,7 +103,6 @@ export const toContextSnapshot = ({
     enabledSkills: skillsConfig?.enabledSkills,
     enabledToolIds: toolsConfig?.tools,
     manifests: toolsConfig?.manifests,
-    toolDiscoveryConfig,
   },
   variables: additionalVariables,
   world: {

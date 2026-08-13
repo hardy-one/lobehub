@@ -1,4 +1,22 @@
+import { type ContextTokenCounts } from '@lobechat/context-engine';
+
 import { type ChatTopic } from '@/types/topic';
+
+/**
+ * Exact assembled-payload token counts from the last send (tokenx
+ * estimator), keyed to the topic it was computed for. TokenTag renders
+ * these when the topic matches; otherwise it falls back to estimating.
+ */
+export interface TopicContextTokens extends ContextTokenCounts {
+  /**
+   * Agent mode (`agent|chat` + promptMode) at measurement time. When the
+   * current mode differs, the recorded counts no longer describe the next
+   * assembled payload — TokenTag falls back to the live estimate until the
+   * next send.
+   */
+  mode?: string;
+  topicId?: string;
+}
 
 /**
  * Unified topic data structure for each agent
@@ -48,6 +66,7 @@ export interface ChatTopicState {
    * whether all topics drawer is open
    */
   allTopicsDrawerOpen: boolean;
+  contextTokens?: TopicContextTokens;
   creatingTopic: boolean;
   /**
    * Ids of client-minted topics whose server row does not exist yet (the

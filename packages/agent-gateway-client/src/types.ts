@@ -22,6 +22,7 @@ export type AgentStreamEventType =
    * on: the gateway only closes a session on `agent_runtime_end`.
    */
   | 'member_runtime_end'
+  | 'context_metrics'
   | 'stream_start'
   | 'stream_chunk'
   | 'stream_end'

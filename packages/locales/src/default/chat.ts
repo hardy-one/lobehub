@@ -1352,6 +1352,7 @@ export default {
   'search.grounding.imageSearchQueries': 'Image Search Keywords',
   'search.grounding.imageTitle': 'Found {{count}} images',
   'chatMode.agent': 'Agent',
+
   'plus.search.appSearch': 'Smart Search',
   'plus.search.appSearchDesc':
     'LobeHub optimized search service, delivering best retrieval results.',
@@ -1368,7 +1369,9 @@ export default {
   'chatMode.agentCap.memory': 'Memory',
   'chatMode.agentCap.tools': 'Tool calls',
   'chatMode.agentCap.web': 'Web search',
-  'chatMode.agentDesc': 'Agent can use tools and environment to complete tasks automatically',
+  'chatMode.agentDesc': 'Agent with full tool teaching and environment for autonomous tasks',
+  'chatMode.efficient': 'Lite',
+  'chatMode.efficientDesc': 'Agent with lightweight tool instructions, full capabilities retained',
   'chatMode.agentUnsupported': 'The current model does not support tool calling',
   'chatMode.chat': 'Chat',
   'chatMode.chatDesc': 'No runtime environment or autonomy; uses fewer tokens',

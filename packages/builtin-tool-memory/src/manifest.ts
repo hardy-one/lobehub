@@ -93,6 +93,9 @@ export const MemoryManifest: BuiltinToolManifest = {
     {
       description:
         'Retrieve memories using one or more search queries plus optional filters for categories, tags, labels, relationships, and time range. Context memories (ongoing projects, situations, environments) may be left out of default searches depending on the memory effort setting; to be sure to get them, include "context" in layers or set topK.contexts.',
+      // Lean-mode override (see builtin-tool-local-system editFile for rationale).
+      leanDescription:
+        'Retrieve memories using one or more natural-language search queries plus optional filters for categories, tags, labels, relationships, and time range. Run this BEFORE writing new memories to check for duplicates. For calendar-style requests (e.g. "last month", "December 2025") use the timeIntent parameter.',
       name: MemoryApiName.searchUserMemory,
       parameters: {
         additionalProperties: false,

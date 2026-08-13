@@ -1,0 +1,276 @@
+---
+title: LobeHub Prompt 优化点记录
+description: 基于 probe 实测与 harness 社区调研，记录 LobeHub 上下文组织的全部潜在优化点，供逐个讨论与实现。每项含现状、问题、方案、收益、风险与实现状态。
+tags:
+  - Context Engineering
+  - Prompt Optimization
+  - KV Cache
+---
+
+# LobeHub Prompt 优化点记录
+
+> 本文档记录基于 probe 实测（同一 topic 一次 "hi" 请求约 35K tokens，用户输入仅占 0.006%）与 harness 社区调研（Claude Code / Reasonix / OpenClaw / Hermes）梳理出的全部潜在优化点，供逐个讨论与实现。
+
+## 0. 总览
+
+### 0.1 实测基线（2026-08，responses 协议）
+
+```
+完整请求 ~35K tokens
+├─ tools 数组（50 个 schema）      14,038  (40.5%)  ← 必要契约，但全量
+├─ developer: 9 个文本工具块        12,957  (37.4%)  ← 与 schema 双重表达
+├─ user_memory: persona              2,750  (7.9%)  ← 全量注入
+├─ developer: 会话/用户/工具总纲      2,190  (6.3%)  ← 与工具块混排
+├─ available_skills（20 技能）       2,093  (6.0%)  ← 全量目录
+├─ 规则 + AGENTS.md + 模型信息         244  (0.7%)
+└─ 用户输入 "hi"                         2  (0.0%)
+```
+
+### 0.2 实现策略：两套逻辑 + 环境变量开关
+
+- **full 模式**：保持现状（默认，不设环境变量即为 full，零风险上线）
+- **lean 模式**：启用优化版，逐项开关可单独控制
+- 便于 A/B 对比验证每项优化的独立收益
+
+```bash
+# 总开关
+CONTEXT_ENGINE_PROMPT_MODE=lean     # 全部启用 lean
+# 细分开关（未设置时跟随总开关）
+CONTEXT_ENGINE_TOOL_BLOCKS=lean     # 优化点 1、2
+CONTEXT_ENGINE_SKILLS_INDEX=lean    # 优化点 3
+CONTEXT_ENGINE_PERSONA=lean         # 优化点 4
+CONTEXT_ENGINE_AVAILABLE_TOOLS=lean # 优化点 5
+```
+
+---
+
+## 1. 工具文本块：未激活插件教学过滤（✅ 已实现）
+
+**现状**：`lobe-activator` 的 systemRole（`packages/builtin-tool-activator/src/systemRole.ts`，7.7K）包含 `<credentials_management>` 段落（2,872 字符），教学 6 个凭据工具（getPlaintextCred /saveCreds/injectCredsToSandbox/initiateOAuthConnect/connectComposioService/exportFile）。这些工具属于 **lobe-creds 插件（未激活）**，当前 schema 里根本没有。
+
+**问题**：
+
+1. **未激活却教学**：模型此刻无法调用这些工具（schema 无），教学白白占 2,872 字符
+2. **与激活后重复**：`packages/builtin-tool-creds/src/systemRole.ts`（7.5K）已含完整凭据教学 + `<composio_integrations>`，lobe-creds 激活后作为新文本块自动注入 ——activator 里的段落是重复的
+
+**方案（已实现）**：把 `systemRole.ts` 拆为 `coreSystemPrompt`（activator 本职）+ `credentialsManagementPrompt`（凭据教学）；`manifest.ts` 按环境变量选择：
+
+```ts
+// systemRole.ts
+export const systemPrompt = `${header}\n\n${credentialsManagementPrompt}${footer}`;  // full，字节一致
+export const coreSystemPrompt = `${header}${footer}`;                                   // lean，去凭据教学
+
+// manifest.ts
+const isLeanToolBlocks =
+  process.env.CONTEXT_ENGINE_PROMPT_MODE === 'lean' ||
+  process.env.CONTEXT_ENGINE_TOOL_BLOCKS === 'lean';
+systemRole: isLeanToolBlocks ? coreSystemPrompt : systemPrompt,
+```
+
+**收益**：\~3.0K tokens / 请求（凭据 2,985 + exportFile 632 字符，当前基线 8.6%）
+**风险**：低（凭据教学由 lobe-creds 自带 systemRole 兜底；exportFile 教学由 exportFileApi 的 schema description 兜底，激活 / 沙箱场景无信息损失）
+**状态**：✅ 已实现 ——
+
+1. **凭据教学**（lobe-activator）：`systemRole.ts` 拆为 core + `credentialsManagementPrompt`，lean 省 2,985 字符 ≈ 746 tokens
+2. **exportFile 教学**（lobe-skills）：`systemRole.ts` 用 replace 链派生 `coreSystemPrompt` 删 4 处教学，lean 省 632 字符 ≈ 158 tokens（exportFile 属 cloud-sandbox 表面，device 路由时 schema 已由 `resolveSkillsManifest` 过滤，教学不同步）
+3. 两包 manifest 均接 `CONTEXT_ENGINE_PROMPT_MODE` / `CONTEXT_ENGINE_TOOL_BLOCKS` 开关；full 字节一致，单测覆盖（activator 3 + skills 3，含既有 38 个无回归）
+
+---
+
+## 2. 工具文本块：一般化（✅ 已实现 ——lean 下整体不注入，替换为精简策略段）
+
+**现状**：9 个文本工具块共 51.8K 字符，`<tool.instructions>` 内为完整 systemRole（core\_capabilities /workflow/best\_practices 等教学段落）。
+
+**审计结论**（对比 50 个 schema）：
+
+- ✅ 可放心砍：48/49 个 schema 工具名的 "用法教学"——schema description 已覆盖 "做什么"
+- ⚠️ 砍掉会丢：策略性指令（schema 里没有）——`memory_effort_policy`（分级行为）、凭据分流、citation 规则、routing\_boundaries
+
+**方案（已实现）**：lean 模式下把内置工具**一般化**—— 当作普通工具使用，9 个教学块整体不注入，只在 system 保留一个精简跨工具策略段 `LEAN_TOOL_USAGE_POLICY`（\~1K）：
+
+- 搜索引用规范 / 记忆写入分级 / 命令仲裁（execScript vs runCommand）/ 凭据安全 / 技能激活 / Plan-Todo
+- 用法教学交给 tools \[] schema（契约所在，模型注意力最高）
+
+**收益**：15,225 → 245 tokens（省 14,980 t，基线 43%）
+**风险**：中 —— 需实测模型在精简描述下工具选择是否退化（P0 验证）
+**状态**：✅ 已实现 ——`ToolSystemRoleProvider` lean 分支 + `LEAN_TOOL_USAGE_POLICY`；context-engine 927 测试通过
+
+---
+
+## 3. available\_skills：索引化（✅ 已实现 ——lean 下截断为一行摘要）
+
+**现状**：`<available_skills>` 注入 20 个技能完整 description（8.4K 字符 / 2.1K tokens）。当前**全部未激活**（只列 description，无完整 SKILL.md 注入）。
+
+**问题**：20 个技能全量目录，多数与当前任务无关；描述含大量触发条件（如 agent-reach 829 字符、xlsx 941 字符）。
+
+**方案（已实现）**：`skillsPrompts(skills, lean)` 截断 description 至 120 字符（保留触发关键词）；激活后 SKILL.md 由 activateSkill 作为 tool\_result 注入（已实测，不走 system）。
+
+**收益**：2,097 → 941 tokens（省 1,156 t）
+**风险**：低（技能发现准确性需实测）
+**状态**：✅ 已实现 ——prompts 层 `skillPrompt(skills, lean)` + SkillContextProvider lean 分支
+
+---
+
+## 4. persona：lean 注入侧小节筛选（✅ 已实现）
+
+**现状**：`user_memory` 注入 persona 9.7K 字符（9 小节全量：Identity / What you care about / Current focus / Recent highlights / Technology environment / Interaction cues / Relationships / Work-School / Goals and risks）。
+
+**问题**：persona 本质是 "压缩后的记忆"，但生成侧未压缩 —— 全量注入，其中大部分与当前对话无关。
+
+**方案（已实现）**：persona 数据只有 `{narrative, tagline}`（无 summary 字段），因此 lean 在注入侧按 markdown 小节筛选 —— 保留 `Identity` + `Interaction cues`（身份 + 交互偏好核心），砍掉其余 7 个小节（研究细节 / 设备清单 / 近期事件 / 目标）。完整 persona 仍在记忆 store，可按需检索。
+
+**收益**：9,949 → 2,365 字符（省 7,584 ≈ 1,896 tokens，基线 5.4%）
+**风险**：低（对话不涉及被砍小节时无感；涉及研究 / 设备话题时模型可主动 searchUserMemory 补全）
+**状态**：✅ 已实现 ——`promptUserMemory(memories, lean)` + `formatPersonaItemLean`；开关 `CONTEXT_ENGINE_PERSONA=lean`（或全局 PROMPT\_MODE）
+
+---
+
+## 4.1 schema description 增强（✅ 已实现 —— 审计后发现大部分已足够，仅补 3 个关键工具）
+
+**审计结论**：50 个工具 description 已相当完整（readFile 含默认 200 行、execScript 含 skill 上下文、runCommand 含 shell\_id）——"一般化" 砍教学后不退化。
+
+**仅增强 3 个**（+\~400 字符 ≈ 100 tokens）：
+
+- `editFile`：old\_string 必须逐字节精确匹配，否则失败；replace\_all 语义
+- `search`（web-browsing）：`!category` 修饰符（!science/!images/!map）
+
+## **状态**：✅ 已实现 ——`builtin-tool-local-system` / `builtin-tool-web-browsing` / `builtin-tool-memory` 三个 manifest.ts
+
+## 5. available\_tools：未启用工具精简（讨论中）
+
+**现状**：`<available_tools>` 注入 10 个未启用工具完整 description（1.9K 字符）。
+
+**问题**：与其他 harness 不同，这是 LobeHub 的 `activateTools` 决策输入 ——**不能砍**（否则激活机制失效），但 description 措辞偏长。
+
+**方案**：精简为名称 + 一句话描述（10 个工具 1.9K → \~0.6K）；保留完整信息在激活后的 schema 里。
+
+**收益**：\~1.3K tokens
+**风险**：低（激活决策信息仍够用）
+**状态**：🟡 讨论中
+
+---
+
+## 6. 静态 / 动态分层：缓存边界（❌ 实测无需做 —— 前缀已 static）
+
+**现状**：developer 消息一条到底（70.5K 字符），规则 / AGENTS.md/ 模型信息 /skills/ 工具块 / 会话 / 用户上下文 / 工具总纲全混排，无边界标记。
+
+**问题（原假设）**：任何动态内容变化都会让整条 70K 前缀失效。
+
+**实测结论（推翻原假设）**：5 个 requests 请求（跨 5 小时、含激活 pdf skill 前后）的 developer（70,477）/user\_memory（11,883）/tools \[]（50 个）**全部逐字节一致**（md5 唯一指纹）：
+
+- 日期是日期级精度（SystemDateProvider），跨天才变
+- 模型名、会话语言、memory effort 在 topic 内固定
+- 激活 skill 走 tool\_result 注入消息历史，不碰 developer
+- 对话增长是尾部追加，前缀不动
+- prompt\_cache\_key `lobe:{topicId}:{model}` 恒定
+
+**结论**：同 topic 连续对话的前缀已 100% 稳定，KV Cache 天然命中；分层改造收益极小（仅跨天 / 跨会话的部分前缀复用，取决于 Provider 是否支持断点）。**不做架构改造**，改为维护
+
+**状态**：❌ 实测无需做（附证据，见上方实测结论）
+
+---
+
+## 7. Memory 块动态内容移出（确认问题，待方案）
+
+**现状**：Memory 文本块（12.4K）内 `<session_context>` 为动态内容（`Session date: Monday, August 3, 2026 / Conversation language: zh-CN / Memory effort level: medium`，115 字符），混在 developer 静态消息中。
+
+**问题**：日期 / 语言变化破坏前缀缓存。
+
+**方案**：动态内容移入 volatile 层，或按优化点 2 一并处理（文本块瘦身时去掉动态段）。
+
+**收益**：缓存友好性
+**风险**：低
+**状态**：🟡 并入优化点 2/6 处理
+
+---
+
+## 8. 日期精度（讨论中）
+
+**现状**：developer 消息含日期（`2026-08-03` 格式，日期级）。Hermes 实践：只用日期精度不用分钟 ——"Minute-precision changes invalidate prefix-cache KV on every rebuild path"。
+
+**方案**：确认 LobeHub 日期生成已是日期级；若存在分钟级时间戳（如 Memory 块 session date 用星期几），统一降精度。
+
+**收益**：缓存友好性
+**风险**：低
+**状态**：🟡 需审计所有动态时间戳
+
+---
+
+## 9. tools schema 收敛（⬜ 远期不做）
+
+**现状**：50 个工具中 `lobe-user-memory` 一族 9 个（其中 5 个 add\* 语义相近，参数 8-13 个）、`lobe-local-system` 一族 11 个（searchFiles 参数 13 个）。
+
+**问题**：工具选择歧义（Anthropic："If a human engineer can't definitively say which tool should be used, an AI agent can't be expected to do better"）。
+
+**方案**：合并 add*Memory 一族、精简参数（远期，需产品决策）。
+**收益**：质量提升 + 间接 token 节省（\~2K，基线 6%）
+**风险**：高（改动工具契约 + 服务端执行 + 记忆存储 schema + 存量兼容）
+**状态**：⬜ 远期不做 —— 解决的是 "工具选择质量" 而非 token 浪费，且 lean 已省 52%，性价比低；如未来要做，先做 add*Memory 合并 PoC + 记忆写入质量对比实测
+
+---
+
+## 10. 激活技能注入体积（待实测）
+
+**现状**：`SkillContextProvider` 的 activated 分支将 `skill.content` **全文注入 system prompt**（代码第 84-85 行）。本地技能实测：agently-mail 10.3K、setup-matt-pocock-skills 6.9K、agent-reach 6.1K—— 激活一个技能即 1.5-2.6K tokens。
+
+**问题**：多技能叠加时注入体积爆炸；pdf 等技能不在本地，需实测 LobeHub 侧激活后的真实注入行为（是全文注入还是仅提示按需读取）。
+
+**方案**：待实测后定 —— 可能改为 "提示按需读取"（对齐 OpenClaw 技能按需加载）而非全文注入。
+**收益**：取决于实测
+**风险**：需实测确认
+**状态**：🟡 待激活 pdf 实测（用户可提供测试）
+
+---
+
+## 实现进度
+
+| 优化点                    | 状态                                                       |
+| ---------------------- | -------------------------------------------------------- |
+| 1. 未激活插件教学过滤           | ✅ 已实现（env: CONTEXT\_ENGINE\_PROMPT\_MODE / TOOL\_BLOCKS） |
+| 2. 工具文本块瘦身             | ✅ 已实现（lean 一般化：整体不注入 + `lobe_tool_policy` 精简策略段）         |
+| 3. 技能索引化               | ✅ 已实现（skillsPrompts lean 截断 120 字符）                      |
+| 4. persona lean 小节筛选   | ✅ 已实现（CONTEXT\_ENGINE\_PERSONA=lean）                     |
+| 5. available\_tools 精简 | ✅ 已回滚（工具全量注入，`<available_tools>` 管道整体移除）                 |
+| 6. 静态 / 动态分层           | ❌ 实测无需做（前缀已 static，5 请求 md5 一致）                          |
+| 7. Memory 动态内容移出       | ✅ 已覆盖（Memory 教学块整体不注入，session\_context 随之消失）             |
+| 8. 日期精度                | ✅ 已达标（SystemDateProvider 日期级，无分钟）                        |
+| 9. schema 收敛           | ⬜ 远期不做（产品决策）                                             |
+| 10. 激活技能体积             | ✅ 已实测（SKILL.md 走 activateSkill tool\_result，不膨胀 system）  |
+
+## 最终效果（lean 模式）
+
+| 组件                | full     | lean  | 省                            |
+| ----------------- | -------- | ----- | ---------------------------- |
+| 工具教学块             | 15,225 t | 245 t | 14,980                       |
+| available\_skills | 2,097 t  | 941 t | 1,156                        |
+| available\_tools  | 483 t    | 382 t | 101                          |
+| persona           | 2,487 t  | 591 t | 1,896                        |
+| **累计净省**          |          |       | **\~18,133 t（基线 35K 的 52%）** |
+
+开关：`chatConfig.promptMode`（每 agent，UI 切换）——env 已移除
+
+## 入口：AgentMode 四档切换（✅ 已实现）
+
+- 位置：输入框工具条 AgentMode 切换器（∞/✨/⚡/💬），替换原 "智能 / 对话" 两档
+- 四档：**Lobe**（agent+full）/ **智能**（agent+lean）/ **效率**（chat + 工具）/ **对话**（chat+lean）
+- 存储：`chatConfig.enableAgentMode` + `chatConfig.promptMode` 两字段组合
+- 消费链：streamingExecutor → contextEngineering → MessagesEngineParams → 4 provider（`config.promptMode` 驱动，`process.env` 全部移除）
+- 文档原 env 开关说明作废
+
+## 待办
+
+- 启动 lean 模式实测（UI 切 "智能" 档）：验证模型在精简描述下工具选择 / 记忆写入不退化（P0 验证）
+- （如走 Anthropic 协议）评估是否需要显式 cache\_control 断点 ——OpenAI 协议 prompt\_cache\_key 自动前缀缓存
+
+## 相关代码位置
+
+- 工具文本块：`packages/builtin-tool-activator/src/systemRole.ts`（activator）、`packages/builtin-tool-creds/src/systemRole.ts`（creds，激活后自带）、`packages/context-engine/src/providers/ToolSystemRole.ts`（注入）
+- 工具 schema：`src/store/chat/slices/agentRun/actions/transports/client/streamingExecutor.ts`（generateToolsDetailed）、`src/store/chat/agents/transports/ClientContextBuilder.ts`（ToolResolver）
+- 技能列表：`packages/context-engine/src/providers/SkillContextProvider.ts`
+- persona：`packages/context-engine/src/providers/UserMemoryInjector.ts`、`packages/prompts/src/prompts/userMemory/index.ts`
+- 拼接顺序：`packages/context-engine/src/engine/messages/MessagesEngine.ts`
+
+## 参考
+
+- 调研：`docs/development/others/harness-prompt-research.zh-CN.mdx`
+- KV Cache 分析：`/home/hardy/Workspace/context-cache-probe/docs/context-engine-kv-cache.zh-CN.mdx`

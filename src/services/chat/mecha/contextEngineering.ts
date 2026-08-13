@@ -3,10 +3,10 @@ import { AgentBuilderIdentifier } from '@lobechat/builtin-tool-agent-builder';
 import { isDesktop } from '@lobechat/const';
 import type {
   AgentGroupConfig,
+  ContextBuckets,
   LobeToolManifest,
   MemoryContext,
   OperationSkillSet,
-  ToolDiscoveryConfig,
   UserMemoryData,
 } from '@lobechat/context-engine';
 import { type ContextSnapshot, gatherContextFacts, runContextEngineering } from '@lobechat/mecha';
@@ -91,6 +91,8 @@ interface ContextEngineeringContext {
   model: string;
   /** Agent's enabled plugin/tool/skill identifiers (from agentConfig.plugins) */
   plugins?: string[];
+  /** 'lean' drops teaching blocks/persona sections. Undefined/'full' = legacy. */
+  promptMode?: 'full' | 'lean';
   provider: string;
   sessionId?: string;
   /**
@@ -127,6 +129,7 @@ export const contextEngineering = async ({
   agentId,
   disabledPluginIds,
   enableAgentMode,
+  promptMode,
   groupId,
   initialContext,
   plugins,
@@ -134,7 +137,10 @@ export const contextEngineering = async ({
   stepContext,
   topicId,
   memoryContext,
-}: ContextEngineeringContext): Promise<OpenAIChatMessage[]> => {
+}: ContextEngineeringContext): Promise<{
+  contextBuckets?: ContextBuckets;
+  messages: OpenAIChatMessage[];
+}> => {
   log('tools: %o', tools);
 
   // Build agent group configuration if groupId is provided
@@ -224,17 +230,11 @@ export const contextEngineering = async ({
   const enabledToolSet = new Set(tools || []);
   const isLobeToolsEnabled = enabledToolSet.has(LobeActivatorIdentifier);
 
-  let toolDiscoveryConfig: ToolDiscoveryConfig | undefined;
+  let availableTools: ReturnType<typeof toolSelectors.availableToolsForDiscovery> | undefined;
   if (isLobeToolsEnabled) {
-    const toolState = getToolStoreState();
-    const availableTools = toolSelectors
-      .availableToolsForDiscovery(toolState)
+    availableTools = toolSelectors
+      .availableToolsForDiscovery(getToolStoreState())
       .filter((tool) => !enabledToolSet.has(tool.identifier));
-
-    if (availableTools.length > 0) {
-      toolDiscoveryConfig = { availableTools };
-      log('Tool discovery config built, available tools count: %d', availableTools.length);
-    }
   }
 
   // Which facts this turn needs (plan, references, builder contexts, agent
@@ -334,6 +334,7 @@ export const contextEngineering = async ({
       // is `false` (chat mode). ChatService resolves it from stored user intent
       // plus the selected model's function-call ability.
       enableAgentMode: effectiveEnableAgentMode,
+      promptMode,
       formatHistorySummary: historySummaryPrompt,
       historySummary,
       initialContext,
@@ -348,7 +349,7 @@ export const contextEngineering = async ({
       // Selected skills/tools from user for this request
       selectedSkills: initialContext?.selectedSkills,
       selectedTools: initialContext?.selectedTools,
-      toolDiscoveryConfig,
+      availableTools,
     },
     // Placeholders resolved by the shared rules (credentials, connectors,
     // sandbox files, agent / topic identity) plus the browser's own lazy
@@ -371,16 +372,19 @@ export const contextEngineering = async ({
 
   log('Input messages count: %d', messages.length);
 
-  const { messages: processed } = await runContextEngineering(snapshot);
+  const result = await runContextEngineering(snapshot);
 
-  log('Output messages count: %d', processed.length);
+  log('Output messages count: %d', result.messages.length);
 
-  if (messages.length > 0 && processed.length === 0) {
+  if (messages.length > 0 && result.messages.length === 0) {
     log(
       'WARNING: Messages were reduced to 0! Input messages: %o',
       messages.map((m) => ({ id: m.id, role: m.role })),
     );
   }
 
-  return processed;
+  return {
+    contextBuckets: result.metadata.contextBuckets,
+    messages: result.messages,
+  };
 };

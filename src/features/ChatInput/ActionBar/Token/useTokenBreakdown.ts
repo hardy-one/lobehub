@@ -1,15 +1,26 @@
-import { ToolNameResolver } from '@lobechat/context-engine';
-import { pluginPrompts } from '@lobechat/prompts';
+import { LEAN_TOOL_USAGE_POLICY, ToolNameResolver } from '@lobechat/context-engine';
+import { pluginPrompts, promptUserMemory, skillsPrompts } from '@lobechat/prompts';
 import { resolveModelScopedChatConfig } from '@lobechat/types';
 import { debounce } from 'es-toolkit/compat';
 import { startTransition, useEffect, useMemo, useState } from 'react';
 
+import { getTokenTagMode } from '@/helpers/tokenTagMode';
 import { createAgentToolsEngine } from '@/helpers/toolEngineering';
+import { useFetchTopicMemories } from '@/hooks/useFetchMemoryForTopic';
 import { useModelContextWindowTokens } from '@/hooks/useModelContextWindowTokens';
 import { useModelSupportToolUse } from '@/hooks/useModelSupportToolUse';
 import { useTokenCount } from '@/hooks/useTokenCount';
-import { useAgentStore } from '@/store/agent';
-import { agentByIdSelectors, chatConfigByIdSelectors } from '@/store/agent/selectors';
+import {
+  combineUserMemoryData,
+  resolveTopicMemories,
+  resolveUserPersona,
+} from '@/services/chat/mecha/memoryManager';
+import { getAgentStoreState, useAgentStore } from '@/store/agent';
+import {
+  agentByIdSelectors,
+  agentSelectors,
+  chatConfigByIdSelectors,
+} from '@/store/agent/selectors';
 import { useAiInfraStore } from '@/store/aiInfra';
 import { aiModelSelectors, aiProviderSelectors } from '@/store/aiInfra/selectors';
 import { useChatStore } from '@/store/chat';
@@ -22,7 +33,11 @@ import { settingsSelectors } from '@/store/user/selectors';
 import { useAgentId } from '../../hooks/useAgentId';
 import { useEffectiveModel } from '../../hooks/useEffectiveModel';
 import { useStoreApi } from '../../store';
-import { getToolContextRefreshKey, getToolExcludeDefaultToolIds } from './utils';
+import {
+  getToolContextRefreshKey,
+  getToolExcludeDefaultToolIds,
+  isContextTokensCurrent,
+} from './utils';
 
 const toolNameResolver = new ToolNameResolver();
 
@@ -89,10 +104,31 @@ export const useTokenBreakdown = (): TokenBreakdown => {
 
   const agentId = useAgentId();
   const { model, provider } = useEffectiveModel(agentId);
+
+  // Pre-send estimate data: agent documents and topic memories are fetched
+  // lazily, fully async and fire-and-forget — nothing here ever blocks the
+  // conversation (send / input). Both requests dedupe with the same SWR /
+  // pending-request caches the send path uses, so they act as a warm-up:
+  // by the time the user hits send the data is usually already cached.
+  const activeTopicId = useChatStore((s) => s.activeTopicId);
+  useEffect(() => {
+    if (!agentId) return;
+    void getAgentStoreState()
+      .ensureAgentDocuments(agentId)
+      .catch(() => {
+        // Documents are optional on the client; a failed prefetch must not
+        // surface as an unhandled rejection nor disturb the estimate.
+      });
+  }, [agentId]);
+  useFetchTopicMemories(activeTopicId);
+  const hasAgentDocuments = useAgentStore(
+    (s) => (agentId ? agentSelectors.getAgentDocumentsById(agentId)(s)?.length : 0) > 0,
+  );
   const [
     activeAgentId,
     systemRole,
     enableAgentMode,
+    promptMode,
     searchMode,
     useModelBuiltinSearch,
     skillActivateMode,
@@ -107,6 +143,7 @@ export const useTokenBreakdown = (): TokenBreakdown => {
       s.activeAgentId,
       agentByIdSelectors.getAgentSystemRoleById(agentId)(s),
       chatConfig.enableAgentMode,
+      chatConfig.promptMode,
       chatConfig.searchMode,
       modelChatConfig.useModelBuiltinSearch,
       chatConfigByIdSelectors.getSkillActivateModeById(agentId)(s),
@@ -128,6 +165,7 @@ export const useTokenBreakdown = (): TokenBreakdown => {
   const toolContextRefreshKey = getToolContextRefreshKey({
     agentId: activeAgentId || agentId,
     enableAgentMode,
+    hasAgentDocuments,
     hasEnabledKnowledgeBases,
     isModelBuiltinSearchInternal,
     isModelHasBuiltinSearch,
@@ -145,19 +183,38 @@ export const useTokenBreakdown = (): TokenBreakdown => {
   const pluginIds = useAgentStore((s) => agentByIdSelectors.getAgentPluginsById(agentId)(s));
   const installedPlugins = useToolStore((s) => s.installedPlugins);
 
+  // Lean prompt (mirrors ToolSystemRoleProvider: promptMode==='lean' → compact
+  // policy + persona regardless of agent/chat mode).
+  const isLeanPrompt = promptMode === 'lean';
+
   const toolsString = useMemo(() => {
-    const toolsEngine = createAgentToolsEngine({ model, provider });
+    const toolsEngine = createAgentToolsEngine(
+      { model, provider },
+      pluginIds,
+      // Mirror the agent being rendered, not the active agent — in
+      // group/supervisor/page sessions the two differ and the breakdown
+      // must follow the agent whose config this TokenTag reads.
+      undefined,
+      agentId,
+      // Gateway-side toolset (agent documents) is included in the estimate
+      // when the agent has documents — the server sends it, so the
+      // pre-send breakdown should mirror it.
+      { includeAgentDocuments: true },
+    );
 
     const { tools, enabledManifests } = toolsEngine.generateToolsDetailed({
       excludeDefaultToolIds: getToolExcludeDefaultToolIds(skillActivateMode),
       model,
+      promptMode,
       provider,
       toolIds: pluginIds,
     });
     const schemaNumber = tools?.map((i) => JSON.stringify(i)).join('') || '';
 
-    const toolsSystemRole =
-      enabledManifests.length > 0
+    // Efficient mode: teaching blocks are replaced by the compact policy.
+    const toolsSystemRole = isLeanPrompt
+      ? LEAN_TOOL_USAGE_POLICY
+      : enabledManifests.length > 0
         ? pluginPrompts({
             tools: enabledManifests.map((manifest) => ({
               apis: manifest.api.map((api) => ({
@@ -171,20 +228,66 @@ export const useTokenBreakdown = (): TokenBreakdown => {
           })
         : '';
 
-    return toolsSystemRole + schemaNumber;
+    // Skills index (<available_skills>) — mirrors SkillContextProvider using
+    // the store's builtin + agent skills (sync, no content fetch).
+    const toolState = useToolStore.getState();
+    const skillItems = [...(toolState.builtinSkills || []), ...(toolState.agentSkills || [])]
+      .filter((s) => s.description)
+      .map((s) => ({
+        description: s.description ?? '',
+        identifier: s.identifier,
+        name: s.name,
+      }));
+    const skillsText = skillsPrompts(skillItems, isLeanPrompt);
+
+    return toolsSystemRole + schemaNumber + skillsText;
     // installedPlugins + toolContextRefreshKey track the implicit
     // createAgentToolsEngine inputs read via getState() (tool manifests plus
     // agent/user/aiInfra config), so the engine only re-runs when they change
     // instead of on every render.
-  }, [installedPlugins, model, pluginIds, provider, skillActivateMode, toolContextRefreshKey]);
+  }, [
+    installedPlugins,
+    model,
+    pluginIds,
+    promptMode,
+    provider,
+    skillActivateMode,
+    toolContextRefreshKey,
+  ]);
 
-  const toolsToken = useTokenCount(canUseTool ? toolsString : '');
+  // Estimated buckets — the fallback when the current topic has no recorded
+  // send yet (new topic, first message still being typed).
+  const estimatedTools = useTokenCount(canUseTool ? toolsString : '');
 
   const inputTokenCount = useTokenCount(input);
-  const chatsToken = useTokenCount(messages) + inputTokenCount;
+  const estimatedChats = useTokenCount(messages);
 
-  const systemRoleToken = useTokenCount(systemRole);
-  const historySummaryToken = useTokenCount(historySummary);
+  // SystemRole token — include the injected persona (user_memory) so the
+  // breakdown matches the real request.
+  const personaMemories = combineUserMemoryData(resolveTopicMemories(), resolveUserPersona());
+  const personaText = promptUserMemory({ memories: personaMemories }, isLeanPrompt);
+  const estimatedSystemRole = useTokenCount(systemRole + personaText);
+  const estimatedHistorySummary = useTokenCount(historySummary);
+
+  // Exact send-side counts (tokenx, computed on the assembled payload).
+  // When the current topic has never been sent — or the agent mode switched
+  // since the last send (the recorded counts no longer describe the next
+  // payload) — fall back to the estimates above; the gap is small there
+  // because history/scenario injectors are absent until the first message
+  // goes out.
+  const [contextTokens] = useChatStore((s) => [s.contextTokens]);
+  const currentMode = getTokenTagMode(enableAgentMode, promptMode);
+  const currentTokens = isContextTokensCurrent(contextTokens, activeTopicId, currentMode)
+    ? contextTokens
+    : undefined;
+  const systemRoleToken = currentTokens?.systemRole ?? estimatedSystemRole;
+  const toolsToken = currentTokens?.tools ?? estimatedTools;
+  const historySummaryToken = currentTokens?.historySummary ?? estimatedHistorySummary;
+  // chats is always estimated from the live window (same tokenx estimator the
+  // send-side count uses): the recorded chats bucket only covers the moment
+  // of the last send, while assistant replies since then keep growing the
+  // window — counting the window rows keeps the tag honest in between sends.
+  const chatsToken = estimatedChats + inputTokenCount;
 
   const totalToken = systemRoleToken + historySummaryToken + toolsToken + chatsToken;
 

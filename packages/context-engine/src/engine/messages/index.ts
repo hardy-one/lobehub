@@ -15,8 +15,6 @@ export type {
   PlanTodoConfig,
   TodoItem,
   TodoList,
-  ToolDiscoveryConfig,
-  ToolDiscoveryMeta,
   ToolsConfig,
   TopicReferenceItem,
   UIChatMessage,

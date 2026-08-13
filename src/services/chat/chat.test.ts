@@ -218,7 +218,7 @@ describe('ChatService', () => {
     it('should keep the stored agent mode when the selected model lacks function calling', async () => {
       const contextEngineeringSpy = vi
         .spyOn(mechaModule, 'contextEngineering')
-        .mockResolvedValue([]);
+        .mockResolvedValue({ messages: [] });
       vi.mocked(isCanUseFC).mockReturnValue(false);
       const messages = [{ content: 'Hello', role: 'user' }] as UIChatMessage[];
 
@@ -1633,7 +1633,7 @@ describe('ChatService', () => {
       it('should respect agent-level memory disabled even when user-level memory is enabled', async () => {
         const contextEngineeringSpy = vi
           .spyOn(mechaModule, 'contextEngineering')
-          .mockResolvedValue([]);
+          .mockResolvedValue({ messages: [] });
         // user-level memory is enabled
         vi.spyOn(settingsSelectors, 'memoryEnabled').mockReturnValue(true);
 
@@ -1655,7 +1655,7 @@ describe('ChatService', () => {
       it('should enable memory when agent-level is on even if user-level memory is disabled', async () => {
         const contextEngineeringSpy = vi
           .spyOn(mechaModule, 'contextEngineering')
-          .mockResolvedValue([]);
+          .mockResolvedValue({ messages: [] });
         // user-level memory is disabled
         vi.spyOn(settingsSelectors, 'memoryEnabled').mockReturnValue(false);
 
@@ -1677,7 +1677,7 @@ describe('ChatService', () => {
       it('should fall back to user-level setting when agent-level memory is not configured', async () => {
         const contextEngineeringSpy = vi
           .spyOn(mechaModule, 'contextEngineering')
-          .mockResolvedValue([]);
+          .mockResolvedValue({ messages: [] });
         // user-level memory is disabled
         vi.spyOn(settingsSelectors, 'memoryEnabled').mockReturnValue(false);
 
@@ -1698,12 +1698,41 @@ describe('ChatService', () => {
     });
 
     describe('agent documents readiness', () => {
-      it('should hand the agent builder run to context engineering without prefetching documents', async () => {
+      it('keeps agent documents tool-only without prefetching them', async () => {
         const contextEngineeringSpy = vi
           .spyOn(mechaModule, 'contextEngineering')
-          .mockResolvedValue([]);
+          .mockResolvedValue({ messages: [] });
         vi.spyOn(chatService, 'getChatCompletion').mockResolvedValue(new Response(''));
         const getContextDocuments = vi.spyOn(agentDocumentService, 'getContextDocuments');
+
+        await chatService.createAssistantMessage({
+          agentId: 'agent-1',
+          messages: [{ content: 'Hello', role: 'user' }] as UIChatMessage[],
+          resolvedAgentConfig: createMockResolvedConfig(),
+        });
+
+        expect(getContextDocuments).not.toHaveBeenCalled();
+        expect(contextEngineeringSpy.mock.calls[0][0]).not.toHaveProperty('agentDocuments');
+      });
+
+      it('should resolve agent builder documents from the edited agent', async () => {
+        const contextEngineeringSpy = vi
+          .spyOn(mechaModule, 'contextEngineering')
+          .mockResolvedValue({ messages: [] });
+        vi.spyOn(chatService, 'getChatCompletion').mockResolvedValue(new Response(''));
+        vi.spyOn(agentDocumentService, 'getContextDocuments').mockResolvedValue([
+          {
+            content: 'Edited agent setup',
+            filename: 'builder-target.md',
+            id: 'doc-1',
+            loadRules: [],
+            policy: null,
+            policyLoadFormat: null,
+            policyLoadPosition: null,
+            templateId: null,
+            title: 'Builder Target',
+          },
+        ] as any);
 
         useChatStore.setState({ activeAgentId: 'edited-agent' } as any);
 
@@ -1718,7 +1747,7 @@ describe('ChatService', () => {
         // Which agent's documents to read (the edited one while the builder is
         // active) is decided by the shared context rules inside
         // contextEngineering; the service no longer resolves it up front.
-        expect(getContextDocuments).not.toHaveBeenCalled();
+        expect(agentDocumentService.getContextDocuments).not.toHaveBeenCalled();
         expect(contextEngineeringSpy).toHaveBeenCalledWith(
           expect.objectContaining({
             agentId: 'builder-agent',

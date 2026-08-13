@@ -26,6 +26,13 @@ const log = debug('lobe-server:agent-runtime:gateway-notifier');
 const POST_TIMEOUT = 5000; // 5s per request
 const MAX_INFLIGHT = 20; // bounded concurrency
 
+interface GatewayDeliveryState {
+  /** Latest lifecycle boundary that chunks must not overtake. */
+  barrier: Promise<void>;
+  /** All requests already scheduled for this operation. */
+  pending: Set<Promise<void>>;
+}
+
 /**
  * Decorator that wraps an IStreamEventManager and additionally pushes events
  * to the Agent Gateway via HTTP. Runtime init is an awaited ordering barrier;
@@ -36,6 +43,17 @@ const MAX_INFLIGHT = 20; // bounded concurrency
  */
 export class GatewayStreamNotifier implements IStreamEventManager {
   private inflight = 0;
+
+  /**
+   * HTTP requests may reach the gateway in a different order from their
+   * publication order. Keep lifecycle boundaries ordered per operation so a
+   * client cannot receive `stream_start` before its `step_start` snapshot.
+   *
+   * Stream chunks wait for the most recent lifecycle boundary, then fan out in
+   * parallel. This preserves the init/step snapshot contract; subsequent chunk
+   * throughput does not serialize behind earlier chunks' Gateway round trips.
+   */
+  private readonly deliveryStates = new Map<string, GatewayDeliveryState>();
 
   /**
    * `operationId → mirrorOperationId`. When an operation declares a
@@ -53,7 +71,7 @@ export class GatewayStreamNotifier implements IStreamEventManager {
    *    empty. `pushEvent` then lazily resolves the target from PERSISTED op
    *    metadata via `resolveMirrorTarget` (Redis) on the op's first event and
    *    caches it — converging the worker onto the same mapping.
-   * Cleared at `publishAgentRuntimeEnd`.
+   * Cleared after the queued `publishAgentRuntimeEnd` delivery completes.
    */
   private mirrorTargets = new Map<string, string>();
   /** Ops whose mirror target has been resolved (target found OR confirmed none). */
@@ -116,11 +134,11 @@ export class GatewayStreamNotifier implements IStreamEventManager {
     const gatewayEvent = { ...event, operationId, timestamp: Date.now() };
     if (event.type === 'stream_end') {
       // `visible_output_end` may be published immediately after `stream_end`.
-      // Await the Gateway push for this boundary so the client applies
-      // stream_end.finalContent before closing visible loading/reasoning.
-      await this.pushEvent(operationId, gatewayEvent);
+      // Wait for all earlier chunks plus this boundary so the client applies
+      // finalContent before closing visible loading/reasoning.
+      await this.enqueueOrderedPush(operationId, gatewayEvent);
     } else {
-      void this.pushEvent(operationId, gatewayEvent);
+      void this.enqueueOrderedPush(operationId, gatewayEvent);
     }
     return result;
   }
@@ -131,7 +149,7 @@ export class GatewayStreamNotifier implements IStreamEventManager {
     chunkData: StreamChunkData,
   ): Promise<string> {
     const result = await this.inner.publishStreamChunk(operationId, stepIndex, chunkData);
-    void this.pushEvent(operationId, {
+    void this.enqueueChunkPush(operationId, {
       data: chunkData,
       operationId,
       stepIndex,
@@ -155,14 +173,8 @@ export class GatewayStreamNotifier implements IStreamEventManager {
 
     // Ordering barrier: a subscriber connects immediately after execAgent
     // returns and asks the Gateway for the operation's authoritative status.
-    // If init is still fire-and-forget, that resume can win the race and report
-    // a live heterogeneous/device run as terminal before its first producer
-    // event arrives. httpPost intentionally swallows Gateway failures, so
-    // awaiting it preserves best-effort semantics while preventing the normal
-    // success path from exposing an operation before the Gateway knows it. Init
-    // uses the non-lossy request lane: ordinary stream events may be dropped at
-    // MAX_INFLIGHT, but dropping this control-plane barrier would recreate the
-    // exact resume-before-init race under load.
+    // Keep init registration and the init event on the per-operation queue so
+    // later lifecycle events cannot overtake them.
     // Record share-visitor status up front (definitively known from
     // `initialState` here) so every later event for this op — including
     // `step_start`, which carries neither `streamOwnerUserId` nor `finalState`
@@ -176,30 +188,40 @@ export class GatewayStreamNotifier implements IStreamEventManager {
     }
     this.shareVisitorResolved.add(operationId);
 
-    try {
-      // The gateway DO requires the subscriber JWT's `sub` to equal the userId
-      // registered here. `streamOwnerUserId` (shared-agent visitor runs) takes
-      // precedence: the op executes as the creator, but only the visitor may
-      // subscribe to its stream.
-      await this.httpPostAwait('/api/operations/init', {
-        operationId,
-        userId: initialState?.streamOwnerUserId || initialState?.userId || 'unknown',
-      });
-    } catch (error) {
-      log('Gateway /api/operations/init failed: %O', error);
-    }
-
-    void this.pushEvent(operationId, {
-      // Share-visitor runs must not receive the creator's raw operation
-      // metadata (agentConfig / system prompt, modelRuntimeConfig, userId,
-      // workspaceId) over their WS channel — see `buildPublicInitEventData`.
-      data: isShareInit ? buildPublicInitEventData(initialState) : initialState,
-      operationId,
-      stepIndex: 0,
-      timestamp: Date.now(),
-      type: 'agent_runtime_init',
+    let resolveInitReady!: () => void;
+    const initReady = new Promise<void>((resolve) => {
+      resolveInitReady = resolve;
     });
 
+    // The gateway DO requires the subscriber JWT's `sub` to equal the userId
+    // registered here. `streamOwnerUserId` (shared-agent visitor runs) takes
+    // precedence: the op executes as the creator, but only the visitor may
+    // subscribe to its stream.
+    void this.enqueueOrderedDelivery(operationId, async () => {
+      try {
+        await this.httpPostAwait('/api/operations/init', {
+          operationId,
+          userId: initialState?.streamOwnerUserId || initialState?.userId || 'unknown',
+        });
+      } catch (error) {
+        log('Gateway /api/operations/init failed: %O', error);
+      } finally {
+        resolveInitReady();
+      }
+
+      await this.pushEvent(operationId, {
+        // Share-visitor runs must not receive the creator's raw operation
+        // metadata (agentConfig / system prompt, modelRuntimeConfig, userId,
+        // workspaceId) over their WS channel — see `buildPublicInitEventData`.
+        data: isShareInit ? buildPublicInitEventData(initialState) : initialState,
+        operationId,
+        stepIndex: 0,
+        timestamp: Date.now(),
+        type: 'agent_runtime_init',
+      });
+    });
+
+    await initReady;
     return result;
   }
 
@@ -250,7 +272,7 @@ export class GatewayStreamNotifier implements IStreamEventManager {
       ...(uiMessages !== undefined && { uiMessages }),
     };
 
-    void this.pushEvent(operationId, {
+    const terminalDelivery = this.enqueueOrderedPush(operationId, {
       // Share-visitor runs must not receive the creator's raw AgentState
       // (metadata.userMemory / metadata.agentConfig, systemRole,
       // userInterventionConfig, ...) over their WS channel — see
@@ -262,14 +284,16 @@ export class GatewayStreamNotifier implements IStreamEventManager {
       type: 'agent_runtime_end',
     });
 
-    // Terminal event has been forwarded (including any mirror); drop the mapping
-    // so it can't leak across a reused operationId.
-    this.mirrorTargets.delete(operationId);
-    this.mirrorResolved.delete(operationId);
-    this.mirrorResolving.delete(operationId);
-    this.shareVisitorOps.delete(operationId);
-    this.shareVisitorResolved.delete(operationId);
-    this.shareVisitorResolving.delete(operationId);
+    // Drop the mappings only after the queued terminal event has reached every
+    // delivery channel, otherwise its mirrored copy would be skipped.
+    void terminalDelivery.finally(() => {
+      this.mirrorTargets.delete(operationId);
+      this.mirrorResolved.delete(operationId);
+      this.mirrorResolving.delete(operationId);
+      this.shareVisitorOps.delete(operationId);
+      this.shareVisitorResolved.delete(operationId);
+      this.shareVisitorResolving.delete(operationId);
+    });
 
     return result;
   }
@@ -322,6 +346,68 @@ export class GatewayStreamNotifier implements IStreamEventManager {
 
   // ─── Gateway HTTP helpers ───
 
+  private enqueueOrderedPush(operationId: string, event: Record<string, unknown>): Promise<void> {
+    return this.enqueueOrderedDelivery(operationId, () => this.pushEvent(operationId, event));
+  }
+
+  private enqueueChunkPush(operationId: string, event: Record<string, unknown>): Promise<void> {
+    const state = this.getDeliveryState(operationId);
+    const delivery = state.barrier
+      .then(() => this.pushEvent(operationId, event))
+      .catch((error) => {
+        log('Gateway chunk push failed for operation %s: %O', operationId, error);
+      });
+
+    this.trackDelivery(operationId, state, delivery);
+    return delivery;
+  }
+
+  private enqueueOrderedDelivery(
+    operationId: string,
+    delivery: () => Promise<void>,
+  ): Promise<void> {
+    const state = this.getDeliveryState(operationId);
+    const previousDeliveries = [...state.pending];
+    const runDelivery = async () => {
+      try {
+        await delivery();
+      } catch (error) {
+        log('Gateway ordered push failed for operation %s: %O', operationId, error);
+      }
+    };
+    const queued =
+      previousDeliveries.length === 0
+        ? runDelivery()
+        : Promise.allSettled(previousDeliveries).then(runDelivery);
+
+    state.barrier = queued;
+    this.trackDelivery(operationId, state, queued);
+    return queued;
+  }
+
+  private getDeliveryState(operationId: string): GatewayDeliveryState {
+    let state = this.deliveryStates.get(operationId);
+    if (!state) {
+      state = { barrier: Promise.resolve(), pending: new Set() };
+      this.deliveryStates.set(operationId, state);
+    }
+    return state;
+  }
+
+  private trackDelivery(
+    operationId: string,
+    state: GatewayDeliveryState,
+    delivery: Promise<void>,
+  ): void {
+    state.pending.add(delivery);
+    void delivery.finally(() => {
+      state.pending.delete(delivery);
+      if (state.pending.size === 0 && this.deliveryStates.get(operationId) === state) {
+        this.deliveryStates.delete(operationId);
+      }
+    });
+  }
+
   private async pushEvent(operationId: string, event: Record<string, unknown>): Promise<void> {
     // Resolve share-visitor status BEFORE building the sanitized payload — the
     // synchronous fast path (the common case: `publishAgentRuntimeInit` /
@@ -346,8 +432,16 @@ export class GatewayStreamNotifier implements IStreamEventManager {
       event.data === undefined
         ? event
         : { ...event, data: sanitizeGatewayEventData(event.data, redaction, event.type) };
+    // Reliability-critical lifecycle events bypass the inflight cap and
+    // surface errors via httpPostAwait — a client waits on these to render a
+    // complete run, so they must not be dropped under load. High-frequency
+    // chunk pushes stay on the best-effort httpPost path (may be dropped).
+    const reliableTypes = ['agent_runtime_init', 'agent_runtime_end', 'stream_end', 'error'];
+    const gatewayPush = reliableTypes.includes(event.type as string)
+      ? this.httpPostAwait.bind(this)
+      : this.httpPost.bind(this);
     const pushes: Promise<void>[] = [
-      this.httpPost('/api/operations/push-event', {
+      gatewayPush('/api/operations/push-event', {
         event: sanitizedEvent,
         operationId,
       }),

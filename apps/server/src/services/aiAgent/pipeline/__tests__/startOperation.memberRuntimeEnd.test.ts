@@ -55,6 +55,18 @@ const setup = (sourceAccepts: boolean) => {
 };
 
 describe('startOperation › member_runtime_end declaration', () => {
+  it('carries the resolved HTML rendering preference into the operation', async () => {
+    const { agentRuntimeService, ctx, deps, input } = setup(false);
+
+    await startOperation(deps, ctx, input({ enableHtmlRender: true }));
+
+    expect(agentRuntimeService.createOperation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appContext: expect.objectContaining({ enableHtmlRender: true }),
+      }),
+    );
+  });
+
   it('records the calling client declaration on the new operation', async () => {
     const { agentRuntimeService, ctx, deps, input } = setup(false);
 

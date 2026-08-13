@@ -4418,6 +4418,7 @@ export class AgentRuntimeService {
       allowEarlyFinalAnswerVisibleOutputEnd:
         agent instanceof GeneralChatAgent && !stateHasEntityFileEdits(agentState),
       botContext: principal?.actor?.bot,
+      enableHtmlRender: state?.metadata?.enableHtmlRender,
       execSubAgent: this.delegate.execSubAgent,
       execVirtualSubAgent: this.delegate.execVirtualSubAgent,
       execGroupMember: this.delegate.execGroupMember,

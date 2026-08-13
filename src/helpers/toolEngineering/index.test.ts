@@ -177,7 +177,16 @@ vi.mock('@/store/agent/selectors', () => ({
   agentSelectors: {
     currentAgentDisabledPlugins: () => mockCurrentAgentDisabledPlugins,
     currentAgentPlugins: () => mockCurrentAgentPlugins,
+    getAgentConfigById: () => () => ({
+      plugins: [
+        ...mockCurrentAgentPlugins,
+        ...mockCurrentAgentDisabledPlugins.map((id) => ({ identifier: id, mode: 'disabled' })),
+      ],
+    }),
     hasEnabledKnowledgeBases: () => false,
+  },
+  agentByIdSelectors: {
+    getAgentKnowledgeBasesById: () => () => [],
   },
   agentChatConfigSelectors: {
     currentChatConfig: () => mockCurrentChatConfig,
@@ -186,8 +195,10 @@ vi.mock('@/store/agent/selectors', () => ({
   chatConfigByIdSelectors: {
     // A local target only resolves on the desktop; elsewhere the run has no
     // execution environment.
+    getChatConfigById: () => () => mockCurrentChatConfig,
     getExecutionTargetById: () => () => (desktopEnv.enabled ? 'local' : 'none'),
-  },
+    getRuntimeModeById: () => () => '',
+    isLocalSystemEnabledById: () => () => false,
 }));
 
 vi.mock('@/store/aiInfra', () => ({

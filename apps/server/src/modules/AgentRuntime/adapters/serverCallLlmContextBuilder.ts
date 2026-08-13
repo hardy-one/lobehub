@@ -170,6 +170,9 @@ export const buildServerCallLlmContext = async ({
       skillsConfig: { enabledSkills: resolvedSkills.enabledSkills },
     }),
     enableAgentMode,
+    // Lean prompt tier from the mode-tiers change; kept alongside the shared-rules
+    // `enableAgentMode` above so both reach the messages engine.
+    promptMode: agentConfig.chatConfig?.promptMode,
     ...(facts.step.topicReferences && { topicReferences: facts.step.topicReferences }),
     ...(facts.step.onboardingContext && { onboardingContext: facts.step.onboardingContext }),
   };

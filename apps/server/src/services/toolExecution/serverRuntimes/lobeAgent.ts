@@ -266,7 +266,7 @@ class LobeAgentExecutionRuntime {
       );
     }
 
-    const { description, instruction, timeout } = params;
+    const { description, instruction, timeout, model, provider } = params;
     if (!instruction || typeof instruction !== 'string') {
       return buildError('instruction is required.', 'INVALID_ARGUMENTS');
     }
@@ -283,6 +283,8 @@ class LobeAgentExecutionRuntime {
       instruction,
       subAgentId,
       timeout,
+      model,
+      provider,
     });
 
     // The child op failed to start — no completion bridge will ever fire to

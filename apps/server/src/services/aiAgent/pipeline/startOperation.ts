@@ -44,6 +44,7 @@ export interface StartOperationInput {
   discordContext?: any;
   discovery: ToolDiscoveryResult;
   enableExpertise: boolean;
+  enableHtmlRender?: boolean;
   evalContext?: InternalExecAgentParams['evalContext'];
   evalRuntime?: InternalExecAgentParams['evalRuntime'];
   hooks?: InternalExecAgentParams['hooks'];
@@ -115,6 +116,7 @@ export const startOperation = async (
     discordContext,
     discovery,
     enableExpertise,
+    enableHtmlRender,
     evalContext,
     evalRuntime,
     hooks,
@@ -249,6 +251,7 @@ export const startOperation = async (
         // attribution.
         clientIp,
         userAgent,
+        enableHtmlRender,
         // When scope === 'agent_builder', agentId stays as the builder builtin so
         // message ownership and queryUiMessages remain correct. editingAgentId
         // carries the actual editing target separately; only the AgentBuilder server

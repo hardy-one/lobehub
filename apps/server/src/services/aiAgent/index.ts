@@ -1,6 +1,7 @@
 import type { AgentState } from '@lobechat/agent-runtime';
 import { BUILTIN_AGENT_SLUGS } from '@lobechat/builtin-agents';
 import type { SandboxStorageClaim } from '@lobechat/builtin-tool-cloud-sandbox';
+import { resolveHtmlRenderEnabled } from '@lobechat/const';
 import type { LobeChatDatabase } from '@lobechat/database';
 import type {
   ExecAgentResult,
@@ -15,6 +16,7 @@ import type {
 } from '@lobechat/types';
 import { getWorkingDirEffectivePath, RequestTrigger } from '@lobechat/types';
 import { nanoid } from '@lobechat/utils';
+import { isMobileClient } from '@lobechat/utils/server';
 import { TRPCError } from '@trpc/server';
 import debug from 'debug';
 
@@ -1346,6 +1348,7 @@ export class AiAgentService {
     const agentMemoryEnabled = agentConfig.chatConfig?.memory?.enabled;
     let globalMemoryEnabled = agentMemoryEnabled ?? false;
     let enableExpertise = false;
+    let enableHtmlRender = false;
     let userTimezone: string | undefined;
     await traceSendStage('run_settings', async () => {
       try {
@@ -1375,6 +1378,12 @@ export class AiAgentService {
       try {
         const preference = await new UserModel(this.db, this.userId).getUserPreference();
         enableExpertise = preference?.lab?.enableSelfLearning === true;
+        // Mobile apps render fragments with their own native renderer — never
+        // advertise the marker protocol to them (they have no web renderer).
+        enableHtmlRender = resolveHtmlRenderEnabled(
+          preference?.lab?.enableHtmlRender,
+          isMobileClient(userAgent),
+        );
       } catch (error) {
         console.error('Failed to resolve expertise injection Lab preference:', error);
       }
@@ -1387,9 +1396,10 @@ export class AiAgentService {
       }
     });
     log(
-      'execAgent: globalMemoryEnabled=%s, timezone=%s',
+      'execAgent: globalMemoryEnabled=%s, timezone=%s, enableHtmlRender=%s',
       globalMemoryEnabled,
       userTimezone ?? 'default',
+      enableHtmlRender,
     );
 
     // History loader shared by tool discovery (media-availability probe) and
@@ -1567,6 +1577,7 @@ export class AiAgentService {
           discordContext,
           discovery,
           enableExpertise,
+          enableHtmlRender,
           evalContext,
           evalRuntime,
           hooks,

@@ -1,5 +1,6 @@
 import FileLink from './FileLink';
 import GoalTurn from './GoalTurn';
+import HtmlRender from './HtmlRender';
 import ImageSearchRef from './ImageSearchRef';
 import Link from './Link';
 import LobeAgents from './LobeAgents';
@@ -17,6 +18,7 @@ import Tool from './Tool';
 import { type MarkdownElement } from './type';
 import UserFeedback from './UserFeedback';
 
+export { HTML_RENDER_TAG } from './HtmlRender';
 export type { MarkdownElement } from './type';
 
 export const markdownElements: MarkdownElement[] = [
@@ -37,4 +39,5 @@ export const markdownElements: MarkdownElement[] = [
   LocalFileLink,
   FileLink,
   Link,
+  HtmlRender,
 ];

@@ -85,4 +85,20 @@ describe('LobeAgentManifest', () => {
     expect(LobeAgentManifest.systemRole).toContain('`vent` is never a control action');
     expect(LobeAgentManifest.systemRole).toContain('do not call it again');
   });
+
+  it('recommends configured model defaults for most sub-agent calls', () => {
+    const callSubAgent = LobeAgentManifest.api.find(
+      (api) => api.name === LobeAgentApiName.callSubAgent,
+    );
+
+    expect(callSubAgent!.description).toContain('`model` and `provider` are optional');
+    expect(callSubAgent!.description).toContain(
+      'Most tasks, especially simple ones, should use these defaults',
+    );
+    expect(callSubAgent!.parameters.properties.model.description).toContain('Usually omit this');
+    expect(callSubAgent!.parameters.properties.provider.description).toContain('Usually omit this');
+    expect(LobeAgentManifest.systemRole).toContain(
+      'For most tasks, especially simple ones, omit both and use the configured sub-agent/parent defaults',
+    );
+  });
 });

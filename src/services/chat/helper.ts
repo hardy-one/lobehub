@@ -72,3 +72,16 @@ export const resolveRuntimeProvider = (provider: string) => {
 
   return providerConfig?.settings.sdkType || 'openai';
 };
+
+/**
+ * Whether the UA identifies a native LobeHub mobile app client (iOS/Android
+ * app shells, legacy iOS UAs, Android okhttp). Mirrors the server-side
+ * `isMobileClient` (@lobechat/utils/server) so the direct-chat path applies
+ * the same rule: mobile apps render fragments natively, so the HTML-render
+ * marker protocol must not be advertised to them.
+ */
+const MOBILE_CLIENT_UA_PATTERN =
+  /\bLobeHub-Mobile\/(?:android|ios)-v\S+|\bLobeHub-iOS\/|\bLobeHub\/\S+\s+CFNetwork\/|\bokhttp\//i;
+
+export const isMobileClientUA = (userAgent: string | undefined): boolean =>
+  typeof userAgent === 'string' && MOBILE_CLIENT_UA_PATTERN.test(userAgent);

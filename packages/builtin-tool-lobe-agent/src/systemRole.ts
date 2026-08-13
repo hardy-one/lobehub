@@ -36,6 +36,7 @@ You can dispatch **sub-agents** to handle long-running, multi-step work in isola
 
 **Sub-Agent Tool:**
 - \`callSubAgent\`: Dispatch a single sub-agent. **Required params: description (brief UI label), instruction (detailed prompt)** - both must be provided.
+- Model choice: The model and provider fields are optional. For most tasks, especially simple ones, omit both and use the configured sub-agent/parent defaults. Specify them only when the task clearly benefits from a particular model/provider.
 - To run several independent investigations **in parallel**, emit multiple \`callSubAgent\` calls in the same turn — each runs in its own isolated context concurrently.
 
 **Continuing an earlier sub-agent:**

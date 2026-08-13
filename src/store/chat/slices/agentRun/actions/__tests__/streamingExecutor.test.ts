@@ -2,14 +2,21 @@ import type { AgentState } from '@lobechat/agent-runtime';
 import * as agentRuntime from '@lobechat/agent-runtime';
 import { resolveLocalSystemManifest } from '@lobechat/builtin-tool-local-system';
 import type * as LobeChatConst from '@lobechat/const';
-import { type LobeAgentChatConfig, type LobeChatPluginApi, type UIChatMessage } from '@lobechat/types';
+import {
+  type LobeAgentChatConfig,
+  type LobeChatPluginApi,
+  type UIChatMessage,
+} from '@lobechat/types';
 import { act, renderHook } from '@testing-library/react';
+import i18n from 'i18next';
 import { type EnabledAiModel, ModelProvider } from 'model-bank';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as toolEngineering from '@/helpers/toolEngineering';
+import { aiAgentService } from '@/services/aiAgent';
 import { chatService } from '@/services/chat';
 import * as agentConfigResolver from '@/services/chat/mecha/agentConfigResolver';
+import * as subAgentModelGuard from '@/services/chat/mecha/subAgentModelGuard';
 import { messageService } from '@/services/message';
 import { workService } from '@/services/work';
 import { useAgentStore } from '@/store/agent';
@@ -223,6 +230,35 @@ afterEach(() => {
 });
 
 describe('StreamingExecutor actions', () => {
+  it('returns a localized denial without creating a thread for a disabled sub-agent model', async () => {
+    vi.spyOn(subAgentModelGuard, 'isClientSubAgentModelEnabled').mockResolvedValue(false);
+    const translate = vi.spyOn(i18n, 't').mockReturnValue('This sub-agent model is disabled');
+    const createThread = vi.spyOn(aiAgentService, 'createClientTaskThread');
+
+    const result = await useChatStore.getState().runClientSubAgent({
+      agentId: TEST_IDS.SESSION_ID,
+      description: 'Disabled model',
+      instruction: 'Hello',
+      model: 'disabled-model',
+      provider: 'openai',
+      toolMessageId: 'tool-1',
+      topicId: TEST_IDS.TOPIC_ID,
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      threadId: '',
+      error: 'This sub-agent model is disabled',
+      result: 'This sub-agent model is disabled',
+    });
+    expect(translate).toHaveBeenCalledWith('subAgentModelDenied', {
+      model: 'disabled-model',
+      provider: 'openai',
+      ns: 'error',
+    });
+    expect(createThread).not.toHaveBeenCalled();
+  });
+
   it('keeps the original source message when initializing and resuming a run', () => {
     const params = {
       agentId: TEST_IDS.SESSION_ID,

@@ -21,7 +21,7 @@ import {
   getSubAgentModelDeniedPair,
   isDesktop,
   resolveSubAgentChatConfig,
-  resolveSubAgentModel,
+  resolveSubAgentModelWithCallOverride,
 } from '@lobechat/const';
 import { type ToolsEngine } from '@lobechat/context-engine';
 import { buildTaskDetailPrompt, buildTaskListPrompt } from '@lobechat/prompts';
@@ -44,6 +44,7 @@ import { isCanUseAudio, isCanUseVideo, isCanUseVision } from '@/services/chat/he
 import { type ResolvedAgentConfig } from '@/services/chat/mecha';
 import { composeEnabledTools, resolveAgentConfig } from '@/services/chat/mecha';
 import { dashboardService } from '@/services/dashboard';
+import { isClientSubAgentModelEnabled } from '@/services/chat/mecha/subAgentModelGuard';
 import { localFileService } from '@/services/electron/localFileService';
 import { messageService } from '@/services/message';
 import { hydrateProjectedConversation } from '@/services/message/hydrateProjectedTools';
@@ -1044,6 +1045,8 @@ export class StreamingExecutorActionImpl {
     description: string;
     inheritMessages?: boolean;
     instruction: string;
+    model?: string;
+    provider?: string;
     parentOperationId?: string;
     toolMessageId: string;
     topicId: string;
@@ -1056,11 +1059,57 @@ export class StreamingExecutorActionImpl {
       inheritMessages,
       toolMessageId,
       parentOperationId,
+      model,
+      provider,
     } = params;
 
     const logId = `runClientSubAgent:${toolMessageId}`;
 
     try {
+      // Resolve the sub-agent model at the spawn site (mirrors the server's
+      // callSubAgent runner): an explicit `agencyConfig.subagent` override
+      // wins, otherwise the sub-agent follows the parent's *effective* model
+      // — topic-pinned model over the agent default, the same precedence
+      // internal_createAgentState applies to the parent run itself.
+      const parentAgentConfig = agentSelectors.getAgentConfigById(agentId)(getAgentStoreState());
+      const parentEffectiveModel =
+        topicSelectors.getTopicModelById(topicId)(this.#get()) ?? parentAgentConfig;
+      const subAgentModel = resolveSubAgentModelWithCallOverride(
+        { model, provider },
+        parentAgentConfig?.agencyConfig?.subagent,
+        parentEffectiveModel,
+      );
+
+      // Only an enabled chat model of an enabled provider may run as a
+      // sub-agent (mirrors the server-side spawn-site check). Fail-closed:
+      // unresolvable pairs are denied before any thread/operation work.
+      const isSubAgentModelEnabled = await isClientSubAgentModelEnabled(
+        subAgentModel.provider,
+        subAgentModel.model,
+      );
+      if (!isSubAgentModelEnabled) {
+        const deniedPair = getSubAgentModelDeniedPair(subAgentModel.provider, subAgentModel.model);
+        const deniedMessage = i18n.t('subAgentModelDenied', {
+          model: deniedPair.model,
+          ns: 'error',
+          provider: deniedPair.provider,
+        });
+        return {
+          error: deniedMessage,
+          result: deniedMessage,
+          success: false,
+          threadId: '',
+        };
+      }
+
+      // Warm the sub-agent model's user-level reasoning config before the run:
+      // the ChatInput loader only fetches the parent's effective model, while
+      // resolveModelExtendParams reads this cache synchronously mid-run.
+      await getAiInfraStoreState().ensureModelReasoningConfig(
+        subAgentModel.model,
+        subAgentModel.provider,
+      );
+
       // 1. Create the isolation Thread (persists thread + initial user message)
       const threadResult = await aiAgentService.createClientTaskThread({
         agentId,
@@ -1122,26 +1171,8 @@ export class StreamingExecutorActionImpl {
         this.#get().replaceMessages(subMessages, { context: subContext });
       }
 
-      // 6. Run the sub-agent with the current client runtime.
-      //    The model is resolved here at the spawn site (mirrors the server's
-      //    callSubAgent runner): an explicit `agencyConfig.subagent` override
-      //    wins, otherwise the sub-agent follows the parent's *effective* model
-      //    — topic-pinned model over the agent default, the same precedence
-      //    internal_createAgentState applies to the parent run itself.
-      const parentAgentConfig = agentSelectors.getAgentConfigById(agentId)(getAgentStoreState());
-      const parentEffectiveModel =
-        topicSelectors.getTopicModelById(topicId)(this.#get()) ?? parentAgentConfig;
-      const subAgentModel = resolveSubAgentModel(
-        parentAgentConfig?.agencyConfig?.subagent,
-        parentEffectiveModel,
-      );
-      // Warm the sub-agent model's user-level reasoning config before the run:
-      // the ChatInput loader only fetches the parent's effective model, while
-      // resolveModelExtendParams reads this cache synchronously mid-run.
-      await getAiInfraStoreState().ensureModelReasoningConfig(
-        subAgentModel.model,
-        subAgentModel.provider,
-      );
+      // 6. Run the sub-agent with the current client runtime. The model was
+      //    resolved (and validated) at the spawn site above.
       const runtimeResult = await this.#get().executeClientAgent({
         chatConfigOverride: getSubAgentChatConfigOverride(
           parentAgentConfig?.agencyConfig?.subagent,
@@ -1163,7 +1194,7 @@ export class StreamingExecutorActionImpl {
       const lastAssistant = subTaskMessages.findLast((m) => m.role === 'assistant');
       const resultContent = lastAssistant?.content || 'Task completed';
       const totalToolCalls = subTaskMessages.filter((m) => m.role === 'tool').length;
-      const { usage, cost, model } = runtimeResult || {};
+      const { usage, cost, model: runModel } = runtimeResult || {};
       const totalCost = cost?.total;
       const totalInputTokens = usage?.llm?.tokens?.input;
       const totalOutputTokens = usage?.llm?.tokens?.output;
@@ -1191,7 +1222,7 @@ export class StreamingExecutorActionImpl {
       // parent never loads). Returning tokens alone makes a client sub-agent read as
       // free.
       return {
-        model,
+        model: runModel,
         result: resultContent,
         success: true,
         threadId,

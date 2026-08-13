@@ -43,8 +43,11 @@ export { SystemDateProvider } from './SystemDateProvider';
 export { SystemRoleInjector } from './SystemRoleInjector';
 export { TaskManagerContextInjector } from './TaskManagerContextInjector';
 export { TodoInjector } from './TodoInjector';
-export { ToolDiscoveryProvider } from './ToolDiscoveryProvider';
-export { selectToolPromptManifests, ToolSystemRoleProvider } from './ToolSystemRole';
+export {
+  LEAN_TOOL_USAGE_POLICY,
+  selectToolPromptManifests,
+  ToolSystemRoleProvider,
+} from './ToolSystemRole';
 export { TopicReferenceContextInjector } from './TopicReferenceContextInjector';
 export { UserMemoryInjector } from './UserMemoryInjector';
 
@@ -111,7 +114,6 @@ export type { SystemDateProviderConfig } from './SystemDateProvider';
 export type { SystemRoleInjectorConfig } from './SystemRoleInjector';
 export type { TaskManagerContextInjectorConfig } from './TaskManagerContextInjector';
 export type { TodoInjectorConfig, TodoItem, TodoList } from './TodoInjector';
-export type { ToolDiscoveryMeta, ToolDiscoveryProviderConfig } from './ToolDiscoveryProvider';
 export type { ToolSystemRoleConfig } from './ToolSystemRole';
 export type {
   TopicReferenceContextInjectorConfig,

@@ -28,7 +28,11 @@ import {
   shouldExposeSelfFeedbackIntentTool,
 } from '@lobechat/builtin-tool-self-iteration';
 import { TaskIdentifier } from '@lobechat/builtin-tool-task';
-import { builtinTools, manualModeExcludeToolIds } from '@lobechat/builtin-tools';
+import {
+  builtinTools,
+  efficientDeferredPluginIds,
+  manualModeExcludeToolIds,
+} from '@lobechat/builtin-tools';
 import {
   isHeterogeneousAgentModelId,
   LOADING_FLAT,
@@ -3594,6 +3598,7 @@ export class AiAgentService {
       toolsResult = toolsEngine.generateToolsDetailed({
         excludeDefaultToolIds: isManualMode ? manualModeExcludeToolIds : undefined,
         model,
+        promptMode: agentConfig.chatConfig?.promptMode,
         provider,
         toolIds: pluginIds,
       });
@@ -4112,6 +4117,7 @@ export class AiAgentService {
         ? toolsEngine.generateToolsDetailed({
             context: { isExplicitActivation: true },
             model,
+            promptMode: agentConfig.chatConfig?.promptMode,
             provider,
             skipDefaultTools: true,
             toolIds: historicalActivatedToolIds,

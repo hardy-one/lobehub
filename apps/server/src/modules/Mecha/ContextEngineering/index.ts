@@ -124,6 +124,7 @@ export const serverMessagesEngine = async ({
   systemRole,
   inputTemplate,
   enableAgentMode,
+  promptMode,
   enableHistoryCount,
   forceFinish,
   historyCount,
@@ -133,7 +134,6 @@ export const serverMessagesEngine = async ({
   knowledge,
   agentDocuments,
   skillsConfig,
-  toolDiscoveryConfig,
   toolsConfig,
   capabilities,
   userMemory,
@@ -163,6 +163,7 @@ export const serverMessagesEngine = async ({
 
     // Agent configuration
     enableAgentMode,
+    promptMode,
     enableHistoryCount,
 
     // Server-side file access URLs resolve to stable file-proxy URLs in production.
@@ -204,7 +205,6 @@ export const serverMessagesEngine = async ({
     timezone: userTimezone,
 
     // Tools configuration
-    toolDiscoveryConfig,
     toolsConfig: {
       disabledToolIdentifiers:
         toolsConfig?.disabledToolIdentifiers ??

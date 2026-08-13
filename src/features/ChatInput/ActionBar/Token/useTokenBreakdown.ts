@@ -1,5 +1,5 @@
-import { ToolNameResolver } from '@lobechat/context-engine';
-import { pluginPrompts } from '@lobechat/prompts';
+import { LEAN_TOOL_USAGE_POLICY, ToolNameResolver } from '@lobechat/context-engine';
+import { pluginPrompts, promptUserMemory, skillsPrompts } from '@lobechat/prompts';
 import { resolveModelScopedChatConfig } from '@lobechat/types';
 import { debounce } from 'es-toolkit/compat';
 import { startTransition, useEffect, useMemo, useState } from 'react';
@@ -8,6 +8,11 @@ import { createAgentToolsEngine } from '@/helpers/toolEngineering';
 import { useModelContextWindowTokens } from '@/hooks/useModelContextWindowTokens';
 import { useModelSupportToolUse } from '@/hooks/useModelSupportToolUse';
 import { useTokenCount } from '@/hooks/useTokenCount';
+import {
+  combineUserMemoryData,
+  resolveTopicMemories,
+  resolveUserPersona,
+} from '@/services/chat/mecha/memoryManager';
 import { useAgentStore } from '@/store/agent';
 import { agentByIdSelectors, chatConfigByIdSelectors } from '@/store/agent/selectors';
 import { useAiInfraStore } from '@/store/aiInfra';
@@ -93,6 +98,7 @@ export const useTokenBreakdown = (): TokenBreakdown => {
     activeAgentId,
     systemRole,
     enableAgentMode,
+    promptMode,
     searchMode,
     useModelBuiltinSearch,
     skillActivateMode,
@@ -107,6 +113,7 @@ export const useTokenBreakdown = (): TokenBreakdown => {
       s.activeAgentId,
       agentByIdSelectors.getAgentSystemRoleById(agentId)(s),
       chatConfig.enableAgentMode,
+      chatConfig.promptMode,
       chatConfig.searchMode,
       modelChatConfig.useModelBuiltinSearch,
       chatConfigByIdSelectors.getSkillActivateModeById(agentId)(s),
@@ -145,19 +152,34 @@ export const useTokenBreakdown = (): TokenBreakdown => {
   const pluginIds = useAgentStore((s) => agentByIdSelectors.getAgentPluginsById(agentId)(s));
   const installedPlugins = useToolStore((s) => s.installedPlugins);
 
+  // Lean prompt (mirrors ToolSystemRoleProvider: promptMode==='lean' → compact
+  // policy + persona regardless of agent/chat mode).
+  const isLeanPrompt = promptMode === 'lean';
+
   const toolsString = useMemo(() => {
-    const toolsEngine = createAgentToolsEngine({ model, provider });
+    const toolsEngine = createAgentToolsEngine(
+      { model, provider },
+      pluginIds,
+      // Mirror the agent being rendered, not the active agent — in
+      // group/supervisor/page sessions the two differ and the breakdown
+      // must follow the agent whose config this TokenTag reads.
+      undefined,
+      agentId,
+    );
 
     const { tools, enabledManifests } = toolsEngine.generateToolsDetailed({
       excludeDefaultToolIds: getToolExcludeDefaultToolIds(skillActivateMode),
       model,
+      promptMode,
       provider,
       toolIds: pluginIds,
     });
     const schemaNumber = tools?.map((i) => JSON.stringify(i)).join('') || '';
 
-    const toolsSystemRole =
-      enabledManifests.length > 0
+    // Efficient mode: teaching blocks are replaced by the compact policy.
+    const toolsSystemRole = isLeanPrompt
+      ? LEAN_TOOL_USAGE_POLICY
+      : enabledManifests.length > 0
         ? pluginPrompts({
             tools: enabledManifests.map((manifest) => ({
               apis: manifest.api.map((api) => ({
@@ -171,19 +193,35 @@ export const useTokenBreakdown = (): TokenBreakdown => {
           })
         : '';
 
-    return toolsSystemRole + schemaNumber;
+    // Skills index (<available_skills>) — mirrors SkillContextProvider using
+    // the store's builtin + agent skills (sync, no content fetch).
+    const toolState = useToolStore.getState();
+    const skillItems = [...(toolState.builtinSkills || []), ...(toolState.agentSkills || [])]
+      .filter((s) => s.description)
+      .map((s) => ({
+        description: s.description ?? '',
+        identifier: s.identifier,
+        name: s.name,
+      }));
+    const skillsText = skillsPrompts(skillItems, isLeanPrompt);
+
+    return toolsSystemRole + schemaNumber + skillsText;
     // installedPlugins + toolContextRefreshKey track the implicit
     // createAgentToolsEngine inputs read via getState() (tool manifests plus
     // agent/user/aiInfra config), so the engine only re-runs when they change
     // instead of on every render.
-  }, [installedPlugins, model, pluginIds, provider, skillActivateMode, toolContextRefreshKey]);
+  }, [installedPlugins, model, pluginIds, promptMode, provider, skillActivateMode, toolContextRefreshKey]);
 
   const toolsToken = useTokenCount(canUseTool ? toolsString : '');
 
   const inputTokenCount = useTokenCount(input);
   const chatsToken = useTokenCount(messages) + inputTokenCount;
 
-  const systemRoleToken = useTokenCount(systemRole);
+  // SystemRole token — include the injected persona (user_memory) so the
+  // breakdown matches the real request.
+  const personaMemories = combineUserMemoryData(resolveTopicMemories(), resolveUserPersona());
+  const personaText = promptUserMemory({ memories: personaMemories }, isLeanPrompt);
+  const systemRoleToken = useTokenCount(systemRole + personaText);
   const historySummaryToken = useTokenCount(historySummary);
 
   const totalToken = systemRoleToken + historySummaryToken + toolsToken + chatsToken;

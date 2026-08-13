@@ -1,8 +1,6 @@
 import { type AgentState } from '@lobechat/agent-runtime';
-import { LobeActivatorIdentifier } from '@lobechat/builtin-tool-activator';
 import { dispatchWorkRegistrationIntent } from '@lobechat/builtin-tools/workRegistration';
 import { getSubAgentChatConfigOverride, resolveSubAgentModel } from '@lobechat/const';
-import { type OperationToolSet } from '@lobechat/context-engine';
 import { type ToolType } from '@lobechat/observability-otel/modules/agent-runtime';
 import {
   type ChatToolPayload,
@@ -480,25 +478,4 @@ export const isOperationInterrupted = async (ctx: RuntimeExecutorContext) => {
     console.error('[RuntimeExecutors] Failed to load operation state for retry guard:', error);
     return false;
   }
-};
-
-export const buildToolDiscoveryConfig = (
-  operationToolSet: OperationToolSet,
-  enabledToolIds: string[],
-) => {
-  const enabledToolSet = new Set(enabledToolIds);
-
-  if (!enabledToolSet.has(LobeActivatorIdentifier)) return undefined;
-
-  const availableTools = Object.entries(operationToolSet.manifestMap)
-    .filter(([identifier]) => !enabledToolSet.has(identifier))
-    .map(([identifier, manifest]) => ({
-      description: manifest.meta?.description || '',
-      identifier,
-      name: manifest.meta?.title || identifier,
-    }));
-
-  if (availableTools.length === 0) return undefined;
-
-  return { availableTools };
 };

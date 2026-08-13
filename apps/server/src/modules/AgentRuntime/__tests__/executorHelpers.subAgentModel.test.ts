@@ -78,6 +78,89 @@ describe('buildServerVirtualSubAgentRunner sub-agent model resolution', () => {
       expect.objectContaining({ agentId: 'target-agent', model: undefined, provider: undefined }),
     );
   });
+
+  it('lets a per-call model override win over the configured sub-agent model', async () => {
+    const { execVirtualSubAgent, runner } = buildRunner({
+      world: {
+        agent: {
+          agencyConfig: {
+            subagent: { model: 'static-subagent-model', provider: 'static-provider' },
+          },
+          model: 'parent-model',
+          provider: 'parent-provider',
+        } as any,
+      },
+    });
+
+    await runner!.run({
+      description: 'task',
+      instruction: 'do it',
+      model: 'per-call-model',
+      provider: 'per-call-provider',
+    });
+
+    expect(execVirtualSubAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'per-call-model', provider: 'per-call-provider' }),
+    );
+  });
+
+  it('falls back a per-call model without provider to the configured sub-agent provider', async () => {
+    const { execVirtualSubAgent, runner } = buildRunner({
+      world: {
+        agent: {
+          agencyConfig: {
+            subagent: { model: 'static-subagent-model', provider: 'static-provider' },
+          },
+          model: 'parent-model',
+          provider: 'parent-provider',
+        } as any,
+      },
+    });
+
+    await runner!.run({ description: 'task', instruction: 'do it', model: 'per-call-model' });
+
+    expect(execVirtualSubAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'per-call-model', provider: 'static-provider' }),
+    );
+  });
+
+  it('falls back a per-call model without provider to the parent provider', async () => {
+    const { execVirtualSubAgent, runner } = buildRunner({
+      modelRuntimeConfig: { model: 'topic-pinned-model', provider: 'topic-pinned-provider' },
+    });
+
+    await runner!.run({ description: 'task', instruction: 'do it', model: 'per-call-model' });
+
+    expect(execVirtualSubAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'per-call-model', provider: 'topic-pinned-provider' }),
+    );
+  });
+
+  it('ignores a per-call provider override without a model', async () => {
+    const { execVirtualSubAgent, runner } = buildRunner({
+      world: {
+        agent: {
+          agencyConfig: {
+            subagent: { model: 'static-subagent-model', provider: 'static-provider' },
+          },
+          model: 'parent-model',
+          provider: 'parent-provider',
+        } as any,
+      },
+    });
+
+    await runner!.run({
+      description: 'task',
+      instruction: 'do it',
+      provider: 'ignored-provider',
+    });
+
+    // A bare `provider` override is ignored by the resolver entirely — the
+    // resolved pair still comes from the configured sub-agent override.
+    expect(execVirtualSubAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'static-subagent-model', provider: 'static-provider' }),
+    );
+  });
 });
 
 // Fail-close regression for share-visitor runs: the child run spawned by

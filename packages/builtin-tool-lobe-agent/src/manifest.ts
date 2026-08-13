@@ -234,7 +234,7 @@ export const LobeAgentManifest: BuiltinToolManifest = {
     // ==================== Sub-Agent ====================
     {
       description:
-        'Dispatch a single sub-agent that runs in an isolated context to handle a long-running, multi-step request. Use this when the request requires extended processing (web research, multi-source synthesis, deep investigation) that benefits from running independently of the main conversation. Pass `subAgentId` to send a follow-up message to an earlier sub-agent instead of starting a new one.',
+        'Dispatch a single sub-agent that runs in an isolated context to handle a long-running, multi-step request. Use this when the request requires extended processing (web research, multi-source synthesis, deep investigation) that benefits from running independently of the main conversation. `model` and `provider` are optional: omit them to use the configured sub-agent model, then the parent model/default. Most tasks, especially simple ones, should use these defaults; specify a model/provider only when the task has a clear need for a different one. Pass `subAgentId` to send a follow-up message to an earlier sub-agent instead of starting a new one.',
       name: LobeAgentApiName.callSubAgent,
       parameters: {
         properties: {
@@ -266,6 +266,16 @@ export const LobeAgentManifest: BuiltinToolManifest = {
           timeout: {
             description: 'Optional timeout in milliseconds. Default is 30 minutes.',
             type: 'number',
+          },
+          model: {
+            description:
+              'Usually omit this, especially for simple tasks. If needed, overrides the configured sub-agent model for this call; when omitted, selection falls back to the configured sub-agent model, then the parent model/default. Pair with provider when the model belongs to a non-default provider.',
+            type: 'string',
+          },
+          provider: {
+            description:
+              'Usually omit this and use the configured/parent defaults. Optional provider ID paired with `model`; if omitted, falls back to the configured sub-agent provider, then the parent provider/default.',
+            type: 'string',
           },
         },
         required: ['description', 'instruction'],

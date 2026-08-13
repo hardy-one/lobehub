@@ -2,10 +2,20 @@ import { TRPCError } from '@trpc/server';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { DeviceModel } from '@/database/models/device';
+import { isPathWithinRoot } from '@/server/services/deviceGateway';
 
 import { assertWorkspaceDeviceVisible, assertWorkspaceRootApproved } from '../deviceWorkspaceGuard';
 
-const mockModel = (row: { defaultCwd?: string | null; workingDirs?: { path: string }[] } | null) =>
+const mockModel = (
+  row: {
+    defaultCwd?: string | null;
+    workingDirs?: Array<{
+      git?: { activeWorktree?: string };
+      path: string;
+      workspace?: { approvedPreviewRoots?: string[] };
+    }>;
+  } | null,
+) =>
   ({
     findByDeviceId: vi.fn().mockResolvedValue(row),
   }) as unknown as DeviceModel;
@@ -44,6 +54,30 @@ describe('assertWorkspaceRootApproved', () => {
     await expect(
       assertWorkspaceRootApproved(model, 'dev-1', '/Users/me/proj-evil'),
     ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
+
+  it('allows a root that matches a worktree activeWorktree', async () => {
+    const model = mockModel({
+      workingDirs: [{ path: '/Users/me/proj', git: { activeWorktree: '/Users/me/proj-feat-x' } }],
+    });
+    await expect(
+      assertWorkspaceRootApproved(model, 'dev-1', '/Users/me/proj-feat-x'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('allows a file-preview root reported by a device-scoped skill scan', async () => {
+    const model = mockModel({
+      workingDirs: [
+        {
+          path: '/Users/me/proj',
+          workspace: { approvedPreviewRoots: ['/Users/me/.agents/skills'] },
+        },
+      ],
+    });
+
+    await expect(
+      assertWorkspaceRootApproved(model, 'dev-1', '/Users/me/.agents/skills/reviewer'),
+    ).resolves.toBeUndefined();
   });
 
   it('rejects when the device has no approved roots at all', async () => {
@@ -90,5 +124,36 @@ describe('assertWorkspaceDeviceVisible', () => {
     await expect(
       assertWorkspaceDeviceVisible(model, 'someone-elses-private'),
     ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+});
+
+describe('isPathWithinRoot', () => {
+  it('allows an exact match and nested targets', () => {
+    expect(isPathWithinRoot('/Users/me/proj', '/Users/me/proj')).toBe(true);
+    expect(isPathWithinRoot('/Users/me/proj', '/Users/me/proj/packages/app')).toBe(true);
+  });
+
+  it('rejects siblings sharing a path prefix and targets outside the root', () => {
+    expect(isPathWithinRoot('/Users/me/proj', '/Users/me/proj-evil')).toBe(false);
+    expect(isPathWithinRoot('/Users/me/proj', '/Users/me/other')).toBe(false);
+    expect(isPathWithinRoot('/Users/me/proj', '/')).toBe(false);
+  });
+
+  it('rejects non-absolute roots or targets', () => {
+    expect(isPathWithinRoot('Users/me/proj', '/Users/me/proj/x')).toBe(false);
+    expect(isPathWithinRoot('/Users/me/proj', 'Users/me/proj/x')).toBe(false);
+  });
+
+  it('handles Windows drive paths with win32 semantics', () => {
+    expect(isPathWithinRoot('C:\\proj', 'C:\\proj\\src\\index.ts')).toBe(true);
+    expect(isPathWithinRoot('C:\\proj', 'C:\\proj-evil')).toBe(false);
+    expect(isPathWithinRoot('C:\\proj', 'D:\\proj')).toBe(false);
+  });
+
+  it('handles UNC share paths (\\server\\share) with win32 semantics', () => {
+    expect(isPathWithinRoot('\\\\server\\share', '\\\\server\\share')).toBe(true);
+    expect(isPathWithinRoot('\\\\server\\share', '\\\\server\\share\\repo\\src')).toBe(true);
+    expect(isPathWithinRoot('\\\\server\\share', '\\\\server\\share-evil')).toBe(false);
+    expect(isPathWithinRoot('\\\\server\\share', '\\\\other\\share')).toBe(false);
   });
 });

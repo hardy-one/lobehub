@@ -422,6 +422,23 @@ describe('LocalFileProtocolManager', () => {
     expect(url).toBeNull();
   });
 
+  it('does not mint a preview URL for a workspace symlink that resolves outside the workspace', async () => {
+    mockRealpath.mockImplementation(async (filePath: string) => {
+      if (filePath === '/Users/alice/project/linked-secret.txt') return '/Users/alice/.ssh/id_rsa';
+      return filePath;
+    });
+    const manager = new LocalFileProtocolManager();
+    await manager.approveWorkspaceRoot('/Users/alice/project');
+
+    const url = await manager.createPreviewUrl({
+      filePath: '/Users/alice/project/linked-secret.txt',
+      workspaceRoot: '/Users/alice/project',
+    });
+
+    expect(url).toBeNull();
+    expect(mockReadFile).not.toHaveBeenCalled();
+  });
+
   it('mints preview URLs for user-approved external files only', async () => {
     const manager = new LocalFileProtocolManager();
 

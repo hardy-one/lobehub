@@ -558,6 +558,7 @@ describe('DeviceGateway', () => {
       });
 
       expect(result).toEqual({
+        approvedPreviewRoots: ['/home/.agents/skills'],
         instructions: [{ content: '# Rules', source: 'AGENTS.md' }],
         skills: [
           {
@@ -591,7 +592,7 @@ describe('DeviceGateway', () => {
         userId: 'user-1',
       });
 
-      expect(result).toEqual({ instructions: [], skills: [] });
+      expect(result).toEqual({ approvedPreviewRoots: [], instructions: [], skills: [] });
     });
 
     it('returns undefined when the rpc reports failure', async () => {

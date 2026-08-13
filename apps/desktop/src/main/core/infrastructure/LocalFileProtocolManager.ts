@@ -583,6 +583,8 @@ export class LocalFileProtocolManager {
     const workspaceRootApproved =
       this.approvedWorkspaceRoots.has(normalizedRealWorkspaceRoot) ||
       this.indexedProjectRoots.has(normalizedRealWorkspaceRoot);
+    // Realpath containment is required: a lexical child can be a symlink that
+    // resolves outside the approved workspace.
     if (
       workspaceRootApproved &&
       isPathWithinRoot(normalizedRealFilePath, normalizedRealWorkspaceRoot)

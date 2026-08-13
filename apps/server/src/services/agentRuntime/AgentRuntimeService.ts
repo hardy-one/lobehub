@@ -39,6 +39,7 @@ import {
   type ExecSubAgentParams,
   type ExecSubAgentResult,
   type ExecVirtualSubAgentParams,
+  resolveCompressionMode,
   type UIChatMessage,
 } from '@lobechat/types';
 import { RequestTrigger } from '@lobechat/types';
@@ -51,6 +52,7 @@ import {
   matchesAgentInterventionContinuationProvenance,
 } from '@/business/server/agent-run/agentInterventionIdentity';
 import { AgentOperationModel } from '@/database/models/agentOperation';
+import { AiModelModel } from '@/database/models/aiModel';
 import { MessageModel } from '@/database/models/message';
 import { type LobeChatDatabase } from '@/database/type';
 import { appEnv } from '@/envs/app';
@@ -3851,6 +3853,39 @@ export class AgentRuntimeService {
   }
 
   /**
+   * Resolve the model's context window for compression thresholds.
+   * Prefers the user-edited value in `ai_models` (same merge semantics as
+   * `AiInfraRepos.getEnabledModels`), then falls back to model-bank defaults.
+   */
+  private async resolveContextWindowTokens(
+    modelId?: string,
+    providerId?: string,
+  ): Promise<number | undefined> {
+    if (!modelId || !providerId) return undefined;
+
+    try {
+      const aiModelModel = new AiModelModel(this.serverDB, this.userId, this.workspaceId);
+      const userModel = await aiModelModel.findByIdAndProvider(modelId, providerId);
+      if (typeof userModel?.contextWindowTokens === 'number') {
+        return userModel.contextWindowTokens;
+      }
+    } catch (error) {
+      log(
+        'Failed to resolve user model contextWindowTokens for %s/%s: %O',
+        providerId,
+        modelId,
+        error,
+      );
+    }
+
+    return getModelPropertyWithFallback<number | undefined>(
+      modelId,
+      'contextWindowTokens',
+      providerId,
+    );
+  }
+
+  /**
    * Create Agent Runtime instance
    */
   private async createAgentRuntime({
@@ -3875,14 +3910,9 @@ export class AgentRuntimeService {
   }) {
     const state = agentState as AgentState | undefined;
     const modelRuntimeConfig = state?.modelRuntimeConfig;
-    const contextWindowTokens =
-      modelRuntimeConfig?.model && modelRuntimeConfig?.provider
-        ? await getModelPropertyWithFallback<number | undefined>(
-            modelRuntimeConfig.model,
-            'contextWindowTokens',
-            modelRuntimeConfig.provider,
-          )
-        : undefined;
+    const modelId = modelRuntimeConfig?.model;
+    const providerId = modelRuntimeConfig?.provider;
+    const contextWindowTokens = await this.resolveContextWindowTokens(modelId, providerId);
 
     const world = state?.world;
     const origin = state?.origin;
@@ -3890,11 +3920,22 @@ export class AgentRuntimeService {
     const principal = state?.principal;
 
     // Create Agent instance — use custom factory if provided, otherwise default to GeneralChatAgent
+    // The runtime state carries the normalized agent configuration.
+    const agentConfig = world?.agent;
+    const chatConfig = agentConfig?.chatConfig;
+    const compressionMode = resolveCompressionMode(chatConfig);
+    const compressionEnabled = compressionMode !== 'off';
+    const smartThreshold = compressionMode === 'smart' ? true : undefined;
+
+    // The compression baseline (last real provider-measured usage) is resolved
+    // inside the agent runtime from the conversation messages — no topic-level
+    // persistence needed.
     const generalConfig = {
-      agentConfig: world?.agent,
+      agentConfig,
       compressionConfig: {
-        enabled: world?.agent?.chatConfig?.enableContextCompression ?? true,
+        enabled: compressionEnabled,
         maxWindowToken: contextWindowTokens ?? undefined,
+        smartThreshold,
       },
       dynamicInterventionAudits,
       modelRuntimeConfig,

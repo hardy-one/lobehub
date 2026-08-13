@@ -290,6 +290,7 @@ export class StreamingExecutorActionImpl {
     const toolsDetailed = toolsEngine.generateToolsDetailed({
       excludeDefaultToolIds: isManualMode ? manualModeExcludeToolIds : undefined,
       model: agentConfigData.model,
+      promptMode: agentConfig.chatConfig?.promptMode,
       provider: agentConfigData.provider!,
       skipDefaultTools: disableTools || undefined,
       toolIds: mergedToolIds,
@@ -368,7 +369,7 @@ export class StreamingExecutorActionImpl {
           enabledToolIds,
           manifestMap: toolManifestMap,
           sourceMap: {},
-          tools: toolsDetailed.tools ?? [],
+          tools: tools ?? [],
         },
         toolManifestMap,
         userInterventionConfig,

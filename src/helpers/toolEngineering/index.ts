@@ -12,6 +12,7 @@ import {
   type ToolManifest,
   type WorkingModel,
 } from '@lobechat/types';
+import { getActivePluginIds, getDisabledPluginIds } from '@lobechat/types';
 
 import type { ConnectorToolPermission } from '@/database/schemas';
 import { applyToolNameMaxLength } from '@/helpers/applyToolNameMaxLength';
@@ -19,7 +20,9 @@ import { isToolAvailableInCurrentEnv } from '@/helpers/toolAvailability';
 import { patchManifestWithPermissions } from '@/libs/mcp/patchManifestPermissions';
 import { getAgentStoreState } from '@/store/agent';
 import {
+  agentByIdSelectors,
   agentChatConfigSelectors,
+
   agentSelectors,
   chatConfigByIdSelectors,
 } from '@/store/agent/selectors';
@@ -215,25 +218,45 @@ export const createAgentToolsEngine = (
   pluginIds?: string[],
   /** Conversation context for context-aware builtin manifests (scope, isSubAgent). */
   manifestContext?: BuiltinToolResolveContext,
+  /**
+   * Optional agentId override. When provided, the engine reads that agent's
+   * config instead of the active agent — used by the TokenTag UI breakdown so
+   * its tool-set mirrors the agent it renders for, even when the active agent
+   * differs (group/supervisor/page sessions).
+   */
+  agentId?: string,
 ) => {
   const searchConfig = getSearchConfig(workingModel.model, workingModel.provider);
   const agentState = getAgentStoreState();
-  const activeAgentId = agentState.activeAgentId || '';
-  const chatConfig = agentChatConfigSelectors.currentChatConfig(agentState);
+  // Every `currentXxx` selector is `xxxById(activeAgentId || '')` — resolve the
+  // effective agent once so an explicit override and the active agent share one
+  // code path. The override is used by the TokenTag UI breakdown so its tool-set
+  // mirrors the agent it renders for (group/supervisor/page sessions).
+  const effectiveAgentId = agentId ?? agentState.activeAgentId ?? '';
+  const agentConfig = agentSelectors.getAgentConfigById(effectiveAgentId)(agentState);
+  // `getActivePluginIds` already resolves to pinned-only identifiers — disabled
+  // entries never reach the tools-engine whitelist.
+  const userPlugins = getActivePluginIds(agentConfig?.plugins);
+  const disabledPluginIds = getDisabledPluginIds(agentConfig?.plugins);
+  const chatConfig = chatConfigByIdSelectors.getChatConfigById(effectiveAgentId)(agentState);
 
   // The rules — mode, per-tool enablement and defaults — are shared with the
   // server runtime through `@lobechat/mecha`; the browser only assembles its
   // facts. It has no device gateway, so no device walls apply here and the
   // remaining platform gate stays in `platformFilter` below.
+  // `resolveToolRules` already implements the Agent/Efficient/Chat mode tiers
+  // (toolMode, defaults, explicit activation) so the lean chat-mode whitelist
+  // from the mode-tiers change is preserved through the shared rules.
   const resolved = resolveToolRules({
     agent: {
       chatConfig,
-      // `currentAgentPlugins` already resolves to pinned-only identifiers.
-      plugins: agentSelectors.currentAgentPlugins(agentState),
+      plugins: userPlugins,
     },
-    disabledPluginIds: agentSelectors.currentAgentDisabledPlugins(agentState),
-    executionTarget: chatConfigByIdSelectors.getExecutionTargetById(activeAgentId)(agentState),
-    hasEnabledKnowledgeBases: agentSelectors.hasEnabledKnowledgeBases(agentState),
+    disabledPluginIds,
+    executionTarget: chatConfigByIdSelectors.getExecutionTargetById(effectiveAgentId)(agentState),
+    hasEnabledKnowledgeBases: agentByIdSelectors
+      .getAgentKnowledgeBasesById(effectiveAgentId)(agentState)
+      .some((item) => item.enabled),
     // A `local` target only resolves on the desktop, where the host itself is
     // the machine: local tools are always reachable there.
     localExecutionReady: true,

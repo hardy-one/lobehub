@@ -64,7 +64,7 @@ describe('useToggleAgentMode', () => {
     testState.agent.current = { visibility: 'public', workspaceId: 'workspace-1' };
     const { result } = renderHook(() => useToggleAgentMode());
 
-    await act(() => result.current(false));
+    await act(() => result.current('chat'));
 
     expect(testState.updateWorkspaceUserPreference).toHaveBeenCalledWith({
       agentModeOverrides: { 'agent-1': false },
@@ -77,9 +77,12 @@ describe('useToggleAgentMode', () => {
     testState.agent.current = { visibility: 'public', workspaceId: 'workspace-1' };
     const { result } = renderHook(() => useToggleAgentMode());
 
-    await act(() => result.current(true));
+    await act(() => result.current('agent'));
 
-    expect(testState.updateAgentChatConfig).toHaveBeenCalledWith({ enableAgentMode: true });
+    expect(testState.updateAgentChatConfig).toHaveBeenCalledWith({
+      enableAgentMode: true,
+      promptMode: 'full',
+    });
     expect(testState.updateWorkspaceUserPreference).not.toHaveBeenCalled();
   });
 
@@ -88,7 +91,7 @@ describe('useToggleAgentMode', () => {
     testState.agent.current = { visibility: 'public', workspaceId: 'workspace-1' };
     const { result } = renderHook(() => useToggleAgentMode());
 
-    await act(() => result.current(true));
+    await act(() => result.current('agent'));
 
     expect(testState.updateAgentChatConfig).not.toHaveBeenCalled();
     expect(testState.updateWorkspaceUserPreference).not.toHaveBeenCalled();

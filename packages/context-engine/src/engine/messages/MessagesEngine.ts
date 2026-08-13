@@ -63,7 +63,6 @@ import {
   SystemRoleInjector,
   TaskManagerContextInjector,
   TodoInjector,
-  ToolDiscoveryProvider,
   ToolSystemRoleProvider,
   TopicReferenceContextInjector,
   UserMemoryInjector,
@@ -154,6 +153,7 @@ export class MessagesEngine {
       agentIdentity,
       inputTemplate,
       enableAgentMode,
+      promptMode,
       enableHistoryCount,
       historyCount,
       forceFinish,
@@ -163,7 +163,6 @@ export class MessagesEngine {
       skillsConfig,
       selectedSkills,
       selectedTools,
-      toolDiscoveryConfig,
       toolsConfig,
       capabilities,
       variableGenerators,
@@ -240,13 +239,11 @@ export class MessagesEngine {
       (toolsConfig?.manifests?.length ?? 0) > 0 && !!canUseFC(model, provider)
         ? selectToolPromptManifests(toolsConfig?.manifests)
         : [];
-
     // The skill-import route is only actionable when the Skill Store is reachable this
-    // run — either already enabled, or listed for the activator to turn on.
-    const isSkillStoreReachable =
-      (toolsConfig?.manifests ?? []).some((m) => m.identifier === SKILL_STORE_TOOL_ID) ||
-      (toolDiscoveryConfig?.availableTools ?? []).some((t) => t.identifier === SKILL_STORE_TOOL_ID);
-
+    // run via an enabled skill-store manifest.
+    const isSkillStoreReachable = (toolsConfig?.manifests ?? []).some(
+      (m) => m.identifier === SKILL_STORE_TOOL_ID,
+    );
     const processors = [
       // =============================================
       // Phase 0: Placeholder Residue Filtering
@@ -320,6 +317,7 @@ export class MessagesEngine {
       // Disabled in chat mode — pairs with the tools-engine gate so the LLM
       // sees neither the manifests nor the discovery prompt.
       new SkillContextProvider({
+        promptMode,
         enabled:
           isAgentMode && !!(skillsConfig?.enabledSkills && skillsConfig.enabledSkills.length > 0),
         enabledSkills: skillsConfig?.enabledSkills,
@@ -330,6 +328,7 @@ export class MessagesEngine {
         isCanUseFC: capabilities?.isCanUseFC || (() => true),
         manifests: toolsConfig?.manifests,
         model,
+        promptMode,
         provider,
       }),
       // History summary (conversation summary from compression)
@@ -341,7 +340,7 @@ export class MessagesEngine {
       // =============================================
 
       // User memory
-      new UserMemoryInjector({ ...userMemory, enabled: isUserMemoryEnabled }),
+      new UserMemoryInjector({ ...userMemory, enabled: isUserMemoryEnabled, promptMode }),
       // Operation-scoped learned expertise (captured once and reused verbatim across steps)
       new ExpertiseContextInjector({
         enabled: this.params.enableExpertise,
@@ -365,12 +364,6 @@ export class MessagesEngine {
       new KnowledgeInjector({
         fileContents: knowledge?.fileContents,
         knowledgeBases: knowledge?.knowledgeBases,
-      }),
-      // Tool Discovery (available tools for dynamic activation)
-      new ToolDiscoveryProvider({
-        availableTools: toolDiscoveryConfig?.availableTools,
-        enabled:
-          !!toolDiscoveryConfig?.availableTools && toolDiscoveryConfig.availableTools.length > 0,
       }),
       // Agent Builder context (current agent config/meta for editing)
       new AgentBuilderContextInjector({

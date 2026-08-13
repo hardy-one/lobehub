@@ -4,7 +4,7 @@ import { BRANDING_PROVIDER } from '@lobechat/business-const';
 import { AES_GCM_URL, BASE_PROVIDER_DOC_URL, FORM_STYLE } from '@lobechat/const';
 import { ProviderCombine, ProviderIcon } from '@lobehub/icons';
 import { type FormGroupItemType, type FormItemProps } from '@lobehub/ui';
-import { Center, Flexbox, Form, Icon, stopPropagation, Tooltip } from '@lobehub/ui';
+import { Center, Flexbox, Form, Icon, Select, stopPropagation, Tooltip } from '@lobehub/ui';
 import { Avatar, Skeleton, Switch } from '@lobehub/ui/base-ui';
 import { useDebounceFn } from 'ahooks';
 import { Form as AntdForm } from 'antd';
@@ -143,6 +143,7 @@ const ProviderConfig = memo<ProviderConfigProps>(
       authType,
       proxyUrl,
       showApiKey = true,
+      sdkType,
       defaultShowBrowserRequest,
       disableBrowserRequest,
       showChecker = true,
@@ -399,8 +400,36 @@ const ProviderConfig = memo<ProviderConfigProps>(
     const showResponsesApiSwitch =
       !!supportResponsesApi || (isCustom && isResponsesApiSupportedSdkType(settings?.sdkType));
 
+    const authMethodItem: FormItemProps | undefined =
+      sdkType === 'anthropic'
+        ? {
+            children: isLoading ? (
+              <SkeletonInput />
+            ) : (
+              <Select
+                allowClear={false}
+                placeholder={t('providerModels.config.authMethod.placeholder')}
+                options={[
+                  {
+                    label: t('providerModels.config.authMethod.options.apiKey'),
+                    value: 'apiKey',
+                  },
+                  {
+                    label: t('providerModels.config.authMethod.options.authToken'),
+                    value: 'authToken',
+                  },
+                ]}
+              />
+            ),
+            desc: t('providerModels.config.authMethod.desc'),
+            label: t('providerModels.config.authMethod.title'),
+            name: [KeyVaultsConfigKey, 'authMethod'],
+          }
+        : undefined;
+
     const configItems = [
       ...apiKeyItem,
+      authMethodItem,
       endpointItem,
       showResponsesApiSwitch
         ? {

@@ -8,9 +8,6 @@ import {
   LIST_DOCUMENTS_MAX_LIMIT,
 } from './types';
 
-const AGENT_DOCUMENT_ID_DESCRIPTION =
-  'Target agent document ID. Use the "id" field returned by listDocuments, not "documentId".';
-
 export const AgentDocumentsManifest: BuiltinToolManifest = {
   api: [
     {
@@ -68,7 +65,7 @@ export const AgentDocumentsManifest: BuiltinToolManifest = {
             type: 'string',
           },
           id: {
-            description: AGENT_DOCUMENT_ID_DESCRIPTION,
+            description: 'Target document ID.',
             type: 'string',
           },
           limit: {
@@ -97,7 +94,7 @@ export const AgentDocumentsManifest: BuiltinToolManifest = {
             type: 'string',
           },
           id: {
-            description: AGENT_DOCUMENT_ID_DESCRIPTION,
+            description: 'Target document ID.',
             type: 'string',
           },
         },
@@ -116,7 +113,7 @@ export const AgentDocumentsManifest: BuiltinToolManifest = {
       parameters: {
         properties: {
           id: {
-            description: AGENT_DOCUMENT_ID_DESCRIPTION,
+            description: 'Target document ID.',
             type: 'string',
           },
           operations: {
@@ -182,7 +179,7 @@ export const AgentDocumentsManifest: BuiltinToolManifest = {
       parameters: {
         properties: {
           id: {
-            description: AGENT_DOCUMENT_ID_DESCRIPTION,
+            description: 'Target document ID.',
             type: 'string',
           },
         },
@@ -201,7 +198,7 @@ export const AgentDocumentsManifest: BuiltinToolManifest = {
       parameters: {
         properties: {
           id: {
-            description: AGENT_DOCUMENT_ID_DESCRIPTION,
+            description: 'Target document ID.',
             type: 'string',
           },
           newTitle: {
@@ -277,43 +274,12 @@ export const AgentDocumentsManifest: BuiltinToolManifest = {
         type: 'object',
       },
     },
-    {
-      description:
-        'Update agent-document load rules. Use this to control how documents are loaded into runtime context.',
-      name: AgentDocumentsApiName.updateLoadRule,
-      parameters: {
-        properties: {
-          id: {
-            description: AGENT_DOCUMENT_ID_DESCRIPTION,
-            type: 'string',
-          },
-          rule: {
-            description: 'New load rule settings.',
-            properties: {
-              maxTokens: {
-                description: 'Maximum token budget for this document when injected.',
-                minimum: 0,
-                type: 'number',
-              },
-              priority: {
-                description: 'Lower value means higher load priority.',
-                minimum: 0,
-                type: 'number',
-              },
-            },
-            type: 'object',
-          },
-        },
-        required: ['id', 'rule'],
-        type: 'object',
-      },
-    },
   ],
   identifier: AgentDocumentsIdentifier,
   meta: {
     avatar: '🗂️',
     description:
-      "Manage agent-scoped documents (list/create/read/edit/remove/rename/copy/upsert) and load rules. Not for the user's uploaded files — use the Knowledge Base tool for those.",
+      "Manage agent-scoped documents as a file system (list/create/read/edit/remove/rename/copy/upsert) and control their load rules. Not for the user's uploaded files — use the Knowledge Base tool for those.",
     title: 'Documents',
   },
   systemRole: systemPrompt,

@@ -438,6 +438,9 @@ export class CompletionLifecycle {
       }
     }
 
+    // The compression baseline is resolved by the agent runtime from the
+    // conversation messages themselves (last assistant message carrying real
+    // provider usage) — no topic-level persistence is needed here.
     return true;
   }
 

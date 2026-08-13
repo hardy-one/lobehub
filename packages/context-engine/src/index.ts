@@ -28,6 +28,7 @@ export type {
 } from './tokenAccounting';
 export {
   addTokenBuckets,
+  countContextBuckets,
   countContextTokens,
   DEFAULT_DRIFT_MULTIPLIER,
   EMPTY_TOKEN_BUCKETS,

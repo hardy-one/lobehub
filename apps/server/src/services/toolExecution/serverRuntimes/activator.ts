@@ -5,6 +5,7 @@ import {
   type ActivatorRuntimeService,
   type ToolManifestInfo,
 } from '@lobechat/builtin-tool-activator/executionRuntime';
+import { LobeAgentIdentifier } from '@lobechat/builtin-tool-lobe-agent';
 import { SkillsExecutionRuntime } from '@lobechat/builtin-tool-skills/executionRuntime';
 import { getDisabledPluginIds } from '@lobechat/types';
 
@@ -16,6 +17,7 @@ import {
   resolveToolOutcomeScope,
 } from '@/server/services/agentSignal/procedure';
 import { redisPolicyStateStore } from '@/server/services/agentSignal/store/adapters/redis/policyStateStore';
+import { resolveSubAgentModelGuidance } from '@/server/utils/subAgentModelGuidance';
 
 import { type ServerRuntimeRegistration } from './types';
 
@@ -170,7 +172,40 @@ export const activatorRuntime: ServerRuntimeRegistration = {
       },
     };
 
-    return new ActivatorExecutionRuntime({ service });
+    const runtime = new ActivatorExecutionRuntime({ service });
+
+    // When lobe-agent is newly activated, resolve the user's enabled chat
+    // models ONCE and append them to the activation result. The list changes
+    // very infrequently, so it is injected at activation time (a rare event)
+    // and then stays fixed — no per-run DB queries or prompt rebuilding.
+    // Only models of providers the user actually enabled are listed (the
+    // shared resolver filters by `ai_providers.enabled`); fail-open on error.
+    const baseActivateTools = runtime.activateTools.bind(runtime);
+    runtime.activateTools = async (args) => {
+      const result = await baseActivateTools(args);
+      if (!result.success) return result;
+
+      const activatedTools = (
+        result.state as { activatedTools?: Array<{ identifier: string }> } | undefined
+      )?.activatedTools;
+      if (!activatedTools?.some((t) => t.identifier === LobeAgentIdentifier)) {
+        return result;
+      }
+
+      const guidance =
+        context.serverDB && context.userId
+          ? await resolveSubAgentModelGuidance(
+              context.serverDB,
+              context.userId,
+              context.workspaceId,
+            )
+          : undefined;
+      if (!guidance) return result;
+
+      return { ...result, content: `${result.content}\n\n${guidance}` };
+    };
+
+    return runtime;
   },
   identifier: LobeActivatorIdentifier,
 };

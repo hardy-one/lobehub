@@ -79,9 +79,6 @@ describe('buildServerVirtualSubAgentRunner sub-agent model resolution', () => {
     expect(execVirtualSubAgent).toHaveBeenCalledWith(
       expect.objectContaining({ agentId: 'target-agent', model: undefined, provider: undefined }),
     );
-    expect(execVirtualSubAgent).toHaveBeenCalledWith(
-      expect.objectContaining({ agentId: 'target-agent', model: undefined, provider: undefined }),
-    );
   });
 
   it('lets a per-call model override win over the configured sub-agent model', async () => {
@@ -142,6 +139,34 @@ describe('buildServerVirtualSubAgentRunner sub-agent model resolution', () => {
 
     expect(execVirtualSubAgent).toHaveBeenCalledWith(
       expect.objectContaining({ model: 'per-call-model', provider: 'topic-pinned-provider' }),
+    );
+  });
+
+  it('ignores a per-call provider override without a model', async () => {
+    const { execVirtualSubAgent, runner } = buildRunner({
+      metadata: {
+        agentConfig: {
+          agencyConfig: {
+            subagent: { model: 'static-subagent-model', provider: 'static-provider' },
+          },
+          model: 'parent-model',
+          provider: 'parent-provider',
+        },
+        agentId: 'agent-1',
+        topicId: 'topic-1',
+      },
+    });
+
+    await runner!.run({
+      description: 'task',
+      instruction: 'do it',
+      provider: 'ignored-provider',
+    });
+
+    // A bare `provider` override is ignored by the resolver entirely — the
+    // resolved pair still comes from the configured sub-agent override.
+    expect(execVirtualSubAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'static-subagent-model', provider: 'static-provider' }),
     );
   });
 });

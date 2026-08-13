@@ -28,11 +28,7 @@ import {
   shouldExposeSelfFeedbackIntentTool,
 } from '@lobechat/builtin-tool-self-iteration';
 import { TaskIdentifier } from '@lobechat/builtin-tool-task';
-import {
-  builtinTools,
-  efficientDeferredPluginIds,
-  manualModeExcludeToolIds,
-} from '@lobechat/builtin-tools';
+import { builtinTools, manualModeExcludeToolIds } from '@lobechat/builtin-tools';
 import {
   isHeterogeneousAgentModelId,
   LOADING_FLAT,
@@ -186,6 +182,7 @@ import {
   collectBorrowedConnectors,
   resolveUserDisplayMap,
 } from '@/server/utils/connectorAttribution';
+import { resolveSubAgentModelGuidance } from '@/server/utils/subAgentModelGuidance';
 import { markdownToTxt } from '@/utils/markdownToTxt';
 
 import { resolveDeviceAccessPolicy } from './deviceAccessPolicy';
@@ -3830,6 +3827,33 @@ export class AiAgentService {
         ...toolManifestMap[RemoteDeviceManifest.identifier],
         systemRole: generateSystemPrompt(onlineDevices),
       };
+    }
+
+    // Append the user's enabled chat models to lobe-agent's systemRole so the
+    // supervisor knows which model/provider pairs it can pass to callSubAgent.
+    // `lobe-agent` is always-on in agent mode, so it never goes through the
+    // activator's activation-time injection — this is the always-on equivalent.
+    // Skipped when the manifest was trimmed by `resolveLobeAgentManifest`
+    // (group / sub-agent runs): their systemRole is the no-sub-agent variant, so
+    // referencing callSubAgent models there would dangle. Cached per user for a
+    // short TTL; fail-open: any error means no guidance.
+    const lobeAgentManifest = toolManifestMap[LobeAgentIdentifier];
+    if (
+      lobeAgentManifest &&
+      typeof lobeAgentManifest.systemRole === 'string' &&
+      lobeAgentManifest.systemRole.includes('<sub_agents>')
+    ) {
+      const subAgentModelGuidance = await resolveSubAgentModelGuidance(
+        this.db,
+        this.userId,
+        this.workspaceId,
+      );
+      if (subAgentModelGuidance) {
+        toolManifestMap[LobeAgentIdentifier] = {
+          ...lobeAgentManifest,
+          systemRole: `${lobeAgentManifest.systemRole}\n\n${subAgentModelGuidance}`,
+        };
+      }
     }
 
     // 9.4. Fetch device system info for placeholder variable replacement.

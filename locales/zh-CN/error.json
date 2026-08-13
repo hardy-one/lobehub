@@ -118,6 +118,7 @@
   "saveState.retry": "重试",
   "saveState.saveFailed": "保存失败，请重试。",
   "stt.responseError": "请求失败。请检查配置后重试",
+  "subAgentModelDenied": "模型 \"{{model}}\"（提供商 \"{{provider}}\"）未启用子代理分发。请从 \"callSubAgent valid models\" 列表中选择一对（仅限已启用的提供商）。",
   "supervisor.decisionFailed": "群组主持人运行失败。请检查主持人配置（模型、API Key 与 API 地址）后重试",
   "testConnectionFailed": "测试连接失败：{{error}}",
   "transfer.agentOwnedByGroup": "该助手属于某个群聊，不能单独迁移。请改为迁移整个群，或先把它移出群聊。",

@@ -1,6 +1,12 @@
 import { type AgentState } from '@lobechat/agent-runtime';
 import { dispatchWorkRegistrationIntent } from '@lobechat/builtin-tools/workRegistration';
-import { getSubAgentChatConfigOverride, resolveSubAgentModelWithCallOverride } from '@lobechat/const';
+import { DEFAULT_PROVIDER } from '@lobechat/business-const';
+import {
+  DEFAULT_SUB_AGENT_MODEL,
+  getSubAgentChatConfigOverride,
+  getSubAgentModelDeniedPair,
+  resolveSubAgentModelWithCallOverrideDetailed,
+} from '@lobechat/const';
 import { type ToolType } from '@lobechat/observability-otel/modules/agent-runtime';
 import {
   type ChatToolPayload,
@@ -9,8 +15,10 @@ import {
 } from '@lobechat/types';
 import debug from 'debug';
 
+import { UserModel } from '@/database/models/user';
 import { WorkModel } from '@/database/models/work';
 import { type LobeChatDatabase } from '@/database/type';
+import { translation } from '@/libs/i18n/serverTranslation';
 import { FileService } from '@/server/services/file';
 import {
   type ServerAgentMemberRunner,
@@ -18,6 +26,7 @@ import {
   type ToolExecutionResultResponse,
 } from '@/server/services/toolExecution';
 import { archiveToolResultIfNeeded } from '@/server/services/toolExecution/archiveToolResult';
+import { isSubAgentModelEnabled } from '@/server/utils/subAgentModelGuidance';
 import { buildWorkVersionCumulativeUsage } from '@/utils/workCumulativeUsage';
 
 import { type RuntimeExecutorContext } from './context';
@@ -224,11 +233,59 @@ export const buildServerVirtualSubAgentRunner = (
       // re-derive it from the parent config.
       const subAgentModel = targetAgentId
         ? undefined
-        : resolveSubAgentModelWithCallOverride(
+        : resolveSubAgentModelWithCallOverrideDetailed(
             { model, provider },
             parentAgentConfig?.agencyConfig?.subagent,
             parentEffectiveModel,
           );
+
+      // The supervisor may pass `model` without `provider` (provider falls back
+      // to the configured sub-agent provider, then the parent's), and a bare
+      // `provider` override is ignored by the resolver entirely. The only
+      // authoritative check is on the fully-resolved pair: only pairs with
+      // explicit disable evidence are denied (unknown/typed-in providers and
+      // models without an ai_models row are allowed by
+      // `isSubAgentModelEnabled`).
+      //
+      // Default fallback pair exemption: when the pair resolves to the
+      // platform-owned default (DEFAULT_SUB_AGENT_MODEL / DEFAULT_PROVIDER)
+      // and NO explicit choice is in play (no per-call override, no
+      // `agencyConfig.subagent` override, no parent effective model —
+      // `explicit === false`), validation is skipped entirely. This preserves
+      // the pre-fork behavior where the last-resort default pair always ran:
+      // a user who never enabled the default provider must not be blocked on
+      // a pair they never chose.
+      const isDefaultFallbackPair =
+        subAgentModel !== undefined &&
+        subAgentModel.model === DEFAULT_SUB_AGENT_MODEL &&
+        subAgentModel.provider === DEFAULT_PROVIDER &&
+        !subAgentModel.explicit;
+
+      if (
+        ctx.serverDB &&
+        ctx.userId &&
+        subAgentModel &&
+        !isDefaultFallbackPair &&
+        !(await isSubAgentModelEnabled(
+          ctx.serverDB,
+          ctx.userId,
+          ctx.workspaceId,
+          subAgentModel.provider,
+          subAgentModel.model,
+        ))
+      ) {
+        const userInfo = await UserModel.getInfoForAIGeneration(ctx.serverDB, ctx.userId);
+        const { t } = await translation('error', userInfo.responseLanguage ?? 'en-US');
+        const deniedPair = getSubAgentModelDeniedPair(subAgentModel.provider, subAgentModel.model);
+        return {
+          error: t('subAgentModelDenied', {
+            model: deniedPair.model,
+            provider: deniedPair.provider,
+          }),
+          started: false,
+          threadId: '',
+        };
+      }
       // Thinking / reasoning-effort overrides configured for the sub-agent
       // model; same callSubAgent-only carve-out as the model above.
       const subAgentChatConfig = targetAgentId

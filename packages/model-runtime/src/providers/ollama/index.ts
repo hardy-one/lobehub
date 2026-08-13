@@ -3,7 +3,6 @@ import { imageUrlToBase64 } from '@lobechat/utils';
 import { ModelProvider } from 'model-bank';
 import type { Tool } from 'ollama/browser';
 import { Ollama } from 'ollama/browser';
-import type { ClientOptions } from 'openai';
 
 import type { LobeRuntimeAI } from '../../core/BaseAI';
 import { convertIterableToStream, createModelPullStream, OllamaStream } from '../../core/streams';
@@ -21,6 +20,7 @@ import { AgentRuntimeError } from '../../utils/createError';
 import { debugStream } from '../../utils/debugStream';
 import { createErrorResponse } from '../../utils/errorResponse';
 import { StreamingResponse } from '../../utils/response';
+import { safeParseJSON } from '../../utils/safeParseJSON';
 import { parseDataUri } from '../../utils/uriParser';
 import type { OllamaMessage } from './type';
 
@@ -36,19 +36,32 @@ export const params = {
   provider: ModelProvider.Ollama,
 };
 
+/**
+ * Resolve the Ollama `think` mode from the payload. Thinking is disabled when
+ * the client disables thinking or explicitly asks for no reasoning effort;
+ * otherwise the client's effort preference (or the default `true`) applies.
+ */
+const resolveThinkMode = (payload: ChatStreamPayload) => {
+  if (payload.thinking?.type === 'disabled' || payload.reasoning_effort === 'none') return false;
+  return payload.effort ?? payload.reasoning_effort ?? true;
+};
+
 export class LobeOllamaAI implements LobeRuntimeAI {
   private client: Ollama;
 
   baseURL?: string;
 
-  constructor({ baseURL }: ClientOptions = {}) {
+  constructor({ baseURL, apiKey }: { baseURL?: string; apiKey?: string } = {}) {
     try {
       if (baseURL) new URL(baseURL);
     } catch (e) {
       throw AgentRuntimeError.createError(AgentRuntimeErrorType.InvalidOllamaArgs, e);
     }
 
-    this.client = new Ollama(!baseURL ? undefined : { host: baseURL });
+    this.client = new Ollama({
+      ...(baseURL ? { host: baseURL } : {}),
+      ...(apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : {}),
+    });
 
     if (baseURL) this.baseURL = baseURL;
   }
@@ -62,6 +75,8 @@ export class LobeOllamaAI implements LobeRuntimeAI {
 
       options?.signal?.addEventListener('abort', abort);
 
+      const think = resolveThinkMode(payload);
+
       const response = await this.client.chat({
         messages: await this.buildOllamaMessages(payload.messages),
         model: payload.model,
@@ -72,6 +87,7 @@ export class LobeOllamaAI implements LobeRuntimeAI {
           top_p: payload.top_p,
         },
         stream: true,
+        think: think as boolean | 'high' | 'medium' | 'low' | undefined,
         tools: payload.tools as Tool[],
       });
 
@@ -186,20 +202,67 @@ export class LobeOllamaAI implements LobeRuntimeAI {
     }
   };
 
+  private buildToolCallNameMap(messages: OpenAIChatMessage[]): Map<string, string> {
+    const map = new Map<string, string>();
+    for (const message of messages) {
+      if (message.role === 'assistant' && message.tool_calls) {
+        for (const tc of message.tool_calls) {
+          if (tc.type === 'function' && tc.id) {
+            map.set(tc.id, tc.function.name);
+          }
+        }
+      }
+    }
+    return map;
+  }
+
   private async buildOllamaMessages(messages: OpenAIChatMessage[]) {
-    return Promise.all(messages.map((message) => this.convertContentToOllamaMessage(message)));
+    const toolCallNameMap = this.buildToolCallNameMap(messages);
+    return Promise.all(
+      messages.map((message) => this.convertContentToOllamaMessage(message, toolCallNameMap)),
+    );
+  }
+
+  private convertToolCalls(
+    toolCalls: OpenAIChatMessage['tool_calls'],
+  ): OllamaMessage['tool_calls'] {
+    if (!toolCalls?.length) return undefined;
+
+    return toolCalls.map((toolCall) => ({
+      function: {
+        arguments: safeParseJSON<Record<string, unknown>>(toolCall.function.arguments) ?? {},
+        name: toolCall.function.name,
+      },
+    }));
   }
 
   private convertContentToOllamaMessage = async (
     message: OpenAIChatMessage,
+    toolCallNameMap?: Map<string, string>,
   ): Promise<OllamaMessage> => {
+    // Handle tool messages: set tool_name for Ollama Cloud to forward to Google API
+    if (message.role === 'tool' && message.tool_call_id && toolCallNameMap) {
+      const toolName = toolCallNameMap.get(message.tool_call_id);
+      return {
+        content: typeof message.content === 'string' ? message.content : '',
+        role: message.role,
+        tool_name: toolName,
+      };
+    }
+    const toolCalls = this.convertToolCalls(message.tool_calls);
+
     if (typeof message.content === 'string') {
-      return { content: message.content, role: message.role };
+      return {
+        content: message.content,
+        role: message.role,
+        ...(toolCalls ? { tool_calls: toolCalls } : {}),
+      };
     }
 
     const ollamaMessage: OllamaMessage = {
       content: '',
       role: message.role,
+      ...(toolCalls ? { tool_calls: toolCalls } : {}),
     };
 
     // Collect image processing tasks for parallel execution

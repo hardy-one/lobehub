@@ -7,6 +7,7 @@ import type {
 } from '@lobechat/agent-runtime';
 import type { ChatToolPayload, CreateMessageParams } from '@lobechat/types';
 
+import { resolveEffectiveAgentId } from '@/helpers/resolveEffectiveAgentId';
 import { didToolMutateWorkView, workService } from '@/services/work';
 import type { ChatStore } from '@/store/chat/store';
 import { takeWorkIntent } from '@/utils/clientWorkIntentStash';
@@ -67,10 +68,11 @@ export class ClientToolTransport implements ToolTransport {
       opContext.sourceMessageId ??
       assistantMessage?.parentId ??
       (opContext.messageId !== assistantMessage?.id ? opContext.messageId : undefined);
-    const effectiveAgentId =
-      opContext.subAgentId && opContext.scope !== 'sub_agent'
-        ? opContext.subAgentId
-        : opContext.agentId;
+    const effectiveAgentId = resolveEffectiveAgentId({
+      agentId: opContext.agentId,
+      scope: opContext.scope,
+      subAgentId: opContext.subAgentId,
+    });
 
     const { operationId: toolOperationId } = store.startOperation({
       context: {
@@ -78,6 +80,10 @@ export class ClientToolTransport implements ToolTransport {
         groupId: opContext.groupId,
         scope: opContext.scope,
         sourceMessageId,
+        // Thread the member id through so the tool context (and scope-sensitive
+        // executors like lobe-remote-device) resolves the sub-agent, not the
+        // supervisor.
+        subAgentId: opContext.subAgentId,
         threadId: opContext.threadId,
         topicId: opContext.topicId,
         viewedTask: opContext.viewedTask,

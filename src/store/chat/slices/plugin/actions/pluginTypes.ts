@@ -7,6 +7,7 @@ import debug from 'debug';
 
 import { resolveEffectiveWorkingDirectory } from '@/helpers/effectiveWorkingDirectory';
 import { resolveClientLocalSandbox } from '@/helpers/localSandbox';
+import { resolveEffectiveAgentId } from '@/helpers/resolveEffectiveAgentId';
 import { type MCPToolCallResult } from '@/libs/mcp';
 import { mcpService } from '@/services/mcp';
 import { messageService } from '@/services/message';
@@ -101,10 +102,18 @@ export class PluginTypesActionImpl {
       // Get agent ID, group ID, topic ID, and page scope from operation context.
       // Prefer the concrete tool operation; fall back to the runtime root for
       // legacy operations created before child context inheritance was complete.
-      let agentId = operation?.context?.agentId ?? rootRuntimeOperationContext?.agentId;
       let groupId = operation?.context?.groupId ?? rootRuntimeOperationContext?.groupId;
       const documentId = operation?.context?.documentId ?? rootRuntimeOperationContext?.documentId;
       const scope = operation?.context?.scope ?? rootRuntimeOperationContext?.scope;
+      // Group-agent member tool calls carry the supervisor as agentId; the
+      // effective agent is the sub-agent (mirrors ClientToolTransport's
+      // effectiveAgentId). Scope-sensitive executors (lobe-remote-device)
+      // resolve the device pool from this id, so it must be the member's.
+      let agentId = resolveEffectiveAgentId({
+        agentId: operation?.context?.agentId ?? rootRuntimeOperationContext?.agentId,
+        scope,
+        subAgentId: operation?.context?.subAgentId ?? rootRuntimeOperationContext?.subAgentId,
+      });
       const viewedTask = operation?.context?.viewedTask ?? rootRuntimeOperationContext?.viewedTask;
       const taskId = viewedTask?.type === 'detail' ? viewedTask.taskId : undefined;
       const topicId = operation?.context?.topicId ?? rootRuntimeOperationContext?.topicId;

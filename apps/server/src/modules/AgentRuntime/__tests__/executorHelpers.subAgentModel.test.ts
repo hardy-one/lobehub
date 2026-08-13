@@ -79,6 +79,70 @@ describe('buildServerVirtualSubAgentRunner sub-agent model resolution', () => {
     expect(execVirtualSubAgent).toHaveBeenCalledWith(
       expect.objectContaining({ agentId: 'target-agent', model: undefined, provider: undefined }),
     );
+    expect(execVirtualSubAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ agentId: 'target-agent', model: undefined, provider: undefined }),
+    );
+  });
+
+  it('lets a per-call model override win over the configured sub-agent model', async () => {
+    const { execVirtualSubAgent, runner } = buildRunner({
+      metadata: {
+        agentConfig: {
+          agencyConfig: {
+            subagent: { model: 'static-subagent-model', provider: 'static-provider' },
+          },
+          model: 'parent-model',
+          provider: 'parent-provider',
+        },
+        agentId: 'agent-1',
+        topicId: 'topic-1',
+      },
+    });
+
+    await runner!.run({
+      description: 'task',
+      instruction: 'do it',
+      model: 'per-call-model',
+      provider: 'per-call-provider',
+    });
+
+    expect(execVirtualSubAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'per-call-model', provider: 'per-call-provider' }),
+    );
+  });
+
+  it('falls back a per-call model without provider to the configured sub-agent provider', async () => {
+    const { execVirtualSubAgent, runner } = buildRunner({
+      metadata: {
+        agentConfig: {
+          agencyConfig: {
+            subagent: { model: 'static-subagent-model', provider: 'static-provider' },
+          },
+          model: 'parent-model',
+          provider: 'parent-provider',
+        },
+        agentId: 'agent-1',
+        topicId: 'topic-1',
+      },
+    });
+
+    await runner!.run({ description: 'task', instruction: 'do it', model: 'per-call-model' });
+
+    expect(execVirtualSubAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'per-call-model', provider: 'static-provider' }),
+    );
+  });
+
+  it('falls back a per-call model without provider to the parent provider', async () => {
+    const { execVirtualSubAgent, runner } = buildRunner({
+      modelRuntimeConfig: { model: 'topic-pinned-model', provider: 'topic-pinned-provider' },
+    });
+
+    await runner!.run({ description: 'task', instruction: 'do it', model: 'per-call-model' });
+
+    expect(execVirtualSubAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'per-call-model', provider: 'topic-pinned-provider' }),
+    );
   });
 });
 

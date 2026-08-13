@@ -262,6 +262,16 @@ export const LobeAgentManifest: BuiltinToolManifest = {
             description: 'Optional timeout in milliseconds. Default is 30 minutes.',
             type: 'number',
           },
+          model: {
+            description:
+              'Optional model ID the sub-agent should run on. Overrides the configured sub-agent model for this call; falls back to the configured sub-agent model, then the parent model. Pair with provider when the model belongs to a non-default provider.',
+            type: 'string',
+          },
+          provider: {
+            description:
+              'Optional provider ID for `model`. Defaults to the configured sub-agent provider, then the parent provider.',
+            type: 'string',
+          },
         },
         required: ['description', 'instruction'],
         type: 'object',

@@ -927,6 +927,10 @@ export interface RunSubAgentParams {
   inheritMessages?: boolean;
   /** Detailed instruction/prompt for the sub-agent execution */
   instruction: string;
+  /** Optional per-call model override for this sub-agent run */
+  model?: string;
+  /** Optional per-call provider override paired with `model` */
+  provider?: string;
   /** Optional timeout in milliseconds */
   timeout?: number;
   /** The tool message ID that spawned this sub-agent (anchors the isolation thread) */

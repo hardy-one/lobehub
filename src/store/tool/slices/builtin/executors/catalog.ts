@@ -36,6 +36,7 @@ import { agentDocumentsExecutor } from './lobe-agent-documents';
 import { messageExecutor } from './lobe-message';
 import { notebookExecutor } from './lobe-notebook';
 import { pageAgentExecutor } from './lobe-page-agent';
+import { remoteDeviceExecutor } from './lobe-remote-device';
 import { skillStoreExecutor } from './lobe-skill-store';
 import { skillsExecutor } from './lobe-skills';
 import { topicReferenceExecutor } from './lobe-topic-reference';
@@ -78,6 +79,7 @@ export const builtinToolExecutors = [
   messageExecutor,
   notebookExecutor,
   pageAgentExecutor,
+  remoteDeviceExecutor,
   skillStoreExecutor,
   skillsExecutor,
   taskExecutor,

@@ -1,4 +1,5 @@
 import type { AgentState, CallLLMPayload } from '@lobechat/agent-runtime';
+import { countContextBuckets } from '@lobechat/context-engine';
 import { gatherContextFacts } from '@lobechat/mecha';
 import type { ChatStreamPayload } from '@lobechat/model-runtime';
 import { SpanStatusCode } from '@lobechat/observability-otel/api';
@@ -210,8 +211,23 @@ export const buildServerCallLlmContext = async ({
     async (ceSpan) => {
       try {
         const result = await serverMessagesEngine(contextEngineInput);
-        ceSpan.setAttribute('lobehub.context.message_count', result.length);
-        return result;
+        ceSpan.setAttribute('lobehub.context.message_count', result.messages.length);
+
+        // Publish the exact assembled-payload token counts (tokenx estimator)
+        // so the gateway client can render TokenTag from real send content.
+        if (result.contextBuckets) {
+          const counts = countContextBuckets(
+            result.messages,
+            result.contextBuckets,
+            llmPayload.tools,
+          );
+          await ctx.streamManager?.publishStreamEvent(operationId, {
+            data: counts,
+            stepIndex,
+            type: 'context_metrics',
+          });
+        }
+        return result.messages;
       } catch (error) {
         ceSpan.recordException(error as Error);
         ceSpan.setStatus({

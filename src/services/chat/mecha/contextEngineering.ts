@@ -3,13 +3,23 @@ import { AgentBuilderIdentifier } from '@lobechat/builtin-tool-agent-builder';
 import { isDesktop } from '@lobechat/const';
 import type {
   AgentGroupConfig,
+  AgentManagementContext,
+  ContextBuckets,
+  GroupAgentBuilderContext,
+  GroupOfficialToolItem,
   LobeToolManifest,
   MemoryContext,
   OperationSkillSet,
   ToolDiscoveryConfig,
   UserMemoryData,
 } from '@lobechat/context-engine';
-import { type ContextSnapshot, gatherContextFacts, runContextEngineering } from '@lobechat/mecha';
+import { MessagesEngine } from '@lobechat/context-engine';
+import { resolveTopicReferences } from '@lobechat/context-engine';
+import {
+  buildMessagesEngineParams,
+  type ContextSnapshot,
+  gatherContextFacts,
+} from '@lobechat/mecha';
 import { historySummaryPrompt } from '@lobechat/prompts';
 import {
   type OpenAIChatMessage,
@@ -90,6 +100,10 @@ interface ContextEngineeringContext {
   messages: UIChatMessage[];
   model: string;
   /** Agent's enabled plugin/tool/skill identifiers (from agentConfig.plugins) */
+  /** Agent builder context (from TokenTag change; retained for compat, resolved via shared facts when omitted). */
+  agentBuilderContext?: any;
+  /** Explicit agent documents (from TokenTag change; store cache is preferred). */
+  agentDocuments?: any;
   plugins?: string[];
   /** 'lean' drops teaching blocks/persona sections. Undefined/'full' = legacy. */
   promptMode?: 'full' | 'lean';
@@ -137,7 +151,10 @@ export const contextEngineering = async ({
   stepContext,
   topicId,
   memoryContext,
-}: ContextEngineeringContext): Promise<OpenAIChatMessage[]> => {
+}: ContextEngineeringContext): Promise<{
+  contextBuckets?: ContextBuckets;
+  messages: OpenAIChatMessage[];
+}> => {
   log('tools: %o', tools);
 
   // Build agent group configuration if groupId is provided
@@ -364,16 +381,19 @@ export const contextEngineering = async ({
 
   log('Input messages count: %d', messages.length);
 
-  const processed = await runContextEngineering(snapshot);
+  const result = await new MessagesEngine(buildMessagesEngineParams(snapshot)).process();
 
-  log('Output messages count: %d', processed.length);
+  log('Output messages count: %d', result.messages.length);
 
-  if (messages.length > 0 && processed.length === 0) {
+  if (messages.length > 0 && result.messages.length === 0) {
     log(
       'WARNING: Messages were reduced to 0! Input messages: %o',
       messages.map((m) => ({ id: m.id, role: m.role })),
     );
   }
 
-  return processed;
+  return {
+    contextBuckets: result.metadata.contextBuckets,
+    messages: result.messages,
+  };
 };

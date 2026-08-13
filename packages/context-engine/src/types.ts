@@ -58,10 +58,44 @@ export interface Message {
  */
 export interface PipelineContextMetadata extends PipelineContextMetadataOverrides {
   [key: `${string}InjectedCount`]: number | undefined;
-  currentTokenCount?: number;
+  /**
+   * Per-bucket system-prompt text recorded by MessagesEngine while the
+   * pipeline runs — lets the send side count exactly what was assembled
+   * (system role / tools / history summary) instead of re-estimating.
+   */
+  contextBuckets?: ContextBuckets;
+  /**
+   * Conversation rows (history + current input) captured right after
+   * history truncation and before any injection — the base of the `chats`
+   * bucket, which then also accumulates per-request injectors.
+   */
+  contextChatsBase?: string;
   maxTokens?: number;
   model?: string;
   provider?: string;
+}
+
+/**
+ * Named buckets of system-prompt content assembled by MessagesEngine.
+ * `chats` holds the conversation rows (history + current input) plus any
+ * per-request injectors that belong to the chat bucket.
+ */
+export interface ContextBuckets {
+  chats: string;
+  historySummary: string;
+  systemRole: string;
+  tools: string;
+}
+
+/**
+ * Token counts per bucket (tokenx estimate), computed after the pipeline
+ * has assembled the final payload. `chats` = total − recorded buckets.
+ */
+export interface ContextTokenCounts {
+  chats: number;
+  historySummary: number;
+  systemRole: number;
+  tools: number;
 }
 
 /**
@@ -136,11 +170,7 @@ export enum ProcessorType {
 
 /** Legacy processor type - kept for backward compatibility */
 export type ProcessorTypeLegacy =
-  | 'injector'
-  | 'transformer'
-  | 'validator'
-  | 'optimizer'
-  | 'processor';
+  'injector' | 'transformer' | 'validator' | 'optimizer' | 'processor';
 
 /**
  * Token counter interface

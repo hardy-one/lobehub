@@ -661,6 +661,12 @@ export class GatewayActionImpl {
             editingGroupId: executionContext.editingGroupId ?? this.#get().activeGroupId,
           }),
           groupId: executionContext.groupId,
+          // The server stamps messages with this sessionId (aiChat writes it on
+          // send) and execAgent's resume guard requires the same value on
+          // regenerate/approve — without it every resume 500s with
+          // "appContext.sessionId does not match parent message" and the run
+          // falls back to client execution.
+          ...(executionContext.groupId ? {} : { sessionId: executionContext.agentId }),
           ...(initialTopicMetadata && { initialTopicMetadata }),
           // Forward the group orchestration role so the server can stamp it onto
           // the assistant message metadata. Without this the gateway-created

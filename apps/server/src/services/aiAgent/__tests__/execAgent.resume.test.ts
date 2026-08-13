@@ -251,6 +251,22 @@ describe('AiAgentService.execAgent - resume mode', () => {
     ).rejects.toThrow('appContext.topicId does not match parent message');
   });
 
+  it('should reject appContext.sessionId mismatch in resume mode', async () => {
+    await expect(
+      service.execAgent({
+        agentId: 'agent-1',
+        appContext: {
+          sessionId: 'session-other',
+          threadId: 'thread-1',
+          topicId: 'topic-1',
+        },
+        parentMessageId: 'parent-msg-1',
+        prompt: '',
+        resume: true,
+      }),
+    ).rejects.toThrow('appContext.sessionId does not match parent message');
+  });
+
   it('should require parentMessageId when resume is true', async () => {
     await expect(
       service.execAgent({

@@ -52,21 +52,79 @@ export const resolveSubAgentModel = (
  *    parent's provider, then the global default.
  * 2. Otherwise the static precedence of {@link resolveSubAgentModel}.
  */
-export const resolveSubAgentModelWithCallOverride = (
+export interface ResolvedSubAgentModel {
+  /**
+   * Whether the pair comes from an explicit user/agent choice (per-call tool
+   * override, an `agencyConfig.subagent` override, or the parent run's
+   * effective model). `false` only for the global default fallback pair
+   * (`DEFAULT_SUB_AGENT_MODEL` / `DEFAULT_PROVIDER`) — the spawn site uses
+   * this to exempt the platform-owned default from enabled-model validation
+   * while still validating every explicitly configured pair.
+   */
+  explicit: boolean;
+  model: string;
+  provider: string;
+}
+
+/**
+ * Same resolution as {@link resolveSubAgentModelWithCallOverride}, but also
+ * reports whether the resolved pair is an explicit user/agent choice
+ * (`explicit: true`) or the global default fallback (`explicit: false`).
+ */
+export const resolveSubAgentModelWithCallOverrideDetailed = (
   callOverride: { model?: string | null; provider?: string | null } | undefined,
   subagent: LobeAgentAgencyConfig['subagent'],
   parentModel?: { model?: string | null; provider?: string | null },
-): { model: string; provider: string } => {
+): ResolvedSubAgentModel => {
   if (callOverride?.model) {
     return {
       model: callOverride.model,
       provider:
         callOverride.provider || subagent?.provider || parentModel?.provider || DEFAULT_PROVIDER,
+      explicit: true,
     };
   }
 
-  return resolveSubAgentModel(subagent, parentModel);
+  if (subagent?.model)
+    return {
+      model: subagent.model,
+      provider: subagent.provider || DEFAULT_PROVIDER,
+      explicit: true,
+    };
+
+  if (parentModel?.model)
+    return {
+      model: parentModel.model,
+      provider: parentModel.provider || DEFAULT_PROVIDER,
+      explicit: true,
+    };
+
+  return { model: DEFAULT_SUB_AGENT_MODEL, provider: DEFAULT_PROVIDER, explicit: false };
 };
+
+export const resolveSubAgentModelWithCallOverride = (
+  callOverride: { model?: string | null; provider?: string | null } | undefined,
+  subagent: LobeAgentAgencyConfig['subagent'],
+  parentModel?: { model?: string | null; provider?: string | null },
+): { model: string; provider: string } => {
+  const { model, provider } = resolveSubAgentModelWithCallOverrideDetailed(
+    callOverride,
+    subagent,
+    parentModel,
+  );
+  return { model, provider };
+};
+
+/**
+ * Structured identity of the denied model pair for the callSubAgent
+ * enabled-model check (server spawn site and client runner). Copy is rendered
+ * by callers through i18n (`error.subAgentModelDenied`), so both surfaces
+ * surface identical guidance in the user's language.
+ */
+export const getSubAgentModelDeniedPair = (
+  provider: string,
+  model: string,
+): { provider: string; model: string } => ({ model, provider });
 
 /**
  * Resolve the effective chatConfig for a `callSubAgent` run: the parent's

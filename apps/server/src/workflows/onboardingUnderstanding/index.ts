@@ -30,7 +30,9 @@ export class UnderstandingWorkflowUnavailableError extends Error {
 
 export class OnboardingUnderstandingWorkflow {
   static assertAvailable() {
-    const baseUrl = appEnv.INTERNAL_APP_URL || appEnv.APP_URL;
+    // QStash/Upstash workflow entry URLs must be publicly resolvable; APP_URL
+    // takes precedence over the docker-network-only INTERNAL_APP_URL.
+    const baseUrl = appEnv.APP_URL || appEnv.INTERNAL_APP_URL;
     if (!process.env.QSTASH_TOKEN || !baseUrl) {
       throw new UnderstandingWorkflowUnavailableError();
     }

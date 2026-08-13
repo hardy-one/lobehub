@@ -35,11 +35,16 @@ export async function deliverWebhook(
 ): Promise<void> {
   const { url, delivery = 'fetch', fallback = 'fetch' } = webhook;
 
-  // Resolve URL: relative paths joined with INTERNAL_APP_URL or APP_URL
-  const resolvedUrl = url.startsWith('http')
-    ? url
-    : urlJoin(process.env.INTERNAL_APP_URL || process.env.APP_URL || '', url);
-
+  // Resolve relative URLs against a base. QStash executes on Upstash's
+  // infrastructure, outside the deployment network, so it can only reach a
+  // publicly resolvable URL — therefore QStash delivery uses APP_URL. Direct
+  // fetch delivery is server-to-server and may use INTERNAL_APP_URL to bypass
+  // CDN/proxy.
+  const baseUrl =
+    delivery === 'qstash'
+      ? process.env.APP_URL || process.env.INTERNAL_APP_URL || ''
+      : process.env.INTERNAL_APP_URL || process.env.APP_URL || '';
+  const resolvedUrl = url.startsWith('http') ? url : urlJoin(baseUrl, url);
   if (delivery === 'qstash') {
     try {
       const qstashToken = process.env.QSTASH_TOKEN;

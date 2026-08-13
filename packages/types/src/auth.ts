@@ -1,8 +1,18 @@
+export type AuthMethod = 'apiKey' | 'authToken';
+
 export interface ClientSecretPayload {
   /**
    * Represents the user's API key
    */
   apiKey?: string;
+  /**
+   * Authentication method for Anthropic-compatible providers.
+   * - 'apiKey': sends API key as x-api-key header (Anthropic default)
+   * - 'authToken': sends API key as Authorization: Bearer header
+   * @default 'apiKey'
+   */
+  authMethod?: AuthMethod;
+
   /**
    * ComfyUI specific authentication fields
    */

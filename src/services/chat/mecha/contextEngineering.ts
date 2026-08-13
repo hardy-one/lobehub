@@ -1,4 +1,3 @@
-import { LobeActivatorIdentifier } from '@lobechat/builtin-tool-activator';
 import { AgentBuilderIdentifier } from '@lobechat/builtin-tool-agent-builder';
 import { AgentManagementIdentifier } from '@lobechat/builtin-tool-agent-management';
 import { formatUploadedFilesPrompt } from '@lobechat/builtin-tool-cloud-sandbox';
@@ -32,7 +31,6 @@ import type {
   OnboardingContext,
   OperationSkillSet,
   PlanTodoConfig,
-  ToolDiscoveryConfig,
   UserMemoryData,
   WorkspaceContext,
 } from '@lobechat/context-engine';
@@ -73,7 +71,6 @@ import {
   builtinToolSelectors,
   composioStoreSelectors,
   lobehubSkillStoreSelectors,
-  toolSelectors,
 } from '@/store/tool/selectors';
 import { ComposioServerStatus } from '@/store/tool/slices/composioStore';
 import { useUserStore } from '@/store/user';
@@ -131,6 +128,8 @@ interface ContextEngineeringContext {
   model: string;
   /** Agent's enabled plugin/tool/skill identifiers (from agentConfig.plugins) */
   plugins?: string[];
+  /** 'lean' drops teaching blocks/persona sections. Undefined/'full' = legacy. */
+  promptMode?: 'full' | 'lean';
   provider: string;
   sessionId?: string;
   /**
@@ -164,6 +163,7 @@ export const contextEngineering = async ({
   disabledPluginIds,
   enableAgentMode,
   groupId,
+  promptMode,
   initialContext,
   plugins,
   stepContext,
@@ -487,23 +487,6 @@ export const contextEngineering = async ({
         }
       : undefined;
 
-  // Build tool discovery config if lobe-activator is enabled
-  const enabledToolSet = new Set(tools || []);
-  const isLobeToolsEnabled = enabledToolSet.has(LobeActivatorIdentifier);
-
-  let toolDiscoveryConfig: ToolDiscoveryConfig | undefined;
-  if (isLobeToolsEnabled) {
-    const toolState = getToolStoreState();
-    const availableTools = toolSelectors
-      .availableToolsForDiscovery(toolState)
-      .filter((tool) => !enabledToolSet.has(tool.identifier));
-
-    if (availableTools.length > 0) {
-      toolDiscoveryConfig = { availableTools };
-      log('Tool discovery config built, available tools count: %d', availableTools.length);
-    }
-  }
-
   // Build Agent Management context.
   // - availableAgents is injected whenever the user is in auto skill mode (so the
   //   supervisor can decide to activate agent-management on its own) OR when the tool
@@ -756,6 +739,7 @@ export const contextEngineering = async ({
       // is `false` (chat mode). ChatService resolves it from stored user intent
       // plus the selected model's function-call ability.
       enableAgentMode: effectiveEnableAgentMode,
+      promptMode,
       formatHistorySummary: historySummaryPrompt,
       historySummary,
       initialContext,
@@ -775,10 +759,9 @@ export const contextEngineering = async ({
       enabledSkills,
       enabledToolIds: tools,
       manifests,
-      // Selected skills/tools from user for this request
+      // Selected skills/tools from the user for this request
       selectedSkills: initialContext?.selectedSkills,
       selectedTools: initialContext?.selectedTools,
-      toolDiscoveryConfig,
     },
     // Browser-resolved placeholders. The store-backed generators stay lazy so a
     // placeholder that never renders costs nothing. Temporal placeholders are

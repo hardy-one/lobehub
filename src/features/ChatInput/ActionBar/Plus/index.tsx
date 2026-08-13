@@ -1,5 +1,6 @@
 'use client';
 
+import { resolveModelScopedChatConfig } from '@lobechat/types';
 import { validateVideoFileSize } from '@lobechat/utils/client';
 import type { IconProps } from '@lobehub/ui';
 import { Icon, Popover } from '@lobehub/ui';
@@ -27,6 +28,7 @@ import { memo, Suspense, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { openAttachKnowledgeModal } from '@/features/LibraryModal';
+import { buildModelConfigsPatch } from '@/helpers/buildModelConfigsPatch';
 import { useIsDark } from '@/hooks/useIsDark';
 import { useMediaUploadAbility } from '@/hooks/useMediaUploadAbility';
 import { useModelSupportToolUse } from '@/hooks/useModelSupportToolUse';
@@ -321,11 +323,16 @@ const usePlusMenuItems = ({ close }: { close: () => void }): ActionDropdownMenuI
   const skillActivateMode = useAgentStore((s) =>
     chatConfigByIdSelectors.getSkillActivateModeById(agentId)(s),
   );
-  const [searchMode, useModelBuiltinSearch, disableGatewayMode] = useAgentStore((s) => [
-    chatConfigByIdSelectors.getSearchModeById(agentId)(s),
-    chatConfigByIdSelectors.getUseModelBuiltinSearchById(agentId)(s),
-    chatConfigByIdSelectors.getChatConfigById(agentId)(s).disableGatewayMode,
-  ]);
+  const [searchMode, useModelBuiltinSearch, disableGatewayMode] = useAgentStore((s) => {
+    const chatConfig = chatConfigByIdSelectors.getChatConfigById(agentId)(s);
+    const modelChatConfig = resolveModelScopedChatConfig(chatConfig, provider, model);
+
+    return [
+      chatConfig.searchMode,
+      modelChatConfig.useModelBuiltinSearch,
+      chatConfig.disableGatewayMode,
+    ];
+  });
   const isGatewayModeEnabled = (disableGatewayMode ?? defaultDisableGatewayMode) !== true;
 
   const isMemoryEnabled = useMemoryEnabled(agentId);
@@ -382,14 +389,23 @@ const usePlusMenuItems = ({ close }: { close: () => void }): ActionDropdownMenuI
   const handleSelectSearch = useCallback(
     async (option: 'off' | 'app' | 'provider') => {
       if (option === 'off') {
-        await updateAgentChatConfig({ searchMode: 'off', useModelBuiltinSearch: false });
+        await updateAgentChatConfig({
+          ...buildModelConfigsPatch(provider, model, false),
+          searchMode: 'off',
+        });
       } else if (option === 'app') {
-        await updateAgentChatConfig({ searchMode: 'auto', useModelBuiltinSearch: false });
+        await updateAgentChatConfig({
+          ...buildModelConfigsPatch(provider, model, false),
+          searchMode: 'auto',
+        });
       } else {
-        await updateAgentChatConfig({ searchMode: 'auto', useModelBuiltinSearch: true });
+        await updateAgentChatConfig({
+          ...buildModelConfigsPatch(provider, model, true),
+          searchMode: 'auto',
+        });
       }
     },
-    [updateAgentChatConfig],
+    [model, provider, updateAgentChatConfig],
   );
 
   const handleToggleGatewayMode = useCallback(

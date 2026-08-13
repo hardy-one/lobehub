@@ -1,5 +1,6 @@
 import { ToolNameResolver } from '@lobechat/context-engine';
 import { pluginPrompts } from '@lobechat/prompts';
+import { resolveModelScopedChatConfig } from '@lobechat/types';
 import { debounce } from 'es-toolkit/compat';
 import { startTransition, useEffect, useMemo, useState } from 'react';
 
@@ -100,13 +101,14 @@ export const useTokenBreakdown = (): TokenBreakdown => {
     hasEnabledKnowledgeBases,
   ] = useAgentStore((s) => {
     const chatConfig = chatConfigByIdSelectors.getChatConfigById(agentId)(s);
+    const modelChatConfig = resolveModelScopedChatConfig(chatConfig, provider, model);
 
     return [
       s.activeAgentId,
       agentByIdSelectors.getAgentSystemRoleById(agentId)(s),
       chatConfig.enableAgentMode,
       chatConfig.searchMode,
-      chatConfig.useModelBuiltinSearch,
+      modelChatConfig.useModelBuiltinSearch,
       chatConfigByIdSelectors.getSkillActivateModeById(agentId)(s),
       chatConfig.memory?.enabled,
       chatConfigByIdSelectors.getRuntimeModeById(agentId)(s),

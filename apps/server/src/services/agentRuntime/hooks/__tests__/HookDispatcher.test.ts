@@ -281,6 +281,8 @@ describe('HookDispatcher', () => {
     afterEach(() => {
       if (originalToken === undefined) delete process.env.QSTASH_TOKEN;
       else process.env.QSTASH_TOKEN = originalToken;
+      delete process.env.APP_URL;
+      delete process.env.INTERNAL_APP_URL;
       vi.restoreAllMocks();
     });
 
@@ -315,7 +317,40 @@ describe('HookDispatcher', () => {
       expect(global.fetch).not.toHaveBeenCalled();
     });
 
-    it('dispatch rejects a no-fallback delivery failure after delivering other hooks', async () => {
+    it('resolves relative QStash URLs against the public APP_URL, not INTERNAL_APP_URL', async () => {
+      process.env.QSTASH_TOKEN = 'test-token';
+      process.env.APP_URL = 'https://public.example.com';
+      process.env.INTERNAL_APP_URL = 'http://lobe:3210'; // docker-network-only host
+      mockPublishJSON.mockResolvedValue({ messageId: 'msg_1' });
+
+      await deliverWebhook(
+        { delivery: 'qstash', fallback: 'none', url: '/api/agent/webhooks/subagent-callback' },
+        { a: 1 },
+      );
+
+      expect(mockPublishJSON).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: 'https://public.example.com/api/agent/webhooks/subagent-callback',
+        }),
+      );
+    });
+
+    it('resolves relative fetch URLs against INTERNAL_APP_URL for server-to-server delivery', async () => {
+      process.env.APP_URL = 'https://public.example.com';
+      process.env.INTERNAL_APP_URL = 'http://lobe:3210';
+      global.fetch = vi.fn().mockResolvedValue({ status: 200 });
+
+      await deliverWebhook(
+        { delivery: 'fetch', url: '/api/agent/webhooks/subagent-callback' },
+        { a: 1 },
+      );
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://lobe:3210/api/agent/webhooks/subagent-callback',
+        expect.any(Object),
+      );
+    });
+    it('dispatch surfaces a no-fallback delivery failure without breaking other hooks', async () => {
       vi.mocked(isQueueAgentRuntimeEnabled).mockReturnValue(true);
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 

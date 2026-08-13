@@ -24,6 +24,7 @@ import type {
   AgentContextDocument,
   AgentGroupConfig,
   AgentManagementContext,
+  ContextBuckets,
   GroupAgentBuilderContext,
   GroupOfficialToolItem,
   LobeToolManifest,
@@ -34,8 +35,9 @@ import type {
   UserMemoryData,
   WorkspaceContext,
 } from '@lobechat/context-engine';
+import { MessagesEngine } from '@lobechat/context-engine';
 import { resolveTopicReferences } from '@lobechat/context-engine';
-import { type ContextSnapshot, runContextEngineering } from '@lobechat/mecha';
+import { buildMessagesEngineParams, type ContextSnapshot } from '@lobechat/mecha';
 import { historySummaryPrompt } from '@lobechat/prompts';
 import {
   getActivePluginIds,
@@ -169,7 +171,10 @@ export const contextEngineering = async ({
   stepContext,
   topicId,
   memoryContext,
-}: ContextEngineeringContext): Promise<OpenAIChatMessage[]> => {
+}: ContextEngineeringContext): Promise<{
+  contextBuckets?: ContextBuckets;
+  messages: OpenAIChatMessage[];
+}> => {
   log('tools: %o', tools);
 
   // Check if Agent Builder tool is enabled
@@ -820,18 +825,21 @@ export const contextEngineering = async ({
 
   log('Input messages count: %d', messages.length);
 
-  const processed = await runContextEngineering(snapshot);
+  const result = await new MessagesEngine(buildMessagesEngineParams(snapshot)).process();
 
-  log('Output messages count: %d', processed.length);
+  log('Output messages count: %d', result.messages.length);
 
-  if (messages.length > 0 && processed.length === 0) {
+  if (messages.length > 0 && result.messages.length === 0) {
     log(
       'WARNING: Messages were reduced to 0! Input messages: %o',
       messages.map((m) => ({ id: m.id, role: m.role })),
     );
   }
 
-  return processed;
+  return {
+    contextBuckets: result.metadata.contextBuckets,
+    messages: result.messages,
+  };
 };
 
 const resolveClientAppOrigin = (): string | undefined => {

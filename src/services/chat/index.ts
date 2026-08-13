@@ -4,6 +4,7 @@ import {
   REQUEST_TOPIC_ID_HEADER,
   REQUEST_TRIGGER_HEADER,
 } from '@lobechat/const';
+import { countContextBuckets, type OfficialToolItem } from '@lobechat/context-engine';
 import { type FetchSSEOptions } from '@lobechat/fetch-sse';
 import { fetchSSE, standardizeAnimationStyle } from '@lobechat/fetch-sse';
 import type { ChatCompletionErrorPayload } from '@lobechat/model-runtime';
@@ -25,9 +26,23 @@ import { ModelProvider } from 'model-bank/modelProvider';
 
 import { DEFAULT_AGENT_CONFIG } from '@/const/settings';
 import { getSearchConfig } from '@/helpers/getSearchConfig';
+import { isCanUseFC } from '@/helpers/isCanUseFC';
+import { getTokenTagMode } from '@/helpers/tokenTagMode';
 import { getAgentStoreState } from '@/store/agent';
-import { agentChatConfigSelectors, agentSelectors } from '@/store/agent/selectors';
-import { aiProviderSelectors, getAiInfraStoreState } from '@/store/aiInfra';
+import {
+  agentByIdSelectors,
+  agentChatConfigSelectors,
+  agentSelectors,
+} from '@/store/agent/selectors';
+import { aiModelSelectors, aiProviderSelectors, getAiInfraStoreState } from '@/store/aiInfra';
+import { getChatStoreState, useChatStore } from '@/store/chat';
+import { topicSelectors } from '@/store/chat/slices/topic/selectors';
+import { getToolStoreState } from '@/store/tool';
+import {
+  builtinToolSelectors,
+  composioStoreSelectors,
+  lobehubSkillStoreSelectors,
+} from '@/store/tool/selectors';
 import { getUserStoreState, useUserStore } from '@/store/user';
 import {
   settingsSelectors,
@@ -198,7 +213,9 @@ class ChatService {
 
     // Apply context engineering with preprocessing configuration
     // Note: agentConfig.systemRole is already resolved by resolveAgentConfig for builtin agents
-    const modelMessages = await contextEngineering({
+    const { contextBuckets, messages: modelMessages } = await contextEngineering({
+      agentBuilderContext,
+      agentDocuments,
       agentId: targetAgentId,
       // `agentConfig.plugins` is the raw (pre-filter) field — `plugins` below
       // is already pinned-only (resolved upstream in agentConfigResolver).
@@ -220,6 +237,7 @@ class ChatService {
       messages: messagesForContext,
       model: payload.model,
       plugins,
+      promptMode: chatConfig.promptMode,
       provider: payload.provider!,
       sessionId: options?.trace?.sessionId,
       stepContext: options?.stepContext,
@@ -231,6 +249,34 @@ class ChatService {
       },
     });
 
+    if (contextBuckets) {
+      const contextTokens = countContextBuckets(modelMessages, contextBuckets, tools);
+      useChatStore.setState({
+        contextTokens: {
+          ...contextTokens,
+          // Stamp the agent mode the payload was assembled for — TokenTag
+          // invalidates these counts when the mode switches (e.g. Smart ↔
+          // Lean ↔ Chat) and falls back to the live estimate.
+          mode: getTokenTagMode(enableAgentMode, chatConfig.promptMode),
+          topicId: topicId ?? getChatStoreState().activeTopicId,
+        },
+      });
+    }
+
+    // For models governed by the reasoning extend-params family the user-level
+    // model-instance config is the single source of truth, so drop the legacy
+    // per-agent Advanced `params.reasoning_effort` — otherwise a stale agent
+    // value would leak into the payload whenever no instance value overlays it.
+    // (Kept from the TokenTag change; extend params themselves now resolve via
+    // `resolveBrowserModelParams` above.)
+    if (
+      aiModelSelectors.isModelHasReasoningExtendParams(
+        payload.model,
+        payload.provider!,
+      )(getAiInfraStoreState())
+    ) {
+      delete (params as Record<string, unknown>).reasoning_effort;
+    }
     return {
       options: { ...options, agentId: targetAgentId, topicId },
       params: {
@@ -451,7 +497,7 @@ class ChatService {
     onLoadingChange?.(true);
 
     try {
-      const llmMessages = await contextEngineering({
+      const { messages: llmMessages } = await contextEngineering({
         messages: params.messages as any,
         model: params.model!,
         provider: params.provider!,

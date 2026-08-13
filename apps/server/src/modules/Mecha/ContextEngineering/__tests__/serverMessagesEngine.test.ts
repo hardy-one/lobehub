@@ -683,19 +683,23 @@ describe('serverMessagesEngine', () => {
     it('should pass userTimezone as timezone to MessagesEngine', async () => {
       const constructorSpy = vi.spyOn(MessagesEngine.prototype, 'process').mockResolvedValue({
         messages: [],
+        metadata: {},
       } as any);
 
       const messages = createBasicMessages();
 
-      await serverMessagesEngine({
-        messages,
-        model: 'gpt-4',
-        provider: 'openai',
-        userTimezone: 'Asia/Shanghai',
-      });
+      try {
+        await serverMessagesEngine({
+          messages,
+          model: 'gpt-4',
+          provider: 'openai',
+          userTimezone: 'Asia/Shanghai',
+        });
 
-      expect(constructorSpy).toHaveBeenCalled();
-      constructorSpy.mockRestore();
+        expect(constructorSpy).toHaveBeenCalled();
+      } finally {
+        constructorSpy.mockRestore();
+      }
     });
 
     it('should use userTimezone in variable generators for time-related values', async () => {

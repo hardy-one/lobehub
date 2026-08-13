@@ -271,6 +271,7 @@ describe('GatewayActionImpl', () => {
         gatewayUrl: 'https://gateway.test.com',
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -286,6 +287,7 @@ describe('GatewayActionImpl', () => {
         gatewayUrl: 'https://gateway.test.com',
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -302,6 +304,7 @@ describe('GatewayActionImpl', () => {
         onEvent: (e) => events.push(e),
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -327,6 +330,7 @@ describe('GatewayActionImpl', () => {
         onSessionComplete: onComplete,
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -348,6 +352,7 @@ describe('GatewayActionImpl', () => {
         gatewayUrl: 'https://gateway.test.com',
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -362,6 +367,7 @@ describe('GatewayActionImpl', () => {
         gatewayUrl: 'https://gateway.test.com',
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -386,6 +392,7 @@ describe('GatewayActionImpl', () => {
         onSessionComplete,
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -407,6 +414,7 @@ describe('GatewayActionImpl', () => {
         onSessionComplete,
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -428,6 +436,7 @@ describe('GatewayActionImpl', () => {
           onSessionComplete,
           operationId: 'op-1',
           token: 'old-token',
+          tokenTagMode: 'agent:full',
           topicId: TEST_TOPIC_ID,
         });
 
@@ -455,6 +464,7 @@ describe('GatewayActionImpl', () => {
           onSessionComplete,
           operationId: 'op-1',
           token: 'old-token',
+          tokenTagMode: 'agent:full',
           topicId: TEST_TOPIC_ID,
         });
 
@@ -480,6 +490,7 @@ describe('GatewayActionImpl', () => {
         gatewayUrl: 'https://gateway.test.com',
         operationId: 'op-1',
         token: 'token-1',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -490,6 +501,7 @@ describe('GatewayActionImpl', () => {
         gatewayUrl: 'https://gateway.test.com',
         operationId: 'op-1',
         token: 'token-2',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -506,6 +518,7 @@ describe('GatewayActionImpl', () => {
         gatewayUrl: 'https://gateway.test.com',
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 
@@ -520,6 +533,28 @@ describe('GatewayActionImpl', () => {
     });
   });
 
+  describe('interruptGatewayAgent', () => {
+    it('should send interrupt to the client', () => {
+      const { action, mockClient } = createTestAction();
+
+      action.connectToGateway({
+        gatewayUrl: 'https://gateway.test.com',
+        operationId: 'op-1',
+        token: 'test-token',
+        tokenTagMode: 'agent:full',
+        topicId: TEST_TOPIC_ID,
+      });
+
+      action.interruptGatewayAgent('op-1');
+      expect(mockClient.sendInterrupt).toHaveBeenCalledOnce();
+    });
+
+    it('should be a no-op for unknown operationId', () => {
+      const { action } = createTestAction();
+      action.interruptGatewayAgent('nonexistent');
+    });
+  });
+
   describe('getGatewayConnectionStatus', () => {
     it('should return status for active connection', () => {
       const { action } = createTestAction();
@@ -528,6 +563,7 @@ describe('GatewayActionImpl', () => {
         gatewayUrl: 'https://gateway.test.com',
         operationId: 'op-1',
         token: 'test-token',
+        tokenTagMode: 'agent:full',
         topicId: TEST_TOPIC_ID,
       });
 

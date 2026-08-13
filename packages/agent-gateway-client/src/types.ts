@@ -5,6 +5,7 @@ import type { UIChatMessage } from '@lobechat/types';
 export type AgentStreamEventType =
   | 'agent_runtime_init'
   | 'agent_runtime_end'
+  | 'context_metrics'
   | 'stream_start'
   | 'stream_chunk'
   | 'stream_end'

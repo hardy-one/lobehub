@@ -17,6 +17,8 @@ export interface UserMemoryInjectorConfig {
   enabled?: boolean;
   /** User memories data */
   memories?: UserMemoryData;
+  /** 'lean' filters persona to core sections. Undefined/'full' = legacy. */
+  promptMode?: 'full' | 'lean';
 }
 
 export interface MemoryContext {
@@ -44,7 +46,7 @@ export class UserMemoryInjector extends BaseFirstUserContentProvider {
     const { memories } = this.config;
     if (!memories) return null;
 
-    const content = promptUserMemory({ memories });
+    const content = promptUserMemory({ memories }, this.config.promptMode === 'lean');
 
     if (!content) {
       log('No user memories to inject');

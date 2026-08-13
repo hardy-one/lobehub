@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -131,10 +131,13 @@ export function registerLoginCommand(program: Command) {
       log.info('');
 
       // Try to open browser automatically
-      const opened = await openBrowser(verifyUrl);
-      if (!opened) {
-        log.warn('Could not open browser automatically.');
-      }
+      // A URL-handler process can stay alive after it hands off to the browser.
+      // Device-code polling must not wait for that process to exit.
+      void openBrowser(verifyUrl).then((opened) => {
+        if (!opened) {
+          log.warn('Could not open browser automatically.');
+        }
+      });
 
       log.info('Waiting for authorization...');
 
@@ -312,14 +315,13 @@ async function openBrowser(url: string): Promise<boolean> {
       }
 
       try {
-        execFile(executable, args, (err) => {
-          if (err) {
-            log.debug(`Could not open browser automatically: ${err.message}`);
-            resolve(false);
-            return;
-          }
-          resolve(true);
+        const child = spawn(executable, args, { stdio: 'ignore' });
+        child.once('error', (err) => {
+          log.debug(`Could not open browser automatically: ${err.message}`);
+          resolve(false);
         });
+        child.once('close', (code) => resolve(code === 0));
+        child.unref();
       } catch (error: any) {
         log.debug(`Could not open browser automatically: ${error?.message || String(error)}`);
         resolve(false);

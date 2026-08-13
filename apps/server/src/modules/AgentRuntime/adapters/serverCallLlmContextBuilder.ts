@@ -113,7 +113,6 @@ export const buildServerCallLlmContext = async ({
 
   const contextEngineInput = {
     additionalContexts: llmPayload.additionalContexts,
-    agentDocuments: facts.agentDocuments,
     // Identity lives on the agent row, not in the prompt text — inject it so
     // the model introduces itself by the user-given name.
     agentIdentity: { name: agentConfig.name ?? undefined, title: agentConfig.title ?? undefined },

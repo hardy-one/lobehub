@@ -298,6 +298,10 @@ export class CompletionLifecycle {
         log('[%s] Failed to recompute topic usage rollup (non-fatal): %O', operationId, error);
       }
     }
+
+    // The compression baseline is resolved by the agent runtime from the
+    // conversation messages themselves (last assistant message carrying real
+    // provider usage) — no topic-level persistence is needed here.
   }
 
   /** Best-effort child-usage rollup — a DB hiccup must not fail the completion write. */

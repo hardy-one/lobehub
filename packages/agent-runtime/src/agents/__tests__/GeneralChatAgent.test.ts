@@ -187,6 +187,178 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual(expectCompressionInstruction(state.messages));
     });
 
+    it('should trigger compression from a real-usage baseline found in messages', async () => {
+      const agent = new GeneralChatAgent({
+        agentConfig: { maxSteps: 100 },
+        compressionConfig: {
+          enabled: true,
+          maxWindowToken: 64_000,
+        },
+        operationId: 'test-session',
+        modelRuntimeConfig: mockModelRuntimeConfig,
+      });
+
+      // 最后一条 assistant 消息携带真实 usage（> 64k 阈值），基线从消息中解析
+      const state = createMockState({
+        messages: [
+          { content: 'prev', id: 'msg-1', role: 'assistant', usage: { totalTokens: 70_000 } },
+        ] as any,
+      });
+      const context = createMockContext('init', { model: 'gpt-4o-mini', provider: 'openai' });
+
+      const result = await agent.runner(context, state);
+
+      expect((result as any).type).toBe('compress_context');
+      expect((result as any).payload.currentTokenCount).toBe(70_000);
+    });
+
+    it('should fall back to full estimation without a usage-carrying message', async () => {
+      const agent = new GeneralChatAgent({
+        agentConfig: { maxSteps: 100 },
+        compressionConfig: {
+          enabled: true,
+          maxWindowToken: 64_000,
+        },
+        operationId: 'test-session',
+        modelRuntimeConfig: mockModelRuntimeConfig,
+      });
+
+      // 消息极少且无真实 usage → 全量估算远低于阈值，不触发压缩
+      const state = createMockState({
+        messages: [{ content: 'x', id: 'msg-1', role: 'user' }] as any,
+      });
+      const context = createMockContext('init', { model: 'gpt-4o-mini', provider: 'openai' });
+
+      const result = await agent.runner(context, state);
+
+      expect((result as any).type).toBe('call_llm');
+    });
+    it('should discard a real-usage baseline measured by a different model', async () => {
+      const agent = new GeneralChatAgent({
+        agentConfig: { maxSteps: 100 },
+        compressionConfig: {
+          enabled: true,
+          maxWindowToken: 64_000,
+        },
+        operationId: 'test-session',
+        modelRuntimeConfig: mockModelRuntimeConfig,
+      });
+
+      // usage 消息由另一个模型生成 → tokenizer 不同 → 基线不可比 → 全量估算
+      const state = createMockState({
+        modelRuntimeConfig: mockModelRuntimeConfig,
+        messages: [
+          {
+            content: 'prev',
+            id: 'msg-1',
+            model: 'claude-sonnet-4',
+            role: 'assistant',
+            usage: { totalTokens: 70_000 },
+          },
+        ] as any,
+      });
+      const context = createMockContext('init', { model: 'gpt-4o-mini', provider: 'openai' });
+
+      const result = await agent.runner(context, state);
+
+      expect((result as any).type).toBe('call_llm');
+    });
+
+    it('should reuse the baseline again after switching back to the original model', async () => {
+      const agent = new GeneralChatAgent({
+        agentConfig: { maxSteps: 100 },
+        compressionConfig: {
+          enabled: true,
+          maxWindowToken: 64_000,
+        },
+        operationId: 'test-session',
+        modelRuntimeConfig: mockModelRuntimeConfig,
+      });
+
+      // 最后一条 usage 消息是旧模型（跳过），更早的同模型消息仍可作基线
+      const state = createMockState({
+        modelRuntimeConfig: mockModelRuntimeConfig,
+        messages: [
+          {
+            content: 'old',
+            id: 'msg-old',
+            model: 'gpt-4o-mini',
+            role: 'assistant',
+            usage: { totalTokens: 70_000 },
+          },
+          {
+            content: 'interim',
+            id: 'msg-interim',
+            model: 'claude-sonnet-4',
+            role: 'assistant',
+            usage: { totalTokens: 1_000 },
+          },
+        ] as any,
+      });
+      const context = createMockContext('init', { model: 'gpt-4o-mini', provider: 'openai' });
+
+      const result = await agent.runner(context, state);
+
+      expect((result as any).type).toBe('compress_context');
+      expect((result as any).payload.currentTokenCount).toBeGreaterThan(70_000);
+    });
+    it('should not compress ≤32k models when smartThreshold is enabled', async () => {
+      const agent = new GeneralChatAgent({
+        agentConfig: { maxSteps: 100 },
+        compressionConfig: {
+          enabled: true,
+          maxWindowToken: 32_000,
+          smartThreshold: true,
+        },
+        operationId: 'test-session',
+        modelRuntimeConfig: mockModelRuntimeConfig,
+      });
+
+      const state = createMockState({
+        messages: [
+          {
+            content: '',
+            metadata: { usage: { totalOutputTokens: 30_000 } },
+            role: 'assistant',
+          },
+        ] as any,
+      });
+      const context = createMockContext('init', { model: 'gpt-4o-mini', provider: 'openai' });
+
+      const result = await agent.runner(context, state);
+
+      expect((result as any).type).toBe('call_llm');
+    });
+
+    it('should use smart 70% threshold when smartThreshold is enabled', async () => {
+      const agent = new GeneralChatAgent({
+        agentConfig: { maxSteps: 100 },
+        compressionConfig: {
+          enabled: true,
+          maxWindowToken: 200_000,
+          smartThreshold: true,
+        },
+        operationId: 'test-session',
+        modelRuntimeConfig: mockModelRuntimeConfig,
+      });
+
+      // 130k raw * 1.25 drift = 162.5k > 140k smart threshold → compress
+      const state = createMockState({
+        messages: [
+          {
+            content: '',
+            metadata: { usage: { totalOutputTokens: 130_000 } },
+            role: 'assistant',
+          },
+        ] as any,
+      });
+      const context = createMockContext('init', { model: 'gpt-4o-mini', provider: 'openai' });
+
+      const result = await agent.runner(context, state);
+
+      expect(result).toEqual(expectCompressionInstruction(state.messages));
+    });
+
     it('should carry a persisted compressedGroup summary into incremental compression', async () => {
       const agent = createCompressionAgent();
       const state = createMockState({

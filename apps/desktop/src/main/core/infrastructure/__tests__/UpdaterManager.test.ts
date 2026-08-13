@@ -178,6 +178,18 @@ describe('UpdaterManager', () => {
       expect(autoUpdater.allowDowngrade).toBe(true);
     });
 
+    it('should configure the GitHub provider when a HARDY channel is persisted', async () => {
+      vi.mocked(mockApp.storeManager.get).mockReturnValue('HARDY');
+
+      await updaterManager.initialize();
+
+      expect(autoUpdater.setFeedURL).toHaveBeenCalledWith({
+        owner: 'hardy-one',
+        provider: 'github',
+        repo: 'lobe-release',
+      });
+    });
+
     it('should register all event listeners', async () => {
       await updaterManager.initialize();
 
@@ -210,6 +222,16 @@ describe('UpdaterManager', () => {
       updaterManager.switchChannel('stable');
 
       expect(autoUpdater.allowDowngrade).toBe(true);
+    });
+
+    it('should configure the GitHub provider for the HARDY channel', () => {
+      updaterManager.switchChannel('HARDY');
+
+      expect(autoUpdater.setFeedURL).toHaveBeenCalledWith({
+        owner: 'hardy-one',
+        provider: 'github',
+        repo: 'lobe-release',
+      });
     });
   });
 

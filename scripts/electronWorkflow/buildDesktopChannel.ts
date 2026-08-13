@@ -3,7 +3,9 @@ import path from 'node:path';
 
 import fs from 'fs-extra';
 
-type ReleaseChannel = 'stable' | 'beta' | 'nightly' | 'canary';
+// HARDY 发布在 `hardy-one/lobe-release` 仓库 CI（`.github/workflows/build-all.yml`，Windows + Docker）完成，
+// 本仓库 HARDY 路径仅供本地构建/调试
+type ReleaseChannel = 'stable' | 'beta' | 'nightly' | 'canary' | 'HARDY';
 
 const rootDir = path.resolve(__dirname, '../..');
 const desktopDir = path.join(rootDir, 'apps/desktop');
@@ -74,7 +76,11 @@ const restoreFile = async (filePath: string, content?: Buffer) => {
 };
 
 const validateChannel = (channel: string): channel is ReleaseChannel =>
-  channel === 'stable' || channel === 'beta' || channel === 'nightly' || channel === 'canary';
+  channel === 'stable' ||
+  channel === 'beta' ||
+  channel === 'nightly' ||
+  channel === 'canary' ||
+  channel === 'HARDY';
 
 const runCommand = (command: string, env?: Record<string, string | undefined>) => {
   execSync(command, {

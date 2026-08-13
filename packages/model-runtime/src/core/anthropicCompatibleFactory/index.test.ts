@@ -511,3 +511,82 @@ describe('createAnthropicCompatibleRuntime', () => {
     expect(result).toEqual({ ok: true });
   });
 });
+
+const mockAnthropicMessageResponse = () =>
+  new Response(
+    JSON.stringify({
+      content: [{ text: 'hi', type: 'text' }],
+      id: 'msg_auth_method_test',
+      model: 'claude-test',
+      role: 'assistant',
+      stop_reason: 'end_turn',
+      stop_sequence: null,
+      type: 'message',
+      usage: { input_tokens: 1, output_tokens: 1 },
+    }),
+    { headers: { 'content-type': 'application/json' }, status: 200 },
+  );
+
+const createRuntimeWithRealClient = async (
+  options: { apiKey: string; authMethod?: 'apiKey' | 'authToken' },
+  fetchMock: ReturnType<typeof vi.fn>,
+) => {
+  const { default: RealAnthropic } = (await vi.importActual('@anthropic-ai/sdk')) as {
+    default: typeof Anthropic;
+  };
+  const Runtime = createAnthropicCompatibleRuntime({
+    chatCompletion: {
+      handlePayload: (payload) => ({
+        max_tokens: 1024,
+        messages: [],
+        model: payload.model,
+      }),
+    },
+    customClient: {
+      createClient: (clientOptions) =>
+        new RealAnthropic(
+          clientOptions as ConstructorParameters<typeof RealAnthropic>[0],
+        ) as unknown as Anthropic,
+    },
+    provider: 'test-provider',
+  });
+  return new Runtime({ ...options, fetch: fetchMock });
+};
+
+describe('createAnthropicCompatibleRuntime authMethod request headers', () => {
+  it('should send the API key as an Authorization: Bearer header when authMethod is authToken', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockAnthropicMessageResponse());
+    const runtime = await createRuntimeWithRealClient(
+      { apiKey: 'test-key', authMethod: 'authToken' },
+      fetchMock,
+    );
+
+    await runtime.chat({
+      messages: [{ content: 'hi', role: 'user' }],
+      model: 'claude-test',
+      responseMode: 'json',
+      stream: false,
+    } as any);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const headers = new Headers(fetchMock.mock.calls[0][1].headers);
+    expect(headers.get('authorization')).toBe('Bearer test-key');
+  });
+
+  it('should send the API key as an x-api-key header by default', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockAnthropicMessageResponse());
+    const runtime = await createRuntimeWithRealClient({ apiKey: 'test-key' }, fetchMock);
+
+    await runtime.chat({
+      messages: [{ content: 'hi', role: 'user' }],
+      model: 'claude-test',
+      responseMode: 'json',
+      stream: false,
+    } as any);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const headers = new Headers(fetchMock.mock.calls[0][1].headers);
+    expect(headers.get('x-api-key')).toBe('test-key');
+    expect(headers.get('authorization')).toBeNull();
+  });
+});

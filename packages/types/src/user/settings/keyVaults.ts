@@ -1,5 +1,8 @@
+import type { AuthMethod } from '../../auth';
+
 export interface OpenAICompatibleKeyVault {
   apiKey?: string;
+  authMethod?: AuthMethod;
   baseURL?: string;
 }
 

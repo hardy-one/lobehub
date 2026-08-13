@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, truncate, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, truncate, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -139,6 +139,18 @@ describe('defaultGetLocalFilePreview', () => {
       path: path.join(outside, 'secret.txt'),
       workingDirectory: root,
     });
+    expect(result).toEqual({ error: 'File is outside the approved workspace', success: false });
+  });
+
+  it('refuses a symlink inside the workspace that resolves outside it', async () => {
+    const linkedSecret = path.join(root, 'linked-secret.txt');
+    await symlink(path.join(outside, 'secret.txt'), linkedSecret);
+
+    const result = await defaultGetLocalFilePreview({
+      path: linkedSecret,
+      workingDirectory: root,
+    });
+
     expect(result).toEqual({ error: 'File is outside the approved workspace', success: false });
   });
 

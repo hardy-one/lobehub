@@ -658,6 +658,8 @@ export class LocalFileProtocolManager {
       this.indexedProjectRoots.has(normalizedRealWorkspaceRoot);
     if (workspaceRootApproved) {
       // Realpath containment: file resolved inside the real workspace root.
+      // This is the strict check from the workspace-registration change: a lexical
+      // child can be a symlink that resolves outside the approved workspace.
       if (isPathWithinRoot(normalizedRealFilePath, normalizedRealWorkspaceRoot)) {
         return normalizedRealFilePath;
       }

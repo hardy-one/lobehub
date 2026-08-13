@@ -72,4 +72,5 @@ overrides:
   'zod@^4': 4.5.4
 
 patchedDependencies:
+  '@lobehub/ui': patches/@lobehub__ui.patch
   '@upstash/qstash': patches/@upstash__qstash.patch

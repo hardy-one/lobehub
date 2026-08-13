@@ -168,7 +168,10 @@ docs/superpowers/
 .auv/
 
 # Amp agent runtime
-.amp/
+.amp/*
+!.amp/
+!.amp/settings.json
+.pw-cache/
 
 # synthesized by plugins/vite/completionSounds.ts
 public/sounds/

@@ -12,13 +12,14 @@ import { builtinTools } from '@lobechat/builtin-tools';
 import { AGENT_PLAN_FILE_TYPE, COMPOSIO_APP_TYPES } from '@lobechat/const';
 import type {
   AgentBuilderContext,
+  AgentGroupConfig,
   GroupAgentBuilderContext,
   GroupOfficialToolItem,
   OfficialToolItem,
   OnboardingContext,
   PlanTodoConfig,
 } from '@lobechat/context-engine';
-import { resolveTopicReferences } from '@lobechat/context-engine';
+import { countContextBuckets, resolveTopicReferences } from '@lobechat/context-engine';
 import type { ChatStreamPayload } from '@lobechat/model-runtime';
 import { SpanStatusCode } from '@lobechat/observability-otel/api';
 import {
@@ -628,6 +629,7 @@ export const buildServerCallLlmContext = async ({
   const contextEngineInput = {
     additionalContexts: llmPayload.additionalContexts,
     ...(agentBuilderContext && { agentBuilderContext }),
+    agentGroup: state.metadata?.agentGroup as AgentGroupConfig | undefined,
     agentManagementContext: (state as any).initialContext?.initialContext?.mentionedAgents?.length
       ? {
           mentionedAgents: (state as any).initialContext.initialContext.mentionedAgents,
@@ -730,8 +732,23 @@ export const buildServerCallLlmContext = async ({
     async (ceSpan) => {
       try {
         const result = await serverMessagesEngine(contextEngineInput);
-        ceSpan.setAttribute('lobehub.context.message_count', result.length);
-        return result;
+        ceSpan.setAttribute('lobehub.context.message_count', result.messages.length);
+
+        // Publish the exact assembled-payload token counts (tokenx estimator)
+        // so the gateway client can render TokenTag from real send content.
+        if (result.contextBuckets) {
+          const counts = countContextBuckets(
+            result.messages,
+            result.contextBuckets,
+            llmPayload.tools,
+          );
+          await ctx.streamManager?.publishStreamEvent(operationId, {
+            data: counts,
+            stepIndex,
+            type: 'context_metrics',
+          });
+        }
+        return result.messages;
       } catch (error) {
         ceSpan.recordException(error as Error);
         ceSpan.setStatus({

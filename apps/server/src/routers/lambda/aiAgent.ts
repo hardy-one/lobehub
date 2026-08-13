@@ -1360,6 +1360,7 @@ const AgentStreamEventSchema = z.object({
   type: z.enum([
     'agent_runtime_init',
     'agent_runtime_end',
+    'context_metrics',
     'stream_start',
     'stream_chunk',
     'stream_end',

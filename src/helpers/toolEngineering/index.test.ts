@@ -159,6 +159,8 @@ vi.mock('@/store/agent', () => ({
   getAgentStoreState: () => ({}),
 }));
 
+let mockHasAgentDocuments = false;
+
 vi.mock('@/store/agent/selectors', () => ({
   agentSelectors: {
     getAgentConfigById: () => () => ({
@@ -167,6 +169,7 @@ vi.mock('@/store/agent/selectors', () => ({
         ...mockCurrentAgentDisabledPlugins.map((id) => ({ identifier: id, mode: 'disabled' })),
       ],
     }),
+    getAgentDocumentsById: () => () => (mockHasAgentDocuments ? [{ id: 'doc-1' }] : undefined),
   },
   agentByIdSelectors: {
     getAgentKnowledgeBasesById: () => () => [],
@@ -375,6 +378,60 @@ describe('toolEngineering', () => {
       });
 
       expect(result.enabledToolIds).not.toContain('lobe-image-generation');
+    });
+
+    it('should include agent-documents in the estimate when the agent has documents', () => {
+      mockHasAgentDocuments = true;
+
+      const toolsEngine = createAgentToolsEngine(
+        { model: 'gpt-4', provider: 'openai' },
+        undefined,
+        undefined,
+        undefined,
+        { includeAgentDocuments: true },
+      );
+
+      const result = toolsEngine.generateToolsDetailed({
+        toolIds: [],
+        model: 'gpt-4',
+        provider: 'openai',
+      });
+
+      expect(result.enabledToolIds).toContain('lobe-agent-documents');
+    });
+
+    it('should keep agent-documents out of the estimate when the agent has no documents', () => {
+      mockHasAgentDocuments = false;
+
+      const toolsEngine = createAgentToolsEngine(
+        { model: 'gpt-4', provider: 'openai' },
+        undefined,
+        undefined,
+        undefined,
+        { includeAgentDocuments: true },
+      );
+
+      const result = toolsEngine.generateToolsDetailed({
+        toolIds: [],
+        model: 'gpt-4',
+        provider: 'openai',
+      });
+
+      expect(result.enabledToolIds).not.toContain('lobe-agent-documents');
+    });
+
+    it('should keep agent-documents out of client sends (no estimate option)', () => {
+      mockHasAgentDocuments = true;
+
+      const toolsEngine = createAgentToolsEngine({ model: 'gpt-4', provider: 'openai' });
+
+      const result = toolsEngine.generateToolsDetailed({
+        toolIds: [],
+        model: 'gpt-4',
+        provider: 'openai',
+      });
+
+      expect(result.enabledToolIds).not.toContain('lobe-agent-documents');
     });
 
     it('should not enable image generation in chat mode when model cannot call tools', () => {

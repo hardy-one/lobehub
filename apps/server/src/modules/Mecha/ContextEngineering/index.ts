@@ -1,6 +1,6 @@
 import { getShellSyntaxGuidance } from '@lobechat/builtin-tool-local-system';
 import { PageAgentIdentifier } from '@lobechat/builtin-tool-page-agent';
-import { MessagesEngine } from '@lobechat/context-engine';
+import { type ContextBuckets, MessagesEngine } from '@lobechat/context-engine';
 import { type OpenAIChatMessage } from '@lobechat/types';
 
 import { type ServerMessagesEngineParams } from './types';
@@ -152,7 +152,10 @@ export const serverMessagesEngine = async ({
   topicReferences,
   additionalVariables,
   userTimezone,
-}: ServerMessagesEngineParams): Promise<OpenAIChatMessage[]> => {
+}: ServerMessagesEngineParams): Promise<{
+  contextBuckets?: ContextBuckets;
+  messages: OpenAIChatMessage[];
+}> => {
   const engine = new MessagesEngine({
     additionalContexts,
     // Capability injection
@@ -253,7 +256,10 @@ export const serverMessagesEngine = async ({
   });
 
   const result = await engine.process();
-  return result.messages;
+  return {
+    contextBuckets: result.metadata.contextBuckets,
+    messages: result.messages,
+  };
 };
 
 // Re-export types

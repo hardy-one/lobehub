@@ -1,6 +1,7 @@
 /**
  * Tools Engineering - Unified tools processing using ToolsEngine
  */
+import { AgentDocumentsManifest } from '@lobechat/builtin-tool-agent-documents';
 import { BrowserManifest } from '@lobechat/builtin-tool-browser';
 import { CloudSandboxManifest } from '@lobechat/builtin-tool-cloud-sandbox';
 import { ImageGenerationManifest } from '@lobechat/builtin-tool-image-generation';
@@ -226,6 +227,13 @@ export const createAgentToolsEngine = (
    * differs (group/supervisor/page sessions).
    */
   agentId?: string,
+  /**
+   * TokenTag-only estimation options. The agent-documents toolset is a
+   * gateway-side builtin (the client has no executor for it), so it is
+   * included in the UI estimate when the agent has documents — mirroring
+   * what the server actually sends — but never in client sends.
+   */
+  estimateOptions?: { includeAgentDocuments?: boolean },
 ) => {
   const searchConfig = getSearchConfig(workingModel.model, workingModel.provider);
   const agentState = getAgentStoreState();
@@ -291,6 +299,12 @@ export const createAgentToolsEngine = (
       chatConfigByIdSelectors.isLocalSystemEnabledById(effectiveAgentId)(agentState),
     [MemoryManifest.identifier]: memoryEnabled,
     [WebBrowsingManifest.identifier]: webBrowsingEnabled,
+    // Gateway-side toolset: included in the TokenTag estimate when the agent
+    // has documents (mirroring what the server sends), never in client sends.
+    ...(estimateOptions?.includeAgentDocuments &&
+    agentSelectors.getAgentDocumentsById(effectiveAgentId)(agentState)?.length
+      ? { [AgentDocumentsManifest.identifier]: true }
+      : {}),
   };
 
   return createToolsEngine({
@@ -315,6 +329,12 @@ export const createAgentToolsEngine = (
       },
       rules: isChatMode ? chatModeRules : agentModeRules,
     }),
+    // Agent documents are a gateway-side builtin: only the TokenTag estimate
+    // (which mirrors what the server sends) registers their manifest.
+    ...(estimateOptions?.includeAgentDocuments &&
+    agentSelectors.getAgentDocumentsById(effectiveAgentId)(agentState)?.length
+      ? { additionalManifests: [AgentDocumentsManifest] }
+      : {}),
   });
 };
 

@@ -12,7 +12,7 @@ import type {
 } from './types';
 
 export * from './attachmentTokenBuckets';
-
+export { countContextBuckets } from './contextBuckets';
 export const DEFAULT_DRIFT_MULTIPLIER = 1.25;
 
 const ZERO_BY_SOURCE = (): Record<TokenSourceType, number> => ({

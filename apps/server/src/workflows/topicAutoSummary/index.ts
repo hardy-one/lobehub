@@ -18,7 +18,10 @@ const getClient = (): Client => {
 };
 
 const getUrl = (path: string) => {
-  const baseUrl = appEnv.INTERNAL_APP_URL || appEnv.APP_URL;
+  // QStash/Upstash runs outside the deployment network, so workflow entry
+  // URLs must be publicly resolvable — APP_URL takes precedence over the
+  // internal (docker-network-only) INTERNAL_APP_URL.
+  const baseUrl = appEnv.APP_URL || appEnv.INTERNAL_APP_URL;
   if (!baseUrl) throw new Error('APP_URL is required to trigger topic auto-summary workflows');
   return new URL(path, baseUrl).toString();
 };

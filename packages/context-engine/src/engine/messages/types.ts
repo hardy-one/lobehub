@@ -24,7 +24,6 @@ import type { OnboardingContext } from '../../providers/OnboardingContextInjecto
 import type { Plan } from '../../providers/PlanInjector';
 import type { SkillMeta } from '../../providers/SkillContextProvider';
 import type { TodoList } from '../../providers/TodoInjector';
-import type { ToolDiscoveryMeta } from '../../providers/ToolDiscoveryProvider';
 import type { TopicReferenceItem } from '../../providers/TopicReferenceContextInjector';
 import type { PipelineContextMetadata } from '../../types';
 import type { LobeToolManifest } from '../tools/types';
@@ -71,13 +70,6 @@ export interface ToolsConfig {
  */
 export interface SkillsConfig {
   enabledSkills?: SkillMeta[];
-}
-
-/**
- * Tool Discovery configuration
- */
-export interface ToolDiscoveryConfig {
-  availableTools?: ToolDiscoveryMeta[];
 }
 
 /**
@@ -238,6 +230,12 @@ export interface MessagesEngineParams {
    * Undefined / true → agent mode (default).
    */
   enableAgentMode?: boolean;
+
+  /**
+   * Prompt construction mode. 'lean' drops the per-plugin teaching blocks and
+   * persona sections to save tokens. Undefined / 'full' = legacy behaviour.
+   */
+  promptMode?: 'full' | 'lean';
   /** Whether to enable history message count limit */
   enableHistoryCount?: boolean;
   /** Whether to inject the operation expertise snapshot */
@@ -281,10 +279,6 @@ export interface MessagesEngineParams {
   selectedSkills?: RuntimeSelectedSkill[];
   /** Tools explicitly selected by the user for the current request */
   selectedTools?: RuntimeSelectedTool[];
-
-  // ========== Tool Discovery ==========
-  /** Tool Discovery configuration (available tools for dynamic activation) */
-  toolDiscoveryConfig?: ToolDiscoveryConfig;
 
   // ========== Tools ==========
   /** Tools configuration */
@@ -373,7 +367,6 @@ export { type GroupAgentBuilderContext } from '../../providers/GroupAgentBuilder
 export { type Plan } from '../../providers/PlanInjector';
 export { type SkillMeta } from '../../providers/SkillContextProvider';
 export { type TodoItem, type TodoList } from '../../providers/TodoInjector';
-export { type ToolDiscoveryMeta } from '../../providers/ToolDiscoveryProvider';
 export { type TopicReferenceItem } from '../../providers/TopicReferenceContextInjector';
 export { type OpenAIChatMessage, type UIChatMessage } from '@/types/index';
 export { type FileContent, type KnowledgeBaseInfo } from '@lobechat/prompts';

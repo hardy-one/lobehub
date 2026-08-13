@@ -12,7 +12,6 @@ import { builtinTools } from '@lobechat/builtin-tools';
 import { AGENT_PLAN_FILE_TYPE, COMPOSIO_APP_TYPES } from '@lobechat/const';
 import type {
   AgentBuilderContext,
-  AgentGroupConfig,
   GroupAgentBuilderContext,
   GroupOfficialToolItem,
   OfficialToolItem,
@@ -684,7 +683,6 @@ export const buildServerCallLlmContext = async ({
     provider,
     ...(planTodo && { planTodo }),
     systemRole: agentConfig.systemRole ?? undefined,
-    toolDiscoveryConfig,
     toolsConfig: {
       manifests: Object.values(resolved.promptManifestMap),
       tools: resolved.enabledToolIds,
@@ -694,6 +692,7 @@ export const buildServerCallLlmContext = async ({
       skillsConfig: { enabledSkills: resolvedSkills.enabledSkills },
     }),
     enableAgentMode: agentConfig.chatConfig?.enableAgentMode,
+    promptMode: agentConfig.chatConfig?.promptMode,
     ...(topicReferences && { topicReferences }),
     ...(onboardingContext && { onboardingContext }),
   };

@@ -1,0 +1,214 @@
+---
+title: Harness 社区调研：什么样的 Prompt 真正有价值
+description: 调研 Claude Code、Reasonix、OpenCode、ZAP 等主流 coding harness 与 OpenClaw、Hermes 等平台型 agent 对系统提示词与上下文组织的设计，梳理社区从 prompt engineering 到 context engineering 的范式转移，并对照 LobeHub 当前的上下文构成给出启示。
+tags:
+  - Context Engineering
+  - Prompt Design
+  - Harness
+  - KV Cache
+---
+
+# Harness 社区调研：什么样的 Prompt 真正有价值
+
+> 调研时间：2026-08。信源包括 Anthropic 官方工程博客、Claude Code 源码解析（社区逆向）、Reasonix / OpenCode / ZAP 等开源 harness 的源码与文档、OpenClaw / Hermes Agent 等平台型 agent 的源码与文档，以及社区 context engineering 项目。所有引用均标注来源。
+
+调研分两类：**终端编码 harness**（Claude Code、Reasonix、OpenCode、ZAP、Gemini CLI）与**平台型 agent**（OpenClaw、Hermes）—— 后者与 LobeHub 定位更接近（多智能体、多平台接入、可扩展工具 / 技能目录），其工具处理逻辑是第 4 节的重点。
+
+## 1. 范式转移：从 prompt engineering 到 context engineering
+
+2025-2026 年所有主要信源的共识是：**prompt 的价值不再是 "写得多好"，而是 "选得对、放得对、给得少"**。
+
+> "Context engineering is the delicate art and science of filling the context window with just the right information for the next step." — Andrej Karpathy
+
+> Anthropic 官方（Effective context engineering for AI agents）：prompt engineering 关注 "怎么写指令"，context engineering 关注 "推理时给模型的最优 token 集合"—— 包括 system、tools、MCP、外部数据、消息历史。核心原则一句话：**find the smallest possible set of high-signal tokens that maximize the likelihood of your desired outcome.**
+
+> dair-ai 综述（1400 篇论文）：context = 推理时提供给 LLM 的全部结构化信息载荷。
+
+上下文是有限的注意力预算。Chroma 的 [context rot](https://research.trychroma.com/context-rot) 研究证实：token 越多，模型从中准确召回信息的能力越差。因此每个进入上下文的 token 都要 "挣得它的位置"（ZAP 的原则：Every token in the context window must earn its place）。
+
+## 2. 真正有价值的 prompt 的 6 个特征
+
+### 2.1 极简必要（Minimal viable）
+
+- Anthropic 官方：**minimal does not necessarily mean short**—— 但必须是最小充分集。建议从最小 prompt 开始测试，根据失败模式逐步添加指令，而不是一开始堆满规则。
+- 明确反对 "laundry list of edge cases"（把每个边界情况都写进 prompt）—— 这是反模式。应改用少数 diverse, canonical examples（"examples are the pictures worth a thousand words"）。
+
+### 2.2 正确的抽象层级（Right altitude）
+
+- Anthropic 描述的两个失败极端：
+  - 把脆弱 if-else 逻辑硬编码进 prompt → 脆弱、维护成本随时间增长；
+  - 过度笼统、没有具体信号、错误假设共享上下文。
+- 最佳点：**具体到能引导行为，又灵活到给模型启发式空间**。
+
+### 2.3 稳定段 / 动态段分离（缓存友好结构）
+
+- **Claude Code**：`__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__` 哨兵把 system 切成两半 —— 边界前（核心指令 / 工具描述 / 安全规则）所有用户所有会话完全一致，可 `scope: global` 全局缓存共享；边界后（MCP 指令 / 输出风格 / 语言偏好）按用户 / 会话变化。section 级缓存，动态 section 必须用 `DANGEROUS_uncachedSystemPromptSection` 并写明破坏缓存的原因。
+- **Reasonix**：整个架构围绕 DeepSeek 前缀缓存设计 ——"both grow prepend-only and stay cache-friendly"。
+- 重要细节（Claude Code）：
+  - CLAUDE.md 不放 system 而放 messages \[0]—— 因项目而异，放 system 会降低缓存共享率；
+  - 记忆 / 技能 / MCP 指令作为 `<system-reminder>` 附件消息**按需增量注入**（只在内容变化时添加新附件），不触碰 system 缓存；
+  - 工具 schema 数组整体渲染在 system 之前，随 system 静态块断点一并缓存。
+
+### 2.4 按需注入，而非全量注入（Just-in-time context）
+
+- Anthropic 官方明确推荐：agents 应维护**轻量标识符**（文件路径、存储的查询、网页链接），运行时用工具动态加载数据进上下文 —— 像人一样不背整个语料库，用文件系统 / 索引按需取回。
+- **ZAP** 的实测对比（Spring Boot vs React 任务）：
+
+  | AI Coding Agent | 请求大小                  | 语言上下文注入                  |
+  | --------------- | --------------------- | ------------------------ |
+  | Gemini CLI      | 4,096 tokens（两任务完全相同） | ❌ 0 处 Java/React 提及      |
+  | OpenCode        | 2,003 tokens（静态字符串）   | ❌ 无                      |
+  | ZAP             | 1,889 / 1,661 tokens  | ✅ +650 Java / +422 React |
+
+  Gemini CLI 的 68,410 字符 prompt 文件里 "java"、"react" 一个都没出现 —— 写 Spring Boot 和写 React 的模型收到完全相同的指令。
+- **Reasonix**：内置工具仅 8 个（read/write/edit/move/bash/ls/glob/grep），其余插件化，外部工具作为子进程按需拉起（MCP-compatible）；history/memory 用 BM25 按需检索，不预载。
+- **Claude Code**：MCP 工具支持 `defer_loading` 延迟加载；Tool Search 动态发现工具。
+
+### 2.5 工具集精简、语义清晰（Minimal viable tool set）
+
+> "One of the most common failure modes we see is bloated tool sets... If a human engineer can't definitively say which tool should be used in a given situation, an AI agent can't be expected to do better." — Anthropic
+
+工具是 agent 与信息 / 行动空间的契约：要 token 高效、功能最小重叠、输入参数描述明确。
+
+### 2.6 压缩 / 归档策略保护前缀（长会话生存之道）
+
+- **Claude Code**：五级压缩流水线（Tool Result 预算裁剪 → History Snip → Microcompact → Context Collapse → Autocompact）；git 状态每会话 memoize 一次 + 2000 字符截断 + "这是会话开始时的快照"disclaimer 防幻觉。
+- **Reasonix**（最系统）：分级阈值 —— 低于 60% 不动 / 60%（snip\_ratio）归档并缩短旧工具结果（head/tail 标记）/ 80%（compact\_ratio）prune 成短占位符 / 90%（force\_ratio）强制压缩；**压缩只折叠 assistant/tool 工作，用户 turn 原样保留 verbatim**；原始消息归档到 jsonl 可追溯。
+
+## 3. 各 harness 一览
+
+### 3.1 终端编码 harness
+
+| Harness     | 系统提示规模                                                           | 缓存 / 按需策略                                                        | 特点                |
+| ----------- | ---------------------------------------------------------------- | ---------------------------------------------------------------- | ----------------- |
+| Claude Code | \~915 行静态 + 动态 section                                           | 静态 / 动态边界 + section 级缓存 + system-reminder 附件增量注入                 | 缓存工程化最彻底，业界标杆     |
+| Reasonix    | 配置驱动，无硬编码模型                                                      | **前缀缓存为第一设计原则**；planner/executor 双模型分离会话互不污染前缀；分级 snip/prune/ 压缩 | DeepSeek 生态，缓存优先  |
+| OpenCode    | 按 provider 选 prompt（default 8.5KB /anthropic 8.2KB /codex 7.4KB） | 静态字符串每轮全量发送（无语言注入）                                               | 多模型适配，prompt 静态   |
+| ZAP         | 1.6-1.9K tokens（最小）                                              | 按任务注入技能 + AST 索引 + 按需加载 context files                            | "每个 token 必须挣得位置" |
+| Gemini CLI  | 4,096 tokens 固定                                                  | 静态，无任务感知                                                         | 反例：不同任务同一 prompt  |
+| pi          | 模板化 prompts + AGENTS.md 分层                                       | 项目 / 用户 / 包多级 AGENTS.md 发现                                       | 指令文件按层合并          |
+
+### 3.2 平台型 agent（与 LobeHub 定位更接近）
+
+| Harness  | 系统提示规模                                       | 工具 / 缓存策略                                                                | 特点                  |
+| -------- | -------------------------------------------- | ------------------------------------------------------------------------ | ------------------- |
+| OpenClaw | section 化组装 + `SYSTEM_PROMPT_CACHE_BOUNDARY` | **政策过滤 + Tool Search 有界目录**（≤18K 字符，search/describe/call 三件套，目录置于缓存边界之上） | 多平台 Gateway；大工具目录场景 |
+| Hermes   | 三层：stable /context/volatile（每会话构建一次）         | 4 个 cache\_control 断点；指导文本按工具存在性条件注入；技能索引可压缩 + 两层缓存                      | 自我改进；记忆 / 技能按需      |
+
+## 4. 平台型 Agent 的工具处理：OpenClaw / Hermes
+
+### 4.1 为什么可比
+
+|         | LobeHub                       | OpenClaw                                      | Hermes Agent                                 |
+| ------- | ----------------------------- | --------------------------------------------- | -------------------------------------------- |
+| 定位      | 多智能体对话平台（群聊 / 子 Agent / 插件市场） | 多平台个人 AI 助手（WhatsApp/Telegram/Slack/Discord…） | 自我改进 agent（Telegram/Discord/Slack/WhatsApp…） |
+| 接入面     | 聊天 + 插件 + 知识库 + 远程设备          | Gateway + Channels + 节点                       | Gateway + 多平台 + 7 种终端后端                      |
+| 技能 / 插件 | 技能市场 + 插件                     | skills + plugins + ClawHub                    | 技能自创 + agentskills 标准                        |
+| 记忆      | user\_memory + persona        | memory 插件                                     | memory + USER.md + Honcho                    |
+
+三者都是 "**一个 agent 面对大量可扩展工具 / 技能目录**" 的场景 —— 终端编码 harness（Claude Code 只面对几十个内置工具）没有这个痛点，而 LobeHub 50 工具全量注入的问题正是在这个语境下产生的。
+
+### 4.2 OpenClaw：政策过滤 + Tool Search 有界目录
+
+**工具可见性 = 多重政策过滤**：
+
+> "The model only sees tools that survive the active profile, allow/deny policy, provider restrictions, sandbox state, channel permissions, and plugin availability."
+
+模型看到的工具集是政策过滤后的结果，不是全部注册工具。
+
+**Tool Search：大规模目录的官方答案**（面对 "一个 run 可能看到很多工具" 的场景）：
+
+> "Large catalogs are useful but expensive. Sending every tool schema to the model makes the request larger, slows planning, and increases accidental tool selection."
+
+| 形态                  | 模型看到什么                                            |
+| ------------------- | ------------------------------------------------- |
+| direct tools（小目录默认） | 每个 schema 全量                                      |
+| **Tool Search**     | 1 个紧凑代码工具 + **有界能力目录** + search/describe/call 三件套 |
+
+- **能力目录**：按工具名排序、**上限 18,000 字符**、只含名称 + 一句话描述；
+- **按需 schema**：模型 `tool_search(query)` → `tool_describe(id)` 取单个 schema → `tool_call(id, args)`；
+- **目录置于 system-prompt cache boundary 之上**：不含用户消息 / 会话 ID / 不可信 MCP 元数据 → 重复轮次可复用 KV cache；目录快照不变则复用同一渲染；
+- **direct-only 工具**（核心编码原语、交付策略必需工具）保持直接可见，不进目录。
+
+OpenClaw 自己的定位提醒："Direct tool exposure is still the right default for small catalogs. Tool Search is best when one run can see many tools, especially from MCP servers or client-provided app tools."——LobeHub 恰好处于 Tool Search 的适用区间。
+
+### 4.3 Hermes：三层缓存 + 指导文本与工具联动
+
+**系统提示词三层结构**（每会话构建一次，仅压缩时重建）：
+
+```text
+stable（缓存）    SOUL.md 身份 + 帮助指引 + 行为指导 + 技能索引
+context（跨会话）  coding workspace 快照 + .hermes.md / AGENTS.md / CLAUDE.md（只取一个）
+volatile（不缓存） 记忆快照 + USER.md + 日期
+```
+
+> "built once per session and reused across all turns — only context compression triggers a rebuild. This keeps the upstream prefix cache warm."
+
+**指导文本按工具集条件注入**（关键设计）：
+
+```python
+if "memory" in agent.valid_tool_names:         tool_guidance.append(MEMORY_GUIDANCE)
+if "session_search" in agent.valid_tool_names:  tool_guidance.append(SESSION_SEARCH_GUIDANCE)
+if "skill_manage" in agent.valid_tool_names:    tool_guidance.append(SKILLS_GUIDANCE)
+```
+
+prompt 内容与工具可见性联动 —— 没有 memory 工具就不注入记忆指导，而不是固定全量。
+
+**技能索引可压缩 + 两层缓存**：`compact_categories` 把整个类别的技能降级为仅名称行（描述丢弃，技能名仍可见、可按需 `skill_view` 加载）；索引本身有进程内 LRU + 磁盘快照（mtime/size 校验，跨重启有效）。
+
+**缓存断点 + 字节稳定性**：4 个 cache\_control 断点（静态 system 前缀 /system 末尾 / 最后 2 条非 system 消息，TTL 5m 或 1h）；**日期只用日期精度不用分钟**——"Minute-precision changes invalidate prefix-cache KV on every rebuild path"。
+
+**上下文文件只取一个**：`.hermes.md`（walk 到 git root）> `AGENTS.md` > `CLAUDE.md` > `.cursorrules`，每个源有字符上限（默认 20K，可按模型上下文缩放）。
+
+### 4.4 对照 LobeHub 现状
+
+**LobeHub 已有的基础**：已有 `activateTools` / `activateSkill` 激活机制，`<available_tools>` 也区分 "已安装未启用"—— 激活概念存在，只是注入策略没用上它；已有 `lobe-user-memory____searchUserMemory` 检索工具 —— 检索能力存在，只是 persona 仍全量注入。
+
+| 维度   | LobeHub 现状        | OpenClaw                        | Hermes                  |
+| ---- | ----------------- | ------------------------------- | ----------------------- |
+| 工具注入 | 50 个全量（+ 9 文本块双份） | **有界目录 + search/describe/call** | 按 valid\_tool\_names 联动 |
+| 目录上限 | 无（56KB schema 全发） | **18,000 字符目录上限**               | 技能索引可压缩为名称行             |
+| 缓存边界 | 无边界标记，静态动态混排      | **目录置于 cache boundary 之上**      | 三层 + 4 断点 + 日期精度        |
+| 指导文本 | 全量固定注入            | 按需                              | **按工具存在性条件注入**          |
+| 技能注入 | 20 个全量            | 按需加载                            | 索引 + 按需 skill\_view     |
+| 记忆注入 | persona 全量        | memory 插件                       | volatile 层 + 按需检索       |
+
+### 4.5 可直接借鉴的三个方案（按实现成本排序）
+
+1. **Hermes 式 "指导文本按工具联动"**（成本最低）：把 9 个文本工具块的指导拆成按工具注入 —— 只有 `lobe-user-memory` 工具在 `tools` 数组里时才注入 Memory 指导块。等于把 "全量文本块" 改成 "与 schema 数组联动"，顺手解决双重表达的一半。
+2. **OpenClaw 式 "有界能力目录"**（成本中等，收益最大）：砍掉 50 个 schema 全量注入，保留少量 direct-only 工具（activateTools / 文档读写等高频原语）直接可见，其余进 ≤18K 字符目录（名称 + 一句话），暴露 `tool_search` / `tool_describe` / `tool_call` 三件套，目录放在稳定前缀段保持缓存友好。
+3. **Hermes 式 "三层 prompt + 日期精度"**（架构级）：把 developer 消息拆成 stable（规则 / AGENTS.md/ 模型信息）/context（会话 / 用户上下文）/volatile（日期、动态注入）三层，volatile 里日期只用日期精度；对齐 Claude Code 的 `__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__` 思路。
+
+## 5. 对 LobeHub 的启示
+
+基于 probe 实测（同一 topic 一次 "hi" 请求约 35K tokens，用户输入仅占 0.006%），LobeHub 当前的上下文构成踩中社区明确反对的反模式：
+
+| 反模式（社区明确反对）  | LobeHub 现状                                             | 社区做法                             |
+| ------------ | ------------------------------------------------------ | -------------------------------- |
+| 工具双重表达       | 9 个文本工具块 + 50 个 schema 描述同一批工具（约 27K tokens）           | 单次表达 + 精简工具集                     |
+| 全量注入无按需      | 50 工具 + 20 技能 + 全量 persona 每轮全发                        | JIT：轻量标识符 + 运行时加载                |
+| 静态动态混排       | 规则 / AGENTS.md/ 模型信息 /skills/ 工具 / 总纲全在一条 developer 消息 | 静态 / 动态边界 + section 级缓存          |
+| 无缓存边界管理      | 无稳定前缀对象，每次 call\_llm 全量重建                              | 前缀缓存为第一设计原则                      |
+| persona 全量注入 | 9 小节 2.7K tokens 每轮全发                                  | 检索式注入（已有 searchUserMemory 工具却未用） |
+
+**结论**：LobeHub 的差距不在 "规则写得不好"，而在**上下文编排架构**。结合平台型 agent（OpenClaw / Hermes）的对比，LobeHub 已具备激活机制与检索工具，缺的是 "**用起来**"—— 把全量注入改为按需注入。可落地的优化方向按收益排序：
+
+1. 工具单次表达（文本块与 schema 二选一，预计省～37%）；
+2. 工具 / 技能按需注入 ——OpenClaw 式有界能力目录或 Hermes 式按工具联动（预计省～40%）；
+3. persona 检索化（预计省～8%）；
+4. 引入稳定段 / 动态段边界与 prompt cache 键管理（Hermes 三层 + 日期精度是现成模板）。
+
+## 6. 参考信源
+
+- Anthropic: [Effective context engineering for AI agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)
+- Anthropic: [Best practices for prompt engineering (2025-11)](https://claude.com/blog/best-practices-for-prompt-engineering)
+- Anthropic: [Writing tools for AI agents](https://www.anthropic.com/engineering/writing-tools-for-agents)
+- 社区逆向: [how-claude-code-works](https://github.com/Windy3f3f3f3f/how-claude-code-works)（docs/03-context-engineering.md、docs/14-system-prompt-design.md）
+- [DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix)（docs/SPEC.md）
+- [zap-coding-agent](https://github.com/zap-coding-agent/zap-coding-agent)（content/evidence/system-prompt-comparison.md）
+- [opencode](https://github.com/anomalyco/opencode)（packages/opencode/src/session/system.ts）
+- [dair-ai/Prompt-Engineering-Guide](https://github.com/dair-ai/Prompt-Engineering-Guide)
+- [Context-Engineering（jasontang-ai，Karpathy 名言出处）](https://github.com/jasontang-ai/Context-Engineering)
+- [coleam00/context-engineering-intro](https://github.com/coleam00/context-engineering-intro)
+- [OpenClaw](https://github.com/openclaw/openclaw)（src/agents/system-prompt.ts、docs/tools/tool-search）
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent)（agent/system\_prompt.py、agent/prompt\_builder.py、agent/prompt\_caching.py）

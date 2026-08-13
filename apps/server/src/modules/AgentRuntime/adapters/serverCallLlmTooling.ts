@@ -8,14 +8,13 @@ import {
   type ResolvedSkillSet,
   type ResolvedToolSet,
   SkillResolver,
-  type ToolDiscoveryConfig,
   ToolResolver,
 } from '@lobechat/context-engine';
 
 import type { ExecutionPlan } from '@/helpers/executionTarget';
 
 import type { RuntimeExecutorContext } from '../context';
-import { buildToolDiscoveryConfig, log } from '../executorHelpers';
+import { log } from '../executorHelpers';
 import { resolveRunActiveDeviceId } from '../executors/resolveRunActiveDeviceId';
 
 export interface ServerCallLlmTooling {
@@ -41,7 +40,6 @@ export interface ServerCallLlmTooling {
   executionTarget?: ExecutionPlan['target'];
   resolved: ResolvedToolSet;
   resolvedSkills?: ResolvedSkillSet;
-  toolDiscoveryConfig?: ToolDiscoveryConfig;
   tools?: ResolvedToolSet['tools'];
 }
 
@@ -84,7 +82,6 @@ export const resolveServerCallLlmTooling = (
   );
 
   const tools = resolved.tools.length > 0 ? resolved.tools : undefined;
-  const toolDiscoveryConfig = buildToolDiscoveryConfig(operationToolSet, resolved.enabledToolIds);
 
   if (stepDelta.activatedTools.length > 0) {
     log(
@@ -110,7 +107,6 @@ export const resolveServerCallLlmTooling = (
     executionTarget,
     resolved,
     resolvedSkills,
-    toolDiscoveryConfig,
     tools,
   };
 };

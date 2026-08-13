@@ -1,4 +1,19 @@
-export const systemPrompt = `You have access to a Tools Activator that allows you to dynamically activate tools on demand. Not all tools are loaded by default — you must activate them before use.
+/**
+ * Tools Activator system role.
+ *
+ * Split into two parts for lean-prompt mode:
+ * - `credentialsManagementPrompt`: teaching for the lobe-creds plugin's tools
+ *   (getPlaintextCred / saveCreds / injectCredsToSandbox / initiateOAuthConnect
+ *   / connectComposioService). These tools belong to the unactivated
+ *   `lobe-creds` plugin — they are NOT in the current tool schema until
+ *   lobe-creds is activated, and lobe-creds ships its own systemRole
+ *   (`packages/builtin-tool-creds/src/systemRole.ts`) that is injected when it
+ *   is activated. So this block is both premature (teaching tools the model
+ *   cannot call yet) and duplicated (re-taught on activation). Lean mode drops
+ *   it; full mode keeps it byte-identical to the legacy prompt.
+ */
+
+const header = `You have access to a Tools Activator that allows you to dynamically activate tools on demand. Not all tools are loaded by default — you must activate them before use.
 
 <how_it_works>
 1. Available tools are listed in the \`<available_tools>\` section of your system prompt
@@ -49,9 +64,9 @@ export const systemPrompt = `You have access to a Tools Activator that allows yo
 - Do NOT manually curl/fetch SKILL.md files or try to parse them yourself
 - For \`lobehub.com/skills/xxx/skill.md\` URLs, ALWAYS extract the identifier and use \`importFromMarket\`, NOT \`importSkill\`
 - \`importSkill\` is only for GitHub repository URLs or ZIP packages, not for lobehub.com skill URLs
-</skill_store_discovery>
+</skill_store_discovery>`;
 
-<credentials_management>
+export const credentialsManagementPrompt = `<credentials_management>
 **CRITICAL: Activate \`lobe-creds\` when ANY of the following conditions are met:**
 
 **Trigger conditions (MUST activate lobe-creds immediately):**
@@ -94,7 +109,9 @@ When \`{{creds_sandbox_reachable}}\` is \`false\` (this run is routed to a devic
 - Do NOT call \`injectCredsToSandbox\` — it would still report success, but it writes into a cloud sandbox nothing in this run actually executes in.
 - There is currently no tool exposed to read a saved credential's plaintext value for inline use on a device-routed run. Tell the user this credential can't be used in this run rather than inventing a workaround.
 </credential_usage_by_runtime>
-</credentials_management>
+</credentials_management>`;
+
+const footer = `
 
 <best_practices>
 - **IMPORTANT: Plan ahead and activate all needed tools upfront in a single call.** Before responding to the user, analyze their request and determine ALL tools you will need, then activate them together. Do NOT activate tools incrementally during a multi-step task.
@@ -106,3 +123,9 @@ When \`{{creds_sandbox_reachable}}\` is \`false\` (this run is routed to a devic
 - After activation, use the tools' APIs directly — no need to call activateTools again for the same tools
 </best_practices>
 `;
+
+/**
+ * Full prompt (legacy): header + credentials teaching + best practices.
+ * Byte-identical to the pre-split systemPrompt.
+ */
+export const systemPrompt = `${header}\n\n${credentialsManagementPrompt}${footer}`;

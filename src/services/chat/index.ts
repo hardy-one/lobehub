@@ -316,6 +316,7 @@ class ChatService {
       messages,
       model: payload.model,
       plugins,
+      promptMode: chatConfig.promptMode,
       provider: payload.provider!,
       sessionId: options?.trace?.sessionId,
       stepContext: options?.stepContext,

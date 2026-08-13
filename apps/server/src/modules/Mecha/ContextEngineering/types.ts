@@ -14,7 +14,6 @@ import type {
   OnboardingContext,
   PlanTodoConfig,
   SkillMeta,
-  ToolDiscoveryConfig,
   TopicReferenceItem,
   UserMemoryData,
 } from '@lobechat/context-engine';
@@ -121,6 +120,8 @@ export interface ServerMessagesEngineParams {
    * true → agent mode.
    */
   enableAgentMode?: boolean;
+  /** 'lean' drops teaching blocks / persona sections. Undefined/'full' = legacy. */
+  promptMode?: 'full' | 'lean';
 
   /** Whether to enable history message count limit */
   enableHistoryCount?: boolean;
@@ -167,8 +168,6 @@ export interface ServerMessagesEngineParams {
   // ========== Skills ==========
   /** Skills configuration for <available_skills> injection */
   skillsConfig?: { enabledSkills?: SkillMeta[] };
-  /** Tool discovery configuration for <available_tools> injection */
-  toolDiscoveryConfig?: ToolDiscoveryConfig;
   // ========== Tools ==========
   /** Tools configuration */
   toolsConfig?: ServerToolsConfig;

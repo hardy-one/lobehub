@@ -9,6 +9,7 @@ import {
   type RecentTopicGroupMember,
 } from '@lobechat/types';
 import { cleanObject } from '@lobechat/utils';
+import { isMobileClient } from '@lobechat/utils/server';
 import { TRPCError } from '@trpc/server';
 import { inArray } from 'drizzle-orm';
 import { z } from 'zod';
@@ -550,6 +551,11 @@ export const topicRouter = router({
         );
       }
 
+      // Mobile clients render the whole topic drawer synchronously on every
+      // send (~0.5ms/item client-side), so cap the default page size for
+      // mobile to keep send latency bounded. The drawer shows the most recent
+      // N topics (updatedAt desc); explicit pageSize from callers is kept.
+      const mobilePageSize = isMobileClient(ctx.userAgent) ? 100 : undefined;
       const result = await ctx.topicModel.query({
         ...rest,
         agentId: effectiveAgentId,
@@ -558,6 +564,7 @@ export const topicRouter = router({
         includeTriggers,
         isInbox,
         triggers,
+        pageSize: rest.pageSize ?? mobilePageSize,
       });
 
       // Runtime migration: backfill agentId for ALL legacy topics and messages under this agent

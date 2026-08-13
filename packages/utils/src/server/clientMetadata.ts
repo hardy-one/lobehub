@@ -62,3 +62,13 @@ export const parseClientMetadata = (headers: Headers): ClientMetadata => {
 
   return { type: 'unknown' };
 };
+
+/**
+ * Whether a raw user-agent string identifies a mobile LobeHub client: the
+ * current `LobeHub-Mobile/<platform>-v<version>` UA, legacy iOS UAs
+ * (`LobeHub-iOS/...` / `LobeHub/... CFNetwork/...`), or an Android okhttp
+ * request. Thin wrapper over `parseClientMetadata` so UA detection stays in a
+ * single place — a UA without any supported platform marker is NOT mobile.
+ */
+export const isMobileClient = (userAgent?: string | null): boolean =>
+  parseClientMetadata(new Headers({ 'user-agent': userAgent ?? '' })).type === 'mobile';

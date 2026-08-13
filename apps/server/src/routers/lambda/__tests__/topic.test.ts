@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { TopicModel } from '@/database/models/topic';
 import { TopicShareModel } from '@/database/models/topicShare';
 
+import { topicRouter } from '../topic';
+
 vi.mock('@/database/models/topic', () => ({
   TopicModel: vi.fn(),
 }));
@@ -13,6 +15,10 @@ vi.mock('@/database/models/topicShare', () => ({
 
 vi.mock('@/database/server', () => ({
   getServerDB: vi.fn(),
+}));
+
+vi.mock('@/database/core/db-adaptor', () => ({
+  getServerDB: vi.fn(async () => ({})),
 }));
 
 describe('topicRouter', () => {
@@ -433,5 +439,43 @@ describe('topicRouter', () => {
       await ctx.topicShareModel.create('topic2', 'link');
       expect(mockCreate).toHaveBeenLastCalledWith('topic2', 'link');
     });
+  });
+});
+
+describe('getTopics mobile pageSize cap', () => {
+  const createCaller = (userAgent?: string) => {
+    const mockQuery = vi.fn().mockResolvedValue({ items: [], total: 0 });
+    vi.mocked(TopicModel).mockImplementation(() => ({ query: mockQuery }) as any);
+
+    const caller = topicRouter.createCaller({ userId: 'test-user', userAgent } as any);
+    return { caller, mockQuery };
+  };
+
+  it.each([
+    ['current mobile', 'LobeHub-Mobile/ios-v1.2.0'],
+    ['legacy iOS', 'LobeHub-iOS/2.0'],
+    ['android okhttp', 'okhttp/4.12.0'],
+  ])('caps the default pageSize at 100 for %s user agents', async (_, userAgent) => {
+    const { caller, mockQuery } = createCaller(userAgent);
+
+    await caller.getTopics({ agentId: 'agent1' });
+
+    expect(mockQuery).toHaveBeenCalledWith(expect.objectContaining({ pageSize: 100 }));
+  });
+
+  it('keeps an explicit pageSize for mobile clients', async () => {
+    const { caller, mockQuery } = createCaller('LobeHub-Mobile/android-v2.0.0');
+
+    await caller.getTopics({ agentId: 'agent1', pageSize: 20 });
+
+    expect(mockQuery).toHaveBeenCalledWith(expect.objectContaining({ pageSize: 20 }));
+  });
+
+  it('leaves pageSize undefined for non-mobile user agents', async () => {
+    const { caller, mockQuery } = createCaller('Mozilla/5.0 Chrome/140.0.0.0');
+
+    await caller.getTopics({ agentId: 'agent1' });
+
+    expect(mockQuery).toHaveBeenCalledWith(expect.objectContaining({ pageSize: undefined }));
   });
 });

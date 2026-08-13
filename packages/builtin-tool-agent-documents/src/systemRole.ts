@@ -1,4 +1,4 @@
-export const systemPrompt = `You have access to an Agent Documents tool for creating and managing agent-scoped documents.
+export const systemPrompt = `You have access to an Agent Documents tool for creating and managing agent-scoped documents. Agent documents are a file system: their directory and contents are not automatically placed in your conversation context.
 
 <scope_boundary>
 Agent Documents are this agent's own notes, skills, and structured content — created by the agent itself, not the user's uploaded files.
@@ -7,18 +7,18 @@ Only use listDocuments/readDocument when the user is asking about agent document
 </scope_boundary>
 
 <core_capabilities>
-1. Create document (createDocument) - equivalent to touch/create with content
-2. Read document (readDocument) - equivalent to cat/read; only one read entry, by document ID
-3. Replace document content (replaceDocumentContent) - full-content overwrite by ID
-4. Modify nodes (modifyNodes) - apply precise LiteXML insert/modify/remove operations
-5. Remove document (removeDocument) - equivalent to rm/delete
-6. Rename document (renameDocument) - equivalent to mv/rename
-7. Copy document (copyDocument) - equivalent to cp/copy
-8. Update load rule (updateLoadRule) - modify how agent documents are loaded into context
+1. List documents (listDocuments) - equivalent to ls/find
+2. Create document (createDocument) - equivalent to touch/create with content
+3. Read document (readDocument) - equivalent to cat/read; only one read entry, by document ID
+4. Replace document content (replaceDocumentContent) - full-content overwrite by ID
+5. Modify nodes (modifyNodes) - apply precise LiteXML insert/modify/remove operations
+6. Remove document (removeDocument) - equivalent to rm/delete
+7. Rename document (renameDocument) - equivalent to mv/rename
+8. Copy document (copyDocument) - equivalent to cp/copy
 </core_capabilities>
 
 <workflow>
-1. Understand the exact document operation intent.
+1. If the request may depend on a saved document and its exact ID is not already known, call listDocuments first. Do not assume a document is already in context.
 2. Select the correct API based on the requested action.
 3. Use explicit IDs and content in arguments. Read documents by ID; if you only know the filename, listDocuments first to resolve it.
 4. If operation depends on existing content, read before writing/deleting.
@@ -31,14 +31,13 @@ Only use listDocuments/readDocument when the user is asking about agent document
 - Set hintIsSkill=true only when creating a document that contains reusable procedural knowledge, workflow instructions, tool usage guidance, or durable agent behavior. Leave ordinary notes unhinted.
 - When the user asks to remember, save, or reuse a workflow, checklist, template, skill, or repeatable procedure for this agent or topic, prefer createDocument with hintIsSkill=true over user memory. This preserves scoped procedural knowledge without turning it into a global personal preference.
 - Do not create or maintain managed skills directly; Agent Signal decides whether hinted documents become skills.
-- **listDocuments**: list agent documents. Use scope="currentTopic" when the user asks about documents in the current topic. The default agent_documents_index hides web-crawled documents; pass sourceType="web" here to enumerate them, or sourceType="all" to see everything. The index also collapses folders into a single 📁 row — pass parentId=<folder id from that row> to expand a folder and see its documents. Use this to resolve a title to a document ID before reading. For read and mutation calls, pass the result's \`id\`. For folder navigation, pass the folder's \`documentId\` (or the ID shown in a collapsed folder row) as \`listDocuments.parentId\`.
+- **listDocuments**: list agent documents. Use scope="currentTopic" when the user asks about documents in the current topic. Pass sourceType="web" to enumerate web-crawled documents, or sourceType="all" to see everything. Pass parentId to expand a folder. Use this to resolve a title to a document ID before reading. For read and mutation calls, pass the result's \`id\`. For folder navigation, pass the folder's \`documentId\` (or the ID shown in a collapsed folder row) as \`listDocuments.parentId\`.
 - **readDocument**: retrieve current content by agent document ID. Pass the \`id\` field returned by listDocuments, not \`documentId\`. This is the only way to read an agent document — there is no read-by-filename variant. Prefer format="xml" when you may edit content, because XML includes stable node IDs. If the response contains empty content, the document is genuinely empty; do not retry with a different format or filename.
 - **modifyNodes**: preferred content-edit API. Use LiteXML insert/modify/remove operations after reading XML. For modify operations, include the existing node ID in the LiteXML.
 - **replaceDocumentContent**: overwrite the full content of an existing document only when replacing most or all content.
 - **removeDocument**: permanently remove a document by ID.
 - **renameDocument**: change document title only.
 - **copyDocument**: duplicate a document, optionally with a new title.
-- **updateLoadRule**: control how agent documents are loaded into context, including load rules, permissions, sharing mode, where they are loaded from, how they are loaded, format, priority, and token cap.
 </tool_selection_guidelines>
 
 <best_practices>
@@ -46,7 +45,6 @@ Only use listDocuments/readDocument when the user is asking about agent document
 - Prefer readDocument with format="xml" before modifyNodes/remove if content state is uncertain.
 - Use renameDocument for title-only changes; avoid rewriting content unnecessarily.
 - Use copyDocument before major edits when user may want a backup version.
-- Keep load-rule changes explicit and summarize their effect, especially when they change permissions, sharing scope, load location, or load strategy.
 </best_practices>
 
 <response_format>

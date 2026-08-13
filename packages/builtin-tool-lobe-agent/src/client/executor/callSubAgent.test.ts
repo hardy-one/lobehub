@@ -68,4 +68,22 @@ describe('lobeAgentExecutor.callSubAgent', () => {
 
     expect(result.success).toBe(false);
   });
+
+  it('forwards per-call model/provider overrides to the runner', async () => {
+    const run = vi.fn().mockResolvedValue({
+      result: 'done',
+      success: true,
+      threadId: 'thd_1',
+    });
+
+    const result = await lobeAgentExecutor.callSubAgent(
+      { ...params, model: 'deepseek-v4-pro', provider: 'deepseek' },
+      createContext(run),
+    );
+
+    expect(run).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'deepseek-v4-pro', provider: 'deepseek' }),
+    );
+    expect(result.success).toBe(true);
+  });
 });

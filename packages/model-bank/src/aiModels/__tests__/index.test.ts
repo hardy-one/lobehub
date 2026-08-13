@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { ModelProvider } from '../../const/modelProvider';
-import { loadModels, LOBE_DEFAULT_MODEL_LIST } from '../index';
+import { loadModels, LOBE_DEFAULT_MODEL_LIST, ollamacloud, zhipu } from '../index';
 
 describe('loadModels', () => {
   it('returns the static model list by default', async () => {
@@ -57,6 +57,17 @@ describe('loadModels', () => {
         },
       }),
     ).rejects.toThrow('model config missing');
+  });
+});
+
+describe('provider model catalogs', () => {
+  it.each([
+    ['Ollama Cloud', ollamacloud],
+    ['Zhipu', zhipu],
+  ])('%s does not contain duplicate model ids', (_providerName, models) => {
+    const ids = models.map((model) => model.id);
+
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });
 

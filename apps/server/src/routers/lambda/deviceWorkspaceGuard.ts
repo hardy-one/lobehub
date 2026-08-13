@@ -36,10 +36,14 @@ export const assertWorkspaceRootApproved = async (
 
   const device = await deviceModel.findByDeviceId(deviceId);
 
-  const approvedRoots = [
-    ...(device?.workingDirs ?? []).map((dir) => dir.path),
-    ...(device?.defaultCwd ? [device.defaultCwd] : []),
-  ].filter((root): root is string => Boolean(root));
+  const approvedRoots = (device?.workingDirs ?? [])
+    .flatMap((dir) => [
+      dir.path,
+      dir.git?.activeWorktree,
+      ...(dir.workspace?.approvedPreviewRoots ?? []),
+    ])
+    .concat(device?.defaultCwd ? [device.defaultCwd] : [])
+    .filter((root): root is string => Boolean(root));
 
   const approved = approvedRoots.some((root) => isPathWithinRoot(root, workingDirectory));
 

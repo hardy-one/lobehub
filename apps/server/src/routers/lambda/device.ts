@@ -29,7 +29,7 @@ import { type DeviceAttachment, deviceGateway } from '@/server/services/deviceGa
 import { filterAuthorizedDevicePresence } from '@/server/services/deviceGateway/scopedDevicePresence';
 import { deviceTunnels, TUNNEL_MAX_TTL_SECONDS } from '@/server/services/deviceGateway/tunnels';
 
-import { preserveWorkspaceCache } from './deviceWorkingDirs';
+import { addApprovedPreviewRoots, preserveWorkspaceCache } from './deviceWorkingDirs';
 import {
   assertWorkspaceDeviceVisible,
   assertWorkspaceRootApproved,
@@ -905,6 +905,8 @@ export const deviceRouter = router({
   listProjectSkills: deviceProcedure
     .input(z.object({ deviceId: z.string(), scope: z.string() }))
     .query(async ({ ctx, input }) => {
+      await assertWorkspaceRootApproved(ctx.deviceModel, input.deviceId, input.scope);
+
       const result = await deviceGateway.listProjectSkills({
         deviceId: input.deviceId,
         scope: input.scope,
@@ -912,14 +914,39 @@ export const deviceRouter = router({
         workspaceId: ctx.workspaceId,
       });
 
-      // Register device-scoped skill roots (~/.agents/skills / ~/.claude/skills)
-      // in an in-memory cache so subsequent getLocalFilePreview calls pass the
-      // workspace root guard without polluting the UI's working-directory list.
+      // Device-scoped skill roots (~/.agents/skills / ~/.claude/skills) are reported
+      // by the trusted device RPC. Register them in the in-memory cache so subsequent
+      // getLocalFilePreview calls pass the workspace root guard without polluting the
+      // UI's working-directory list, and persist them on the server-owned workspace
+      // cache so previews remain authorized across server restarts; client updates
+      // cannot inject or overwrite this field.
+      //
+      // Read-time cache backfill is intentional design: this route has GET semantics,
+      // and the DB write below is idempotent and replayable — every read re-derives
+      // and re-persists the same cache, so writing from a query is safe and keeps the
+      // server-owned cache warm.
       if (result?.skills) {
         const skillRoots = [
           ...new Set(result.skills.filter((s) => s.scope === 'device').map((s) => s.previewRoot)),
         ].filter(Boolean);
         registerDeviceSkillRoots(input.deviceId, skillRoots);
+        const workspaceDevice = ctx.workspaceId
+          ? await ctx.deviceModel.findWorkspaceDeviceById(input.deviceId)
+          : undefined;
+        const device = workspaceDevice ?? (await ctx.deviceModel.findByDeviceId(input.deviceId));
+        const workingDirs = addApprovedPreviewRoots(
+          device?.workingDirs ?? [],
+          input.scope,
+          skillRoots,
+        );
+
+        if (workingDirs) {
+          if (workspaceDevice) {
+            await ctx.deviceModel.updateWorkspaceDevice(input.deviceId, { workingDirs });
+          } else {
+            await ctx.deviceModel.update(input.deviceId, { workingDirs });
+          }
+        }
       }
 
       return result ?? null;

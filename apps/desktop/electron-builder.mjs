@@ -80,6 +80,9 @@ const isStable = !channel || channel === 'stable';
 const isNightly = channel === 'nightly';
 const isCanary = channel === 'canary';
 
+// HARDY 发布在 `hardy-one/lobe-release` 仓库 CI（`.github/workflows/build-all.yml`，Windows + Docker）完成，
+// 本仓库 HARDY 路径仅供本地构建/调试
+
 // Strip trailing channel path from URL for re-appending the correct channel
 // Handles both base URL (https://cdn.example.com) and legacy URL with channel (https://cdn.example.com/stable)
 const stripChannelSuffix = (url) => url.replace(/\/(stable|nightly|canary|beta)\/?$/, '');

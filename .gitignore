@@ -160,3 +160,5 @@ docs/superpowers/
 # Amp agent runtime
 .amp/*
 !.amp/settings.json
+.pnpm-store/
+.corepack/

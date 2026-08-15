@@ -10,8 +10,6 @@ vi.mock('@lobehub/ui/base-ui', () => ({
   useModalContext: () => ({ close: vi.fn() }),
 }));
 
-vi.mock('./EditorModalContent', () => ({ default: () => null }));
-
 const lastModalProps = () => vi.mocked(createModal).mock.calls.at(-1)![0] as Record<string, any>;
 
 describe('openEditorModal', () => {

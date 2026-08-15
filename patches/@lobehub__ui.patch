@@ -1,0 +1,78 @@
+diff --git a/es/hooks/useMarkdown/useMarkdownContent.mjs b/es/hooks/useMarkdown/useMarkdownContent.mjs
+--- a/es/hooks/useMarkdown/useMarkdownContent.mjs
++++ b/es/hooks/useMarkdown/useMarkdownContent.mjs
+@@ -1,13 +1,17 @@
+ "use client";
+-import { isLastFormulaRenderable } from "./latex.mjs";
+ import { addToCache, contentCache, preprocessMarkdownContent } from "./utils.mjs";
+ import { useMarkdownContext } from "../../Markdown/components/MarkdownProvider.mjs";
+-import { useMemo, useRef, useState } from "react";
++import { useMemo } from "react";
+ //#region src/hooks/useMarkdown/useMarkdownContent.ts
++const getIncompleteFormulaRange = (text) => {
++	const dollarsCount = (text.match(/\$\$/g) || []).length;
++	if (dollarsCount % 2 !== 1) return null;
++	const match = text.match(/\$\$([\s\S]*)$/);
++	if (!match || match.index === undefined) return null;
++	return { start: match.index, formula: match[1] };
++};
+ const useMarkdownContent = (children) => {
+ 	const { animated, enableLatex = true, enableCustomFootnotes, citations } = useMarkdownContext();
+-	const [validContent, setValidContent] = useState("");
+-	const prevProcessedContent = useRef("");
+ 	const citationsLength = citations?.length || 0;
+ 	const cacheKey = useMemo(() => `${children}|${enableLatex ? 1 : 0}|${enableCustomFootnotes ? 1 : 0}|${citationsLength}`, [
+ 		children,
+@@ -23,11 +27,13 @@
+ 			enableLatex
+ 		});
+ 		if (animated && enableLatex) {
+-			if (!isLastFormulaRenderable(processedContent) && validContent) processedContent = validContent;
+-		}
+-		if (processedContent !== prevProcessedContent.current) {
+-			setValidContent(processedContent);
+-			prevProcessedContent.current = processedContent;
++			const range = getIncompleteFormulaRange(processedContent);
++			if (range) {
++				processedContent =
++					processedContent.slice(0, range.start) +
++					"\\$\\$" +
++					processedContent.slice(range.start + 2);
++			}
+ 		}
+ 		addToCache(cacheKey, processedContent);
+ 		return processedContent;
+@@ -37,11 +43,10 @@
+ 		enableLatex,
+ 		enableCustomFootnotes,
+ 		citationsLength,
+-		animated,
+-		validContent
++		animated
+ 	]);
+ };
+ //#endregion
+ export { useMarkdownContent };
+ 
+-//# sourceMappingURL=useMarkdownContent.mjs.map
+\ No newline at end of file
++//# sourceMappingURL=useMarkdownContent.mjs.map
+diff --git a/es/Markdown/Markdown.mjs b/es/Markdown/Markdown.mjs
+--- a/es/Markdown/Markdown.mjs
++++ b/es/Markdown/Markdown.mjs
+@@ -9,4 +9,4 @@
+ import Typography from "./Typography.mjs";
+-import { memo, useCallback } from "react";
++import { memo, useCallback, useEffect } from "react";
+ import { jsx } from "react/jsx-runtime";
+ import { cx } from "antd-style";
+@@ -14,6 +14,9 @@
+ const Markdown = memo((props) => {
+ 	const { ref, children = "", className, style, fullFeaturedCodeBlock, onDoubleClick, animated, enableHtmlPreview = false, enableLatex = true, enableMermaid = true, enableImageGallery, enableCustomFootnotes, enableGithubAlert, enableStream = true, componentProps, rehypePluginsAhead, allowHtml, borderRadius, fontSize = props.variant === "chat" ? 14 : void 0, headerMultiple = props.variant === "chat" ? .25 : void 0, marginMultiple = props.variant === "chat" ? 1 : void 0, variant = "default", reactMarkdownProps, lineHeight = props.variant === "chat" ? 1.6 : void 0, rehypePlugins, remarkPlugins, remarkPluginsAhead, components = {}, customRender, showFootnotes = true, streamAnimationGranularity, streamSmoothingPreset, citations, ...rest } = props;
+ 	const delayedAnimated = useDelayedAnimated(animated);
++	useEffect(() => {
++		void import("katex/dist/contrib/copy-tex.mjs");
++	}, []);
+ 	const stableComponentProps = useStableValue(componentProps);
+ 	const stableComponents = useStableValue(components);
+ 	const Render = useCallback(({ enableStream, children, reactMarkdownProps }) => {

@@ -135,36 +135,6 @@ const formatPersonaItem = (item: UserMemoryPersonaItem): string => {
 };
 
 /**
- * Lean persona sections: identity + interaction preferences are the stable,
- * conversation-relevant core. Research details, device inventory, recent
- * highlights and goals are long but rarely needed for a single turn — they
- * stay in the memory store and can be retrieved on demand.
- */
-const LEAN_PERSONA_SECTIONS = new Set(['Identity', 'Interaction cues']);
-
-/**
- * Formats a persona item for lean mode: keeps the header (title + intro),
- * `### Identity` and `### Interaction cues`, drops the other sections.
- */
-const formatPersonaItemLean = (item: UserMemoryPersonaItem): string => {
-  const taglineAttr = item.tagline ? ` tagline="${item.tagline}"` : '';
-  const narrative = item.narrative || '';
-
-  const parts = narrative.split('\n### ');
-  const header = parts[0]; // ## title + intro
-  const kept: string[] = [header];
-
-  for (const section of parts.slice(1)) {
-    const title = section.split('\n')[0].trim();
-    if (LEAN_PERSONA_SECTIONS.has(title)) {
-      kept.push(`\n### ${section}`);
-    }
-  }
-
-  return `<persona${taglineAttr}>\n${kept.join('')}\n</persona>`;
-};
-
-/**
  * Format user memories as unified XML prompt
  *
  * The memories are organized into four categories:
@@ -173,7 +143,7 @@ const formatPersonaItemLean = (item: UserMemoryPersonaItem): string => {
  * - experiences: Past interactions and learnings
  * - preferences: User's stated preferences and directives
  */
-export const promptUserMemory = ({ memories }: PromptUserMemoryOptions, lean?: boolean): string => {
+export const promptUserMemory = ({ memories }: PromptUserMemoryOptions): string => {
   // Filter out empty/invalid items
   const hasPersona = isValidPersonaItem(memories.persona);
   const identities = (memories.identities || []).filter(isValidIdentityItem);
@@ -197,9 +167,7 @@ export const promptUserMemory = ({ memories }: PromptUserMemoryOptions, lean?: b
 
   // Add persona section (highest-level user context)
   if (hasPersona) {
-    contentParts.push(
-      lean ? formatPersonaItemLean(memories.persona!) : formatPersonaItem(memories.persona!),
-    );
+    contentParts.push(formatPersonaItem(memories.persona!));
   }
 
   // Add identities section (user's identity information)

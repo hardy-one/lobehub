@@ -158,7 +158,8 @@ export interface LobeAgentChatConfig extends AgentMemoryChatConfig, AgentSelfIte
    * Prompt construction mode. Together with `enableAgentMode` it selects one
    * of the three chat modes:
    *   - Lobe (agent + full prompt): enableAgentMode=true,  promptMode=full
-   *   - 智能 (agent + lean prompt): enableAgentMode=true,  promptMode=lean
+   *   - 智能 (agent + full prompt): enableAgentMode=true,  promptMode=full
+   *   - 轻量 (agent + lean prompt): enableAgentMode=true,  promptMode=lean
    *   - 对话 (chat, no tools):      enableAgentMode=false, promptMode=lean
    * `lean` drops the per-plugin teaching blocks / persona sections to save
    * tokens. Undefined means full (legacy behaviour).

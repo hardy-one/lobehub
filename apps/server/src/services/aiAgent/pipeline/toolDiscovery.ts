@@ -1107,7 +1107,6 @@ export const discoverTools = async (
     toolsResult = toolsEngine.generateToolsDetailed({
       excludeDefaultToolIds: isManualMode ? manualModeExcludeToolIds : undefined,
       model,
-      promptMode: agentConfig.chatConfig?.promptMode,
       provider,
       skipDefaultTools: !!exclusivePluginIds,
       toolIds: pluginIds,

@@ -93,9 +93,6 @@ export const MemoryManifest: BuiltinToolManifest = {
     {
       description:
         'Retrieve memories using one or more search queries plus optional filters for categories, tags, labels, relationships, and time range.',
-      // Lean-mode override (see builtin-tool-local-system editFile for rationale).
-      leanDescription:
-        'Retrieve memories using one or more natural-language search queries plus optional filters for categories, tags, labels, relationships, and time range. Run this BEFORE writing new memories to check for duplicates. For calendar-style requests (e.g. "last month", "December 2025") use the timeIntent parameter.',
       name: MemoryApiName.searchUserMemory,
       parameters: {
         additionalProperties: false,

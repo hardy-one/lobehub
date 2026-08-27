@@ -205,7 +205,6 @@ export const useTokenBreakdown = (): TokenBreakdown => {
     const { tools, enabledManifests } = toolsEngine.generateToolsDetailed({
       excludeDefaultToolIds: getToolExcludeDefaultToolIds(skillActivateMode),
       model,
-      promptMode,
       provider,
       toolIds: pluginIds,
     });
@@ -238,7 +237,7 @@ export const useTokenBreakdown = (): TokenBreakdown => {
         identifier: s.identifier,
         name: s.name,
       }));
-    const skillsText = skillsPrompts(skillItems, isLeanPrompt);
+    const skillsText = skillsPrompts(skillItems);
 
     return toolsSystemRole + schemaNumber + skillsText;
     // installedPlugins + toolContextRefreshKey track the implicit

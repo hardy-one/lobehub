@@ -267,7 +267,7 @@ export class ToolsEngine {
         function: {
           description: api.description,
           name: this.generateToolName(manifest.identifier, api.name, manifest.type),
-          parameters: normalizeToolParameters(api.parameters),
+          parameters: structuredClone(normalizeToolParameters(api.parameters)),
         },
         type: 'function' as const,
       })),

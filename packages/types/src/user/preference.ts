@@ -212,6 +212,11 @@ export const UserLabSchema = z.object({
   /** Capture a conversation turn as an eval test case (developer-facing). */
   enableEvalCapture: z.boolean().optional(),
   /**
+   * render raw HTML fragments wrapped in `<!-- html-render-start -->` /
+   * `<!-- html-render-end -->` markers inline in assistant messages
+   */
+  enableHtmlRender: z.boolean().optional(),
+  /**
    * enable the per-topic acceptance tray above the composer (author a topic's
    * delivery checklist inline)
    */

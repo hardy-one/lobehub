@@ -168,4 +168,6 @@ docs/superpowers/
 .auv/
 
 # Amp agent runtime
-.amp/
+.amp/*
+!.amp/settings.json
+.pw-cache/

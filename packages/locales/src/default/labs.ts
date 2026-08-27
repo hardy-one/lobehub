@@ -36,6 +36,9 @@ export default {
   'features.inAppBrowser.title': 'In-App Browser',
   'features.groupChat.desc': 'Enable multi-agent group chat coordination.',
   'features.groupChat.title': 'Group Chat (Multi-Agent)',
+  'features.htmlRender.desc':
+    'Enhance the display of LLM messages by enabling embedded HTML rendering.',
+  'features.htmlRender.title': 'Enhanced Message Rendering',
   'features.inputMarkdown.desc':
     'Render Markdown in the input area in real time (bold text, code blocks, tables, etc.).',
   'features.inputMarkdown.title': 'Input Markdown Rendering',

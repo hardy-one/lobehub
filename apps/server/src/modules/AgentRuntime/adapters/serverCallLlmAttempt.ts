@@ -153,6 +153,9 @@ export class ServerCallLlmAttempt {
   private speed?: ModelPerformance;
   private readonly streamSink: ServerCallLlmStreamSink;
   private streamError?: unknown;
+  private firstTokenAt?: number;
+  private firstReasoningAt?: number;
+  private llmStartedAt = 0;
   private toolCalls: MessageToolCall[] = [];
   private toolsCalling: ChatToolPayload[] = [];
   private readonly topicId?: string;
@@ -219,6 +222,7 @@ export class ServerCallLlmAttempt {
       this.chatPayload.tools?.length ?? 0,
     );
 
+    this.llmStartedAt = Date.now();
     const response = await this.modelRuntime.chat(this.chatPayload, {
       callback: {
         onBase64Image: async ({ image }) => {
@@ -234,6 +238,14 @@ export class ServerCallLlmAttempt {
           if (data.reasoning) this.reasoning = data.reasoning;
         },
         onContentPart: async (part) => {
+          if (this.firstTokenAt === undefined) {
+            this.firstTokenAt = Date.now();
+            log(
+              '[%s][call_llm] first content part after %dms',
+              this.operationLogId,
+              this.firstTokenAt - this.llmStartedAt,
+            );
+          }
           this.onFirstChunk();
           this.contentPartEvents.push({ ...part });
           await this.streamSink.appendContentPart(part);
@@ -256,11 +268,27 @@ export class ServerCallLlmAttempt {
           );
         },
         onReasoningPart: async (part) => {
+          if (this.firstReasoningAt === undefined) {
+            this.firstReasoningAt = Date.now();
+            log(
+              '[%s][call_llm] first reasoning part after %dms',
+              this.operationLogId,
+              this.firstReasoningAt - this.llmStartedAt,
+            );
+          }
           this.onFirstChunk();
           this.reasoningPartEvents.push({ ...part });
           await this.streamSink.appendReasoningPart(part);
         },
         onText: async (text) => {
+          if (this.firstTokenAt === undefined) {
+            this.firstTokenAt = Date.now();
+            log(
+              '[%s][call_llm] first text token after %dms',
+              this.operationLogId,
+              this.firstTokenAt - this.llmStartedAt,
+            );
+          }
           this.onFirstChunk();
           timing(
             '[%s] onText received chunk at %d, length: %d',
@@ -271,6 +299,14 @@ export class ServerCallLlmAttempt {
           await this.streamSink.appendText(text);
         },
         onThinking: async (reasoning) => {
+          if (this.firstReasoningAt === undefined) {
+            this.firstReasoningAt = Date.now();
+            log(
+              '[%s][call_llm] first reasoning chunk after %dms',
+              this.operationLogId,
+              this.firstReasoningAt - this.llmStartedAt,
+            );
+          }
           this.onFirstChunk();
           timing(
             '[%s] onThinking received chunk at %d, length: %d',
@@ -316,12 +352,26 @@ export class ServerCallLlmAttempt {
 
     await consumeStreamUntilDone(response);
 
+    log(
+      '[%s][call_llm] stream consumed in %dms',
+      this.operationLogId,
+      Date.now() - this.llmStartedAt,
+    );
+
     if (this.streamError) throw createStreamExecutionError(this.streamError);
 
     await this.streamSink.flushTextBuffer();
     await this.streamSink.flushReasoningBuffer();
     this.streamSink.clearBuffers();
     await this.streamSink.waitForImageUploads();
+
+    log(
+      '[%s][call_llm] LLM attempt finished in %dms (firstTokenAt=%s, firstReasoningAt=%s)',
+      this.operationLogId,
+      Date.now() - this.llmStartedAt,
+      this.firstTokenAt ? this.firstTokenAt - this.llmStartedAt : 'n/a',
+      this.firstReasoningAt ? this.firstReasoningAt - this.llmStartedAt : 'n/a',
+    );
 
     await this.assertNonEmptyCompletion();
     this.salvageAnswerFromReasoning();

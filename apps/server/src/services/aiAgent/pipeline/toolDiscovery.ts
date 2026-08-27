@@ -76,7 +76,7 @@ import {
   resolveUserDisplayMap,
 } from '@/server/utils/connectorAttribution';
 import {
-  appendSubAgentModelGuidanceToCallSubAgentTool,
+  applySubAgentModelGuidanceToCallSubAgentTool,
   resolveSubAgentModelGuidance,
 } from '@/server/utils/subAgentModelGuidance';
 
@@ -1102,10 +1102,7 @@ export const discoverTools = async (
     deps.workspaceId,
   );
   if (subAgentModelGuidance && tools?.length) {
-    const injected = appendSubAgentModelGuidanceToCallSubAgentTool(tools, subAgentModelGuidance);
-    if (!injected) {
-      log('execAgent: callSubAgent tool not found; skipped sub-agent model guidance');
-    }
+    tools = applySubAgentModelGuidanceToCallSubAgentTool(tools, subAgentModelGuidance);
   }
 
   return {

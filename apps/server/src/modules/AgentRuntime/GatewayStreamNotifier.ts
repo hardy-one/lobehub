@@ -368,9 +368,25 @@ export class GatewayStreamNotifier implements IStreamEventManager {
   ): Promise<void> {
     const state = this.getDeliveryState(operationId);
     const previousDeliveries = [...state.pending];
+    const queuedAt = Date.now();
     const runDelivery = async () => {
       try {
+        if (previousDeliveries.length > 0 && log.enabled) {
+          log(
+            'gateway ordered push started after waiting %dms for %d previous deliveries (operationId=%s)',
+            Date.now() - queuedAt,
+            previousDeliveries.length,
+            operationId,
+          );
+        }
         await delivery();
+        if (log.enabled) {
+          log(
+            'gateway ordered push finished: operationId=%s durationFromQueue=%dms',
+            operationId,
+            Date.now() - queuedAt,
+          );
+        }
       } catch (error) {
         log('Gateway ordered push failed for operation %s: %O', operationId, error);
       }
@@ -432,6 +448,17 @@ export class GatewayStreamNotifier implements IStreamEventManager {
       event.data === undefined
         ? event
         : { ...event, data: sanitizeGatewayEventData(event.data, redaction, event.type) };
+    if (log.enabled) {
+      const pushPayload = { event: sanitizedEvent, operationId };
+      const pushBodySize = Buffer.byteLength(JSON.stringify(pushPayload));
+      log(
+        'push-event: operationId=%s type=%s step=%s bodySize=%d',
+        operationId,
+        event.type,
+        event.stepIndex,
+        pushBodySize,
+      );
+    }
     // Reliability-critical lifecycle events bypass the inflight cap and
     // surface errors via httpPostAwait — a client waits on these to render a
     // complete run, so they must not be dropped under load. High-frequency
@@ -453,6 +480,9 @@ export class GatewayStreamNotifier implements IStreamEventManager {
     // back to the right member column. Only the delivery channel changes.
     const mirrorTo = this.mirrorTargets.get(operationId);
     if (mirrorTo) {
+      if (log.enabled) {
+        log('push-event mirror: operationId=%s -> mirrorOperationId=%s type=%s', operationId, mirrorTo, event.type);
+      }
       pushes.push(this.mirrorPush(mirrorTo, sanitizedEvent));
       await Promise.all(pushes);
       return;
@@ -573,12 +603,15 @@ export class GatewayStreamNotifier implements IStreamEventManager {
    * to know whether the gateway accepted the request.
    */
   private async httpPostAwait(path: string, body: Record<string, unknown>): Promise<void> {
+    const startedAt = Date.now();
+    const payload = JSON.stringify(body);
+    const bodySize = log.enabled ? Buffer.byteLength(payload) : 0;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), POST_TIMEOUT);
 
     try {
       const res = await fetch(urlJoin(this.gatewayUrl, path), {
-        body: JSON.stringify(body),
+        body: payload,
         headers: {
           'Authorization': `Bearer ${this.serviceToken}`,
           'Content-Type': 'application/json',
@@ -587,10 +620,28 @@ export class GatewayStreamNotifier implements IStreamEventManager {
         signal: controller.signal,
       });
 
+      const durationMs = Date.now() - startedAt;
+      log(
+        'gateway http(await): path=%s status=%d bodySize=%d duration=%dms',
+        path,
+        res.status,
+        bodySize,
+        durationMs,
+      );
+
       if (!res.ok) {
         const text = await res.text().catch(() => '');
-        throw new Error(`Gateway ${path} returned ${res.status}: ${text}`);
+        throw new Error(`Gateway ${path} returned ${res.status}: ${text} (bodySize=${bodySize}, duration=${durationMs}ms)`);
       }
+    } catch (error) {
+      log(
+        'gateway http(await) failed: path=%s bodySize=%d duration=%dms error=%O',
+        path,
+        bodySize,
+        Date.now() - startedAt,
+        error,
+      );
+      throw error;
     } finally {
       clearTimeout(timer);
     }
@@ -602,13 +653,16 @@ export class GatewayStreamNotifier implements IStreamEventManager {
       return;
     }
 
+    const startedAt = Date.now();
+    const payload = JSON.stringify(body);
+    const bodySize = log.enabled ? Buffer.byteLength(payload) : 0;
     this.inflight++;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), POST_TIMEOUT);
 
     try {
       const res = await fetch(urlJoin(this.gatewayUrl, path), {
-        body: JSON.stringify(body),
+        body: payload,
         headers: {
           'Authorization': `Bearer ${this.serviceToken}`,
           'Content-Type': 'application/json',
@@ -617,11 +671,33 @@ export class GatewayStreamNotifier implements IStreamEventManager {
         signal: controller.signal,
       });
 
+      const durationMs = Date.now() - startedAt;
+      log(
+        'gateway http: path=%s status=%d bodySize=%d duration=%dms',
+        path,
+        res.status,
+        bodySize,
+        durationMs,
+      );
+
       if (!res.ok) {
-        log('Gateway %s returned %d: %s', path, res.status, await res.text());
+        log(
+          'Gateway %s returned %d (bodySize=%d, duration=%dms): %s',
+          path,
+          res.status,
+          bodySize,
+          durationMs,
+          await res.text(),
+        );
       }
     } catch (error) {
-      log('Gateway %s failed: %O', path, error);
+      log(
+        'Gateway %s failed (bodySize=%d, duration=%dms): %O',
+        path,
+        bodySize,
+        Date.now() - startedAt,
+        error,
+      );
     } finally {
       clearTimeout(timer);
       this.inflight--;

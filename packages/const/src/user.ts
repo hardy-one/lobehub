@@ -9,6 +9,7 @@ export const DEFAULT_PREFERENCE: UserPreference = {
   },
   lab: {
     enableAgentGraphConfig: false,
+    enableHtmlRender: false,
     enableInputMarkdown: true,
     enableMessageTextSelectionActions: false,
     enableOAuthApps: false,

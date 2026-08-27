@@ -5,9 +5,9 @@ import { type ReactNode, useMemo, useState } from 'react';
 
 import { HtmlPreviewDrawer } from '@/components/HtmlPreview';
 import { useUserStore } from '@/store/user';
-import { userGeneralSettingsSelectors } from '@/store/user/selectors';
+import { labPreferSelectors, userGeneralSettingsSelectors } from '@/store/user/selectors';
 
-import { type MarkdownElement, markdownElements } from '../Markdown/plugins';
+import { HTML_RENDER_TAG, type MarkdownElement, markdownElements } from '../Markdown/plugins';
 
 // Honor each plugin's declared `scope`: this hook renders assistant / grouped
 // messages, so user-only constructs (skill, tool, action, mention, …) must not
@@ -15,13 +15,6 @@ import { type MarkdownElement, markdownElements } from '../Markdown/plugins';
 // would render as an interactive chip. Mirrors the `scope !== 'assistant'`
 // filter on the user-message hook.
 const assistantMarkdownElements = markdownElements.filter((s) => s.scope !== 'user');
-
-const rehypePlugins = assistantMarkdownElements
-  .map((element: MarkdownElement) => element.rehypePlugin)
-  .filter(Boolean);
-const remarkPlugins = assistantMarkdownElements
-  .map((element: MarkdownElement) => element.remarkPlugin)
-  .filter(Boolean);
 
 interface UseChatMarkdownOptions {
   citations?: MarkdownProps['citations'];
@@ -40,19 +33,49 @@ export const useChatMarkdown = ({
   markdownProps: Partial<MarkdownProps>;
 } => {
   const { transitionMode } = useUserStore(userGeneralSettingsSelectors.config);
+  const enableHtmlRender = useUserStore(labPreferSelectors.enableHtmlRender);
   const animated = enableStream && transitionMode === 'fadeIn' && isGenerating;
+  const streaming = enableStream && isGenerating;
 
   const [drawerContent, setDrawerContent] = useState<string | null>(null);
+
+  // The embedded-HTML renderer is lab-gated: when disabled its plugin must not
+  // parse the markers (and the raw fragment then stays invisible, matching the
+  // "feature off" semantics of the author's script).
+  const enabledElements = useMemo(
+    () =>
+      enableHtmlRender
+        ? assistantMarkdownElements
+        : assistantMarkdownElements.filter((element) => element.tag !== HTML_RENDER_TAG),
+    [enableHtmlRender],
+  );
+
+  const rehypePlugins = useMemo(
+    () => enabledElements.map((element: MarkdownElement) => element.rehypePlugin).filter(Boolean),
+    [enabledElements],
+  );
+  const remarkPlugins = useMemo(
+    () => enabledElements.map((element: MarkdownElement) => element.remarkPlugin).filter(Boolean),
+    [enabledElements],
+  );
 
   const components = useMemo(
     () =>
       Object.fromEntries(
-        markdownElements.map((element: MarkdownElement) => {
+        enabledElements.map((element: MarkdownElement) => {
           const Component = element.Component;
-          return [element.tag, (props: any) => <Component {...props} id={id} />];
+          // `animated` / `streaming` ride along for plugins that need
+          // streaming-mode awareness (e.g. the html-render preview iframe);
+          // other plugins simply ignore the extra props.
+          return [
+            element.tag,
+            (props: any) => (
+              <Component {...props} animated={animated} id={id} streaming={streaming} />
+            ),
+          ];
         }),
       ),
-    [id],
+    [animated, enabledElements, id, streaming],
   );
 
   const markdownProps = useMemo(
@@ -73,7 +96,7 @@ export const useChatMarkdown = ({
         remarkPlugins,
         showFootnotes: !citations?.length || citations.every((item) => item.title !== item.url),
       }) satisfies Partial<MarkdownProps>,
-    [animated, citations, components, enableStream],
+    [animated, citations, components, enableStream, rehypePlugins, remarkPlugins],
   );
 
   const drawer = useMemo(

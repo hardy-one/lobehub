@@ -20,6 +20,7 @@ type LabFeatureI18nKey =
   | 'evalCapture'
   | 'gatewayMux'
   | 'heteroSessionImport'
+  | 'htmlRender'
   | 'imessage'
   | 'inputMarkdown'
   | 'messageTextSelectionActions'
@@ -88,6 +89,12 @@ export const LAB_FEATURES: LabFeatureItem[] = [
     i18nKey: 'topicAcceptance',
     searchKeywords: ['acceptance', 'checklist'],
     stage: 'alpha',
+  },
+  {
+    flag: 'enableHtmlRender',
+    i18nKey: 'htmlRender',
+    searchKeywords: ['html', 'html render', 'embedded html'],
+    stage: 'beta',
   },
   {
     flag: 'enableProjects',

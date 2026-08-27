@@ -1,3 +1,4 @@
+import { getElectronIpc } from '@lobechat/electron-client-ipc';
 import type { WorkingDirGitState } from '@lobechat/types';
 import { Icon } from '@lobehub/ui';
 import {
@@ -86,8 +87,12 @@ const StaleGitSnapshot = memo<StaleGitSnapshotProps>(
       resolveStaleSnapshot({ git, path, sourcePath });
 
     const handleOpenPr = useCallback(() => {
-      if (pullRequest?.url) {
-        void electronSystemService.openExternalLink(pullRequest.url);
+      const url = pullRequest?.url;
+      if (!url) return;
+      if (getElectronIpc()) {
+        void electronSystemService.openExternalLink(url);
+      } else {
+        window.open(url, '_blank', 'noopener');
       }
     }, [pullRequest?.url]);
 

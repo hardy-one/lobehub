@@ -1,7 +1,9 @@
 import { type AIChatModelCard } from '../types/aiModel';
 
 // ref: https://opencode.ai/zen
-// Models synced from https://models.dev/api.json → opencode (OpenCode Zen)
+// Model availability synced from the official https://opencode.ai/zen/v1/models list
+// (models.dev keeps deprecated entries); metadata enriched from
+// https://models.dev/api.json → opencode.
 // `settings.extendParams` follows each model's `reasoning_options`.
 
 const opencodeZenChatModels: AIChatModelCard[] = [
@@ -243,32 +245,6 @@ const opencodeZenChatModels: AIChatModelCard[] = [
   {
     abilities: { functionCall: true, reasoning: true, vision: true },
     contextWindowTokens: 200_000,
-    description: 'Flagship Claude model for deep reasoning, coding, and long-horizon agents',
-    displayName: 'Claude Opus 4.1',
-    enabled: false,
-    family: 'claude-opus',
-    id: 'claude-opus-4-1',
-    maxOutput: 32_000,
-    organization: 'Anthropic',
-    pricing: {
-      currency: 'USD',
-      units: [
-        { name: 'textInput', rate: 15, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textOutput', rate: 75, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textInput_cacheRead', rate: 1.5, strategy: 'fixed', unit: 'millionTokens' },
-        { name: 'textInput_cacheWrite', rate: 18.75, strategy: 'fixed', unit: 'millionTokens' },
-      ],
-    },
-    releasedAt: '2025-08-05',
-    settings: {
-      // reasoning_options: [{"type": "budget_tokens", "min": 1024}]
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
-    },
-    type: 'chat',
-  },
-  {
-    abilities: { functionCall: true, reasoning: true, vision: true },
-    contextWindowTokens: 200_000,
     description:
       'Fast Claude model for responsive assistance, classification, and lightweight agents',
     displayName: 'Claude Haiku 4.5',
@@ -290,6 +266,32 @@ const opencodeZenChatModels: AIChatModelCard[] = [
     settings: {
       // reasoning_options: [{"type": "budget_tokens", "min": 1024}]
       extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: { functionCall: true, reasoning: true, vision: true },
+    contextWindowTokens: 1_000_000,
+    description: 'Strongest Claude Opus model for coding, agents, and professional work',
+    displayName: 'Claude Opus 5',
+    enabled: false,
+    family: 'claude-opus',
+    id: 'claude-opus-5',
+    maxOutput: 128_000,
+    organization: 'Anthropic',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 5, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 25, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.5, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheWrite', rate: 6.25, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-07-24',
+    // reasoning_options: [{"type":"effort","values":["low","medium","high","xhigh","max"]}]
+    settings: {
+      extendParams: ['enableAdaptiveThinking', 'opus47Effort'],
     },
     type: 'chat',
   },
@@ -1006,6 +1008,82 @@ const opencodeZenChatModels: AIChatModelCard[] = [
     type: 'chat',
   },
   {
+    abilities: { functionCall: true, reasoning: true, structuredOutput: true, vision: true },
+    contextWindowTokens: 1_048_576,
+    description: 'Fast Gemini model balancing multimodal reasoning, tool use, and cost',
+    displayName: 'Gemini 3.5 Flash Lite',
+    enabled: false,
+    family: 'gemini-flash-lite',
+    id: 'gemini-3.5-flash-lite',
+    maxOutput: 65_536,
+    organization: 'Google',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 0.3, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 2.5, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.03, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-07-21',
+    // reasoning_options: [{"type":"effort","values":["minimal","low","medium","high"]}]
+    settings: {
+      extendParams: ['gpt5ReasoningEffort'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: { functionCall: true, reasoning: true, structuredOutput: true, vision: true },
+    contextWindowTokens: 1_048_576,
+    description: 'Fast Gemini model balancing multimodal reasoning, tool use, and cost',
+    displayName: 'Gemini 3.6 Flash',
+    enabled: false,
+    family: 'gemini-flash',
+    id: 'gemini-3.6-flash',
+    maxOutput: 65_536,
+    organization: 'Google',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 1.5, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 7.5, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.15, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-07-21',
+    // reasoning_options: [{"type":"effort","values":["minimal","low","medium","high"]}]
+    settings: {
+      extendParams: ['gpt5ReasoningEffort'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: { functionCall: true, reasoning: true, structuredOutput: true, vision: true },
+    contextWindowTokens: 1_048_576,
+    description:
+      'High-efficiency Gemini model for agentic workflows, coding, and multimodal reasoning',
+    displayName: 'Gemini 3.7 Flash',
+    enabled: false,
+    family: 'gemini-flash',
+    id: 'gemini-3.7-flash',
+    maxOutput: 65_536,
+    organization: 'Google',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 1.5, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 7.5, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.15, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-08-13',
+    // reasoning_options: [{"type":"effort","values":["low","medium","high"]}]
+    settings: {
+      extendParams: ['reasoningEffort'],
+    },
+    type: 'chat',
+  },
+  {
     abilities: { functionCall: true, reasoning: true, structuredOutput: true },
     contextWindowTokens: 1_000_000,
     description: 'Open flagship GLM for long-horizon coding agents and million-token context work',
@@ -1251,6 +1329,29 @@ const opencodeZenChatModels: AIChatModelCard[] = [
     type: 'chat',
   },
   {
+    abilities: { functionCall: true, reasoning: true, structuredOutput: true, vision: true },
+    contextWindowTokens: 1_048_576,
+    description:
+      'Multimodal Kimi model with 1M context and toggleable max-effort thinking for long-horizon agent work',
+    displayName: 'Kimi K3',
+    enabled: false,
+    family: 'kimi-k3',
+    id: 'kimi-k3',
+    maxOutput: 131_072,
+    organization: 'Moonshot',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 3, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 15, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.3, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-07-16',
+    // reasoning_options: [{"type":"effort","values":["max"]}]
+    type: 'chat',
+  },
+  {
     abilities: {
       functionCall: true,
       reasoning: true,
@@ -1307,6 +1408,32 @@ const opencodeZenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-05-20',
     // reasoning_options: []
+    type: 'chat',
+  },
+  {
+    abilities: { functionCall: true, reasoning: true, structuredOutput: true, vision: true },
+    contextWindowTokens: 500_000,
+    description:
+      "xAI's frontier model for long-running agents, coding, knowledge work, and visual projects",
+    displayName: 'Grok 4.6',
+    enabled: false,
+    family: 'grok',
+    id: 'grok-4.6',
+    maxOutput: 500_000,
+    organization: 'xAI',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 2, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 6, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.5, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-08-12',
+    // reasoning_options: [{"type":"effort","values":["low","medium","high","xhigh"]}]
+    settings: {
+      extendParams: ['gpt5_2ReasoningEffort'],
+    },
     type: 'chat',
   },
   {
@@ -1499,6 +1626,83 @@ const opencodeZenChatModels: AIChatModelCard[] = [
     type: 'chat',
   },
   {
+    abilities: { functionCall: true, reasoning: true, structuredOutput: true, vision: true },
+    contextWindowTokens: 1_048_576,
+    description:
+      'Muse Spark 1.2 is a coding-focused update to Muse Spark 1.1 with improvements in code generation, complex debugging, codebase understanding, and end-to-end developer workflows.',
+    displayName: 'Muse Spark 1.2 Free',
+    enabled: true,
+    family: 'muse-free',
+    id: 'muse-spark-1.2-contributor-free',
+    maxOutput: 131_072,
+    organization: 'OpenCode',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-08-05',
+    // reasoning_options: [{"type":"effort","values":["minimal","low","medium","high","xhigh"]}]
+    settings: {
+      extendParams: ['gpt5_2ReasoningEffort'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: { functionCall: true, reasoning: true, structuredOutput: true, vision: true },
+    contextWindowTokens: 1_000_000,
+    description: 'Stealth reasoning model for coding, agentic tasks, and tool use',
+    displayName: 'Ox Alpha Free (Unlimited)',
+    enabled: true,
+    family: 'x-preview-f-free',
+    id: 'x-preview-f-free',
+    maxOutput: 131_072,
+    organization: 'OpenCode',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-08-21',
+    // reasoning_options: [{"type":"effort","values":["low","high","max"]}]
+    settings: {
+      extendParams: ['deepseekV4GAReasoningEffort'],
+    },
+    type: 'chat',
+  },
+  {
+    abilities: { functionCall: true, reasoning: true, structuredOutput: true, vision: true },
+    contextWindowTokens: 1_048_576,
+    description:
+      'Muse Spark 1.2 is a coding-focused update to Muse Spark 1.1 with improvements in code generation, complex debugging, codebase understanding, and end-to-end developer workflows.',
+    displayName: 'Muse Spark 1.2',
+    enabled: false,
+    family: 'muse',
+    id: 'muse-spark-1.2',
+    maxOutput: 131_072,
+    organization: 'OpenCode',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 1.25, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 4.25, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.15, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-08-05',
+    // reasoning_options: [{"type":"effort","values":["minimal","low","medium","high","xhigh"]}]
+    settings: {
+      extendParams: ['gpt5_2ReasoningEffort'],
+    },
+    type: 'chat',
+  },
+  {
     abilities: { functionCall: true, reasoning: true },
     contextWindowTokens: 1_000_000,
     description: 'Largest Nemotron 3 model for maximum open-weight reasoning and agent accuracy',
@@ -1518,6 +1722,28 @@ const opencodeZenChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-06-04',
+    // reasoning_options: []
+    type: 'chat',
+  },
+  {
+    abilities: { functionCall: true, reasoning: true, structuredOutput: true },
+    contextWindowTokens: 262_144,
+    description: 'Fast NVIDIA Nemotron MoE for reliable agentic tasks across enterprise workloads',
+    displayName: 'Nemotron 3.5 Lightning Free',
+    enabled: true,
+    family: 'nemotron-free',
+    id: 'nemotron-3.5-lightning-free',
+    maxOutput: 262_144,
+    organization: 'NVIDIA',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-08-11',
     // reasoning_options: []
     type: 'chat',
   },
@@ -1544,26 +1770,27 @@ const opencodeZenChatModels: AIChatModelCard[] = [
     type: 'chat',
   },
   {
-    abilities: { functionCall: true, reasoning: true, structuredOutput: true },
+    abilities: { functionCall: true, reasoning: true },
     contextWindowTokens: 256_000,
-    description: 'Cohere coding model for practical software engineering and agentic edits',
-    displayName: 'North Mini Code Free',
+    description: 'Agentic coding model from Poolside in the XS size class for local deployment',
+    displayName: 'Laguna S 2.1 Free',
     enabled: true,
-    family: 'north',
-    id: 'north-mini-code-free',
-    maxOutput: 64_000,
-    organization: 'Cohere',
+    family: 'laguna',
+    id: 'laguna-s-2.1-free',
+    maxOutput: 32_000,
+    organization: 'Poolside',
     pricing: {
       currency: 'USD',
       units: [
         { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
         { name: 'textOutput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
       ],
     },
-    releasedAt: '2026-06-09',
+    releasedAt: '2026-07-21',
+    // reasoning_options: [{"type":"effort","values":["low","medium","high"]}]
     settings: {
-      // reasoning_options: [{"type": "effort", "values": ["none", "high"]}]
-      extendParams: ['deepseekV4ReasoningEffort'],
+      extendParams: ['reasoningEffort'],
     },
     type: 'chat',
   },

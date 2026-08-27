@@ -7,6 +7,7 @@ import {
   fetchModelsDevApi,
   fetchModelsDevRoutingMetadata,
   mapReasoningOptionsToExtendParams,
+  MODELS_DEV_TIMEOUT_MS,
   resolveModelsDevModelList,
 } from './modelsDev';
 
@@ -64,6 +65,27 @@ describe('mapReasoningOptionsToExtendParams', () => {
     expect(
       mapReasoningOptionsToExtendParams('kimi-k3', [{ type: 'effort', values: ['max'] }]),
     ).toBeUndefined();
+  });
+
+  it('maps low/high/max sets without medium to the DeepSeek V4 GA effort control', () => {
+    // The generic reasoningEffort slider only offers low/medium/high and cannot
+    // express 'max'; deepseekV4GAReasoningEffort covers none/low/high/max.
+    expect(
+      mapReasoningOptionsToExtendParams('x-preview-f-free', [
+        { type: 'effort', values: ['low', 'high', 'max'] },
+      ]),
+    ).toEqual(['deepseekV4GAReasoningEffort']);
+    expect(
+      mapReasoningOptionsToExtendParams('x-preview-f-free', [
+        { type: 'effort', values: ['none', 'low', 'high', 'max'] },
+      ]),
+    ).toEqual(['deepseekV4GAReasoningEffort']);
+  });
+
+  it('gives the multi-MB api.json download enough time before aborting', () => {
+    // Measured ~4MB payload taking 3.5-5s on consumer links; a tighter timeout
+    // aborts every cold fetch and silently degrades enrichment to bare ids.
+    expect(MODELS_DEV_TIMEOUT_MS).toBeGreaterThanOrEqual(10_000);
   });
 });
 

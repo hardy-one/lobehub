@@ -10,8 +10,10 @@ vi.mock('@/store/user', () => ({
   useUserStore: (selector: any) => selector({ settings: {} }),
 }));
 let mockTransitionMode = 'none';
+let mockEnableHtmlRender = false;
 
 vi.mock('@/store/user/selectors', () => ({
+  labPreferSelectors: { enableHtmlRender: () => mockEnableHtmlRender },
   userGeneralSettingsSelectors: { config: () => ({ transitionMode: mockTransitionMode }) },
 }));
 
@@ -21,6 +23,7 @@ const remarkPluginFor = (tag: string) =>
 describe('useChatMarkdown (assistant / grouped message pipeline)', () => {
   afterEach(() => {
     mockTransitionMode = 'none';
+    mockEnableHtmlRender = false;
   });
 
   it('excludes user-scoped plugins so echoed <skill>/<tool> tags never become chips', () => {
@@ -67,5 +70,26 @@ describe('useChatMarkdown (assistant / grouped message pipeline)', () => {
 
     expect(result.current.markdownProps.animated).toBe(false);
     expect(result.current.markdownProps.enableStream).toBe(false);
+  });
+
+  it('excludes the html-render plugin while the lab switch is off', () => {
+    mockEnableHtmlRender = false;
+
+    const { result } = renderHook(() => useChatMarkdown({ id: 'a5', isGenerating: false }));
+
+    const htmlRenderPlugin = markdownElements.find((el) => el.tag === 'html-render')?.remarkPlugin;
+    expect(htmlRenderPlugin).toBeTruthy();
+    expect(result.current.markdownProps.remarkPlugins).not.toContain(htmlRenderPlugin);
+    expect(result.current.markdownProps.components?.['html-render']).toBeUndefined();
+  });
+
+  it('includes the html-render plugin while the lab switch is on', () => {
+    mockEnableHtmlRender = true;
+
+    const { result } = renderHook(() => useChatMarkdown({ id: 'a6', isGenerating: false }));
+
+    const htmlRenderPlugin = markdownElements.find((el) => el.tag === 'html-render')?.remarkPlugin;
+    expect(result.current.markdownProps.remarkPlugins).toContain(htmlRenderPlugin);
+    expect(result.current.markdownProps.components?.['html-render']).toBeTruthy();
   });
 });

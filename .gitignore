@@ -115,6 +115,7 @@ vertex-ai-key.json
 .llm-generation-tracing/
 
 # AI coding tools
+.pi/
 .local/
 .claude/
 .mcp.json

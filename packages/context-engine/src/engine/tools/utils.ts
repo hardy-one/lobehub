@@ -40,7 +40,7 @@ export function generateToolsFromManifest(manifest: LobeToolManifest): UniformTo
     function: {
       description: api.description,
       name: new ToolNameResolver().generate(manifest.identifier, api.name, manifest.type),
-      parameters: normalizeToolParameters(api.parameters),
+      parameters: structuredClone(normalizeToolParameters(api.parameters)),
     },
     type: 'function' as const,
   }));

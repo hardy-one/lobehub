@@ -27,6 +27,7 @@ import { useChatStore } from '@/store/chat';
 import { topicSelectors } from '@/store/chat/selectors';
 import { useToolStore } from '@/store/tool';
 import { pluginHelpers } from '@/store/tool/helpers';
+import { toolSelectors } from '@/store/tool/selectors';
 import { useUserStore } from '@/store/user';
 import { settingsSelectors } from '@/store/user/selectors';
 
@@ -184,7 +185,7 @@ export const useTokenBreakdown = (): TokenBreakdown => {
   const installedPlugins = useToolStore((s) => s.installedPlugins);
 
   // Lean prompt (mirrors ToolSystemRoleProvider: promptMode==='lean' → compact
-  // policy + persona regardless of agent/chat mode).
+  // policy replaces the per-plugin teaching blocks).
   const isLeanPrompt = promptMode === 'lean';
 
   const toolsString = useMemo(() => {
@@ -239,7 +240,28 @@ export const useTokenBreakdown = (): TokenBreakdown => {
       }));
     const skillsText = skillsPrompts(skillItems);
 
-    return toolsSystemRole + schemaNumber + skillsText;
+    // Tool-discovery list (<available_tools>, lean mode only) — mirrors
+    // AvailableToolsInjector using the same store data the activator lists,
+    // with tools already enabled for this request excluded (the server sends
+    // only activatable-but-not-enabled identifiers).
+    const enabledToolIds = new Set(
+      enabledManifests.map((manifest) => manifest.identifier).filter(Boolean),
+    );
+    const availableToolsText = isLeanPrompt
+      ? toolSelectors
+          .availableToolsForDiscovery(toolState)
+          .filter((tool) => !enabledToolIds.has(tool.identifier))
+          .map(
+            (tool) =>
+              `  <tool identifier="${tool.identifier}" name="${tool.name}">${tool.description}</tool>`,
+          )
+          .join('\n')
+      : '';
+    const availableToolsBlock = availableToolsText
+      ? `<available_tools>\n${availableToolsText}\n</available_tools>`
+      : '';
+
+    return toolsSystemRole + schemaNumber + skillsText + availableToolsBlock;
     // installedPlugins + toolContextRefreshKey track the implicit
     // createAgentToolsEngine inputs read via getState() (tool manifests plus
     // agent/user/aiInfra config), so the engine only re-runs when they change
@@ -256,16 +278,18 @@ export const useTokenBreakdown = (): TokenBreakdown => {
 
   // Estimated buckets — the fallback when the current topic has no recorded
   // send yet (new topic, first message still being typed).
-  const estimatedTools = useTokenCount(canUseTool ? toolsString : '');
+  // Persona / user memory (<user_memory>) rides the tools bucket — the same
+  // classification CONTEXT_BUCKET_RULES records on the send side.
+  const personaMemories = combineUserMemoryData(resolveTopicMemories(), resolveUserPersona());
+  const personaText = promptUserMemory({ memories: personaMemories });
+  const estimatedTools = useTokenCount(personaText + (canUseTool ? toolsString : ''));
 
   const inputTokenCount = useTokenCount(input);
   const estimatedChats = useTokenCount(messages);
 
-  // SystemRole token — include the injected persona (user_memory) so the
-  // breakdown matches the real request.
-  const personaMemories = combineUserMemoryData(resolveTopicMemories(), resolveUserPersona());
-  const personaText = promptUserMemory({ memories: personaMemories }, isLeanPrompt);
-  const estimatedSystemRole = useTokenCount(systemRole + personaText);
+  // SystemRole token — the agent's system role text only; the injected
+  // persona (user memory) is counted under tools.
+  const estimatedSystemRole = useTokenCount(systemRole);
   const estimatedHistorySummary = useTokenCount(historySummary);
 
   // Exact send-side counts (tokenx, computed on the assembled payload).

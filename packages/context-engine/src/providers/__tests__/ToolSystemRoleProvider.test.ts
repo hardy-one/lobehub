@@ -245,7 +245,7 @@ describe('ToolSystemRoleProvider', () => {
 });
 
 describe('ToolSystemRoleProvider lean mode', () => {
-  it('injects LEAN_TOOL_USAGE_POLICY instead of the teaching blocks when promptMode is lean', async () => {
+  it('skips tool system role injection when promptMode is lean (available_tools is handled separately)', async () => {
     const provider = new ToolSystemRoleProvider({
       manifests: [
         {
@@ -265,20 +265,14 @@ describe('ToolSystemRoleProvider lean mode', () => {
     const ctx = createContext([{ id: 'u1', role: 'user', content: 'hi' }]);
     const result = await provider.process(ctx);
     const systemMessage = result.messages.find((msg) => msg.role === 'system');
-    expect(systemMessage).toBeDefined();
-    expect(systemMessage!.content).toContain('<lobe_tool_policy>');
-    expect(systemMessage!.content).toContain('Search citations');
-    // Resource-library-first file lookup must survive the lean policy (the KB
-    // teaching block is dropped entirely, so this line is its only carrier).
-    expect(systemMessage!.content).toContain('resource library');
-    // Media fallback guidance must survive the lean policy (analyzeMedia is
-    // deferred to <available_tools> in efficient mode, so the prompt is the
-    // only place the model learns it exists).
-    expect(systemMessage!.content).toContain('Media fallback');
-    expect(systemMessage!.content).toContain('analyzeMedia');
-    // Teaching blocks are gone
-    expect(systemMessage!.content).not.toContain('<tool name="demo">');
-    expect(systemMessage!.content).not.toContain('Instructions for demo');
+    expect(systemMessage).toBeUndefined();
+    // The compact policy/teaching blocks are not injected in lean mode.
+    expect(result.messages.find((msg) => msg.role === 'system')?.content ?? '').not.toContain(
+      '<lobe_tool_policy>',
+    );
+    expect(result.messages.find((msg) => msg.role === 'system')?.content ?? '').not.toContain(
+      '<tool name="demo">',
+    );
   });
 
   it('keeps the teaching blocks when promptMode is full or undefined', async () => {

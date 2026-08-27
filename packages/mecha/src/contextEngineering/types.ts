@@ -97,6 +97,8 @@ export interface ContextToolsSnapshot {
   disabledToolIdentifiers?: string[];
   enabledSkills?: SkillMeta[];
   enabledToolIds?: string[];
+  /** Compact discovery list for tools not initially enabled in lean mode. */
+  availableTools?: Array<{ identifier: string; name: string; description: string }>;
   manifests?: LobeToolManifest[];
   /** Skills the user pinned for this request. */
   selectedSkills?: RuntimeSelectedSkill[];

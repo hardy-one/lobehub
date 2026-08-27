@@ -621,6 +621,45 @@ describe('Message CRUD Actions', () => {
   });
 
   describe('updateMessageContent', () => {
+    it('forwards an explicit null through the source-edit wrapper', async () => {
+      const store = createTestStore();
+      const update = vi
+        .spyOn(store.getState(), 'updateMessageContent')
+        .mockResolvedValue(undefined);
+      await store.getState().modifyMessageContent('msg-1', 'Edited source', null);
+      expect(update).toHaveBeenCalledWith('msg-1', 'Edited source', { editorData: null });
+    });
+
+    it('persists a source edit with cleared rich data and keeps it cleared after reconciliation', async () => {
+      const persisted = {
+        id: 'msg-source-edit',
+        content: 'Original',
+        role: 'user' as const,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        editorData: { root: { children: [] } } as Record<string, any> | null,
+      };
+      vi.spyOn(messageServiceModule.messageService, 'updateMessage').mockImplementation(
+        async (_id, patch) => {
+          if (patch.content !== undefined) persisted.content = patch.content;
+          if (patch.editorData !== undefined) persisted.editorData = patch.editorData;
+          return { success: true, messages: [{ ...persisted }] };
+        },
+      );
+      const store = createTestStore();
+      store.getState().replaceMessages([{ ...persisted }]);
+      await store
+        .getState()
+        .updateMessageContent(persisted.id, 'Edited source', { editorData: null });
+      expect(persisted.editorData).toBeNull();
+      const reloaded = createTestStore();
+      reloaded.getState().replaceMessages([{ ...persisted }]);
+      expect(reloaded.getState().displayMessages[0]).toMatchObject({
+        content: 'Edited source',
+        editorData: null,
+      });
+    });
+
     it('should update message content', async () => {
       const updateMessageSpy = vi
         .spyOn(messageServiceModule.messageService, 'updateMessage')

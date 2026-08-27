@@ -27,7 +27,11 @@ const EditState = memo<EditStateProps>(({ id, content, editorData }) => {
       onClose: () => toggleMessageEditing(id, false),
       onConfirm: async (value, newEditorData) => {
         if (!id) return;
-        await updateMessageContent(id, value, newEditorData as Record<string, any> | undefined);
+        await updateMessageContent(
+          id,
+          value,
+          newEditorData as Record<string, any> | null | undefined,
+        );
         toggleMessageEditing(id, false);
       },
     });

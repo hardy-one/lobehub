@@ -123,6 +123,22 @@ const createTestContext = (agentId: string = TEST_IDS.SESSION_ID) => ({
 
 describe('ConversationLifecycle actions', () => {
   describe('sendMessage', () => {
+    it.each([String.raw`Regex \. and LaTeX \(x\)`, String.raw`literal \_ \* \[ \] and C:\temp`])(
+      'preserves literal plain-text input through persistence: %s',
+      async (message) => {
+        const create = vi.spyOn(messageService, 'createMessage').mockResolvedValue({
+          id: 'literal-message',
+          messages: [],
+        });
+        await useChatStore.getState().sendMessage({
+          context: createTestContext(),
+          message,
+          onlyAddUserMessage: true,
+        });
+        expect(create).toHaveBeenCalledWith(expect.objectContaining({ content: message }));
+      },
+    );
+
     describe('validation', () => {
       it('should not send when sessionId is empty', async () => {
         const { result } = renderHook(() => useChatStore());

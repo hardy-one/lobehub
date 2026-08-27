@@ -114,7 +114,7 @@ const MessageContent = memo<MessageContentProps>(
           // awaiting the DB round trip. Kick off regenerate in parallel so the old
           // assistant reply is replaced by switchMessageBranch without waiting for persistence.
           const save = updateMessageContent(id, value, {
-            editorData: newEditorData as Record<string, any> | undefined,
+            editorData: newEditorData as Record<string, any> | null | undefined,
           });
           if (canCreate && shouldSendOnConfirm) {
             await regenerateUserMessage(id);

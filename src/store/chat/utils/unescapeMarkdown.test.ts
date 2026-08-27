@@ -15,6 +15,22 @@ describe('unescapeMarkdown', () => {
     expect(unescapeMarkdown('\\#heading')).toBe('#heading');
   });
 
+  it('unescapes at signs in plain text', () => {
+    expect(unescapeMarkdown('\\@user')).toBe('@user');
+    expect(unescapeMarkdown('hello \\@world')).toBe('hello @world');
+  });
+
+  it('unescapes remaining ASCII punctuation', () => {
+    expect(unescapeMarkdown('\\$money \\%pct \\&amp \\"quote \\\'single')).toBe(
+      '$money %pct &amp "quote \'single',
+    );
+    expect(unescapeMarkdown('\\,comma \\/slash \\:colon \\;semi')).toBe(
+      ',comma /slash :colon ;semi',
+    );
+    expect(unescapeMarkdown('\\<lt \\=eq \\>gt \\?quest')).toBe('<lt =eq >gt ?quest');
+    expect(unescapeMarkdown('\\^caret \\|pipe \\~tilde')).toBe('^caret |pipe ~tilde');
+  });
+
   it('preserves backslashes inside inline code spans', () => {
     expect(unescapeMarkdown('`FOO\\_BAR`')).toBe('`FOO\\_BAR`');
   });

@@ -117,7 +117,11 @@ export const messageStateSlice: StateCreator<
     const originalContent = originalMessage?.content;
 
     // Update content
-    await get().updateMessageContent(id, content, editorData ? { editorData } : undefined);
+    await get().updateMessageContent(
+      id,
+      content,
+      editorData !== undefined ? { editorData } : undefined,
+    );
     if (!isSameConversationContext(context, get().context)) return;
 
     // ===== Hook: onMessageModified =====

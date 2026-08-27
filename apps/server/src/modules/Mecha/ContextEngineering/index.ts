@@ -116,6 +116,7 @@ const createServerVariableGenerators = (params: {
  */
 export const serverMessagesEngine = async ({
   additionalContexts,
+  availableTools,
   messages = [],
   model,
   modelDisplayName,
@@ -215,6 +216,7 @@ export const serverMessagesEngine = async ({
     timezone: userTimezone,
 
     // Tools configuration
+    availableTools,
     toolsConfig: {
       disabledToolIdentifiers:
         toolsConfig?.disabledToolIdentifiers ??

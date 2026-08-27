@@ -1,8 +1,10 @@
+import { LobeActivatorManifest } from '@lobechat/builtin-tool-activator';
 import { AuvManifest } from '@lobechat/builtin-tool-auv';
 import { CloudSandboxManifest } from '@lobechat/builtin-tool-cloud-sandbox';
 import { GoalIdentifier, isGoalPrompt } from '@lobechat/builtin-tool-goal';
 import { LobeAgentManifest } from '@lobechat/builtin-tool-lobe-agent';
 import { LocalSystemManifest } from '@lobechat/builtin-tool-local-system';
+import { MemoryManifest } from '@lobechat/builtin-tool-memory';
 import { MessageToolIdentifier } from '@lobechat/builtin-tool-message';
 import type { DeviceAttachment } from '@lobechat/builtin-tool-remote-device';
 import { generateSystemPrompt, RemoteDeviceManifest } from '@lobechat/builtin-tool-remote-device';
@@ -10,6 +12,8 @@ import {
   injectSelfFeedbackIntentTool,
   shouldExposeSelfFeedbackIntentTool,
 } from '@lobechat/builtin-tool-self-iteration';
+import { SkillsManifest } from '@lobechat/builtin-tool-skills';
+import { WebBrowsingManifest } from '@lobechat/builtin-tool-web-browsing';
 import { manualModeExcludeToolIds } from '@lobechat/builtin-tools';
 import type {
   AgentGroupConfig,
@@ -911,12 +915,22 @@ export const discoverTools = async (
 
     const isManualMode = agentConfig.chatConfig?.skillActivateMode === 'manual';
 
+    const isLeanMode = agentConfig.chatConfig?.promptMode === 'lean';
+    const leanToolIds = [
+      LobeAgentManifest.identifier,
+      LobeActivatorManifest.identifier,
+      SkillsManifest.identifier,
+      ...(canUseDevice ? [RemoteDeviceManifest.identifier, LocalSystemManifest.identifier] : []),
+      ...(globalMemoryEnabled ? [MemoryManifest.identifier] : []),
+      ...(searchDecision.useApplicationBuiltinSearchTool ? [WebBrowsingManifest.identifier] : []),
+    ];
+
     toolsResult = toolsEngine.generateToolsDetailed({
       excludeDefaultToolIds: isManualMode ? manualModeExcludeToolIds : undefined,
       model,
       provider,
-      skipDefaultTools: !!exclusivePluginIds,
-      toolIds: pluginIds,
+      skipDefaultTools: isLeanMode || !!exclusivePluginIds,
+      toolIds: isLeanMode ? leanToolIds : pluginIds,
     });
 
     tools = toolsResult.tools;

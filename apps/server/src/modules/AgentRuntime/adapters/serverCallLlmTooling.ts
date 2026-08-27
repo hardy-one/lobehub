@@ -1,5 +1,6 @@
 import type { AgentState } from '@lobechat/agent-runtime';
 import { LocalSystemManifest } from '@lobechat/builtin-tool-local-system';
+import { MemoryManifest } from '@lobechat/builtin-tool-memory';
 import {
   buildStepSkillDelta,
   buildStepToolDelta,
@@ -41,6 +42,12 @@ export interface ServerCallLlmTooling {
   resolved: ResolvedToolSet;
   resolvedSkills?: ResolvedSkillSet;
   tools?: ResolvedToolSet['tools'];
+  /** Compact discovery list for tools not enabled in the current step. */
+  availableTools?: Array<{
+    identifier: string;
+    name: string;
+    description: string;
+  }>;
 }
 
 export const resolveServerCallLlmTooling = (
@@ -102,11 +109,41 @@ export const resolveServerCallLlmTooling = (
       )
     : undefined;
 
+  const enabledIds = new Set([
+    ...(operationToolSet.enabledToolIds ?? []),
+    ...(resolved.enabledToolIds ?? []),
+  ]);
+  const userMemoryEnabled = !!(state.metadata?.userMemory?.memories);
+  const useAppSearch =
+    state.metadata?.searchDecision?.useApplicationBuiltinSearchTool !== false;
+
+  const availableTools = Object.entries(operationToolSet.manifestMap ?? {})
+    .filter(([id]) => !enabledIds.has(id))
+    .filter(([id]) => {
+      // Respect UI/runtime gates: these tools must not be activatable when the
+      // corresponding switch is off.
+      if (id === MemoryManifest.identifier) return userMemoryEnabled;
+      if (id === LocalSystemManifest.identifier) return true; // already gated by device policy
+      return true;
+    })
+    .filter(([id]) => {
+      // Web-browsing is only activatable when the application built-in search
+      // tool is actually enabled by the search decision.
+      if (id === 'lobe-web-browsing') return useAppSearch;
+      return true;
+    })
+    .map(([id, manifest]) => ({
+      description: manifest.meta?.description ?? '',
+      identifier: id,
+      name: manifest.meta?.title ?? id,
+    }));
+
   return {
     activeDeviceId,
     executionTarget,
     resolved,
     resolvedSkills,
     tools,
+    ...(availableTools.length > 0 ? { availableTools } : {}),
   };
 };

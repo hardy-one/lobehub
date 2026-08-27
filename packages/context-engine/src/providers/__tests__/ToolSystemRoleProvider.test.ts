@@ -268,6 +268,9 @@ describe('ToolSystemRoleProvider lean mode', () => {
     expect(systemMessage).toBeDefined();
     expect(systemMessage!.content).toContain('<lobe_tool_policy>');
     expect(systemMessage!.content).toContain('Search citations');
+    // Resource-library-first file lookup must survive the lean policy (the KB
+    // teaching block is dropped entirely, so this line is its only carrier).
+    expect(systemMessage!.content).toContain('resource library');
     // Media fallback guidance must survive the lean policy (analyzeMedia is
     // deferred to <available_tools> in efficient mode, so the prompt is the
     // only place the model learns it exists).

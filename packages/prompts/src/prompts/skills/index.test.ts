@@ -49,7 +49,7 @@ describe('skillsPrompts', () => {
   <skill name="Data Analysis" location="/path/to/skills/data-analysis/SKILL.md">Analyzes datasets and generates charts</skill>
 </available_skills>
 
-Use the runSkill tool to activate a skill when needed.`;
+Use the activateSkill tool to activate a skill when needed.`;
 
     expect(skillsPrompts(skills)).toBe(expected);
   });
@@ -74,40 +74,12 @@ Use the runSkill tool to activate a skill when needed.`;
   <skill name="My Skill">Custom skill description</skill>
 </available_skills>
 
-Use the runSkill tool to activate a skill when needed.`;
+Use the activateSkill tool to activate a skill when needed.`;
 
     expect(skillsPrompts(skills)).toBe(expected);
   });
 
   it('should return empty string for empty skills array', () => {
     expect(skillsPrompts([])).toBe('');
-  });
-});
-
-describe('skillsPrompts lean mode', () => {
-  const longSkill = {
-    description:
-      'MUST USE when user wants to research/search/look up/find anything on the internet — 15 platforms, multi-backend routing, zero config for 6 channels. NOT for writing reports.',
-    identifier: 'agent-reach',
-    location: '/home/u/.agents/skills/agent-reach/SKILL.md',
-    name: 'agent-reach',
-    source: 'device' as const,
-  };
-
-  it('lean mode truncates long descriptions to ~120 chars', () => {
-    const result = skillsPrompts([longSkill], true);
-    expect(result).toContain('agent-reach');
-    expect(result).toContain('…');
-    expect(result).toContain('research/search');
-    // keeps the trigger keywords at the start
-    const desc = result.match(/agent-reach[^>]*>([\s\S]*?)<\/skill>/)?.[1] ?? '';
-    expect(desc.length).toBeLessThanOrEqual(121);
-    expect(desc).not.toContain('NOT for writing reports');
-  });
-
-  it('full mode keeps the complete description', () => {
-    const result = skillsPrompts([longSkill]);
-    expect(result).toContain('NOT for writing reports');
-    expect(result).not.toContain('…');
   });
 });

@@ -387,7 +387,6 @@ export class MessagesEngine {
       // Disabled in chat mode — pairs with the tools-engine gate so the LLM
       // sees neither the manifests nor the discovery prompt.
       new SkillContextProvider({
-        promptMode,
         enabled:
           isAgentMode && !!(skillsConfig?.enabledSkills && skillsConfig.enabledSkills.length > 0),
         enabledSkills: skillsConfig?.enabledSkills,

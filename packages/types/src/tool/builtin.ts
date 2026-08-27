@@ -197,13 +197,6 @@ export interface LobeChatPluginApi {
    *
    */
   humanIntervention?: ExtendedHumanInterventionConfig;
-  /**
-   * Lean-mode description override. When set and the prompt is built in
-   * 'lean' mode (efficient chat mode), this replaces `description` in the
-   * generated tool schema — so the legacy (full) mode stays byte-identical to
-   * upstream while lean gets the enriched usage hints.
-   */
-  leanDescription?: string;
   name: string;
   parameters: Record<string, any>;
   /**

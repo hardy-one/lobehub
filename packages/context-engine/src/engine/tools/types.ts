@@ -1,7 +1,7 @@
 import type { LobeChatPluginApi } from '@lobechat/types';
 
-// Single source of truth for `LobeChatPluginApi` (incl. `leanDescription`) is
-// the @lobechat/types package (packages/types/src/tool/builtin.ts).
+// Single source of truth for `LobeChatPluginApi` is the @lobechat/types package
+// (packages/types/src/tool/builtin.ts).
 export type { LobeChatPluginApi };
 
 export interface LobeToolManifest {
@@ -60,11 +60,6 @@ export interface GenerateToolsParams {
   excludeDefaultToolIds?: string[];
   /** Model name */
   model: string;
-  /**
-   * Prompt construction mode. 'lean' uses `leanDescription` overrides for tool
-   * schemas. Undefined/'full' = legacy descriptions.
-   */
-  promptMode?: 'full' | 'lean';
   /** Provider name */
   provider: string;
   /**

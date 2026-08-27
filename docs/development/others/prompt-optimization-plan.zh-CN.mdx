@@ -88,7 +88,7 @@ systemRole: isLeanToolBlocks ? coreSystemPrompt : systemPrompt,
 
 **方案（已实现）**：lean 模式下把内置工具**一般化**—— 当作普通工具使用，9 个教学块整体不注入，只在 system 保留一个精简跨工具策略段 `LEAN_TOOL_USAGE_POLICY`（\~1K）：
 
-- 搜索引用规范 / 记忆写入分级 / 命令仲裁（execScript vs runCommand）/ 凭据安全 / 技能激活 / Plan-Todo
+- 搜索引用规范 / 记忆写入分级 / 命令仲裁（execScript vs runCommand）/ 资源库优先的文件检索 / 凭据安全 / 技能激活 / Plan-Todo
 - 用法教学交给 tools \[] schema（契约所在，模型注意力最高）
 
 **收益**：15,225 → 245 tokens（省 14,980 t，基线 43%）
@@ -97,7 +97,7 @@ systemRole: isLeanToolBlocks ? coreSystemPrompt : systemPrompt,
 
 ---
 
-## 3. available\_skills：索引化（✅ 已实现 ——lean 下截断为一行摘要）
+## 3. available\_skills：索引化（❌ 已撤销 —— 描述恢复全量注入）
 
 **现状**：`<available_skills>` 注入 20 个技能完整 description（8.4K 字符 / 2.1K tokens）。当前**全部未激活**（只列 description，无完整 SKILL.md 注入）。
 
@@ -107,7 +107,7 @@ systemRole: isLeanToolBlocks ? coreSystemPrompt : systemPrompt,
 
 **收益**：2,097 → 941 tokens（省 1,156 t）
 **风险**：低（技能发现准确性需实测）
-**状态**：✅ 已实现 ——prompts 层 `skillPrompt(skills, lean)` + SkillContextProvider lean 分支
+**状态**：❌ 已撤销 —— 截断丢失触发场景与能力边界信息（agent-reach 等技能的 description 本身就是触发规则），技能发现准确性风险大于 1,156 t / 请求的收益；完整 SKILL.md 本就由 activateSkill 按需加载
 
 ---
 
@@ -125,7 +125,7 @@ systemRole: isLeanToolBlocks ? coreSystemPrompt : systemPrompt,
 
 ---
 
-## 4.1 schema description 增强（✅ 已实现 —— 审计后发现大部分已足够，仅补 3 个关键工具）
+## 4.1 schema description 增强（❌ 已撤销 —— 审计后发现大部分已足够，曾补 3 个关键工具）
 
 **审计结论**：50 个工具 description 已相当完整（readFile 含默认 200 行、execScript 含 skill 上下文、runCommand 含 shell\_id）——"一般化" 砍教学后不退化。
 
@@ -134,7 +134,7 @@ systemRole: isLeanToolBlocks ? coreSystemPrompt : systemPrompt,
 - `editFile`：old\_string 必须逐字节精确匹配，否则失败；replace\_all 语义
 - `search`（web-browsing）：`!category` 修饰符（!science/!images/!map）
 
-## **状态**：✅ 已实现 ——`builtin-tool-local-system` / `builtin-tool-web-browsing` / `builtin-tool-memory` 三个 manifest.ts
+## **状态**：❌ 已撤销 —— 复核发现这是纯成本而非节省：+471 字符 ≈ +130 t / 请求，且 tools 数组每次 LLM 调用都发；独有信息少（editFile 的 old\_string 参数描述、memory 写前查重的 lobe\_tool\_policy 行已覆盖大部分，仅 `!category` 修饰符 /timeIntent 提示为独家）。如 P0 实测发现工具选择退化，再按需恢复
 
 ## 5. available\_tools：未启用工具精简（讨论中）
 
@@ -228,7 +228,7 @@ systemRole: isLeanToolBlocks ? coreSystemPrompt : systemPrompt,
 | ---------------------- | -------------------------------------------------------- |
 | 1. 未激活插件教学过滤           | ✅ 已实现（env: CONTEXT\_ENGINE\_PROMPT\_MODE / TOOL\_BLOCKS） |
 | 2. 工具文本块瘦身             | ✅ 已实现（lean 一般化：整体不注入 + `lobe_tool_policy` 精简策略段）         |
-| 3. 技能索引化               | ✅ 已实现（skillsPrompts lean 截断 120 字符）                      |
+| 3. 技能索引化               | ❌ 已撤销（描述恢复全量注入）                                          |
 | 4. persona lean 小节筛选   | ✅ 已实现（CONTEXT\_ENGINE\_PERSONA=lean）                     |
 | 5. available\_tools 精简 | ✅ 已回滚（工具全量注入，`<available_tools>` 管道整体移除）                 |
 | 6. 静态 / 动态分层           | ❌ 实测无需做（前缀已 static，5 请求 md5 一致）                          |
@@ -239,13 +239,13 @@ systemRole: isLeanToolBlocks ? coreSystemPrompt : systemPrompt,
 
 ## 最终效果（lean 模式）
 
-| 组件                | full     | lean  | 省                            |
-| ----------------- | -------- | ----- | ---------------------------- |
-| 工具教学块             | 15,225 t | 245 t | 14,980                       |
-| available\_skills | 2,097 t  | 941 t | 1,156                        |
-| available\_tools  | 483 t    | 382 t | 101                          |
-| persona           | 2,487 t  | 591 t | 1,896                        |
-| **累计净省**          |          |       | **\~18,133 t（基线 35K 的 52%）** |
+| 组件                | full     | lean    | 省                                         |
+| ----------------- | -------- | ------- | ----------------------------------------- |
+| 工具教学块             | 15,225 t | 245 t   | 14,980                                    |
+| available\_skills | 2,097 t  | 2,097 t | —（截断已撤销）                                  |
+| available\_tools  | 483 t    | 382 t   | 101                                       |
+| persona           | 2,487 t  | 591 t   | 1,896                                     |
+| **累计净省**          |          |         | **\~16,977 t（基线 35K 的～49%，撤销 3 / 4.1 后）** |
 
 开关：`chatConfig.promptMode`（每 agent，UI 切换）——env 已移除
 

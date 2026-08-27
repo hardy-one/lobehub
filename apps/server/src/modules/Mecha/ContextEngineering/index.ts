@@ -10,6 +10,7 @@ import { type ServerMessagesEngineParams } from './types';
  */
 export const toContextSnapshot = ({
   additionalContexts,
+  availableTools,
   additionalVariables,
   agentBuilderContext,
   agentDocuments,
@@ -102,6 +103,7 @@ export const toContextSnapshot = ({
     disabledToolIdentifiers: toolsConfig?.disabledToolIdentifiers,
     enabledSkills: skillsConfig?.enabledSkills,
     enabledToolIds: toolsConfig?.tools,
+    availableTools,
     manifests: toolsConfig?.manifests,
   },
   variables: additionalVariables,

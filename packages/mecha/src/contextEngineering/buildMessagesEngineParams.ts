@@ -58,6 +58,7 @@ export const buildMessagesEngineParams = (snapshot: ContextSnapshot): MessagesEn
     // --- tools + skills ---
     selectedSkills: tools?.selectedSkills,
     selectedTools: tools?.selectedTools,
+    availableTools: tools?.availableTools,
     toolsConfig: {
       disabledToolIdentifiers,
       manifests: tools?.manifests,

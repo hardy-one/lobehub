@@ -3,8 +3,8 @@
 import { BRANDING_PROVIDER } from '@lobechat/business-const';
 import { AES_GCM_URL, BASE_PROVIDER_DOC_URL, FORM_STYLE } from '@lobechat/const';
 import { type FormGroupItemType, type FormItemProps } from '@lobehub/ui';
-import { Center, Flexbox, Form, Icon, Select, stopPropagation, Tooltip } from '@lobehub/ui';
-import { Avatar, Skeleton, Switch } from '@lobehub/ui/base-ui';
+import { Center, Flexbox, Form, Icon, Skeleton, stopPropagation, Tooltip } from '@lobehub/ui';
+import { Avatar, Select, Switch } from '@lobehub/ui/base-ui';
 import { useDebounceFn } from 'ahooks';
 import { Form as AntdForm } from 'antd';
 import { createStaticStyles, cssVar, cx, responsive } from 'antd-style';

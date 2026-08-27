@@ -5,7 +5,9 @@ import { processMultiProviderModelList } from '../../utils/modelParse';
 export const MODELS_DEV_URL = 'https://models.dev/api.json';
 export const MODELS_DEV_CACHE_TTL_MS = 5 * 60 * 1000;
 export const MODELS_DEV_RETRY_DELAY_MS = 30 * 1000;
-export const MODELS_DEV_TIMEOUT_MS = 2_000;
+// api.json is a multi-MB payload (measured ~4MB / 3.5-5s on consumer links);
+// a tight timeout here silently degrades every model to bare-id metadata.
+export const MODELS_DEV_TIMEOUT_MS = 12_000;
 
 export interface ModelsDevReasoningOption {
   max?: number;
@@ -286,6 +288,17 @@ export const mapReasoningOptionsToExtendParams = (
       params.push('gpt5_1ReasoningEffort');
     } else if (values.has('low') && values.has('high') && values.size === 2) {
       params.push('step3_5ReasoningEffort');
+    } else if (
+      values.has('low') &&
+      values.has('high') &&
+      values.has('max') &&
+      !values.has('medium') &&
+      !values.has('minimal') &&
+      !values.has('xhigh')
+    ) {
+      // e.g. ['low','high','max'] or ['none','low','high','max'] — the DeepSeek V4 GA
+      // effort slider is the only control whose levels cover this set (incl. 'max').
+      params.push('deepseekV4GAReasoningEffort');
     } else if (values.has('low') || values.has('medium') || values.has('high')) {
       if (lowerId.includes('grok-4.5') || lowerId.includes('grok-4-5')) {
         params.push('grok4_5ReasoningEffort');

@@ -780,11 +780,11 @@ export default class GatewayConnectionService extends ServiceModule {
     request: ToolCallRequestMessage,
     client: GatewayClient,
   ) => {
-    const { requestId, toolCall } = request;
+    const { operationId, requestId, toolCall } = request;
     const { apiName, arguments: argsStr, identifier, params, type } = toolCall;
 
     logger.info(
-      `Received tool call: apiName=${apiName}, requestId=${requestId}, type=${type ?? 'tool'}`,
+      `Received tool call: apiName=${apiName}, operationId=${operationId ?? 'N/A'}, requestId=${requestId}, type=${type ?? 'tool'}`,
     );
 
     // Timed on THIS machine's clock, around both routes. The server can only
@@ -817,6 +817,10 @@ export default class GatewayConnectionService extends ServiceModule {
         result = await this.toolCallHandler(identifier, apiName, args);
       }
 
+      logger.info(
+        `Tool call executed: apiName=${apiName}, operationId=${operationId ?? 'N/A'}, requestId=${requestId}, type=${type ?? 'tool'}, duration=${Math.round(performance.now() - startedAt)}ms`,
+      );
+
       // Forward the typed envelope unchanged. Critically, do NOT stringify the
       // whole result into `content` — that would bury the structured payload
       // inside a JSON blob and lose `state`. The wire protocol carries each
@@ -833,9 +837,15 @@ export default class GatewayConnectionService extends ServiceModule {
       if (result.state !== undefined) wireResult.state = result.state;
 
       client.sendToolCallResponse({ requestId, result: wireResult });
+
+      logger.info(
+        `Tool call response sent: apiName=${apiName}, operationId=${operationId ?? 'N/A'}, requestId=${requestId}, total=${Math.round(performance.now() - startedAt)}ms`,
+      );
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      logger.error(`Tool call failed: apiName=${apiName}, error=${errorMsg}`);
+      logger.error(
+        `Tool call failed: apiName=${apiName}, operationId=${operationId ?? 'N/A'}, requestId=${requestId}, error=${errorMsg}, duration=${Math.round(performance.now() - startedAt)}ms`,
+      );
 
       client.sendToolCallResponse({
         requestId,

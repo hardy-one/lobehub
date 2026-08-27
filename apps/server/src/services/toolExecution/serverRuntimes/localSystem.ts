@@ -3,6 +3,7 @@ import {
   LocalSystemIdentifier,
   LocalSystemManifest,
 } from '@lobechat/builtin-tool-local-system';
+import debug from 'debug';
 
 import { deviceGateway } from '@/server/services/deviceGateway';
 import { buildDeviceLhEnv } from '@/server/services/toolExecution/preprocessLhCommand';
@@ -10,6 +11,8 @@ import { buildDeviceLhEnv } from '@/server/services/toolExecution/preprocessLhCo
 import { buildNoActiveDeviceResult, REMOTE_DEVICE_TOOL_IDENTIFIER } from './noActiveDevice';
 import { resolveContentWorkspaceId, resolveRunWorkspaceId } from './resolveWorkspaceScope';
 import { type ServerRuntimeRegistration } from './types';
+
+const log = debug('lobe-server:local-system-runtime');
 
 /**
  * Which arg carries the working directory for the APIs that consume one. The
@@ -90,6 +93,7 @@ export const localSystemRuntime: ServerRuntimeRegistration = {
     for (const api of LocalSystemManifest.api) {
       const workingDirArg = WORKING_DIR_ARG[api.name];
       proxy[api.name] = async (args: any) => {
+        const startedAt = Date.now();
         // Inject the device-bound cwd/scope when the model didn't supply one
         // or explicitly passed `.` (a relative reference that resolves to
         // process.cwd() on the device side — the LobeHub install directory on
@@ -151,7 +155,17 @@ export const localSystemRuntime: ServerRuntimeRegistration = {
           }
         }
 
-        return deviceGateway.executeToolCall(
+        const workspaceId = await getDeviceWorkspaceId();
+        const prepDoneAt = Date.now();
+        log(
+          'local-system: args prepared in %dms (api=%s, operationId=%s, deviceId=%s)',
+          prepDoneAt - startedAt,
+          api.name,
+          context.operationId ?? 'N/A',
+          context.activeDeviceId,
+        );
+
+        const result = await deviceGateway.executeToolCall(
           {
             deviceId: context.activeDeviceId!,
             operationId: context.operationId,
@@ -159,7 +173,7 @@ export const localSystemRuntime: ServerRuntimeRegistration = {
             // Workspace devices live under the `workspace:<id>` principal in
             // the gateway, so the relay needs the workspaceId to address the
             // right DO pool. Personal device runs resolve to undefined.
-            workspaceId: await getDeviceWorkspaceId(),
+            workspaceId,
           },
           {
             apiName: api.name,
@@ -168,6 +182,17 @@ export const localSystemRuntime: ServerRuntimeRegistration = {
           },
           context.executionTimeoutMs,
         );
+
+        log(
+          'local-system: device roundtrip %dms, total %dms (api=%s, operationId=%s, deviceId=%s, success=%s)',
+          Date.now() - prepDoneAt,
+          Date.now() - startedAt,
+          api.name,
+          context.operationId ?? 'N/A',
+          context.activeDeviceId,
+          result.success,
+        );
+        return result;
       };
     }
 

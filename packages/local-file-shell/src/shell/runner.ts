@@ -48,6 +48,7 @@ export async function runCommand(
   const logPrefix = `[runCommand: ${description || command.slice(0, 50)}]`;
   logger?.debug(`${logPrefix} Starting`, { background: run_in_background, cwd, timeout });
 
+  const startedAt = Date.now();
   const requestedEnv = extraEnv ? { ...process.env, ...extraEnv } : process.env;
 
   // On Windows, rewrite env-var references the target shell cannot resolve
@@ -60,6 +61,11 @@ export async function runCommand(
       ? normalizeEnvVarRefs(command, requestedEnv, (await detectWindowsShell()).type)
       : command;
   const shellConfig = await getShellConfig(effectiveCommand);
+  const shellResolvedAt = Date.now();
+  logger?.debug(`${logPrefix} Shell resolved in ${shellResolvedAt - startedAt}ms`, {
+    cwd,
+    shell: shellConfig.cmd,
+  });
   let outputFiles: ShellOutputFiles | undefined;
   let releaseSandbox: (() => void) | undefined;
   // What actually happened, reported back so nothing downstream has to infer a
@@ -138,9 +144,16 @@ export async function runCommand(
     processManager.register(shellId, shellProcess);
     // Close our fd copy only after error/close listeners are registered; spawn errors are asynchronous.
     processManager.closeOutputFiles(shellOutputFiles);
-    logger?.info?.(`${logPrefix} Started session`, { background: run_in_background, shellId });
+    const spawnedAt = Date.now();
+    logger?.info?.(
+      `${logPrefix} Started session in ${spawnedAt - startedAt}ms`,
+      { background: run_in_background, shellId },
+    );
 
     if (run_in_background) {
+      logger?.debug(`${logPrefix} Background command returned after ${Date.now() - startedAt}ms`, {
+        shellId,
+      });
       return {
         output: '',
         output_files: processManager.getOutputFilesInfo(shellOutputFiles),
@@ -154,6 +167,11 @@ export async function runCommand(
       shell_id: shellId,
       timeout,
     });
+
+    logger?.debug(
+      `${logPrefix} Observation finished in ${Date.now() - spawnedAt}ms (total ${Date.now() - startedAt}ms)`,
+      { durationMs: observation.duration_ms, shellId },
+    );
 
     return {
       ...observation,

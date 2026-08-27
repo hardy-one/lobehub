@@ -875,6 +875,9 @@ function bindGatewayClientHandlers(
       );
     } else {
       log.toolResult(requestId, result.success, result.content, operationId);
+      log.debug(
+        `Tool call finished: apiName=${toolCall.apiName}, requestId=${requestId}, duration=${executionTimeMs}ms`,
+      );
     }
 
     client.sendToolCallResponse({

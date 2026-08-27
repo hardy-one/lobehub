@@ -427,12 +427,18 @@ export default class GatewayConnectionCtr extends ControllerModule {
     // `cwd`/`scope` into `args` (see its `WORKING_DIR_ARG` map), so the values
     // here are server-controlled — `trustArgsCwd` lets them ride through to the
     // IPC layer instead of being dropped like the previous per-tool switch did.
+    const localSystemStartedAt = Date.now();
     const localSystemOutput = await this.getLocalSystemRuntime().executeToolCall(
       apiName,
       (args ?? {}) as Record<string, unknown>,
       { trustArgsCwd: true },
     );
-    if (localSystemOutput) return localSystemOutput;
+    if (localSystemOutput) {
+      logger.info(
+        `Local system tool executed: apiName=${apiName}, duration=${Date.now() - localSystemStartedAt}ms, success=${localSystemOutput.success}`,
+      );
+      return localSystemOutput;
+    }
 
     switch (apiName) {
       // ─── Platform agent tools (openclaw / hermes) ───

@@ -1396,8 +1396,9 @@ export class DeviceGateway {
       toolCall.apiName,
     );
 
+    const startedAt = Date.now();
     try {
-      return await client.executeToolCall(
+      const result = await client.executeToolCall(
         {
           deviceId: params.deviceId,
           operationId: params.operationId,
@@ -1407,9 +1408,18 @@ export class DeviceGateway {
         },
         toolCall,
       );
+      log(
+        'executeToolCall: completed in %dms (operationId=%s, tool=%s/%s, success=%s)',
+        Date.now() - startedAt,
+        params.operationId ?? 'N/A',
+        toolCall.identifier,
+        toolCall.apiName,
+        result.success,
+      );
+      return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      log('executeToolCall: error — %s', message);
+      log('executeToolCall: error — %s (%dms)', message, Date.now() - startedAt);
       // Backstop for anything the http client did not already describe. A raw
       // `TimeoutError` / driver message here reads to the model as if the tool
       // itself blew up; name the failing hop and its recovery instead.

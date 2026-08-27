@@ -50,6 +50,7 @@ import { resolveSelectedSkillsWithContent } from '@/services/chat/mecha/skillPre
 import { resolveSelectedToolsWithContent } from '@/services/chat/mecha/toolPreload';
 import { messageService } from '@/services/message';
 import { topicService } from '@/services/topic';
+import { chatTiming } from '@/utils/chatTiming';
 import { getAgentStoreState } from '@/store/agent';
 import {
   agentByIdSelectors,
@@ -333,6 +334,13 @@ export class ConversationLifecycleActionImpl {
     signal,
   }: SendMessageWithContextParams): Promise<SendMessageResult | undefined> => {
     throwIfSendAborted(signal);
+
+    chatTiming('sendMessage.start', {
+      agentId: context.agentId,
+      messageLength: message.length,
+      scope: context.scope,
+      topicId: context.topicId,
+    });
 
     // The rich-text editor's Markdown export escapes literal punctuation
     // (e.g. `_` -> `\_`) for display round-tripping. Normalize before sending
@@ -1361,6 +1369,11 @@ export class ConversationLifecycleActionImpl {
       let heteroData: SendMessageServerResponse | undefined;
       try {
         throwIfSendAborted(signal);
+        chatTiming('sendMessage.serverApi.start', {
+          runtime: 'hetero',
+          operationId,
+          agentId: operationContext.agentId,
+        });
         heteroData = await aiChatService.sendMessageInServer(
           {
             agentId: operationContext.agentId,
@@ -1408,6 +1421,11 @@ export class ConversationLifecycleActionImpl {
           abortController,
         );
       } catch (e) {
+        chatTiming('sendMessage.serverApi.error', {
+          runtime: 'hetero',
+          operationId,
+          error: e instanceof Error ? e.message : String(e),
+        });
         console.error('[HeterogeneousAgent] Failed to persist messages:', e);
         if (this.#get().operations[operationId]?.status !== 'cancelled') {
           this.#get().failOperation(operationId, {
@@ -1424,12 +1442,23 @@ export class ConversationLifecycleActionImpl {
       }
 
       if (!heteroData) {
+        chatTiming('sendMessage.serverApi.done', {
+          runtime: 'hetero',
+          operationId,
+          empty: true,
+        });
         cleanupTempMessages({ preserveOptimisticUser: Boolean(optimisticUserMessageId) });
         detachUnacceptedCallerAbort();
         rollbackOptimisticTopic('sendMessage/rollbackOptimisticTopic');
         restoreUnacceptedVoiceMessageContext();
         return;
       }
+      chatTiming('sendMessage.serverApi.done', {
+        runtime: 'hetero',
+        operationId,
+        assistantMessageId: heteroData.assistantMessageId,
+        userMessageId: heteroData.userMessageId,
+      });
       notifyMessageAccepted();
 
       // Update context with server-created topicId. Once the server has returned a
@@ -1682,6 +1711,12 @@ export class ConversationLifecycleActionImpl {
         });
       }
 
+      chatTiming('sendMessage.done', {
+        operationId,
+        assistantMessageId: heteroData.assistantMessageId,
+        userMessageId: heteroData.userMessageId,
+        runtime: 'hetero',
+      });
       return {
         assistantMessageId: heteroData.assistantMessageId,
         userMessageId: heteroData.userMessageId,
@@ -1691,6 +1726,7 @@ export class ConversationLifecycleActionImpl {
     // ── Gateway mode: skip sendMessageInServer, let execAgentTask handle everything ──
     if (runtimeType === 'gateway' && !directMentionRoute) {
       try {
+        chatTiming('gateway.execute.start', { operationId, agentId: operationContext.agentId });
         // Pass `sendMessage` as `parentOperationId` so executeGatewayAgent
         // completes it the instant phase-1 init finishes (after the child
         // `execServerAgentRuntime` op starts). Without this hand-off the
@@ -1738,6 +1774,13 @@ export class ConversationLifecycleActionImpl {
           // state while waiting for the first step_start event to replace
           // messages with the server's real IDs.
           tempMessageIds: [tempAssistantId],
+        });
+        chatTiming('gateway.execute.done', {
+          operationId,
+          agentId: operationContext.agentId,
+          assistantMessageId: result.assistantMessageId,
+          userMessageId: result.userMessageId,
+          topicId: result.topicId,
         });
         const cancelledAfterPersistence = abortController.signal.aborted;
 
@@ -1787,6 +1830,13 @@ export class ConversationLifecycleActionImpl {
         }
 
         notifyMessagePersisted();
+        chatTiming('sendMessage.done', {
+          operationId,
+          assistantMessageId: result.assistantMessageId,
+          userMessageId: result.userMessageId,
+          topicId: result.topicId,
+          runtime: 'gateway',
+        });
 
         return {
           assistantMessageId: result.assistantMessageId,
@@ -1862,6 +1912,11 @@ export class ConversationLifecycleActionImpl {
       const toolContext = formatSelectedToolsContext(dedupedTools);
       const contextSuffix = [skillContext, toolContext].filter(Boolean).join('\n');
       const persistedContent = contextSuffix ? `${message}\n\n${contextSuffix}` : message;
+      chatTiming('sendMessage.serverApi.start', {
+        runtime: 'client',
+        operationId,
+        agentId: operationContext.agentId,
+      });
       data = await aiChatService.sendMessageInServer(
         {
           newUserMessage: {
@@ -1921,6 +1976,13 @@ export class ConversationLifecycleActionImpl {
         },
         abortController,
       );
+      chatTiming('sendMessage.serverApi.done', {
+        runtime: 'client',
+        operationId,
+        assistantMessageId: data.assistantMessageId,
+        userMessageId: data.userMessageId,
+        topicId: data.topicId,
+      });
       notifyMessageAccepted();
       const responseMeta = data as SendMessageServerResponseMeta;
       // Use created topicId/threadId if available, otherwise use original from context
@@ -2205,6 +2267,7 @@ export class ConversationLifecycleActionImpl {
             agentRuntimeInitialContext,
           );
 
+          chatTiming('client.execute.start', { operationId, agentId: execContext.agentId });
           const clientRun = executeClientAgent({
             context: execContext,
             initialContext: mergedAgentRuntimeInitialContext,
@@ -2219,6 +2282,7 @@ export class ConversationLifecycleActionImpl {
           });
           handoffSendOperation();
           await clientRun;
+          chatTiming('client.execute.done', { operationId, agentId: execContext.agentId });
         }
 
         const userFiles = dbMessageSelectors
@@ -2237,6 +2301,12 @@ export class ConversationLifecycleActionImpl {
     }
 
     // Return result for callers who need message IDs
+    chatTiming('sendMessage.done', {
+      operationId,
+      assistantMessageId: data?.assistantMessageId,
+      userMessageId: data?.userMessageId,
+      topicId: data?.topicId,
+    });
     return {
       assistantMessageId: data.assistantMessageId,
       createdThreadId: data.createdThreadId,

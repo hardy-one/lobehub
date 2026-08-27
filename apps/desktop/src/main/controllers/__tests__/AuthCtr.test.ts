@@ -82,6 +82,8 @@ const mockRemoteServerConfigCtr = {
     }
     return 'https://lobehub-cloud.com'; // OFFICIAL_CLOUD_SERVER
   }),
+  // Device traffic resolves its own address; mirrors the configured server here.
+  getDeviceServerUrl: vi.fn().mockImplementation(async () => 'https://server.example.com'),
   getTokenExpiresAt: vi.fn().mockReturnValue(Date.now() + 3600000),
   isNonRetryableError: vi.fn().mockReturnValue(false),
   isRemoteServerConfigured: vi.fn().mockResolvedValue(true),

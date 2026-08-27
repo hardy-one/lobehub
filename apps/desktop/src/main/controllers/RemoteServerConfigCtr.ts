@@ -576,6 +576,12 @@ export default class RemoteServerConfigCtr extends ControllerModule {
     return dataConfig.storageMode === 'cloud' ? OFFICIAL_CLOUD_SERVER : dataConfig.remoteServerUrl;
   }
 
+  /** HTTP writes retain their configured origin; a lost response cannot be safely replayed. */
+  async getDeviceServerUrl(): Promise<string | undefined> {
+    return this.getRemoteServerUrl();
+  }
+
+
   /**
    * Setup subscription webview session with OIDC token injection
    * This configures a webRequest interceptor on the given partition session

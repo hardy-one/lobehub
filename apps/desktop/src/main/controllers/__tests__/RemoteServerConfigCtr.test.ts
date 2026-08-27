@@ -70,6 +70,15 @@ describe('RemoteServerConfigCtr', () => {
     controller = new RemoteServerConfigCtr(mockApp);
   });
 
+  describe('device server address isolation', () => {
+    it('keeps device HTTP traffic on the configured origin without discovery probes', async () => {
+      vi.spyOn(controller, 'getRemoteServerUrl').mockResolvedValue('https://new.example.com');
+      expect(await controller.getDeviceServerUrl()).toBe('https://new.example.com');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+  });
+
   describe('getRemoteServerConfig', () => {
     it('should return stored configuration', async () => {
       const config: DataSyncConfig = {

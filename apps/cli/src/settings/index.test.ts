@@ -59,6 +59,20 @@ describe('settings', () => {
     });
   });
 
+  it('persists both gateway routes without replacing the configured HTTP server', () => {
+    saveSettings({
+      agentGatewayUrl: 'wss://private.test',
+      agentGatewayFallbackUrl: 'https://public.test',
+      serverUrl: 'https://app.test',
+    });
+    expect(loadSettings()).toEqual({
+      agentGatewayUrl: 'wss://private.test',
+      agentGatewayFallbackUrl: 'https://public.test',
+      gatewayUrl: undefined,
+      serverUrl: 'https://app.test',
+    });
+  });
+
   it('should clear official server settings instead of persisting them', () => {
     saveSettings({ serverUrl: 'https://app.lobehub.com/' });
 
@@ -86,6 +100,22 @@ describe('settings', () => {
     process.env.LOBEHUB_SERVER = 'https://env.example.com/';
 
     expect(resolveServerUrl()).toBe('https://env.example.com');
+  });
+
+  it('should ignore an unknown persisted key, like any other stray field', () => {
+    // The address a deployment offers is decided per connection and never
+    // stored: a deployment that moves it must be picked up by the next connect
+    // rather than remembered stale.
+    fs.mkdirSync(settingsDir, { recursive: true });
+    fs.writeFileSync(
+      settingsFile,
+      JSON.stringify({
+        privateServerUrl: 'http://stale:3210',
+        serverUrl: 'https://lobe.example.com',
+      }),
+    );
+
+    expect(resolveServerUrl()).toBe('https://lobe.example.com');
   });
 
   it('should fall back to settings then official server', () => {

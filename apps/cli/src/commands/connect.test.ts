@@ -3,6 +3,7 @@ import { GatewayClient } from '@lobechat/device-gateway-client';
 import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { fetchAdvertisedRuntimeEndpoints } from '../api/runtimeEndpoints';
 import type * as RefreshModule from '../auth/refresh';
 import { resolveToken } from '../auth/resolveToken';
 import { removeStatus, spawnDaemon, stopDaemon, writeStatus } from '../daemon/manager';
@@ -12,6 +13,18 @@ import { executeToolCall } from '../tools';
 import { cleanupAllProcesses } from '../tools/shell';
 import { log, setVerbose } from '../utils/logger';
 import { registerConnectCommand } from './connect';
+
+vi.mock('../api/runtimeEndpoints', () => ({
+  fetchAdvertisedRuntimeEndpoints: vi
+    .fn()
+    .mockResolvedValue({ serverUrls: [], agentGatewayUrls: [] }),
+}));
+vi.mock('../api/chooseAgentGatewayUrl', () => ({
+  chooseAgentGatewayUrl: vi.fn(async ({ advertised, configuredUrl }) => ({
+    source: advertised.length ? 'advertised' : 'configured',
+    url: advertised[0] ?? configuredUrl,
+  })),
+}));
 
 const registerDeviceMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
@@ -44,6 +57,7 @@ vi.mock('../settings', () => ({
   normalizeUrl: vi.fn((url?: string) => (url ? url.replace(/\/$/, '') : undefined)),
   removeWorkspaceEnrollment: vi.fn(),
   resolveDeviceMetricsBacklogPath: vi.fn((id: string) => `/tmp/device-metrics/${id}.json`),
+  resolveAgentGatewayUrl: vi.fn().mockReturnValue('https://old-agent.example.com'),
   saveSettings: vi.fn(),
 }));
 
@@ -148,6 +162,9 @@ describe('connect command', () => {
     mockRunningPid = null;
     mockSpawnedPid = 0;
     mockStatus = null;
+    vi.stubEnv('LOBEHUB_SERVER', '');
+    vi.stubEnv('LOBEHUB_DAEMON', '');
+    vi.stubEnv('LOBEHUB_CONNECT_SERVICE', '');
   });
 
   afterEach(() => {
@@ -158,6 +175,7 @@ describe('connect command', () => {
     }
     exitSpy.mockRestore();
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     vi.clearAllMocks();
   });
 
@@ -239,6 +257,16 @@ describe('connect command', () => {
     await running;
   });
 
+  it('does not replace the configured server with an advertised HTTP origin', async () => {
+    vi.mocked(fetchAdvertisedRuntimeEndpoints).mockResolvedValueOnce({
+      serverUrls: ['https://private.test'],
+      agentGatewayUrls: [],
+      deviceGatewayUrls: [],
+    });
+    await createProgram().parseAsync(['node', 'test', 'connect']);
+    expect(clientOptions.serverUrl).toBe('https://app.lobehub.com');
+  });
+
   it('should connect to gateway', async () => {
     const program = createProgram();
     await program.parseAsync(['node', 'test', 'connect']);
@@ -271,11 +299,43 @@ describe('connect command', () => {
     ]);
 
     expect(clientOptions.gatewayUrl).toBe('https://gateway.example.com');
-    expect(saveSettings).toHaveBeenCalledWith({
-      gatewayUrl: 'https://gateway.example.com',
-      serverUrl: 'https://self-hosted.example.com',
-    });
+    expect(saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gatewayUrl: 'https://gateway.example.com',
+        serverUrl: 'https://self-hosted.example.com',
+      }),
+    );
   });
+  it.each([{ agentGatewayUrls: ['https://new-agent.example.com'] }, { agentGatewayUrls: [] }])(
+    'saves device and advertised agent gateways together (%j)',
+    async ({ agentGatewayUrls }) => {
+      vi.mocked(loadSettings).mockReturnValueOnce({
+        agentGatewayUrl: 'https://old-agent.example.com',
+        serverUrl: 'https://self-hosted.example.com',
+      });
+      vi.mocked(fetchAdvertisedRuntimeEndpoints).mockResolvedValueOnce({
+        agentGatewayUrls,
+        serverUrls: [],
+      });
+      await createProgram().parseAsync([
+        'node',
+        'test',
+        'connect',
+        '--gateway',
+        'https://device.example.com',
+      ]);
+
+      expect(saveSettings).toHaveBeenLastCalledWith({
+        agentGatewayUrl: agentGatewayUrls[0] || 'https://old-agent.example.com',
+        agentGatewayFallbackUrl: agentGatewayUrls.length
+          ? 'https://old-agent.example.com'
+          : undefined,
+        gatewayUrl: 'https://device.example.com',
+        serverUrl: 'https://self-hosted.example.com',
+      });
+    },
+  );
+
   it('should pass the resolved serverUrl to GatewayClient', async () => {
     const program = createProgram();
     await program.parseAsync(['node', 'test', 'connect']);

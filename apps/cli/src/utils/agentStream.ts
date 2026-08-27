@@ -29,6 +29,7 @@ interface LiveStreamOptions extends StreamOptions {
 }
 
 interface WebSocketStreamOptions extends LiveStreamOptions {
+  fallbackGatewayUrl?: string;
   gatewayUrl: string;
   operationId: string;
   /**
@@ -290,6 +291,7 @@ export async function streamAgentEventsViaWebSocket(
   options: WebSocketStreamOptions,
 ): Promise<AgentRunOutcome | undefined> {
   const {
+    fallbackGatewayUrl,
     gatewayUrl,
     onStall,
     operationId,
@@ -299,37 +301,42 @@ export async function streamAgentEventsViaWebSocket(
     tokenType = 'jwt',
     ...streamOpts
   } = options;
-  const wsUrl = urlJoin(
-    gatewayUrl.replace(/^http/, 'ws'),
-    `/ws?operationId=${encodeURIComponent(operationId)}`,
-  );
-
-  log.debug(`Connecting to gateway: ${wsUrl} (auth: ${tokenType})`);
 
   return new Promise<AgentRunOutcome | undefined>((resolve, reject) => {
-    const ws = new WebSocket(wsUrl);
     const jsonEvents: AgentStreamEvent[] = [];
     const ctx = createRenderContext();
+    let currentUrl = gatewayUrl;
+    let currentWs: WebSocket | undefined;
     let lastEventId = '';
     let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+    let connectTimer: ReturnType<typeof setTimeout> | undefined;
     let stallTimer: ReturnType<typeof setTimeout> | undefined;
     let isSettled = false;
     let jsonPrinted = false;
+    let usedFallback = false;
 
-    const cleanup = () => {
-      if (heartbeatTimer) clearInterval(heartbeatTimer);
-      if (stallTimer) clearTimeout(stallTimer);
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close();
-      }
-    };
-
-    // Same `--json` contract as SSE: exactly one array per run, `[]` included.
     const printJsonOnce = () => {
       if (streamOpts.json && !jsonPrinted) {
         jsonPrinted = true;
         console.log(JSON.stringify(jsonEvents, null, 2));
       }
+    };
+
+    const detachSocket = (ws: WebSocket) => {
+      if (connectTimer) clearTimeout(connectTimer);
+      connectTimer = undefined;
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onerror = null;
+      ws.onclose = null;
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
+      if (currentWs === ws) currentWs = undefined;
+    };
+
+    const cleanup = () => {
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (stallTimer) clearTimeout(stallTimer);
+      if (currentWs) detachSocket(currentWs);
     };
 
     const settle = (outcome: AgentRunOutcome | undefined) => {
@@ -345,6 +352,23 @@ export async function streamAgentEventsViaWebSocket(
       cleanup();
       printJsonOnce();
       reject(error);
+    };
+
+    const failTransport = (ws: WebSocket, error: Error) => {
+      if (isSettled || currentWs !== ws) return;
+      detachSocket(ws);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      heartbeatTimer = undefined;
+      if (!usedFallback && fallbackGatewayUrl && fallbackGatewayUrl !== currentUrl) {
+        usedFallback = true;
+        currentUrl = fallbackGatewayUrl;
+        log.debug(
+          'Preferred gateway unavailable; resuming the same operation on the configured gateway',
+        );
+        connect();
+        return;
+      }
+      fail(error);
     };
 
     // Progress window: restarted by real stream traffic only. `heartbeat_ack`
@@ -376,85 +400,111 @@ export async function streamAgentEventsViaWebSocket(
       }, stallTimeoutMs);
     };
 
-    ws.onopen = () => {
-      // `serverUrl` is required so the gateway can call back to verify an
-      // apiKey token. Harmless (but unused) for JWT, so we always include it
-      // when available to match the device-gateway-client contract.
-      ws.send(JSON.stringify({ serverUrl, token, tokenType, type: 'auth' }));
-      armStallTimer();
-    };
-
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data as string);
-      if (msg.type !== 'heartbeat_ack') armStallTimer();
-
-      if (msg.type === 'auth_success') {
-        log.debug('Gateway authenticated');
-        // Request all buffered events (covers events pushed before WS connected)
-        ws.send(JSON.stringify({ lastEventId: '', type: 'resume' }));
-        heartbeatTimer = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'heartbeat' }));
-          }
-        }, HEARTBEAT_INTERVAL);
-        // The heartbeat alone must never keep the process alive.
-        heartbeatTimer.unref?.();
-        return;
-      }
-
-      if (msg.type === 'auth_failed') {
-        fail(new Error(`Gateway auth failed: ${msg.reason}`));
-        return;
-      }
-
-      if (msg.type === 'heartbeat_ack') return;
-
-      if (msg.type === 'agent_event') {
-        const agentEvent: AgentStreamEvent = msg.event;
-        if (msg.id) lastEventId = msg.id;
-
-        if (streamOpts.json) {
-          jsonEvents.push(agentEvent);
-        } else {
-          renderEvent(agentEvent, ctx, streamOpts);
-        }
-
-        if (agentEvent.type === 'agent_runtime_end') {
-          if (isSettled) return;
-          const outcome = outcomeFromEndEvent(agentEvent);
-          if (!streamOpts.json) renderEnd(agentEvent, outcome);
-          printJsonOnce();
-          settle(outcome);
-          return;
-        }
-
-        if (agentEvent.type === 'error') {
-          if (isSettled) return;
-          const outcome = outcomeFromErrorEvent(agentEvent);
-          printJsonOnce();
-          log.error(`Agent error: ${outcome.error}`);
-          settle(outcome);
-          return;
-        }
-      }
-
-      if (msg.type === 'session_complete') {
-        printJsonOnce();
-        settle(undefined);
-      }
-    };
-
-    ws.onerror = (err) => {
-      fail(new Error(`Agent gateway WebSocket failed: ${String(err)}`));
-    };
-
-    ws.onclose = (event) => {
-      // Surface the close code + reason — `String(event)` is just "[object CloseEvent]".
-      const reason = event.reason ? `: ${event.reason}` : '';
-      fail(
-        new Error(`Agent gateway WebSocket closed before completion (code ${event.code}${reason})`),
+    const connect = () => {
+      const wsUrl = urlJoin(
+        currentUrl.replace(/^http/, 'ws'),
+        `/ws?operationId=${encodeURIComponent(operationId)}`,
       );
+      log.debug(`Connecting to gateway: ${wsUrl} (auth: ${tokenType})`);
+
+      let ws: WebSocket;
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch (error) {
+        if (!usedFallback && fallbackGatewayUrl && fallbackGatewayUrl !== currentUrl) {
+          usedFallback = true;
+          currentUrl = fallbackGatewayUrl;
+          connect();
+          return;
+        }
+        fail(error instanceof Error ? error : new Error(String(error)));
+        return;
+      }
+      currentWs = ws;
+      connectTimer = setTimeout(
+        () => failTransport(ws, new Error('Gateway connection timed out')),
+        3000,
+      );
+
+      ws.onopen = () => {
+        if (isSettled || currentWs !== ws) return;
+        // `serverUrl` is required for apiKey token verification and harmless for JWT.
+        ws.send(JSON.stringify({ serverUrl, token, tokenType, type: 'auth' }));
+      };
+
+      ws.onmessage = (event) => {
+        if (isSettled || currentWs !== ws) return;
+        const msg = JSON.parse(event.data as string);
+        if (msg.type !== 'heartbeat_ack') armStallTimer();
+
+        if (msg.type === 'auth_success') {
+          log.debug('Gateway authenticated');
+          if (connectTimer) clearTimeout(connectTimer);
+          connectTimer = undefined;
+          // Resume from the last delivered event so switching gateways does not
+          // replay output or skip events already received from the first gateway.
+          ws.send(JSON.stringify({ lastEventId, type: 'resume' }));
+          if (heartbeatTimer) clearInterval(heartbeatTimer);
+          heartbeatTimer = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'heartbeat' }));
+          }, HEARTBEAT_INTERVAL);
+          // Heartbeats alone must not keep the CLI process alive.
+          heartbeatTimer.unref?.();
+          armStallTimer();
+          return;
+        }
+
+        if (msg.type === 'auth_failed') {
+          fail(new Error(`Gateway auth failed: ${msg.reason}`));
+          return;
+        }
+
+        if (msg.type === 'heartbeat_ack') return;
+
+        if (msg.type === 'agent_event') {
+          const agentEvent: AgentStreamEvent = msg.event;
+          if (msg.id) lastEventId = msg.id;
+
+          if (streamOpts.json) jsonEvents.push(agentEvent);
+          else renderEvent(agentEvent, ctx, streamOpts);
+
+          if (agentEvent.type === 'agent_runtime_end') {
+            const outcome = outcomeFromEndEvent(agentEvent);
+            if (!streamOpts.json) renderEnd(agentEvent, outcome);
+            printJsonOnce();
+            settle(outcome);
+            return;
+          }
+
+          if (agentEvent.type === 'error') {
+            const outcome = outcomeFromErrorEvent(agentEvent);
+            printJsonOnce();
+            log.error(`Agent error: ${outcome.error}`);
+            settle(outcome);
+            return;
+          }
+        }
+
+        if (msg.type === 'session_complete') {
+          printJsonOnce();
+          settle(undefined);
+        }
+      };
+
+      ws.onerror = (err) => {
+        failTransport(ws, new Error(`Agent gateway WebSocket failed: ${String(err)}`));
+      };
+
+      ws.onclose = (event) => {
+        const reason = event.reason ? `: ${event.reason}` : '';
+        failTransport(
+          ws,
+          new Error(`Agent gateway WebSocket closed before completion (code ${event.code}${reason})`),
+        );
+      };
     };
+
+    connect();
   });
 }
 

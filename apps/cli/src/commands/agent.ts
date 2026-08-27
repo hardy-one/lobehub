@@ -7,7 +7,7 @@ import pc from 'picocolors';
 
 import { getTrpcClient } from '../api/client';
 import { getAgentStreamAuthInfo } from '../api/http';
-import { resolveAgentGatewayUrl } from '../settings';
+import { resolveAgentGatewayFallbackUrl, resolveAgentGatewayUrl } from '../settings';
 import type { AgentRunOutcome } from '../utils/agentRunOutcome';
 import { AGENT_RUN_EXIT_CODES, colorStatus, readOperationStatus } from '../utils/agentRunOutcome';
 import {
@@ -528,6 +528,7 @@ Exit codes:
           try {
             if (agentGatewayUrl) {
               streamed = await streamAgentEventsViaWebSocket({
+                fallbackGatewayUrl: resolveAgentGatewayFallbackUrl(),
                 gatewayUrl: agentGatewayUrl,
                 json: options.json,
                 // A quiet stream is checked against the run status rather than

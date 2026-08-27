@@ -281,6 +281,61 @@ describe('streamAgentEventsViaWebSocket', () => {
   /** Wait for microtasks + short delay so WS open/auth cycle completes */
   const flush = () => new Promise((r) => setTimeout(r, 20));
 
+  it('falls back with the same operation, token and resume cursor, and ignores old events', async () => {
+    const promise = streamAgentEventsViaWebSocket({
+      gatewayUrl: 'https://private.test',
+      fallbackGatewayUrl: 'https://public.test',
+      operationId: 'same-op',
+      token: 'same-token',
+      json: true,
+    });
+    await flush();
+    const old = capturedWs!;
+    old.simulateMessage({
+      type: 'agent_event',
+      id: 'cursor-1',
+      event: { type: 'step_start', stepIndex: 0 },
+    });
+    old.onerror?.({ type: 'error' });
+    await flush();
+    const current = capturedWs!;
+    expect(current).not.toBe(old);
+    expect(new URL(current.url).hostname).toBe('public.test');
+    expect(new URL(current.url).searchParams.get('operationId')).toBe('same-op');
+    expect(current.sent.map((value) => JSON.parse(value))).toEqual([
+      { type: 'auth', token: 'same-token', tokenType: 'jwt' },
+      { type: 'resume', lastEventId: 'cursor-1' },
+    ]);
+    old.simulateMessage({ type: 'session_complete' });
+    expect(consoleSpy).not.toHaveBeenCalled();
+    current.simulateMessage({ type: 'session_complete' });
+    await promise;
+    expect(consoleSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('times out a silent private handshake and connects to the public gateway', async () => {
+    vi.useFakeTimers();
+    try {
+      (globalThis as any).WebSocket = class extends MockWebSocket {
+        constructor(url: string) {
+          super(url, !url.includes('private.test'));
+        }
+      };
+      const promise = streamAgentEventsViaWebSocket({
+        gatewayUrl: 'https://private.test',
+        fallbackGatewayUrl: 'https://public.test',
+        operationId: 'same-op',
+        token: 'tok',
+      });
+      await vi.advanceTimersByTimeAsync(3001);
+      expect(new URL(capturedWs!.url).hostname).toBe('public.test');
+      capturedWs!.simulateMessage({ type: 'session_complete' });
+      await promise;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('should connect, authenticate, and send resume', async () => {
     const promise = streamAgentEventsViaWebSocket({
       gatewayUrl: 'https://gw.test.com',

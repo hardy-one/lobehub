@@ -13,6 +13,7 @@ import { gatherServerContextFacts } from '@/server/modules/Mecha/ContextEngineer
 
 import type { RuntimeExecutorContext } from '../context';
 import { resolveRuntimeHistoryCount } from '../executorHelpers';
+import { buildSystemRole } from './htmlRenderPrompt';
 import {
   resolveServerCallLlmContextHints,
   type ServerCallLlmContextHints,
@@ -153,7 +154,10 @@ export const buildServerCallLlmContext = async ({
     ...(facts.step.planTodo && { planTodo: facts.step.planTodo }),
     connectorOwnershipNote: state.world?.connectorOwnershipNote,
     projectInstructions: state.world?.projectInstructions,
-    systemRole: agentConfig.systemRole ?? undefined,
+    // The embedded-HTML renderer preset rides on the developer/system message,
+    // gated by the user's lab preference (resolved at operation start and
+    // carried through state.metadata).
+    systemRole: buildSystemRole(agentConfig.systemRole, ctx.enableHtmlRender),
     toolDiscoveryConfig,
     toolsConfig: {
       manifests: Object.values(resolved.promptManifestMap),

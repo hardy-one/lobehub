@@ -281,8 +281,9 @@ class AgentDocumentService {
   recordSkillMetaFeedback = async (params: {
     data?: Record<string, unknown>;
     edited: boolean;
-    tracingId: string;
+    tracingId?: string;
   }) => {
+    if (!params.tracingId) return;
     try {
       await lambdaClient.llmGenerationTracing.recordFeedback.mutate(
         {

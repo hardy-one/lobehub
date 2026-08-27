@@ -15,30 +15,17 @@ export interface SkillItem {
   source?: SkillSource;
 }
 
-/**
- * Max description length in lean mode. Skills stay discoverable (name +
- * one-line gist + trigger scene); the full SKILL.md is loaded on activation.
- * 120 chars keeps the core trigger keywords ("research", "pdf", "excel" …)
- * while dropping marketing-style prose.
- */
-const LEAN_MAX_DESC = 120;
-
-const truncate = (text: string, lean?: boolean): string => {
-  if (!lean || text.length <= LEAN_MAX_DESC) return text;
-  return `${text.slice(0, LEAN_MAX_DESC)}…`;
-};
-
-export const skillPrompt = (skill: SkillItem, lean?: boolean) => {
+export const skillPrompt = (skill: SkillItem) => {
   const attrs = [`name="${skill.name}"`];
   if (skill.source) attrs.push(`source="${skill.source}"`);
   if (skill.location) attrs.push(`location="${skill.location}"`);
-  return `  <skill ${attrs.join(' ')}>${truncate(skill.description, lean)}</skill>`;
+  return `  <skill ${attrs.join(' ')}>${skill.description}</skill>`;
 };
 
-export const skillsPrompts = (skills: SkillItem[], lean?: boolean) => {
+export const skillsPrompts = (skills: SkillItem[]) => {
   if (skills.length === 0) return '';
 
-  const skillTags = skills.map((skill) => skillPrompt(skill, lean)).join('\n');
+  const skillTags = skills.map((skill) => skillPrompt(skill)).join('\n');
 
   const hasFilesystemSkill = skills.some(
     (skill) => skill.source === 'project' || skill.source === 'device',
@@ -51,5 +38,5 @@ export const skillsPrompts = (skills: SkillItem[], lean?: boolean) => {
 ${skillTags}
 </available_skills>
 
-Use the runSkill tool to activate a skill when needed.${filesystemHint}`;
+Use the activateSkill tool to activate a skill when needed.${filesystemHint}`;
 };

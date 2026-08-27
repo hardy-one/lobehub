@@ -275,8 +275,8 @@ interface GuidanceTargetTool {
 }
 
 /**
- * Append the guidance to the `model` parameter description of the
- * `lobe-agent.callSubAgent` function tool.
+ * Return a new tools array with the guidance appended to the `model` parameter
+ * description of the `lobe-agent.callSubAgent` function tool.
  *
  * The tool schema is the one channel that reaches the supervisor under BOTH
  * prompt modes: `full` renders manifest systemRoles as teaching blocks, while
@@ -288,23 +288,48 @@ interface GuidanceTargetTool {
  * length threshold, so it equals what `generateToolName('lobe-agent',
  * 'callSubAgent')` emits on the wire.
  *
- * Mutates the matched tool in place — safe because generateToolsDetailed
- * produces fresh tool objects per run. Returns whether the target was found;
- * `false` means lobe-agent's manifest was trimmed (group / sub-agent runs drop
- * the callSubAgent api) or the shape changed, i.e. nothing to inject into.
+ * This is a pure transform: it never mutates the input tools or the manifest
+ * they came from. If the guidance is already present, the original tool object
+ * is left untouched.
  */
-export const appendSubAgentModelGuidanceToCallSubAgentTool = (
-  tools: GuidanceTargetTool[] | undefined,
+export const applySubAgentModelGuidanceToCallSubAgentTool = <T extends GuidanceTargetTool>(
+  tools: T[] | undefined,
   guidance: string,
-): boolean => {
-  const callSubAgentTool = tools?.find(
-    (tool) => tool.function?.name === `${LobeAgentIdentifier}____${LobeAgentApiName.callSubAgent}`,
-  );
-  const modelParam = callSubAgentTool?.function?.parameters?.properties?.model;
-  if (!modelParam) return false;
+): T[] => {
+  if (!tools?.length) return [];
 
-  modelParam.description = modelParam.description
-    ? `${modelParam.description}\n\n${guidance}`
-    : guidance;
-  return true;
+  return tools.map((tool) => {
+    const fn = tool.function;
+    const modelParam = fn?.parameters?.properties?.model;
+    if (
+      fn?.name !== `${LobeAgentIdentifier}____${LobeAgentApiName.callSubAgent}` ||
+      !modelParam ||
+      modelParam.description?.includes(guidance)
+    ) {
+      return tool;
+    }
+
+    // At this point fn/parameters/properties/modelParam are all present.
+    const parameters = fn!.parameters!;
+    const properties = parameters.properties!;
+
+    return {
+      ...tool,
+      function: {
+        ...fn,
+        parameters: {
+          ...parameters,
+          properties: {
+            ...properties,
+            model: {
+              ...modelParam,
+              description: modelParam.description
+                ? `${modelParam.description}\n\n${guidance}`
+                : guidance,
+            },
+          },
+        },
+      },
+    } as T;
+  });
 };

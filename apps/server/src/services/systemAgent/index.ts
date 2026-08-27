@@ -18,6 +18,7 @@ import debug from 'debug';
 import { UserModel } from '@/database/models/user';
 import type { LobeChatDatabase } from '@/database/type';
 import { initModelRuntimeForRequest } from '@/server/modules/AgentRuntime/llmRelay/oneShot';
+import { getLLMGenerationTracingService } from '@/server/services/llmGenerationTracing';
 
 import { resolveSystemAgentModelConfig } from './modelConfig';
 
@@ -117,7 +118,7 @@ export class SystemAgentService {
   async generateSkillMeta(params: {
     agentId?: string;
     content: string;
-  }): Promise<{ description: string; name: string; title: string; tracingId: string } | null> {
+  }): Promise<{ description: string; name: string; title: string; tracingId?: string } | null> {
     const { agentId, content } = params;
     if (!content.trim()) return null;
 
@@ -128,7 +129,10 @@ export class SystemAgentService {
       log('generateSkillMeta: locale=%s, model=%s, provider=%s', locale, model, provider);
 
       const payload = chainGenerateSkillMeta({ content, responseLanguage: locale });
-      const tracingId = randomUUID();
+      // Only pre-allocate/publish a tracing id when the tracing service is
+      // actually enabled; otherwise clients would try to send feedback against
+      // a row that the async tracing hook never persists.
+      const tracingId = getLLMGenerationTracingService().isEnabled() ? randomUUID() : undefined;
 
       // Relayed to the requesting tab for a device-only provider; a bot's
       // topic title has no tab and falls back to the default title.
@@ -148,7 +152,7 @@ export class SystemAgentService {
             promptVersion: GENERATE_SKILL_META_PROMPT_VERSION,
             scenario: TRACING_SCENARIOS.DocumentToSkillMeta,
             schemaName: GENERATE_SKILL_META_SCHEMA_NAME,
-            tracingId,
+            ...(tracingId ? { tracingId } : {}),
           } satisfies TracingOptions,
         },
       );
@@ -164,7 +168,9 @@ export class SystemAgentService {
       }
 
       log('generateSkillMeta: generated name="%s", title="%s"', name, title);
-      return { description, name, title, tracingId };
+      return tracingId
+        ? { description, name, title, tracingId }
+        : { description, name, title };
     } catch (error) {
       console.error('SystemAgentService.generateSkillMeta failed:', error);
       return null;

@@ -232,8 +232,8 @@ export interface MessagesEngineParams {
   enableAgentMode?: boolean;
 
   /**
-   * Prompt construction mode. 'lean' drops the per-plugin teaching blocks and
-   * persona sections to save tokens. Undefined / 'full' = legacy behaviour.
+   * Prompt construction mode. 'lean' drops the per-plugin teaching blocks.
+   * Undefined / 'full' = legacy behaviour.
    */
   promptMode?: 'full' | 'lean';
   /** Whether to enable history message count limit */
@@ -283,6 +283,12 @@ export interface MessagesEngineParams {
   // ========== Tools ==========
   /** Tools configuration */
   toolsConfig?: ToolsConfig;
+  /** Compact discovery list for tools not initially enabled (lean/efficiency mode). */
+  availableTools?: Array<{
+    identifier: string;
+    name: string;
+    description: string;
+  }>;
 
   // ========== File handling ==========
   /** File context configuration */

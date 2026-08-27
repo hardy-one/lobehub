@@ -1,6 +1,7 @@
 // Context Provider exports
 export { ActiveTopicDocumentContextInjector } from './ActiveTopicDocumentContextInjector';
 export { AgentBuilderContextInjector } from './AgentBuilderContextInjector';
+export { AvailableToolsInjector, type AvailableToolItem, type AvailableToolsInjectorConfig } from './AvailableToolsInjector';
 export {
   AGENT_DOCUMENT_INJECTION_POSITIONS,
   AgentDocumentBeforeSystemInjector,

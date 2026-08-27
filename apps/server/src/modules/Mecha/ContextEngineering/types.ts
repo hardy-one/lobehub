@@ -120,7 +120,7 @@ export interface ServerMessagesEngineParams {
    * true → agent mode.
    */
   enableAgentMode?: boolean;
-  /** 'lean' drops teaching blocks / persona sections. Undefined/'full' = legacy. */
+  /** 'lean' drops teaching blocks. Undefined/'full' = legacy. */
   promptMode?: 'full' | 'lean';
 
   /** Whether to enable history message count limit */
@@ -171,6 +171,12 @@ export interface ServerMessagesEngineParams {
   // ========== Tools ==========
   /** Tools configuration */
   toolsConfig?: ServerToolsConfig;
+  /** Compact discovery list for tools not initially enabled (lean/efficiency mode). */
+  availableTools?: Array<{
+    identifier: string;
+    name: string;
+    description: string;
+  }>;
   // ========== Topic References ==========
   /** Topic reference summaries to inject into last user message */
   topicReferences?: TopicReferenceItem[];

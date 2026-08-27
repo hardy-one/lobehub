@@ -14,7 +14,7 @@ import { AiProviderModel } from '@/database/models/aiProvider';
  * The tool-schema placement is deliberate: it reaches the model under BOTH
  * prompt modes — `full` renders manifest systemRoles as teaching blocks, but
  * `lean` drops every manifest.systemRole entirely, so a former systemRole
- * append silently vanished for lean (效率) runs.
+ * append silently vanished for 轻量 (lean) runs.
  *
  * The model list changes very infrequently, so it is resolved ONCE at
  * activation time (a rare event) and handed to the supervisor as part of the
@@ -281,7 +281,7 @@ interface GuidanceTargetTool {
  * The tool schema is the one channel that reaches the supervisor under BOTH
  * prompt modes: `full` renders manifest systemRoles as teaching blocks, while
  * `lean` drops every manifest.systemRole and keeps only tool schemas — so a
- * former systemRole append silently vanished for lean (效率) runs.
+ * former systemRole append silently vanished for 轻量 (lean) runs.
  *
  * The literal name is safe to construct here: both components match the name
  * generator's identity normalization and stay far below the MD5-compression

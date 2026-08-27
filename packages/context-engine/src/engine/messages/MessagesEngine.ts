@@ -30,6 +30,7 @@ import {
   ActiveTopicDocumentContextInjector,
   AgentBuilderContextInjector,
   AgentManagementContextInjector,
+  AvailableToolsInjector,
   BotPlatformContextInjector,
   ContextSelectionsInjector,
   DiscordContextProvider,
@@ -82,21 +83,26 @@ const CONTEXT_BUCKET_RULES: Record<
   string,
   { bucket: keyof ContextBuckets; container: 'injection' | 'lastUser' | 'system' }
 > = {
-  // assistant profile: agent persona + date + model info + user memory +
-  // the agent's environment/resource context (agent management, builder,
-  // onboarding) — everything the model sees as its identity & surroundings.
+  // systemRole: agent identity & surroundings — system role, date, model info,
+  // builder / management / onboarding context. Nothing user/tool related.
   SystemRoleInjector: { bucket: 'systemRole', container: 'system' },
   SystemDateProvider: { bucket: 'systemRole', container: 'system' },
   ModelInfoProvider: { bucket: 'systemRole', container: 'system' },
-  UserMemoryInjector: { bucket: 'systemRole', container: 'injection' },
   AgentBuilderContextInjector: { bucket: 'systemRole', container: 'injection' },
   AgentManagementContextInjector: { bucket: 'systemRole', container: 'injection' },
   GroupAgentBuilderContextInjector: { bucket: 'systemRole', container: 'injection' },
   OnboardingContextInjector: { bucket: 'systemRole', container: 'injection' },
-  // skills: teaching blocks + schemas + skill index + discovery + knowledge
+  // tools: teaching blocks + schemas + skill index + tool-discovery list +
+  // user memory + learned expertise + knowledge + platform/eval instructions —
+  // everything about the toolbox, the operator and the runtime env.
   SkillContextProvider: { bucket: 'tools', container: 'system' },
+  AvailableToolsInjector: { bucket: 'tools', container: 'system' },
   ToolSystemRoleProvider: { bucket: 'tools', container: 'system' },
+  UserMemoryInjector: { bucket: 'tools', container: 'injection' },
+  ExpertiseContextInjector: { bucket: 'tools', container: 'injection' },
   KnowledgeInjector: { bucket: 'tools', container: 'injection' },
+  EvalContextSystemInjector: { bucket: 'tools', container: 'system' },
+  BotPlatformContextInjector: { bucket: 'tools', container: 'system' },
   // history summary
   HistorySummaryProvider: { bucket: 'historySummary', container: 'system' },
   // chats: conversation-environment injectors that ride the rows
@@ -143,6 +149,23 @@ const containerText = (
 };
 
 /**
+ * Extract the plain text of a single conversation row — used for the chats
+ * bucket base, which must cover every row the model sees (user + assistant +
+ * tool), not just user turns.
+ */
+const rowText = (message: PipelineContext['messages'][number]): string => {
+  const content = message.content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((part) => part?.type === 'text')
+      .map((part) => part.text ?? '')
+      .join('');
+  }
+  return '';
+};
+
+/**
  * Wrap a provider so the text it appends to its container is recorded into
  * `metadata.contextBuckets` — the send side then counts those texts with the
  * tokenx estimator, matching exactly what the LLM will receive.
@@ -167,6 +190,41 @@ const withContextBucket = (
       tools: '',
     });
     buckets[rule.bucket] += added;
+    return next;
+  },
+});
+
+/**
+ * Wrap a processor that inserts/replaces whole messages (not text inside one
+ * of the three containers — e.g. the onboarding synthetic tool-call pair, the
+ * force-finish system row, and runtime context fragments) so the added row
+ * text is recorded into the given bucket. Compares the message list line by
+ * line before/after: lines appearing only after this processor ran must have
+ * been injected by it.
+ */
+const withMessageListBucket = (
+  processor: ContextProcessor,
+  bucket: keyof ContextBuckets,
+): ContextProcessor => ({
+  name: processor.name,
+  process: async (context) => {
+    const beforeLines = new Set(context.messages.map(rowText).join('\n').split('\n'));
+    const next = await processor.process(context);
+    const added = next.messages
+      .map(rowText)
+      .join('\n')
+      .split('\n')
+      .filter((line) => !beforeLines.has(line))
+      .join('\n');
+    if (!added) return next;
+    const metadata = next.metadata;
+    const buckets = (metadata.contextBuckets ??= {
+      chats: '',
+      historySummary: '',
+      systemRole: '',
+      tools: '',
+    });
+    buckets[bucket] += added;
     return next;
   },
 });
@@ -275,6 +333,7 @@ export class MessagesEngine {
       evalContext,
       onboardingContext,
       agentManagementContext,
+      availableTools,
       groupAgentBuilderContext,
       additionalContexts,
       agentGroup,
@@ -374,6 +433,7 @@ export class MessagesEngine {
       new SystemDateProvider({ enabled: isSystemDateEnabled, timezone }),
       // Model info (name / id / knowledge cutoff)
       new ModelInfoProvider({
+        enabled: promptMode !== 'lean',
         displayName: modelDisplayName,
         knowledgeCutoff: modelKnowledgeCutoff,
         modelId: model,
@@ -390,6 +450,11 @@ export class MessagesEngine {
         enabled:
           isAgentMode && !!(skillsConfig?.enabledSkills && skillsConfig.enabledSkills.length > 0),
         enabledSkills: skillsConfig?.enabledSkills,
+      }),
+      // Available tools discovery list (轻量 mode)
+      new AvailableToolsInjector({
+        enabled: promptMode === 'lean',
+        availableTools,
       }),
       // Tool system role (tool manifests and API definitions)
       new ToolSystemRoleProvider({
@@ -409,7 +474,7 @@ export class MessagesEngine {
       // =============================================
 
       // User memory
-      new UserMemoryInjector({ ...userMemory, enabled: isUserMemoryEnabled, promptMode }),
+      new UserMemoryInjector({ ...userMemory, enabled: isUserMemoryEnabled }),
       // Operation-scoped learned expertise (captured once and reused verbatim across steps)
       new ExpertiseContextInjector({
         enabled: this.params.enableExpertise,
@@ -656,16 +721,34 @@ export class MessagesEngine {
           process: async (context) => {
             const next = await processor.process(context);
             if (!next.metadata.contextChatsBase) {
-              next.metadata.contextChatsBase = next.messages
-                .map((m) => containerText([m], 'lastUser'))
-                .join('');
+              // Every surviving conversation row (user + assistant + tool)
+              // contributes to the chats bucket — the recorded base mirrors
+              // the live window estimate (and the real payload), which counts
+              // the whole conversation, not just user turns.
+              next.metadata.contextChatsBase = next.messages.map(rowText).join('');
             }
             return next;
           },
         };
       }
       const rule = CONTEXT_BUCKET_RULES[processor.name];
-      return rule ? withContextBucket(processor, rule) : processor;
+      if (rule) return withContextBucket(processor, rule);
+      // Processors that inject whole messages (a synthetic tool-call pair, the
+      // onboarding action-hint row, a force-finish system row, runtime context
+      // fragments) don't append to one of the three containers — bucket them
+      // by full-list line diff. Chats rides the conversation rows (input[2:]),
+      // everything else is system/tooling side (tools).
+      if (
+        processor.name === 'OnboardingSyntheticStateInjector' ||
+        processor.name === 'RuntimeAdditionalContextProvider' ||
+        processor.name === 'ForceFinishSummaryInjector'
+      ) {
+        return withMessageListBucket(processor, 'tools');
+      }
+      if (processor.name === 'OnboardingActionHintInjector') {
+        return withMessageListBucket(processor, 'chats');
+      }
+      return processor;
     });
   }
 }

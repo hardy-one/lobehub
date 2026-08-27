@@ -21,7 +21,7 @@ declare module '../types' {
 const log = debug('context-engine:provider:ToolSystemRoleProvider');
 
 /**
- * Lean ("generalized tools") mode, driven by `config.promptMode === 'lean'`.
+ * 轻量 ("generalized tools") mode, driven by `config.promptMode === 'lean'`.
  *
  * In lean mode the nine per-plugin teaching blocks (core_capabilities /
  * workflow / best_practices …) are NOT injected. Tools are treated as
@@ -30,7 +30,7 @@ const log = debug('context-engine:provider:ToolSystemRoleProvider');
  * stays in the system prompt.
  */
 /**
- * Compact cross-tool usage policy for lean mode.
+ * Compact cross-tool usage policy for 轻量 mode.
  *
  * Only product-level rules are kept here — the things the `tools[]` schema
  * cannot express (output quality, behavior tuning, tool arbitration, security
@@ -96,13 +96,13 @@ export class ToolSystemRoleProvider extends BaseSystemRoleProvider {
   protected buildSystemRoleContent(_context: PipelineContext): string | null {
     if (this.config.enabled === false) return null;
 
-    // Lean mode: tools are ordinary tools — drop the nine teaching blocks,
-    // keep only the compact cross-tool usage policy.
+    // 轻量 mode: tools are ordinary tools — drop the nine teaching
+    // blocks and the compact policy. A minimal `<available_tools>` discovery
+    // block is injected separately by AvailableToolsInjector.
     const isLean = this.config.promptMode === 'lean';
     if (isLean) {
-      if (!this.config.manifests?.length) return null;
-      log('Lean mode: injecting compact tool usage policy only');
-      return LEAN_TOOL_USAGE_POLICY;
+      log('轻量 mode: skipping compact tool usage policy (available_tools injector handles discovery)');
+      return null;
     }
 
     const toolSystemRole = this.getToolSystemRole();

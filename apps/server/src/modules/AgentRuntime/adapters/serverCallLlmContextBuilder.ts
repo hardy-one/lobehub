@@ -689,6 +689,7 @@ export const buildServerCallLlmContext = async ({
     // gated by the user's lab preference (resolved at operation start and
     // carried through state.metadata).
     systemRole: buildSystemRole(agentConfig.systemRole, ctx.enableHtmlRender),
+    availableTools: tooling.availableTools,
     toolsConfig: {
       manifests: Object.values(resolved.promptManifestMap),
       tools: resolved.enabledToolIds,

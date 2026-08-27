@@ -83,6 +83,7 @@ export const getAppConfig = () => {
        */
       AGENT_GATEWAY_INTERNAL_URL: z.string().url().optional(),
       AGENT_GATEWAY_URL: z.string().url().optional(),
+      AGENT_GATEWAY_INTERNAL_URL: z.string().url().optional(),
       /**
        * Enable Queue-based Agent Runtime
        * When true, use QStash for async agent execution (production)

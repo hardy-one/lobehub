@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, writeSync } from 'node:fs';
+import type * as FsPromises from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { delimiter, dirname, join, relative } from 'node:path';
+import path from 'node:path';
 
 import { resetShellDetectionCache } from '@lobechat/local-file-shell/shell';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,6 +10,8 @@ import type { App } from '@/core/App';
 
 import CliCtr from '../CliCtr';
 import ShellCommandCtr from '../ShellCommandCtr';
+
+const { delimiter, dirname, join, relative } = path;
 
 const { ipcMainHandleMock } = vi.hoisted(() => ({
   ipcMainHandleMock: vi.fn(),
@@ -29,7 +32,7 @@ vi.mock('node:child_process', () => ({
 // The shared runner checks cwd exists before spawning; `spawn` is mocked, so
 // treat the fixture cwd (`/repo`) as a real directory.
 vi.mock('node:fs/promises', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('node:fs/promises')>()),
+  ...(await importOriginal<typeof FsPromises>()),
   stat: vi.fn().mockResolvedValue({ isDirectory: () => true }),
 }));
 

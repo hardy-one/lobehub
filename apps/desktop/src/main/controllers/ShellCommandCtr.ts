@@ -242,6 +242,13 @@ export default class ShellCommandCtr extends ControllerModule {
 
   @IpcMethod()
   async handleRunCommand(params: RunCommandParams): Promise<RunCommandResult> {
+    if (SIMPLE_LH_PREFIX.test(params.command)) {
+      const cliCtr = this.app.getController(CliCtr);
+      if (cliCtr) {
+        // Keep the shared runner's cwd, timeout and process lifecycle for embedded CLI calls.
+        params = { ...params, env: await cliCtr.buildCliEnv(params.env), sandbox: false };
+      }
+    }
     const spawnProcess = spawnManagedFor({
       topicId: params.topicId,
       agentId: params.agentId,
@@ -261,28 +268,6 @@ export default class ShellCommandCtr extends ControllerModule {
         ),
       },
     };
-    if (SIMPLE_LH_PREFIX.test(params.command)) {
-      const cliCtr = this.app.getController(CliCtr);
-      if (cliCtr) {
-        // Deliberate carve-out: `lh` keeps its in-app route even for a
-        // sandboxed run. It is LobeHub's own control-plane CLI — it needs the
-        // injected `LOBEHUB_JWT` and the server it talks to, both of which the
-        // sandbox strips (env allowlist) and blocks (no network). Sandboxing it
-        // would not harden anything the model can reach through it; it would
-        // just break agent self-management. The sandbox's promise is about
-        // model-authored shell commands, and this is not one.
-        //
-        // Otherwise it is an ordinary command: same shell (PowerShell on
-        // Windows), the caller's `cwd` / `env` / `timeout`, and the same result
-        // shape — a non-zero exit carries its output, and a command still
-        // running at the deadline is reported as running, not killed. Only the
-        // environment differs: the bundled CLI first on `PATH`, plus the
-        // credentials it authenticates with.
-        logger.debug('Running lh command with the embedded CLI environment');
-        const env = await cliCtr.buildCliEnv(params.env);
-        return runCommand({ ...params, env }, { logger, processManager, spawnProcess });
-      }
-    }
 
     if (!params.sandbox) return runCommand(params, { logger, processManager, spawnProcess });
 

@@ -35,9 +35,8 @@ import {
   resolveWorkspaceScoped,
 } from '@/helpers/executionTarget';
 import { canUseGatewayProtocolV2 } from '@/helpers/gatewayProtocol';
-import { trackProductUsageEvent } from '@/libs/analytics/productUsageEvent';
-import { getTopicAgencyConfig, getTopicWorkspaceScoped } from '@/helpers/topicExecutionConfig';
 import { getTokenTagMode } from '@/helpers/tokenTagMode';
+import { trackProductUsageEvent } from '@/libs/analytics/productUsageEvent';
 import {
   aiAgentService,
   type ClientOperationSnapshot,
@@ -808,7 +807,7 @@ export class GatewayActionImpl {
      */
     messageContext?: ConversationContext;
     /** Request metadata carried from the originating user message. */
-    metadata?: Pick<MessageMetadata, 'steer' | 'trigger'>;
+    metadata?: Pick<MessageMetadata, 'contextSelections' | 'pageSelections' | 'steer' | 'trigger'>;
     /** Called as soon as phase-1 returns with a persisted user message. */
     onMessageAccepted?: () => void;
     /** Called when a new topic is persisted, before UI hydration and stream setup. */
@@ -921,7 +920,6 @@ export class GatewayActionImpl {
       getAgentStoreState(),
     );
     const tokenTagMode = getTokenTagMode(sendChatConfig.enableAgentMode, sendChatConfig.promptMode);
-
 
     // The EXECUTION context decides whether the server creates a topic. The
     // message context can already carry the client-minted topic id (the send

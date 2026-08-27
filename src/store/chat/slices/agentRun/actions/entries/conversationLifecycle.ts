@@ -54,6 +54,7 @@ import { resolveSelectedSkillsWithContent } from '@/services/chat/mecha/skillPre
 import { resolveSelectedToolsWithContent } from '@/services/chat/mecha/toolPreload';
 import { messageService } from '@/services/message';
 import { topicService } from '@/services/topic';
+import { chatTiming } from '@/utils/chatTiming';
 import { getAgentStoreState } from '@/store/agent';
 import {
   agentByIdSelectors,

@@ -244,7 +244,6 @@ export default class ShellCommandCtr extends ControllerModule {
     const startedAt = Date.now();
     const prefixMatch = SIMPLE_LH_PREFIX.exec(params.command);
     if (prefixMatch) {
->>>>>>> 432293c637 (✨ feat: add end-to-end timing and remote-device observability)
       const cliCtr = this.app.getController(CliCtr);
       if (cliCtr) {
         // Deliberate carve-out: `lh` keeps its in-app route even for a

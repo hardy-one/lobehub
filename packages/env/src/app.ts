@@ -85,6 +85,7 @@ export const getAppConfig = () => {
        */
       AGENT_GATEWAY_INTERNAL_URL: z.string().url().optional(),
       AGENT_GATEWAY_URL: z.string().url().optional(),
+      AGENT_GATEWAY_INTERNAL_URL: z.string().url().optional(),
       /**
        * Which Agent Gateway wire protocol this deployment's gateway can serve.
        *

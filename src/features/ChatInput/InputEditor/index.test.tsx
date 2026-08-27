@@ -77,6 +77,23 @@ const getEditorStyle = async () => {
   return props!.style;
 };
 
+const getRichRenderProps = async () => {
+  const { Editor } = await import('@lobehub/editor/react');
+  const props = vi.mocked(Editor).mock.lastCall?.[0] as
+    | {
+        autoFormatMarkdown?: boolean;
+        enablePasteMarkdown?: boolean;
+        markdownOption?: boolean;
+        pasteVSCodeAsCodeBlock?: boolean;
+        plugins?: unknown[];
+      }
+    | undefined;
+
+  expect(props).toBeDefined();
+
+  return props!;
+};
+
 vi.mock('@lobechat/const', () => ({
   isDesktop: false,
   TRACING_SCENARIOS: { InputCompletion: 'input_completion' },
@@ -233,7 +250,7 @@ vi.mock('./Placeholder', () => ({
 }));
 vi.mock('./plugins', () => ({
   CHAT_INPUT_EMBED_PLUGINS: [],
-  createChatInputRichPlugins: () => [],
+  createChatInputRichPlugins: vi.fn(() => []),
 }));
 vi.mock('./ReferTopic', () => ({ INSERT_REFER_TOPIC_COMMAND: 'insert-refer-topic' }));
 vi.mock('./LocalFileTag', () => ({
@@ -318,6 +335,22 @@ describe('ChatInput InputEditor', () => {
     expect(mocks.generateJSON.mock.calls[0][0].metadata).toEqual({
       trigger: RequestTrigger.InputCompletion,
     });
+  });
+
+  it('disables markdown auto-conversion in the chat input', async () => {
+    permission.allowed = true;
+
+    render(<InputEditor />);
+
+    const props = await getRichRenderProps();
+
+    expect(props.enablePasteMarkdown).toBe(false);
+    expect(props.markdownOption).toBe(false);
+    expect(props.autoFormatMarkdown).toBe(false);
+    expect(props.pasteVSCodeAsCodeBlock).toBe(false);
+    // Rich Markdown plugins are no longer wired up: the input is Markdown source.
+    const { createChatInputRichPlugins } = await import('./plugins');
+    expect(createChatInputRichPlugins).not.toHaveBeenCalled();
   });
 
   it('pauses autocomplete after a non-abort generation error', async () => {

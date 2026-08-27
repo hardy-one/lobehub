@@ -11,6 +11,7 @@ import {
 import { type Editor } from '@lobehub/editor/react';
 
 import { ReactActionTagPlugin } from './ActionTag';
+import { ReactHtmlRenderPlugin } from './HtmlRender';
 import { ReactLocalFileTagPlugin } from './LocalFileTag';
 import { ReactReferTopicPlugin } from './ReferTopic';
 
@@ -26,6 +27,7 @@ export const CHAT_INPUT_EMBED_PLUGINS: EditorPlugins = [
   ReactReferTopicPlugin,
   ReactLocalFileTagPlugin,
   ReactMentionPlugin,
+  ReactHtmlRenderPlugin,
 ];
 
 export const createChatInputRichPlugins = ({

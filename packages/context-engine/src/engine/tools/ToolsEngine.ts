@@ -53,8 +53,7 @@ export class ToolsEngine {
    * @returns Processed tools array, or undefined if tools should not be enabled
    */
   generateTools(params: GenerateToolsParams): UniformTool[] | undefined {
-    const { toolIds = [], model, provider, context, skipDefaultTools, promptMode } = params;
-    const isLean = promptMode === 'lean';
+    const { toolIds = [], model, provider, context, skipDefaultTools } = params;
 
     // Merge user-provided tool IDs with default tool IDs (unless skipDefaultTools is true)
     const allToolIds = skipDefaultTools
@@ -86,7 +85,7 @@ export class ToolsEngine {
     }
 
     // 4. Convert to UniformTool format
-    const tools = this.convertManifestsToTools(enabledManifests, isLean);
+    const tools = this.convertManifestsToTools(enabledManifests);
     log('Generated %d tools from %d manifests', tools.length, enabledManifests.length);
 
     return tools;
@@ -105,9 +104,7 @@ export class ToolsEngine {
       context,
       skipDefaultTools,
       excludeDefaultToolIds,
-      promptMode,
     } = params;
-    const isLean = promptMode === 'lean';
 
     // Merge user-provided tool IDs with default tool IDs and deduplicate (unless skipDefaultTools is true)
     const effectiveDefaultToolIds = excludeDefaultToolIds
@@ -141,9 +138,7 @@ export class ToolsEngine {
 
     // Convert to UniformTool format only if there are enabled manifests
     const tools =
-      enabledManifests.length > 0
-        ? this.convertManifestsToTools(enabledManifests, isLean)
-        : undefined;
+      enabledManifests.length > 0 ? this.convertManifestsToTools(enabledManifests) : undefined;
 
     log(
       'Generated detailed result: enabled=%d, filtered=%d, tools=%d',
@@ -263,14 +258,14 @@ export class ToolsEngine {
   /**
    * Convert manifests to UniformTool array
    */
-  private convertManifestsToTools(manifests: LobeToolManifest[], isLean = false): UniformTool[] {
+  private convertManifestsToTools(manifests: LobeToolManifest[]): UniformTool[] {
     log('Converting %d manifests to tools', manifests.length);
 
     // Use simplified conversion logic to avoid external package dependencies
     const tools = manifests.flatMap((manifest) =>
       manifest.api.map((api) => ({
         function: {
-          description: isLean && api.leanDescription ? api.leanDescription : api.description,
+          description: api.description,
           name: this.generateToolName(manifest.identifier, api.name, manifest.type),
           parameters: normalizeToolParameters(api.parameters),
         },

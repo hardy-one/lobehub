@@ -44,7 +44,7 @@ export interface ConvertSkillMeta {
 
 /** Generation result: the prefilled values plus the tracing id feedback attaches to. */
 export interface GeneratedSkillMeta extends ConvertSkillMeta {
-  tracingId: string;
+  tracingId?: string;
 }
 
 /**
@@ -56,7 +56,7 @@ export interface SkillMetaGenerationFeedback {
   edited: boolean;
   editedFields: string[];
   generated: ConvertSkillMeta;
-  tracingId: string;
+  tracingId?: string;
 }
 
 interface ConvertToSkillContentProps {
@@ -99,7 +99,7 @@ const ConvertToSkillContent = memo<ConvertToSkillContentProps>(
     const nameRef = useRef<HTMLInputElement>(null);
     // The last generation's prefilled values + tracing id, used on save to
     // record whether the user edited the generation (implicit feedback).
-    const generatedRef = useRef<{ tracingId: string; values: ConvertSkillMeta } | undefined>(
+    const generatedRef = useRef<{ tracingId?: string; values: ConvertSkillMeta } | undefined>(
       undefined,
     );
 

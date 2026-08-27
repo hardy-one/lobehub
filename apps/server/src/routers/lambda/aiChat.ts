@@ -26,6 +26,7 @@ import { resolveContext } from '@/server/routers/lambda/_helpers/resolveContext'
 import { AiChatService } from '@/server/services/aiChat';
 import { AiGenerationService } from '@/server/services/aiGeneration';
 import { FileService } from '@/server/services/file';
+import { getLLMGenerationTracingService } from '@/server/services/llmGenerationTracing';
 import { archiveToolResultIfNeeded } from '@/server/services/toolExecution/archiveToolResult';
 
 const log = debug('lobe-lambda-router:ai-chat');
@@ -155,7 +156,15 @@ export const aiChatRouter = router({
     // been sent. Honour the caller-supplied id when
     // one was passed via `tracing.tracingId` — the schema already validates
     // it as UUID, so a malformed value never reaches here.
-    const tracingId = input.tracing?.tracingId ?? randomUUID();
+    //
+    // Only do this when the tracing service is actually enabled. When no
+    // tracer/store is configured the async record() no-ops, so returning a
+    // tracingId would make clients send recordFeedback for a row that never
+    // exists.
+    const { tracingId: callerTracingId, ...tracingConfig } = input.tracing ?? {};
+    const tracingId = getLLMGenerationTracingService().isEnabled()
+      ? (callerTracingId ?? randomUUID())
+      : undefined;
 
     // Always stamp a trigger on metadata so cross-cutting hooks (timing,
     // routing) and the tracing registry have a fallback when the caller
@@ -173,7 +182,7 @@ export const aiChatRouter = router({
         },
         {
           metadata: { trigger: RequestTrigger.Chat, ...input.metadata },
-          tracing: { ...input.tracing, tracingId },
+          tracing: { ...tracingConfig, ...(tracingId ? { tracingId } : {}) },
         },
       );
     } catch (error) {
@@ -186,7 +195,7 @@ export const aiChatRouter = router({
     }
 
     log('generateObject completed, result: %O', data);
-    return { data, tracingId };
+    return tracingId ? { data, tracingId } : { data };
   }),
 
   sendMessageInServer: aiChatWriteProcedure

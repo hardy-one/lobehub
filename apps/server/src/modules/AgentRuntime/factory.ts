@@ -76,7 +76,11 @@ export const createStreamEventManager = (): IStreamEventManager => {
   // URL: the public one is what browsers open, which a container may not reach.
   const gatewayUrl = appEnv.AGENT_GATEWAY_INTERNAL_URL || appEnv.AGENT_GATEWAY_URL;
   if (gatewayUrl && appEnv.AGENT_GATEWAY_SERVICE_TOKEN) {
-    log('Wrapping with GatewayStreamNotifier (%s)', gatewayUrl);
+    log(
+      'Wrapping with GatewayStreamNotifier (public=%s, push=%s)',
+      appEnv.AGENT_GATEWAY_URL,
+      gatewayUrl,
+    );
     // Resolver lets a queue worker (which never ran the member op's init) mirror
     // its stream events onto the supervisor channel by reading the persisted
     // `mirrorToOperationId` from op metadata. Shares the same state manager

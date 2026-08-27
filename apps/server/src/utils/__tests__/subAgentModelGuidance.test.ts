@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  appendSubAgentModelGuidanceToCallSubAgentTool,
   clearSubAgentModelAvailabilityCache,
   formatSubAgentModelGuidance,
   MAX_LISTED_MODELS_PER_PROVIDER,
+  MAX_LISTED_MODELS_TOTAL,
   SUB_AGENT_MODEL_GUIDANCE_TTL_MS,
 } from '../subAgentModelGuidance';
 
@@ -67,6 +69,112 @@ describe('formatSubAgentModelGuidance', () => {
     expect(text).not.toContain(
       `"model-${String(MAX_LISTED_MODELS_PER_PROVIDER).padStart(2, '0')}"`,
     );
+    // Per-provider cap alone does not trip the total truncation note.
+    expect(text).not.toContain('truncated');
+  });
+
+  it('caps the total number of listed models across providers and notes the truncation', () => {
+    const providers = ['alpha', 'beta', 'gamma', 'delta'];
+    const models = providers.flatMap((providerId) =>
+      Array.from({ length: MAX_LISTED_MODELS_PER_PROVIDER }, (_, i) => ({
+        id: `${providerId}-model-${String(i).padStart(2, '0')}`,
+        providerId,
+        enabled: true,
+        type: 'chat',
+      })),
+    );
+
+    const text = formatSubAgentModelGuidance(models)!;
+
+    // Deterministic fill in sorted-provider order: alpha/beta/delta take 30
+    // each (90), gamma gets the remaining 10.
+    expect(text).toContain('"alpha"');
+    expect(text).toContain('"beta"');
+    expect(text).toContain('"delta"');
+    expect(text).toContain('"gamma": {"gamma-model-00"');
+    expect(text).not.toContain('"gamma-model-10"');
+    expect(text).toContain(`(list truncated at ${MAX_LISTED_MODELS_TOTAL} models)`);
+
+    // Every model id carries the `-model-` infix; exactly the capped total is listed.
+    const listedCount = (text.match(/-model-/g) ?? []).length;
+    expect(listedCount).toBe(MAX_LISTED_MODELS_TOTAL);
+  });
+});
+
+describe('appendSubAgentModelGuidanceToCallSubAgentTool', () => {
+  const makeCallSubAgentTool = (modelDescription?: string) => ({
+    function: {
+      description: 'Dispatch a single sub-agent.',
+      name: 'lobe-agent____callSubAgent',
+      parameters: {
+        properties: {
+          model: {
+            description:
+              modelDescription ??
+              'Optional model ID the sub-agent should run on. Overrides the configured sub-agent model for this call.',
+            type: 'string',
+          },
+          provider: { description: 'Optional provider ID for `model`.', type: 'string' },
+        },
+        required: ['description', 'instruction'],
+        type: 'object',
+      },
+    },
+    type: 'function' as const,
+  });
+
+  it('appends guidance to the callSubAgent model parameter description', () => {
+    const tool = makeCallSubAgentTool();
+    const tools = [tool];
+    const ok = appendSubAgentModelGuidanceToCallSubAgentTool(
+      tools,
+      'callSubAgent valid models:\n"a": {"m1"}',
+    );
+
+    expect(ok).toBe(true);
+    expect(tool.function.parameters.properties.model.description).toContain(
+      'Overrides the configured sub-agent model for this call.\n\ncallSubAgent valid models:\n"a": {"m1"}',
+    );
+    // Other params untouched.
+    expect(tool.function.parameters.properties.provider.description).toBe(
+      'Optional provider ID for `model`.',
+    );
+  });
+
+  it('returns false and mutates nothing when the callSubAgent tool is absent', () => {
+    const tools = [
+      {
+        function: { name: 'lobe-web-browsing____search', parameters: { properties: {} } },
+        type: 'function' as const,
+      },
+    ];
+    expect(appendSubAgentModelGuidanceToCallSubAgentTool(tools, 'guidance')).toBe(false);
+  });
+
+  it('returns false when the tool has no model parameter (unexpected schema shape)', () => {
+    const tool = {
+      function: {
+        name: 'lobe-agent____callSubAgent',
+        parameters: { properties: {} },
+      },
+      type: 'function' as const,
+    };
+    const tools = [tool];
+    expect(appendSubAgentModelGuidanceToCallSubAgentTool(tools, 'guidance')).toBe(false);
+  });
+
+  it('handles undefined tools and sets the description when it was missing', () => {
+    expect(appendSubAgentModelGuidanceToCallSubAgentTool(undefined, 'guidance')).toBe(false);
+
+    const tool = {
+      function: {
+        name: 'lobe-agent____callSubAgent',
+        parameters: { properties: { model: { type: 'string' } } },
+      },
+      type: 'function' as const,
+    };
+    expect(appendSubAgentModelGuidanceToCallSubAgentTool([tool], 'guidance-text')).toBe(true);
+    expect((tool.function.parameters.properties.model as any).description).toBe('guidance-text');
   });
 });
 

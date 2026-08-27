@@ -6,7 +6,8 @@
     ".": "./src/index.ts",
     "./client": "./src/client/index.ts",
     "./client/executor": "./src/client/executor/index.ts",
-    "./planRuntime": "./src/PlanRuntime/index.ts"
+    "./planRuntime": "./src/PlanRuntime/index.ts",
+    "./types": "./src/types.ts"
   },
   "main": "./src/index.ts",
   "scripts": {

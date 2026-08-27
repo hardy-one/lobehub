@@ -5,9 +5,11 @@ import { createStaticStyles, cx } from 'antd-style';
 import katex from 'katex';
 import renderMathInElement from 'katex/contrib/auto-render';
 import katexCss from 'katex/dist/katex.min.css?inline';
-import { Code2, Eye } from 'lucide-react';
+import { Code2, Eye, Trash2 } from 'lucide-react';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+
+import CodeEditorPane from '@/components/CodeEditorPane';
 
 import { type MarkdownElementProps } from '../../type';
 import { registerHtmlRenderCopySource } from './copyBridge';
@@ -87,6 +89,9 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
     inset-block-start: 4px;
     inset-inline-end: 4px;
 
+    display: flex;
+    gap: 2px;
+
     padding: 2px;
     border-radius: ${cssVar.borderRadiusLG};
 
@@ -114,6 +119,12 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
 }));
 
 interface HtmlRenderProps extends MarkdownElementProps {
+  /** When true, source mode uses an editable textarea instead of a read-only <pre>. */
+  editable?: boolean;
+  /** Called when the user deletes the whole block (editor only). */
+  onDelete?: () => void;
+  /** Called when the user applies editable source changes. */
+  onSourceChange?: (html: string) => void;
   /** set by the remark plugin — true while the fragment is still streaming */
   open?: boolean;
 }
@@ -645,232 +656,277 @@ const handleSelectAllInPre = (event: React.KeyboardEvent<HTMLPreElement>): void 
   }
 };
 
-const Render = memo<HtmlRenderProps>(({ children, id, open, streaming }) => {
-  const { t } = useTranslation('chat');
-  const [showSource, setShowSource] = useState(false);
-  const sourceRef = useRef<HTMLPreElement>(null);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const previewWrapRef = useRef<HTMLDivElement>(null);
-  const frameIdRef = useRef('html-render-' + id);
-  const { token } = theme.useToken();
+const Render = memo<HtmlRenderProps>(
+  ({ children, editable, id, onDelete, onSourceChange, open, streaming }) => {
+    const { t } = useTranslation('chat');
+    const [showSource, setShowSource] = useState(false);
+    const sourceRef = useRef<HTMLPreElement>(null);
+    const iframeRef = useRef<HTMLIFrameElement>(null);
+    const previewWrapRef = useRef<HTMLDivElement>(null);
+    const frameIdRef = useRef('html-render-' + id);
+    const { token } = theme.useToken();
 
-  // Last known height drives the initial iframe height on (re)mount — the
-  // height reporter corrects it immediately, but starting near the final
-  // value avoids a 1px flash for virtual-list remounts.
-  const heightRef = useRef(iframeHeightCache.get(id) ?? 1);
-  // Last known hug width, restored on preview (re)mount exactly like height.
-  const widthRef = useRef<number | null>(iframeWidthCache.get(id) ?? null);
-  // Latest visible text reported by the iframe, used by the host-side copy
-  // bridge when the host selection includes this iframe.
-  const textRef = useRef('');
+    // Last known height drives the initial iframe height on (re)mount — the
+    // height reporter corrects it immediately, but starting near the final
+    // value avoids a 1px flash for virtual-list remounts.
+    const heightRef = useRef(iframeHeightCache.get(id) ?? 1);
+    // Last known hug width, restored on preview (re)mount exactly like height.
+    const widthRef = useRef<number | null>(iframeWidthCache.get(id) ?? null);
+    // Latest visible text reported by the iframe, used by the host-side copy
+    // bridge when the host selection includes this iframe.
+    const textRef = useRef('');
 
-  const rawHtml = useMemo(() => ((children as string) || '').trim(), [children]);
+    const rawHtml = useMemo(() => ((children as string) || '').trim(), [children]);
+    const [editableHtml, setEditableHtml] = useState(rawHtml);
 
-  // Serialize the current LobeHub theme into the preview document so model
-  // fragments can reference --lobe-* variables (and follow dark mode).
-  const themeTokens = useMemo<FragmentThemeTokens>(
-    () => ({
-      '--lobe-color-primary': token.colorPrimary,
-      '--lobe-color-text': token.colorText,
-      '--lobe-color-text-secondary': token.colorTextSecondary,
-      '--lobe-color-text-tertiary': token.colorTextTertiary,
-      '--lobe-color-bg-container': token.colorBgContainer,
-      '--lobe-color-border': token.colorBorder,
-      '--lobe-color-border-secondary': token.colorBorderSecondary,
-      '--lobe-color-success': token.colorSuccess,
-      '--lobe-color-warning': token.colorWarning,
-      '--lobe-color-error': token.colorError,
-      '--lobe-color-info': token.colorInfo,
-      '--lobe-radius': `${token.borderRadius}px`,
-      '--lobe-radius-lg': `${token.borderRadiusLG}px`,
-      // Host typography so the preview matches the surrounding chat: the
-      // sandboxed iframe cannot see the host stylesheet, so without these the
-      // fragment falls back to the browser default font stack and size.
-      '--lobe-font-family': token.fontFamily,
-      '--lobe-font-size': `${token.fontSize}px`,
-      '--lobe-line-height': `${token.lineHeight}`,
-    }),
-    [
-      token.colorBgContainer,
-      token.colorBorder,
-      token.colorBorderSecondary,
-      token.colorError,
-      token.colorInfo,
-      token.colorPrimary,
-      token.colorSuccess,
-      token.colorText,
-      token.colorTextSecondary,
-      token.colorTextTertiary,
-      token.colorWarning,
-      token.borderRadius,
-      token.borderRadiusLG,
-      token.fontFamily,
-      token.fontSize,
-      token.lineHeight,
-    ],
-  );
+    // Serialize the current LobeHub theme into the preview document so model
+    // fragments can reference --lobe-* variables (and follow dark mode).
+    const themeTokens = useMemo<FragmentThemeTokens>(
+      () => ({
+        '--lobe-color-primary': token.colorPrimary,
+        '--lobe-color-text': token.colorText,
+        '--lobe-color-text-secondary': token.colorTextSecondary,
+        '--lobe-color-text-tertiary': token.colorTextTertiary,
+        '--lobe-color-bg-container': token.colorBgContainer,
+        '--lobe-color-border': token.colorBorder,
+        '--lobe-color-border-secondary': token.colorBorderSecondary,
+        '--lobe-color-success': token.colorSuccess,
+        '--lobe-color-warning': token.colorWarning,
+        '--lobe-color-error': token.colorError,
+        '--lobe-color-info': token.colorInfo,
+        '--lobe-radius': `${token.borderRadius}px`,
+        '--lobe-radius-lg': `${token.borderRadiusLG}px`,
+        // Host typography so the preview matches the surrounding chat: the
+        // sandboxed iframe cannot see the host stylesheet, so without these the
+        // fragment falls back to the browser default font stack and size.
+        '--lobe-font-family': token.fontFamily,
+        '--lobe-font-size': `${token.fontSize}px`,
+        '--lobe-line-height': `${token.lineHeight}`,
+      }),
+      [
+        token.colorBgContainer,
+        token.colorBorder,
+        token.colorBorderSecondary,
+        token.colorError,
+        token.colorInfo,
+        token.colorPrimary,
+        token.colorSuccess,
+        token.colorText,
+        token.colorTextSecondary,
+        token.colorTextTertiary,
+        token.colorWarning,
+        token.borderRadius,
+        token.borderRadiusLG,
+        token.fontFamily,
+        token.fontSize,
+        token.lineHeight,
+      ],
+    );
 
-  // Build the iframe document lazily: while the fragment is still streaming
-  // (or the user is viewing source) the iframe is not rendered, so running the
-  // DOMParser / KaTeX sanitization pass on every chunk would only block the
-  // main thread and make streaming feel janky.
-  const isStreaming = Boolean(streaming && open);
-  const docHtml = useMemo(() => {
-    if (isStreaming || showSource) return '';
-    return buildPreviewDocument(frameIdRef.current, rawHtml, themeTokens);
-  }, [isStreaming, rawHtml, showSource, themeTokens]);
+    // Build the iframe document lazily: while the fragment is still streaming
+    // (or the user is viewing source) the iframe is not rendered, so running the
+    // DOMParser / KaTeX sanitization pass on every chunk would only block the
+    // main thread and make streaming feel janky.
+    const isStreaming = Boolean(streaming && open);
+    const docHtml = useMemo(() => {
+      if (isStreaming || showSource) return '';
+      return buildPreviewDocument(frameIdRef.current, rawHtml, themeTokens);
+    }, [isStreaming, rawHtml, showSource, themeTokens]);
 
-  // Restore the last known hug width when the preview (re)mounts. Written
-  // imperatively like the reporter updates so React never owns this style.
-  useLayoutEffect(() => {
-    if (isStreaming || showSource || !widthRef.current || !previewWrapRef.current) return;
-    previewWrapRef.current.style.width = `${widthRef.current}px`;
-  }, [isStreaming, showSource]);
+    // Restore the last known hug width when the preview (re)mounts. Written
+    // imperatively like the reporter updates so React never owns this style.
+    useLayoutEffect(() => {
+      if (isStreaming || showSource || !widthRef.current || !previewWrapRef.current) return;
+      previewWrapRef.current.style.width = `${widthRef.current}px`;
+    }, [isStreaming, showSource]);
 
-  // While the preview is mounted, register the iframe's live text snapshot as
-  // a copy source. The document-level copy handler replaces the selected
-  // <iframe> node with this text before the browser serializes the selection.
-  useEffect(() => {
-    if (isStreaming || showSource) return;
-    return registerHtmlRenderCopySource(frameIdRef.current, () => textRef.current);
-  }, [isStreaming, showSource]);
+    // While the preview is mounted, register the iframe's live text snapshot as
+    // a copy source. The document-level copy handler replaces the selected
+    // <iframe> node with this text before the browser serializes the selection.
+    useEffect(() => {
+      if (isStreaming || showSource) return;
+      return registerHtmlRenderCopySource(frameIdRef.current, () => textRef.current);
+    }, [isStreaming, showSource]);
 
-  // In-place height updates: write the iframe style directly (no React state,
-  // no re-render) so virtua's item resize observation stays the only layout
-  // cost. The reporter inside the iframe can both grow and shrink the box.
-  useEffect(() => {
-    let measureFrame = 0;
+    // In-place height updates: write the iframe style directly (no React state,
+    // no re-render) so virtua's item resize observation stays the only layout
+    // cost. The reporter inside the iframe can both grow and shrink the box.
+    useEffect(() => {
+      let measureFrame = 0;
 
-    const requestMeasure = (): void => {
-      if (measureFrame || !iframeRef.current?.contentWindow) return;
-      measureFrame = window.requestAnimationFrame(() => {
-        measureFrame = 0;
-        iframeRef.current?.contentWindow?.postMessage(
-          { frameId: frameIdRef.current, type: HTML_RENDER_MEASURE_TYPE },
-          '*',
-        );
-      });
-    };
+      const requestMeasure = (): void => {
+        if (measureFrame || !iframeRef.current?.contentWindow) return;
+        measureFrame = window.requestAnimationFrame(() => {
+          measureFrame = 0;
+          iframeRef.current?.contentWindow?.postMessage(
+            { frameId: frameIdRef.current, type: HTML_RENDER_MEASURE_TYPE },
+            '*',
+          );
+        });
+      };
 
-    const applyWidth = (width: number): void => {
-      widthRef.current = width;
-      iframeWidthCache.set(id, width);
-      if (previewWrapRef.current) {
-        previewWrapRef.current.style.width = `${Math.max(width, 16)}px`;
-      }
-    };
+      const applyWidth = (width: number): void => {
+        widthRef.current = width;
+        iframeWidthCache.set(id, width);
+        if (previewWrapRef.current) {
+          previewWrapRef.current.style.width = `${Math.max(width, 16)}px`;
+        }
+      };
 
-    const handler = (event: MessageEvent) => {
-      const data = event.data;
-      if (!data || typeof data !== 'object' || data.type !== HTML_RENDER_RESIZE_TYPE) return;
-      if (data.frameId !== frameIdRef.current) return;
-      if (event.source !== iframeRef.current?.contentWindow) return;
-      const height = Number(data.height);
-      if (!Number.isFinite(height) || height <= 0) return;
-      heightRef.current = height;
-      if (iframeRef.current) iframeRef.current.style.height = `${height}px`;
-      iframeHeightCache.set(id, height);
-      if (typeof data.text === 'string') textRef.current = data.text;
+      const handler = (event: MessageEvent) => {
+        const data = event.data;
+        if (!data || typeof data !== 'object' || data.type !== HTML_RENDER_RESIZE_TYPE) return;
+        if (data.frameId !== frameIdRef.current) return;
+        if (event.source !== iframeRef.current?.contentWindow) return;
+        const height = Number(data.height);
+        if (!Number.isFinite(height) || height <= 0) return;
+        heightRef.current = height;
+        if (iframeRef.current) iframeRef.current.style.height = `${height}px`;
+        iframeHeightCache.set(id, height);
+        if (typeof data.text === 'string') textRef.current = data.text;
 
-      // Hug narrow fragments: shrink the preview wrapper to the content
-      // width so the floating action sits at the content's right edge, not
-      // the message column's.
-      const width = Number(data.width);
-      if (!previewWrapRef.current || !Number.isFinite(width) || width <= 0) return;
+        // Hug narrow fragments: shrink the preview wrapper to the content
+        // width so the floating action sits at the content's right edge, not
+        // the message column's.
+        const width = Number(data.width);
+        if (!previewWrapRef.current || !Number.isFinite(width) || width <= 0) return;
 
-      // The reporter sends the iframe viewport size it measured in. Width can
-      // depend on viewport height (vh/vmin, @media (min-height), scripts that
-      // read innerHeight), so a report from the 1px first mount must not be
-      // applied: the wrapper would collapse to min-width before the height is
-      // set and the next report would be measured inside that collapsed
-      // viewport (e.g. min(100%, 100vh) stays stuck at 16px). Apply the
-      // height first and ask the iframe to re-measure at its final size.
-      const viewportHeight = Number(data.viewportHeight);
-      if (Number.isFinite(viewportHeight) && Math.abs(viewportHeight - height) > 1) {
-        requestMeasure();
-        return;
-      }
+        // The reporter sends the iframe viewport size it measured in. Width can
+        // depend on viewport height (vh/vmin, @media (min-height), scripts that
+        // read innerHeight), so a report from the 1px first mount must not be
+        // applied: the wrapper would collapse to min-width before the height is
+        // set and the next report would be measured inside that collapsed
+        // viewport (e.g. min(100%, 100vh) stays stuck at 16px). Apply the
+        // height first and ask the iframe to re-measure at its final size.
+        const viewportHeight = Number(data.viewportHeight);
+        if (Number.isFinite(viewportHeight) && Math.abs(viewportHeight - height) > 1) {
+          requestMeasure();
+          return;
+        }
 
-      applyWidth(width);
-    };
-    window.addEventListener('message', handler);
-    return () => {
-      if (measureFrame) window.cancelAnimationFrame(measureFrame);
-      window.removeEventListener('message', handler);
-    };
-  }, [id]);
+        applyWidth(width);
+      };
+      window.addEventListener('message', handler);
+      return () => {
+        if (measureFrame) window.cancelAnimationFrame(measureFrame);
+        window.removeEventListener('message', handler);
+      };
+    }, [id]);
 
-  // Entering source mode focuses the pre so Ctrl/Cmd+A selects only the code.
-  useEffect(() => {
-    if (showSource) sourceRef.current?.focus();
-  }, [showSource]);
+    // Entering source mode focuses the pre so Ctrl/Cmd+A selects only the code.
+    useEffect(() => {
+      if (showSource) sourceRef.current?.focus();
+    }, [showSource]);
 
-  return (
-    <div className={styles.container}>
-      {showSource ? (
-        <>
-          <pre
-            className={styles.source}
-            ref={sourceRef}
-            tabIndex={0}
-            onKeyDown={handleSelectAllInPre}
-          >
+    return (
+      <div className={styles.container}>
+        {showSource ? (
+          <>
+            {editable ? (
+              <CodeEditorPane
+                language={'html'}
+                style={{ height: 240, minHeight: 120 }}
+                value={editableHtml}
+                onChange={setEditableHtml}
+              />
+            ) : (
+              <pre
+                className={styles.source}
+                ref={sourceRef}
+                tabIndex={0}
+                onKeyDown={handleSelectAllInPre}
+              >
+                {rawHtml}
+              </pre>
+            )}
+            <div className={cx(styles.floatingAction, 'html-render-floating-action')}>
+              <button
+                aria-label={t('htmlRender.render')}
+                className={styles.button}
+                title={t('htmlRender.render')}
+                type="button"
+                onClick={() => {
+                  if (editable) onSourceChange?.(editableHtml);
+                  setShowSource(false);
+                }}
+              >
+                <Eye size={13} />
+              </button>
+              {onDelete && (
+                <button
+                  aria-label={'Delete'}
+                  className={styles.button}
+                  title={'Delete'}
+                  type="button"
+                  onClick={onDelete}
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
+            </div>
+          </>
+        ) : isStreaming ? (
+          // While the fragment is still streaming, show the raw source as plain
+          // DOM: the content stays visible, the row height follows the text
+          // synchronously (no iframe, no cross-document round-trip), and the
+          // list scrolls undisturbed. The rendered iframe preview swaps in once
+          // the fragment closes.
+          <pre className={styles.source} tabIndex={0} onKeyDown={handleSelectAllInPre}>
             {rawHtml}
           </pre>
-          <div className={cx(styles.floatingAction, 'html-render-floating-action')}>
-            <button
-              aria-label={t('htmlRender.render')}
-              className={styles.button}
-              title={t('htmlRender.render')}
-              type="button"
-              onClick={() => setShowSource(false)}
-            >
-              <Eye size={13} />
-            </button>
-          </div>
-        </>
-      ) : isStreaming ? (
-        // While the fragment is still streaming, show the raw source as plain
-        // DOM: the content stays visible, the row height follows the text
-        // synchronously (no iframe, no cross-document round-trip), and the
-        // list scrolls undisturbed. The rendered iframe preview swaps in once
-        // the fragment closes.
-        <pre className={styles.source} tabIndex={0} onKeyDown={handleSelectAllInPre}>
-          {rawHtml}
-        </pre>
-      ) : (
-        <>
-          {/* Sandboxed iframe: scripts/forms/modals allowed (like the artifact
+        ) : (
+          <>
+            {/* Sandboxed iframe: scripts/forms/modals allowed (like the artifact
             HTML preview), no allow-same-origin: fragment
               content originates from model output and must never read host
               cookies/storage even if sanitization is ever bypassed. */}
-          <div className={styles.previewWrap} ref={previewWrapRef}>
-            <iframe
-              data-html-render-copy-id={frameIdRef.current}
-              name={frameIdRef.current}
-              ref={iframeRef}
-              sandbox="allow-scripts allow-forms allow-modals"
-              srcDoc={docHtml}
-              style={{ display: 'block', width: '100%', border: 'none', height: heightRef.current }}
-              title={t('htmlRender.title')}
-            />
-            <div className={cx(styles.floatingAction, 'html-render-floating-action')}>
-              <button
-                aria-label={t('htmlRender.source')}
-                className={styles.button}
-                title={t('htmlRender.source')}
-                type="button"
-                onClick={() => setShowSource(true)}
-              >
-                <Code2 size={13} />
-              </button>
+            <div className={styles.previewWrap} ref={previewWrapRef}>
+              <iframe
+                data-html-render-copy-id={frameIdRef.current}
+                name={frameIdRef.current}
+                ref={iframeRef}
+                sandbox="allow-scripts allow-forms allow-modals"
+                srcDoc={docHtml}
+                title={t('htmlRender.title')}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  border: 'none',
+                  height: heightRef.current,
+                }}
+              />
+              <div className={cx(styles.floatingAction, 'html-render-floating-action')}>
+                <button
+                  aria-label={t('htmlRender.source')}
+                  className={styles.button}
+                  title={t('htmlRender.source')}
+                  type="button"
+                  onClick={() => {
+                    setEditableHtml(rawHtml);
+                    setShowSource(true);
+                  }}
+                >
+                  <Code2 size={13} />
+                </button>
+                {onDelete && (
+                  <button
+                    aria-label={'Delete'}
+                    className={styles.button}
+                    title={'Delete'}
+                    type="button"
+                    onClick={onDelete}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-});
+          </>
+        )}
+      </div>
+    );
+  },
+);
 
 Render.displayName = 'HtmlRender';
 

@@ -1,59 +1,108 @@
 diff --git a/es/hooks/useMarkdown/useMarkdownContent.mjs b/es/hooks/useMarkdown/useMarkdownContent.mjs
 --- a/es/hooks/useMarkdown/useMarkdownContent.mjs
 +++ b/es/hooks/useMarkdown/useMarkdownContent.mjs
-@@ -1,13 +1,17 @@
- "use client";
--import { isLastFormulaRenderable } from "./latex.mjs";
- import { addToCache, contentCache, preprocessMarkdownContent } from "./utils.mjs";
+@@ -3,6 +3,76 @@
  import { useMarkdownContext } from "../../Markdown/components/MarkdownProvider.mjs";
--import { useMemo, useRef, useState } from "react";
-+import { useMemo } from "react";
+ import { useMemo } from "react";
  //#region src/hooks/useMarkdown/useMarkdownContent.ts
-+const getIncompleteFormulaRange = (text) => {
-+	const dollarsCount = (text.match(/\$\$/g) || []).length;
-+	if (dollarsCount % 2 !== 1) return null;
-+	const match = text.match(/\$\$([\s\S]*)$/);
-+	if (!match || match.index === undefined) return null;
-+	return { start: match.index, formula: match[1] };
++/**
++ * Index of the first character up to which `text` is structurally complete.
++ *
++ * `preprocessMarkdownContent` -> `preprocessLaTeX` (provided by @lobehub/streamdown)
++ * is a chain of regex rewrites that assume the input's delimiters are fully
++ * balanced (e.g. `\(...\)` -> `$...$`, and `|` -> `\vert{}` inside a `$...$`
++ * span). During streaming the input is a prefix of the final text, so an unclosed
++ * `\(` / `\[` / `$$` / fenced block lets a non-greedy regex reach across a
++ * neighbouring markdown table's `|` and rewrite it into a literal `\vert{}`,
++ * corrupting the whole message. Rendering the still-open tail as raw text for a
++ * frame is far less harmful than turning the table pipes into `\vert{}`.
++ *
++ * Returns the offset just before the earliest still-open delimiter, or the full
++ * length when everything is balanced. Single `$` are deliberately not tracked:
++ * they are ambiguous (currency vs. math) and `escapeCurrencyDollars` already
++ * special-cases them in complete content, so treating a lone `$` as "open" would
++ * regress finished messages that contain e.g. `$100`.
++ */
++const findSafeBoundary = (text) => {
++  let firstOpen = -1;
++  const stack = [];
++  let i = 0;
++  const n = text.length;
++  while (i < n) {
++    const ch = text[i];
++    if (ch === "\\" && i + 1 < n) {
++      const next = text[i + 1];
++      if (next === "(" || next === "[") {
++        stack.push({ close: next === "(" ? ")" : "]", start: i });
++        if (firstOpen < 0) firstOpen = i;
++      } else if (next === ")" || next === "]") {
++        const top = stack[stack.length - 1];
++        if (top && top.close === next) {
++          stack.pop();
++          if (stack.length === 0) firstOpen = -1;
++        }
++      }
++      i += 2;
++      continue;
++    }
++    if (ch === "$" && text[i + 1] === "$") {
++      let run = 0;
++      while (i + run < n && text[i + run] === "$") run++;
++      if (run >= 2) {
++        const top = stack[stack.length - 1];
++        if (top && top.close === "$$") {
++          stack.pop();
++          if (stack.length === 0) firstOpen = -1;
++        } else {
++          stack.push({ close: "$$", start: i });
++          if (firstOpen < 0) firstOpen = i;
++        }
++      }
++      i += run;
++      continue;
++    }
++    if (ch === "`" && text.startsWith("```", i)) {
++      const closeIdx = text.indexOf("```", i + 3);
++      if (closeIdx === -1) {
++        stack.push({ close: "```", start: i });
++        if (firstOpen < 0) firstOpen = i;
++        break;
++      }
++      i = closeIdx + 3;
++      continue;
++    }
++    i++;
++  }
++  return firstOpen < 0 ? text.length : firstOpen;
 +};
  const useMarkdownContent = (children) => {
- 	const { animated, enableLatex = true, enableCustomFootnotes, citations } = useMarkdownContext();
--	const [validContent, setValidContent] = useState("");
--	const prevProcessedContent = useRef("");
+ 	const { enableLatex = true, enableCustomFootnotes, citations } = useMarkdownContext();
  	const citationsLength = citations?.length || 0;
- 	const cacheKey = useMemo(() => `${children}|${enableLatex ? 1 : 0}|${enableCustomFootnotes ? 1 : 0}|${citationsLength}`, [
- 		children,
-@@ -23,11 +27,13 @@
- 			enableLatex
- 		});
- 		if (animated && enableLatex) {
--			if (!isLastFormulaRenderable(processedContent) && validContent) processedContent = validContent;
--		}
--		if (processedContent !== prevProcessedContent.current) {
--			setValidContent(processedContent);
--			prevProcessedContent.current = processedContent;
-+			const range = getIncompleteFormulaRange(processedContent);
-+			if (range) {
-+				processedContent =
-+					processedContent.slice(0, range.start) +
-+					"\\$\\$" +
-+					processedContent.slice(range.start + 2);
-+			}
- 		}
+@@ -14,11 +84,22 @@
+ 	]);
+ 	return useMemo(() => {
+ 		if (contentCache.has(cacheKey)) return contentCache.get(cacheKey);
+-		const processedContent = preprocessMarkdownContent(children, {
+-			citationsLength,
+-			enableCustomFootnotes,
+-			enableLatex
+-		});
++		let processedContent;
++		if (enableLatex) {
++			const boundary = findSafeBoundary(children);
++			processedContent =
++				preprocessMarkdownContent(children.slice(0, boundary), {
++					citationsLength,
++					enableCustomFootnotes,
++					enableLatex
++				}) + children.slice(boundary);
++		} else {
++			processedContent = preprocessMarkdownContent(children, {
++				citationsLength,
++				enableCustomFootnotes,
++				enableLatex
++			});
++		}
  		addToCache(cacheKey, processedContent);
  		return processedContent;
-@@ -37,11 +43,10 @@
- 		enableLatex,
- 		enableCustomFootnotes,
- 		citationsLength,
--		animated,
--		validContent
-+		animated
- 	]);
- };
- //#endregion
- export { useMarkdownContent };
- 
--//# sourceMappingURL=useMarkdownContent.mjs.map
-\ No newline at end of file
-+//# sourceMappingURL=useMarkdownContent.mjs.map
+ 	}, [

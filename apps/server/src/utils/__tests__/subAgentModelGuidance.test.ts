@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  appendSubAgentModelGuidanceToCallSubAgentTool,
+  applySubAgentModelGuidanceToCallSubAgentTool,
   clearSubAgentModelAvailabilityCache,
   formatSubAgentModelGuidance,
   MAX_LISTED_MODELS_PER_PROVIDER,
@@ -101,7 +101,7 @@ describe('formatSubAgentModelGuidance', () => {
   });
 });
 
-describe('appendSubAgentModelGuidanceToCallSubAgentTool', () => {
+describe('applySubAgentModelGuidanceToCallSubAgentTool', () => {
   const makeCallSubAgentTool = (modelDescription?: string) => ({
     function: {
       description: 'Dispatch a single sub-agent.',
@@ -123,35 +123,54 @@ describe('appendSubAgentModelGuidanceToCallSubAgentTool', () => {
     type: 'function' as const,
   });
 
-  it('appends guidance to the callSubAgent model parameter description', () => {
+  it('returns a new tool with guidance in the callSubAgent model description', () => {
     const tool = makeCallSubAgentTool();
     const tools = [tool];
-    const ok = appendSubAgentModelGuidanceToCallSubAgentTool(
+    const result = applySubAgentModelGuidanceToCallSubAgentTool(
       tools,
       'callSubAgent valid models:\n"a": {"m1"}',
     );
 
-    expect(ok).toBe(true);
-    expect(tool.function.parameters.properties.model.description).toContain(
+    expect(result).toHaveLength(1);
+    expect(result[0]).not.toBe(tool);
+    expect(result[0]!.function!.parameters!.properties!.model.description).toContain(
       'Overrides the configured sub-agent model for this call.\n\ncallSubAgent valid models:\n"a": {"m1"}',
     );
-    // Other params untouched.
-    expect(tool.function.parameters.properties.provider.description).toBe(
-      'Optional provider ID for `model`.',
+    // The original tool and its manifest-owned parameters are not mutated.
+    expect(tool.function.parameters.properties.model.description).toBe(
+      'Optional model ID the sub-agent should run on. Overrides the configured sub-agent model for this call.',
     );
   });
 
-  it('returns false and mutates nothing when the callSubAgent tool is absent', () => {
+  it('does not duplicate guidance when applied twice to the same tool', () => {
+    const tool = makeCallSubAgentTool();
+    const tools = [tool];
+    const guidance = 'callSubAgent valid models:\n"a": {"m1"}';
+
+    const first = applySubAgentModelGuidanceToCallSubAgentTool(tools, guidance);
+    const second = applySubAgentModelGuidanceToCallSubAgentTool(first, guidance);
+
+    const description = second[0]!.function!.parameters!.properties!.model.description;
+    expect(description.match(/callSubAgent valid models:/g)).toHaveLength(1);
+  });
+
+  it('returns an empty array for undefined tools', () => {
+    expect(applySubAgentModelGuidanceToCallSubAgentTool(undefined, 'guidance')).toEqual([]);
+  });
+
+  it('leaves non-callSubAgent tools as-is', () => {
     const tools = [
       {
         function: { name: 'lobe-web-browsing____search', parameters: { properties: {} } },
         type: 'function' as const,
       },
     ];
-    expect(appendSubAgentModelGuidanceToCallSubAgentTool(tools, 'guidance')).toBe(false);
+    const result = applySubAgentModelGuidanceToCallSubAgentTool(tools, 'guidance');
+
+    expect(result[0]).toBe(tools[0]);
   });
 
-  it('returns false when the tool has no model parameter (unexpected schema shape)', () => {
+  it('leaves the tool untouched when it has no model parameter', () => {
     const tool = {
       function: {
         name: 'lobe-agent____callSubAgent',
@@ -159,13 +178,12 @@ describe('appendSubAgentModelGuidanceToCallSubAgentTool', () => {
       },
       type: 'function' as const,
     };
-    const tools = [tool];
-    expect(appendSubAgentModelGuidanceToCallSubAgentTool(tools, 'guidance')).toBe(false);
+    const result = applySubAgentModelGuidanceToCallSubAgentTool([tool], 'guidance');
+
+    expect(result[0]).toBe(tool);
   });
 
-  it('handles undefined tools and sets the description when it was missing', () => {
-    expect(appendSubAgentModelGuidanceToCallSubAgentTool(undefined, 'guidance')).toBe(false);
-
+  it('sets the description when the model parameter had none', () => {
     const tool = {
       function: {
         name: 'lobe-agent____callSubAgent',
@@ -173,8 +191,10 @@ describe('appendSubAgentModelGuidanceToCallSubAgentTool', () => {
       },
       type: 'function' as const,
     };
-    expect(appendSubAgentModelGuidanceToCallSubAgentTool([tool], 'guidance-text')).toBe(true);
-    expect((tool.function.parameters.properties.model as any).description).toBe('guidance-text');
+    const result = applySubAgentModelGuidanceToCallSubAgentTool([tool], 'guidance-text');
+
+    expect(result[0]).not.toBe(tool);
+    expect((result[0]!.function!.parameters!.properties!.model as any).description).toBe('guidance-text');
   });
 });
 

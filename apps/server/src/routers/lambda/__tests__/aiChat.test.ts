@@ -2,17 +2,20 @@
 import type { CreateMessageParams } from '@lobechat/types';
 import { AgentRuntimeErrorType, ChatErrorType, ThreadType } from '@lobechat/types';
 import { TRPCError } from '@trpc/server';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentModel } from '@/database/models/agent';
 import { MessageModel } from '@/database/models/message';
 import { ThreadModel } from '@/database/models/thread';
 import { TopicModel } from '@/database/models/topic';
 import { AiChatService } from '@/server/services/aiChat';
+import type * as TracingService from '@/server/services/llmGenerationTracing';
 
 import { aiChatRouter } from '../aiChat';
 
 const flushAsyncTasks = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+const mockTracingService = vi.fn(() => ({ isEnabled: () => true }));
 
 vi.mock('@/database/models/agent');
 vi.mock('@/database/models/message');
@@ -25,9 +28,22 @@ vi.mock('@/server/services/file', () => ({
 vi.mock('@/server/modules/ModelRuntime', () => ({
   initModelRuntimeFromDB: vi.fn(),
 }));
+vi.mock('@/server/services/llmGenerationTracing', async () => {
+  const actual = await vi.importActual<typeof TracingService>(
+    '@/server/services/llmGenerationTracing',
+  );
+  return {
+    ...actual,
+    getLLMGenerationTracingService: mockTracingService,
+  };
+});
 
 describe('aiChatRouter', () => {
   const mockCtx = { userId: 'u1' };
+
+  beforeEach(() => {
+    mockTracingService.mockReturnValue({ isEnabled: () => true });
+  });
   const mockMessageModel = (
     mockCreateMessage: ReturnType<typeof vi.fn>,
     // spine head returned by the server-authoritative parentId resolution;
@@ -1142,6 +1158,36 @@ describe('aiChatRouter', () => {
       );
       expect(result.data).toEqual(mockResult);
       expect(result.tracingId).toMatch(/^[0-9a-f-]{36}$/);
+    });
+
+    it('does not return a tracingId when generation tracing is disabled', async () => {
+      const { initModelRuntimeFromDB } = await import('@/server/modules/ModelRuntime');
+      const mockGenerateObject = vi.fn().mockResolvedValue({ completion: 'ok' });
+      vi.mocked(initModelRuntimeFromDB).mockResolvedValue({
+        generateObject: mockGenerateObject,
+      } as any);
+
+      mockTracingService.mockReturnValue({ isEnabled: () => false });
+
+      const caller = aiChatRouter.createCaller({ ...mockCtx, serverDB: {} } as any);
+      const result = await caller.outputJSON({
+        messages: [{ content: 'test', role: 'user' }],
+        model: 'gpt-4o',
+        provider: 'openai',
+        tracing: {
+          promptVersion: 'v1',
+          scenario: 'input_completion',
+          tracingId: '00000000-0000-4000-8000-000000000001',
+        },
+      });
+
+      expect(mockGenerateObject).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({
+          tracing: expect.not.objectContaining({ tracingId: expect.any(String) }),
+        }),
+      );
+      expect(result).not.toHaveProperty('tracingId');
     });
 
     it('maps provider auth runtime errors to UNAUTHORIZED instead of leaking as internal errors', async () => {

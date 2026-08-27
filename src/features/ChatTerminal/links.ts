@@ -1,3 +1,4 @@
+import { getElectronIpc } from '@lobechat/electron-client-ipc';
 import debug from 'debug';
 
 import { electronSystemService } from '@/services/electron/system';
@@ -23,7 +24,11 @@ export const openTerminalLink = (uri: string) => {
     return;
   }
 
-  void electronSystemService.openExternalLink(parsed.href).catch((error) => {
-    log('failed to open terminal link %s: %O', parsed.href, error);
-  });
+  if (getElectronIpc()) {
+    void electronSystemService.openExternalLink(parsed.href).catch((error) => {
+      log('failed to open terminal link %s: %O', parsed.href, error);
+    });
+  } else {
+    window.open(parsed.href, '_blank', 'noopener');
+  }
 };

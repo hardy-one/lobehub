@@ -47,8 +47,6 @@ export interface SkillMeta {
 export interface SkillContextProviderConfig {
   enabled?: boolean;
   enabledSkills?: SkillMeta[];
-  /** 'lean' truncates skill descriptions to one-line gists. Undefined/'full' = legacy. */
-  promptMode?: 'full' | 'lean';
 }
 
 /**
@@ -109,7 +107,7 @@ export class SkillContextProvider extends BaseSystemRoleProvider {
         source: skill.source,
       }));
 
-      const availableSkillsContent = skillsPrompts(skills, this.config.promptMode === 'lean');
+      const availableSkillsContent = skillsPrompts(skills);
       if (availableSkillsContent) {
         contentParts.push(availableSkillsContent);
       }

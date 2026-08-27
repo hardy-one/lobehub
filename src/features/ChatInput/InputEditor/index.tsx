@@ -30,7 +30,6 @@ import { useChatStore } from '@/store/chat';
 import { useServerConfigStore } from '@/store/serverConfig';
 import { useUserStore } from '@/store/user';
 import {
-  labPreferSelectors,
   settingsSelectors,
   systemAgentSelectors,
   userProfileSelectors,
@@ -52,7 +51,7 @@ import InputHistoryPopup, { getHistoryPreviewText } from './InputHistoryPopup';
 import { INSERT_LOCAL_FILE_TAG_COMMAND } from './LocalFileTag';
 import { mentionFilledClassName } from './mentionStyle';
 import Placeholder, { type PlaceholderVariant } from './Placeholder';
-import { CHAT_INPUT_EMBED_PLUGINS, createChatInputRichPlugins } from './plugins';
+import { CHAT_INPUT_EMBED_PLUGINS } from './plugins';
 import { INSERT_REFER_TOPIC_COMMAND } from './ReferTopic';
 import { useLocalFileTag } from './useLocalFileTag';
 import { useMentionCategories } from './useMentionCategories';
@@ -248,8 +247,6 @@ const InputEditor = memo<{
       window.removeEventListener('beforeunload', fn);
     };
   }, [state.isEmpty]);
-
-  const enableRichRender = useUserStore(labPreferSelectors.enableInputMarkdown);
 
   const slashActionItems = useSlashActionItems();
   const slashItems = useCallback(
@@ -501,16 +498,20 @@ const InputEditor = memo<{
   );
 
   const richRenderProps = useMemo(() => {
-    const basePlugins = !enableRichRender
-      ? CHAT_INPUT_EMBED_PLUGINS
-      : createChatInputRichPlugins({ linkPlugin: false });
+    const plugins = autoCompletePlugin
+      ? [...CHAT_INPUT_EMBED_PLUGINS, autoCompletePlugin]
+      : CHAT_INPUT_EMBED_PLUGINS;
 
-    const plugins = autoCompletePlugin ? [...basePlugins, autoCompletePlugin] : basePlugins;
-
-    return !enableRichRender
-      ? { enablePasteMarkdown: false, markdownOption: false, plugins }
-      : { plugins };
-  }, [enableRichRender, autoCompletePlugin]);
+    // Markdown auto-conversion is intentionally disabled: the input area is a
+    // Markdown source editor, not a WYSIWYG rich-text surface. Pasting rich
+    // content stays plain text, and Markdown syntax is not auto-formatted.
+    return {
+      autoFormatMarkdown: false,
+      enablePasteMarkdown: false,
+      markdownOption: false,
+      plugins,
+    };
+  }, [autoCompletePlugin]);
 
   const handleEditorInit = useCallback(
     (editor: IEditor) => {

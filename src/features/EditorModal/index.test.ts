@@ -8,8 +8,6 @@ vi.mock('@lobehub/ui/base-ui', async (importOriginal) => ({
   ...(await import('~base-ui-stubs')).baseUiStubs,
 }));
 
-vi.mock('./EditorModalContent', () => ({ default: () => null }));
-
 const lastModalProps = () => vi.mocked(createModal).mock.calls.at(-1)![0] as Record<string, any>;
 
 describe('openEditorModal', () => {

@@ -1,5 +1,6 @@
 import type { AgentState } from '@lobechat/agent-runtime';
 import { BUILTIN_AGENT_SLUGS } from '@lobechat/builtin-agents';
+import { resolveHtmlRenderEnabled } from '@lobechat/const';
 import type { LobeChatDatabase } from '@lobechat/database';
 import type {
   ExecAgentResult,
@@ -15,6 +16,7 @@ import type {
 } from '@lobechat/types';
 import { getWorkingDirEffectivePath, RequestTrigger } from '@lobechat/types';
 import { nanoid } from '@lobechat/utils';
+import { isMobileClient } from '@lobechat/utils/server';
 import { TRPCError } from '@trpc/server';
 import debug from 'debug';
 
@@ -1066,6 +1068,7 @@ export class AiAgentService {
     const agentMemoryEnabled = agentConfig.chatConfig?.memory?.enabled;
     let globalMemoryEnabled = agentMemoryEnabled ?? false;
     let enableExpertise = false;
+    let enableHtmlRender = false;
     let userTimezone: string | undefined;
     try {
       const userModel = new UserModel(this.db, this.userId);
@@ -1092,8 +1095,16 @@ export class AiAgentService {
         const generalSettings = settings?.general as { timezone?: string } | undefined;
         userTimezone = generalSettings?.timezone;
       }
+
+      const preference = await userModel.getUserPreference();
+      // Mobile apps render fragments with their own native renderer — never
+      // advertise the marker protocol to them (they have no web renderer).
+      enableHtmlRender = resolveHtmlRenderEnabled(
+        preference?.lab?.enableHtmlRender,
+        isMobileClient(userAgent),
+      );
     } catch (error) {
-      log('execAgent: failed to fetch user settings: %O', error);
+      log('execAgent: failed to fetch user settings/preference: %O', error);
     }
     try {
       const preference = await new UserModel(this.db, this.userId).getUserPreference();
@@ -1109,9 +1120,10 @@ export class AiAgentService {
       enableExpertise = false;
     }
     log(
-      'execAgent: globalMemoryEnabled=%s, timezone=%s',
+      'execAgent: globalMemoryEnabled=%s, timezone=%s, enableHtmlRender=%s',
       globalMemoryEnabled,
       userTimezone ?? 'default',
+      enableHtmlRender,
     );
 
     // History loader shared by tool discovery (media-availability probe) and
@@ -1309,6 +1321,7 @@ export class AiAgentService {
         discordContext,
         discovery,
         enableExpertise,
+        enableHtmlRender,
         evalContext,
         evalRuntime,
         hooks,

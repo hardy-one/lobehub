@@ -119,6 +119,7 @@ vi.mock('@lobechat/utils/uriParser', () => ({
 }));
 
 afterEach(() => {
+  mockLabHtmlRender.value = false;
   vi.restoreAllMocks();
 });
 
@@ -161,6 +162,19 @@ vi.mock('@/helpers/isCanUseFC', () => ({
   isCanUseFC: vi.fn(() => true), // Default to true, tests can override
 }));
 
+// Controllable lab switch for the HTML-render preset injection tests.
+const { mockLabHtmlRender } = vi.hoisted(() => ({ mockLabHtmlRender: { value: false } }));
+
+vi.mock('@/store/user', async (importOriginal) => {
+  const mod = (await importOriginal()) as Record<string, unknown>;
+  return {
+    ...mod,
+    getUserStoreState: vi.fn(() => ({
+      preference: { lab: { enableHtmlRender: mockLabHtmlRender.value } },
+      settings: { general: { transitionMode: 'fadeIn' } },
+    })),
+  };
+});
 describe('ChatService', () => {
   describe('createAssistantMessage', () => {
     it('should process messages and call getChatCompletion with the right parameters', async () => {
@@ -225,6 +239,73 @@ describe('ChatService', () => {
       expect(contextEngineeringSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           enableAgentMode: false,
+        }),
+      );
+    });
+
+    it('should append the HTML render preset when the lab switch is on', async () => {
+      const contextEngineeringSpy = vi
+        .spyOn(mechaModule, 'contextEngineering')
+        .mockResolvedValue({ messages: [] });
+      mockLabHtmlRender.value = true;
+
+      await chatService.createAssistantMessage({
+        messages: [{ content: 'Hello', role: 'user' }] as UIChatMessage[],
+        resolvedAgentConfig: createMockResolvedConfig({}),
+      });
+
+      expect(contextEngineeringSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          systemRole: expect.stringContaining('<!-- html-render-start -->'),
+        }),
+      );
+    });
+
+    it('should not append the HTML render preset when the lab switch is off', async () => {
+      const contextEngineeringSpy = vi
+        .spyOn(mechaModule, 'contextEngineering')
+        .mockResolvedValue({ messages: [] });
+      mockLabHtmlRender.value = false;
+
+      await chatService.createAssistantMessage({
+        messages: [{ content: 'Hello', role: 'user' }] as UIChatMessage[],
+        resolvedAgentConfig: createMockResolvedConfig({
+          agentConfig: { systemRole: 'You are helpful' },
+        }),
+      });
+
+      expect(contextEngineeringSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          systemRole: 'You are helpful',
+        }),
+      );
+    });
+    it('should not append the HTML render preset for native mobile app clients', async () => {
+      const contextEngineeringSpy = vi
+        .spyOn(mechaModule, 'contextEngineering')
+        .mockResolvedValue({ messages: [] });
+      mockLabHtmlRender.value = true;
+      const originalUA = navigator.userAgent;
+      Object.defineProperty(navigator, 'userAgent', {
+        configurable: true,
+        value: 'LobeHub-Mobile/android-v1.2.3',
+      });
+
+      try {
+        await chatService.createAssistantMessage({
+          messages: [{ content: 'Hello', role: 'user' }] as UIChatMessage[],
+          resolvedAgentConfig: createMockResolvedConfig({}),
+        });
+      } finally {
+        Object.defineProperty(navigator, 'userAgent', {
+          configurable: true,
+          value: originalUA,
+        });
+      }
+
+      expect(contextEngineeringSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          systemRole: expect.not.stringContaining('<!-- html-render-start -->'),
         }),
       );
     });

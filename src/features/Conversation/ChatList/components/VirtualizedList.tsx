@@ -1,5 +1,6 @@
 'use client';
 
+import { HTML_RENDER_START_MARKER } from '@lobechat/const';
 import isEqual from 'fast-deep-equal';
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from 'react';
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef } from 'react';
@@ -7,6 +8,7 @@ import type { VListHandle } from 'virtua';
 import { VList } from 'virtua';
 import { useShallow } from 'zustand/react/shallow';
 
+import { iframeHeightCache } from '@/features/Conversation/Markdown/plugins/HtmlRender';
 import { useDevDockMounted } from '@/hooks/useDevDockMounted';
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 
@@ -34,6 +36,36 @@ import BackBottom from './BackBottom';
 const DebugInspector = lazy(() => import('./AutoScroll/DebugInspector'));
 
 const CONVERSATION_FOOTER_ID = '__conversation_footer__';
+
+interface CollectHtmlRenderOptions {
+  hasCachedHeight: (id: string) => boolean;
+  isGenerating: (id: string) => boolean;
+  isInViewport?: (id: string) => boolean;
+}
+
+/**
+ * Ids of fragment rows that should stay mounted in the virtual list.
+ *
+ * A fragment row only needs keep-alive while it is still generating or before
+ * its iframe has reported a stable height **and the row is currently in the
+ * viewport**. Once the height is cached, the row can be recycled normally:
+ * remounts start from the cached height instead of the 1px default.
+ */
+export const collectHtmlRenderMessageIds = (
+  messages: Array<{ content?: unknown; id: string }>,
+  { isGenerating, hasCachedHeight, isInViewport }: CollectHtmlRenderOptions,
+): string[] => {
+  const ids: string[] = [];
+  for (const m of messages) {
+    if (
+      typeof m.content === 'string' &&
+      m.content.includes(HTML_RENDER_START_MARKER) &&
+      (isGenerating(m.id) || (!hasCachedHeight(m.id) && (!isInViewport || isInViewport(m.id))))
+    )
+      ids.push(m.id);
+  }
+  return ids;
+};
 const CONVERSATION_HEADER_ID = '__conversation_header__';
 const USER_SCROLL_INTENT_TTL_MS = 500;
 const SCROLL_KEYS = new Set(['ArrowDown', 'ArrowUp', 'End', 'Home', 'PageDown', 'PageUp', ' ']);
@@ -258,16 +290,62 @@ const VirtualizedList = memo<VirtualizedListProps>(
     // containing a Selection endpoint would silently drop the user's highlight.
     const selectionMessageIds = useSelectionMessageIds();
 
+    // Approximate the currently visible message range from virtua's scroll
+    // state. We only need this to avoid keeping every uncached historical
+    // fragment row mounted; off-screen rows without a cached height do not need
+    // keep-alive because they are not mounted yet.
+    const getVisibleMessageIndices = (): Set<number> => {
+      const ref = virtuaRef.current;
+      if (!ref) return new Set();
+      const startRaw = ref.findItemIndex(ref.scrollOffset);
+      const endRaw = ref.findItemIndex(ref.scrollOffset + ref.viewportSize);
+      const start =
+        typeof startRaw === 'number' && startRaw >= 0
+          ? Math.max(0, startRaw - headerOffsetRef.current)
+          : 0;
+      const end =
+        typeof endRaw === 'number' && endRaw >= 0
+          ? Math.min(dataSource.length - 1, endRaw - headerOffsetRef.current)
+          : start;
+      const indices = new Set<number>();
+      for (let i = start; i <= end; i++) indices.add(i);
+      return indices;
+    };
+
+    // Embedded-HTML fragments render inside a sandboxed iframe whose height is
+    // reported asynchronously (postMessage). Keep a fragment row mounted only
+    // while it is still generating, or before its height has been cached while
+    // the row is in the viewport; once the height is stable the row can be
+    // recycled because remounts start from the cached height instead of the 1px
+    // default.
+    const htmlRenderMessageIds = useConversationStore(
+      useShallow((s) => {
+        const visibleMessageIds = new Set<string>();
+        for (const index of getVisibleMessageIndices()) {
+          const id = dataSource[index];
+          if (id) visibleMessageIds.add(id);
+        }
+        return collectHtmlRenderMessageIds(s.displayMessages, {
+          hasCachedHeight: (id) => iframeHeightCache.has(id),
+          isGenerating: (id) => messageStateSelectors.isMessageGenerating(id)(s),
+          isInViewport: (id) => visibleMessageIds.has(id),
+        });
+      }),
+    );
+
     const keepMountedIndices = useMemo(() => {
-      if (selectionMessageIds.size === 0) return streamingIndices;
+      const hasExtra = selectionMessageIds.size > 0 || htmlRenderMessageIds.length > 0;
+      if (!hasExtra) return streamingIndices;
+      const htmlRenderIds = new Set(htmlRenderMessageIds);
       const merged = new Set<number>(streamingIndices);
       for (let i = 0; i < dataSource.length; i++) {
         const id = dataSource[i];
-        if (id && selectionMessageIds.has(id)) merged.add(i);
+        if (!id) continue;
+        if (selectionMessageIds.has(id) || htmlRenderIds.has(id)) merged.add(i);
       }
       if (merged.size === streamingIndices.length) return streamingIndices;
       return [...merged].sort((a, b) => a - b);
-    }, [dataSource, streamingIndices, selectionMessageIds]);
+    }, [dataSource, streamingIndices, selectionMessageIds, htmlRenderMessageIds]);
 
     const atBottom = useConversationStore(virtuaListSelectors.atBottom);
     const scrollToBottom = useConversationStore((s) => s.scrollToBottom);

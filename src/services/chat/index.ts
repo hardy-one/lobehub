@@ -1,9 +1,11 @@
 import { AgentBuilderIdentifier } from '@lobechat/builtin-tool-agent-builder';
 import {
+  buildSystemRole,
   getConnectorCatalog,
   REQUEST_AGENT_ID_HEADER,
   REQUEST_TOPIC_ID_HEADER,
   REQUEST_TRIGGER_HEADER,
+  resolveHtmlRenderEnabled,
 } from '@lobechat/const';
 import { countContextBuckets, type OfficialToolItem } from '@lobechat/context-engine';
 import { type FetchSSEOptions } from '@lobechat/fetch-sse';
@@ -45,6 +47,7 @@ import {
 } from '@/store/tool/selectors';
 import { getUserStoreState, useUserStore } from '@/store/user';
 import {
+  labPreferSelectors,
   settingsSelectors,
   userGeneralSettingsSelectors,
   userProfileSelectors,
@@ -55,7 +58,12 @@ import { createTraceHeader } from '@/utils/trace';
 
 import { createHeaderWithAuth } from '../_auth';
 import { API_ENDPOINTS } from '../_url';
-import { findDeploymentName, isEnableFetchOnClient, resolveRuntimeProvider } from './helper';
+import {
+  findDeploymentName,
+  isEnableFetchOnClient,
+  isMobileClientUA,
+  resolveRuntimeProvider,
+} from './helper';
 import { type ResolvedAgentConfig } from './mecha';
 import {
   contextEngineering,
@@ -321,7 +329,16 @@ class ChatService {
       provider: payload.provider!,
       sessionId: options?.trace?.sessionId,
       stepContext: options?.stepContext,
-      systemRole: agentConfig.systemRole,
+      // The client direct-chat path appends the embedded-HTML preset to the
+      // system message too — otherwise the model would never learn the marker
+      // protocol on this path while the renderer is enabled.
+      systemRole: buildSystemRole(
+        agentConfig.systemRole,
+        resolveHtmlRenderEnabled(
+          labPreferSelectors.enableHtmlRender(getUserStoreState()),
+          isMobileClientUA(typeof navigator !== 'undefined' ? navigator.userAgent : undefined),
+        ),
+      ),
       tools: enabledToolIds,
       topicId,
       memoryContext: {

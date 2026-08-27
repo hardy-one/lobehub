@@ -3805,6 +3805,7 @@ export class AgentRuntimeService {
       discordContext: metadata?.discordContext,
       userTimezone: metadata?.userTimezone,
       evalContext: metadata?.evalContext,
+      enableHtmlRender: metadata?.enableHtmlRender,
       execSubAgent: this.delegate.execSubAgent,
       execVirtualSubAgent: this.delegate.execVirtualSubAgent,
       execGroupMember: this.delegate.execGroupMember,

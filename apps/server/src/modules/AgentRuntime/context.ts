@@ -47,6 +47,12 @@ export interface RuntimeExecutorContext {
   botContext?: unknown;
   botPlatformContext?: BotPlatformContext;
   discordContext?: any;
+  /**
+   * User lab preference `lab.enableHtmlRender`, resolved at operation start.
+   * When enabled the embedded-HTML rendering preset is appended to the
+   * developer/system message (see `htmlRenderPrompt.ts`).
+   */
+  enableHtmlRender?: boolean;
   evalContext?: EvalContext;
   /**
    * Callback to fork a group member ("call agent member") under a

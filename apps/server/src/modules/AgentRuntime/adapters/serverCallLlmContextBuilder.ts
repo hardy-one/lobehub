@@ -46,6 +46,7 @@ import { OnboardingService } from '@/server/services/onboarding';
 import type { RuntimeExecutorContext } from '../context';
 import { buildPostProcessUrl, log, resolveRuntimeHistoryCount } from '../executorHelpers';
 import { loadConnectedComposioIds } from './composioConnectedIds';
+import { buildSystemRole } from './htmlRenderPrompt';
 import {
   resolveServerCallLlmContextHints,
   type ServerCallLlmContextHints,
@@ -684,7 +685,10 @@ export const buildServerCallLlmContext = async ({
     modelKnowledgeCutoff,
     provider,
     ...(planTodo && { planTodo }),
-    systemRole: agentConfig.systemRole ?? undefined,
+    // The embedded-HTML renderer preset rides on the developer/system message,
+    // gated by the user's lab preference (resolved at operation start and
+    // carried through state.metadata).
+    systemRole: buildSystemRole(agentConfig.systemRole, ctx.enableHtmlRender),
     toolsConfig: {
       manifests: Object.values(resolved.promptManifestMap),
       tools: resolved.enabledToolIds,

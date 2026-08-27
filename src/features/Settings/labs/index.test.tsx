@@ -114,6 +114,13 @@ describe('Labs settings page', () => {
     expect(screen.getByText('features.topicAcceptance.title')).toBeDefined();
   });
 
+  it('renders the embedded HTML rendering lab toggle as beta', () => {
+    renderPage();
+
+    const htmlRender = screen.getByText('features.htmlRender.title');
+    expect(within(htmlRender).getByText('stage.beta.label')).toBeDefined();
+  });
+
   it('does not render released task verify as a lab toggle', () => {
     renderPage();
 

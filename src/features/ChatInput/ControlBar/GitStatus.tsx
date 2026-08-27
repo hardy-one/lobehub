@@ -1,3 +1,4 @@
+import { getElectronIpc } from '@lobechat/electron-client-ipc';
 import type { WorkingDirGitState } from '@lobechat/types';
 import { Icon, Tooltip } from '@lobehub/ui';
 import { toast } from '@lobehub/ui/base-ui';
@@ -190,8 +191,12 @@ const GitStatus = memo<GitStatusProps>(
     const workingSidebarTab = useGlobalStore((s) => s.status.workingSidebarTab);
 
     const handleOpenPr = useCallback(() => {
-      if (prData?.pullRequest?.url) {
-        void electronSystemService.openExternalLink(prData.pullRequest.url);
+      const url = prData?.pullRequest?.url;
+      if (!url) return;
+      if (getElectronIpc()) {
+        void electronSystemService.openExternalLink(url);
+      } else {
+        window.open(url, '_blank', 'noopener');
       }
     }, [prData?.pullRequest?.url]);
 

@@ -56,6 +56,7 @@ import {
   toolInterventionSelectors,
   userProfileSelectors,
 } from '@/store/user/selectors';
+import { chatTiming } from '@/utils/chatTiming';
 import { isTrpcErrorCode } from '@/utils/trpcError';
 
 import { resolveNewThreadIntent } from '../../dispatch/newThreadIntent';
@@ -478,6 +479,8 @@ export class GatewayActionImpl {
     // Disconnect existing connection for this operation if any
     this.disconnectFromGateway(operationId);
 
+    chatTiming('gateway.connect.start', { operationId, gatewayUrl, resumeOnConnect });
+
     // Share visitors take protocol v2 wherever the deployment has it: the
     // public surface has no user to carry a rollout flag. Owner runs wait for
     // the rollout to reach them.
@@ -559,6 +562,9 @@ export class GatewayActionImpl {
     let terminalSucceeded = false;
     let sessionCompleted = false;
     const eventBuffer = createGatewayEventBuffer((event) => onEvent?.(event));
+    let firstEventAt: number | undefined;
+    let firstTextAt: number | undefined;
+    let firstReasoningAt: number | undefined;
     const fireSessionComplete = (opts?: {
       authFailed?: boolean;
       completion?: AgentStreamSessionCompletion;
@@ -583,6 +589,27 @@ export class GatewayActionImpl {
     // treat as this op's to preserve prior behavior).
     client.on('agent_event', (event) => {
       const isOwnOp = !event.operationId || event.operationId === operationId;
+      const now = Date.now();
+      if (isOwnOp && firstEventAt === undefined) {
+        firstEventAt = now;
+        chatTiming('gateway.firstEvent', { operationId, eventType: event.type });
+      }
+      const chunkType =
+        event.type === 'stream_chunk'
+          ? (event.data as { chunkType?: string } | undefined)?.chunkType
+          : undefined;
+      if (isOwnOp && chunkType === 'text' && firstTextAt === undefined) {
+        firstTextAt = now;
+        chatTiming('gateway.firstText', { operationId, stepIndex: event.stepIndex });
+      }
+      if (
+        isOwnOp &&
+        (chunkType === 'reasoning' || chunkType === 'reasoning_part') &&
+        firstReasoningAt === undefined
+      ) {
+        firstReasoningAt = now;
+        chatTiming('gateway.firstReasoning', { operationId, stepIndex: event.stepIndex });
+      }
       // Exact assembled-payload token counts from the server send — render
       // TokenTag from real content instead of an estimate.
       if (isOwnOp && event.type === 'context_metrics' && event.data) {
@@ -610,6 +637,20 @@ export class GatewayActionImpl {
       }
       if (isOwnOp && (event.type === 'agent_runtime_end' || event.type === 'error')) {
         receivedTerminalEvent = true;
+        chatTiming('gateway.terminalEvent', { operationId, eventType: event.type });
+      }
+      if (isOwnOp && event.type === 'tool_start') {
+        chatTiming('gateway.toolStart', {
+          operationId,
+          data: (event.data as { toolCallId?: string })?.toolCallId,
+        });
+      }
+      if (isOwnOp && event.type === 'tool_end') {
+        chatTiming('gateway.toolEnd', {
+          operationId,
+          data: (event.data as { toolCallId?: string; executionTime?: number })?.toolCallId,
+          executionTime: (event.data as { executionTime?: number })?.executionTime,
+        });
       }
       // Only a clean completion counts as success
       // deferred-tool park ('waiting_for_async_tool') must take the non-success
@@ -644,6 +685,7 @@ export class GatewayActionImpl {
 
     // Handle session completion
     client.on('session_complete', (completion) => {
+      chatTiming('gateway.sessionComplete', { operationId });
       this.internal_cleanupGatewayConnection(operationId);
       fireSessionComplete({ completion });
     });

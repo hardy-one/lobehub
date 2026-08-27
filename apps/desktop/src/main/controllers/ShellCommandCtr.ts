@@ -241,7 +241,10 @@ export default class ShellCommandCtr extends ControllerModule {
 
   @IpcMethod()
   async handleRunCommand(params: RunCommandParams): Promise<RunCommandResult> {
-    if (SIMPLE_LH_PREFIX.test(params.command)) {
+    const startedAt = Date.now();
+    const prefixMatch = SIMPLE_LH_PREFIX.exec(params.command);
+    if (prefixMatch) {
+>>>>>>> 432293c637 (✨ feat: add end-to-end timing and remote-device observability)
       const cliCtr = this.app.getController(CliCtr);
       if (cliCtr) {
         // Deliberate carve-out: `lh` keeps its in-app route even for a
@@ -251,20 +254,29 @@ export default class ShellCommandCtr extends ControllerModule {
         // would not harden anything the model can reach through it; it would
         // just break agent self-management. The sandbox's promise is about
         // model-authored shell commands, and this is not one.
-        //
-        // Otherwise it is an ordinary command: same shell (PowerShell on
-        // Windows), the caller's `cwd` / `env` / `timeout`, and the same result
-        // shape — a non-zero exit carries its output, and a command still
-        // running at the deadline is reported as running, not killed. Only the
-        // environment differs: the bundled CLI first on `PATH`, plus the
-        // credentials it authenticates with.
-        logger.debug('Running lh command with the embedded CLI environment');
-        const env = await cliCtr.buildCliEnv(params.env);
-        return runCommand({ ...params, env }, { logger, processManager });
+        const args = params.command.slice(prefixMatch[0].length).trim();
+        logger.debug('Routing lh command to CliCtr.runCliCommand:', args);
+        const result = await cliCtr.runCliCommand(args);
+        logger.info(
+          `Shell command handled (lh route): duration=${Date.now() - startedAt}ms, success=${result.exitCode === 0}`,
+        );
+        return {
+          exit_code: result.exitCode,
+          output: result.stdout + result.stderr,
+          stderr: result.stderr,
+          stdout: result.stdout,
+          success: result.exitCode === 0,
+        };
       }
     }
 
-    if (!params.sandbox) return runCommand(params, { logger, processManager });
+    if (!params.sandbox) {
+      const result = await runCommand(params, { logger, processManager });
+      logger.info(
+        `Shell command handled (local shell): duration=${Date.now() - startedAt}ms, success=${result.success}`,
+      );
+      return result;
+    }
 
     // Sandboxed run. The policy is scoped to the run's working directory, so
     // without one there is nothing to scope to — refuse rather than fall back
@@ -280,6 +292,9 @@ export default class ShellCommandCtr extends ControllerModule {
     // was configured with), so the guarantee is pinned by tests on both
     // injection sites instead.
     if (!params.cwd) {
+      logger.info(
+        `Shell command refused (sandbox missing cwd): duration=${Date.now() - startedAt}ms`,
+      );
       return {
         error:
           'Local Sandbox requires a working directory. Set one for this agent (or topic) and run the command again.',
@@ -294,6 +309,9 @@ export default class ShellCommandCtr extends ControllerModule {
     // crash rather than "this environment isn't available on your machine".
     const capability = await this.probeSandbox();
     if (!capability.available) {
+      logger.info(
+        `Shell command refused (sandbox unavailable): duration=${Date.now() - startedAt}ms`,
+      );
       return {
         error: `Local Sandbox is unavailable on this device: ${capability.reason ?? 'unsupported host'}. Switch the agent's execution environment to run this command.`,
         success: false,
@@ -306,7 +324,7 @@ export default class ShellCommandCtr extends ControllerModule {
     // a fence that cannot be established) into `{ success: false, error }`
     // itself. It never falls back to an unsandboxed spawn, which is the
     // guarantee the user opted into.
-    return runCommand(params, {
+    const result = await runCommand(params, {
       logger,
       onSandboxUnavailable: (error) => this.downgradeSandboxCapability(error),
       processManager,
@@ -314,6 +332,10 @@ export default class ShellCommandCtr extends ControllerModule {
         allowNetwork: params.sandboxNetwork === true,
       }),
     });
+    logger.info(
+      `Shell command handled (sandbox): duration=${Date.now() - startedAt}ms, success=${result.success}`,
+    );
+    return result;
   }
 
   @IpcMethod()

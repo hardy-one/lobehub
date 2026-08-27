@@ -67,7 +67,10 @@ import {
   collectBorrowedConnectors,
   resolveUserDisplayMap,
 } from '@/server/utils/connectorAttribution';
-import { resolveSubAgentModelGuidance } from '@/server/utils/subAgentModelGuidance';
+import {
+  appendSubAgentModelGuidanceToCallSubAgentTool,
+  resolveSubAgentModelGuidance,
+} from '@/server/utils/subAgentModelGuidance';
 
 import {
   buildAllowedBuiltinTools,
@@ -1124,26 +1127,18 @@ export const discoverTools = async (
     };
   }
 
-  // Append enabled model guidance to the always-on lobe-agent manifest. Dynamic
-  // activations receive the same guidance from the activator runtime; this covers
-  // the manifest that is present from the first turn. Skip trimmed sub-agent/group
-  // manifests, whose system role intentionally has no nested-agent section.
-  const lobeAgentManifest = toolManifestMap[LobeAgentManifest.identifier];
-  if (
-    lobeAgentManifest &&
-    typeof lobeAgentManifest.systemRole === 'string' &&
-    lobeAgentManifest.systemRole.includes('<sub_agents>')
-  ) {
-    const subAgentModelGuidance = await resolveSubAgentModelGuidance(
-      deps.db,
-      deps.userId,
-      deps.workspaceId,
-    );
-    if (subAgentModelGuidance) {
-      toolManifestMap[LobeAgentManifest.identifier] = {
-        ...lobeAgentManifest,
-        systemRole: `${lobeAgentManifest.systemRole}\n\n${subAgentModelGuidance}`,
-      };
+  // Inject the user's enabled chat models into the callSubAgent tool schema.
+  // The schema reaches the model under both full and lean prompt modes, while
+  // trimmed group/sub-agent manifests naturally no-op when callSubAgent is absent.
+  const subAgentModelGuidance = await resolveSubAgentModelGuidance(
+    deps.db,
+    deps.userId,
+    deps.workspaceId,
+  );
+  if (subAgentModelGuidance && tools?.length) {
+    const injected = appendSubAgentModelGuidanceToCallSubAgentTool(tools, subAgentModelGuidance);
+    if (!injected) {
+      log('execAgent: callSubAgent tool not found; skipped sub-agent model guidance');
     }
   }
 

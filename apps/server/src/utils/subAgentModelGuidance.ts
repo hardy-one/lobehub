@@ -1,11 +1,20 @@
+// Subpath import on purpose: the package root re-exports client executors that
+// transitively pull locales/UI — too heavy for this util (and its tests).
+import { LobeAgentApiName, LobeAgentIdentifier } from '@lobechat/builtin-tool-lobe-agent/types';
 import type { LobeChatDatabase } from '@lobechat/database';
 
 import { AiModelModel } from '@/database/models/aiModel';
 import { AiProviderModel } from '@/database/models/aiProvider';
 
 /**
- * Pure formatter for the callSubAgent model guidance injected when the
- * `lobe-agent` tool is activated via `lobe-activator.activateTools`.
+ * Pure formatter for the callSubAgent model guidance injected into the
+ * `lobe-agent.callSubAgent` tool schema (execAgent path) and appended to the
+ * activation result (lobe-activator.activateTools path).
+ *
+ * The tool-schema placement is deliberate: it reaches the model under BOTH
+ * prompt modes — `full` renders manifest systemRoles as teaching blocks, but
+ * `lean` drops every manifest.systemRole entirely, so a former systemRole
+ * append silently vanished for lean (效率) runs.
  *
  * The model list changes very infrequently, so it is resolved ONCE at
  * activation time (a rare event) and handed to the supervisor as part of the
@@ -14,8 +23,8 @@ import { AiProviderModel } from '@/database/models/aiProvider';
  * Format groups models by provider — model ids repeat across providers, so
  * `"provider": {"model", ...}` is the unambiguous, compact shape. Only
  * enabled chat models are listed. Output is deterministic (providers sorted,
- * models sorted within each provider) so repeated activations produce
- * identical text.
+ * models sorted within each provider, caps applied after sorting) so repeated
+ * activations produce identical text and provider-side prompt caches stay hit.
  *
  * Client-side mirror: `src/services/chat/mecha/subAgentModelGuard.ts`.
  * Semantics must stay in sync — update both files when changing the rules.
@@ -31,6 +40,20 @@ export interface EnabledChatModelRow {
 /** Cap on how many models are listed per provider. */
 export const MAX_LISTED_MODELS_PER_PROVIDER = 30;
 
+/**
+ * Cap on the total number of models listed across all providers. Keeps the
+ * injected description bounded for users with many enabled providers — past
+ * this size the list stops helping the supervisor and starts costing tokens
+ * on every request.
+ */
+export const MAX_LISTED_MODELS_TOTAL = 100;
+
+/**
+ * Format the guidance text. Deterministic: providers sorted alphabetically,
+ * models sorted within each provider, per-provider cap applied first, then
+ * the global total cap in sorted-provider order. When the global cap cut
+ * anything, a trailing truncation note is appended.
+ */
 export const formatSubAgentModelGuidance = (models: EnabledChatModelRow[]): string | undefined => {
   const byProvider = new Map<string, string[]>();
 
@@ -43,18 +66,31 @@ export const formatSubAgentModelGuidance = (models: EnabledChatModelRow[]): stri
 
   if (byProvider.size === 0) return undefined;
 
-  const providerLines = [...byProvider.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([provider, ids]) => {
-      const sortedIds = [...ids]
-        .sort((a, b) => a.localeCompare(b))
-        .slice(0, MAX_LISTED_MODELS_PER_PROVIDER);
-      return `"${provider}": {${sortedIds.map((id) => `"${id}"`).join(', ')}}`;
-    });
+  let remaining = MAX_LISTED_MODELS_TOTAL;
+  let totalCapped = false;
+  const providerLines: string[] = [];
+
+  for (const [provider, ids] of [...byProvider.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    const sortedIds = [...ids].sort((a, b) => a.localeCompare(b));
+    // Per-provider cap applies silently (pre-existing behavior); only the
+    // global total cap gets an explicit truncation note.
+    const cappedIds = sortedIds.slice(0, MAX_LISTED_MODELS_PER_PROVIDER);
+    const take = Math.min(cappedIds.length, Math.max(remaining, 0));
+    remaining -= take;
+    if (take < cappedIds.length) totalCapped = true;
+    if (take === 0) continue;
+    providerLines.push(
+      `"${provider}": {${cappedIds
+        .slice(0, take)
+        .map((id) => `"${id}"`)
+        .join(', ')}}`,
+    );
+  }
 
   return [
     'callSubAgent valid models (model paired with its exact provider):',
     ...providerLines,
+    ...(totalCapped ? [`(list truncated at ${MAX_LISTED_MODELS_TOTAL} models)`] : []),
   ].join('\n');
 };
 
@@ -224,4 +260,51 @@ export const resolveSubAgentModelGuidance = async (
       [...ids].map((id) => ({ enabled: true, id, providerId, type: 'chat' as const })),
   );
   return formatSubAgentModelGuidance(models);
+};
+
+/**
+ * Minimal structural shape of a generated function tool (context-engine's
+ * `UniformTool`). Kept local so this util stays decoupled from the engine's
+ * internal types.
+ */
+interface GuidanceTargetTool {
+  function?: {
+    name?: string;
+    parameters?: { properties?: Record<string, any> };
+  };
+}
+
+/**
+ * Append the guidance to the `model` parameter description of the
+ * `lobe-agent.callSubAgent` function tool.
+ *
+ * The tool schema is the one channel that reaches the supervisor under BOTH
+ * prompt modes: `full` renders manifest systemRoles as teaching blocks, while
+ * `lean` drops every manifest.systemRole and keeps only tool schemas — so a
+ * former systemRole append silently vanished for lean (效率) runs.
+ *
+ * The literal name is safe to construct here: both components match the name
+ * generator's identity normalization and stay far below the MD5-compression
+ * length threshold, so it equals what `generateToolName('lobe-agent',
+ * 'callSubAgent')` emits on the wire.
+ *
+ * Mutates the matched tool in place — safe because generateToolsDetailed
+ * produces fresh tool objects per run. Returns whether the target was found;
+ * `false` means lobe-agent's manifest was trimmed (group / sub-agent runs drop
+ * the callSubAgent api) or the shape changed, i.e. nothing to inject into.
+ */
+export const appendSubAgentModelGuidanceToCallSubAgentTool = (
+  tools: GuidanceTargetTool[] | undefined,
+  guidance: string,
+): boolean => {
+  const callSubAgentTool = tools?.find(
+    (tool) => tool.function?.name === `${LobeAgentIdentifier}____${LobeAgentApiName.callSubAgent}`,
+  );
+  const modelParam = callSubAgentTool?.function?.parameters?.properties?.model;
+  if (!modelParam) return false;
+
+  modelParam.description = modelParam.description
+    ? `${modelParam.description}\n\n${guidance}`
+    : guidance;
+  return true;
 };

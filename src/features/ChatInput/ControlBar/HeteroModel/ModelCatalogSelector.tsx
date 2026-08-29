@@ -97,12 +97,11 @@ const styles = createStaticStyles(({ css }) => ({
   `,
   submenuMeta: css`
     overflow: hidden;
-    flex: 1 1 auto;
+    flex: 0 1 auto;
 
     min-width: 0;
-    max-width: none;
-    margin-inline-start: 12px;
-    padding-inline-start: 0;
+    margin-inline-start: auto;
+    padding-inline-start: 16px;
 
     font-family: inherit;
     text-align: end;

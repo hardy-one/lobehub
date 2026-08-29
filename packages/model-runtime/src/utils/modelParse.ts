@@ -6,6 +6,7 @@ import type {
   AiModelType,
   ExtendParamsType,
   LobeDefaultAiModelListItem,
+  Pricing,
 } from 'model-bank';
 import { AiModelTypeSchema, ModelProvider } from 'model-bank';
 
@@ -283,7 +284,40 @@ const isKeywordListMatch = (modelId: string, keywords: readonly string[]): boole
 };
 
 /**
- * Find the corresponding local model configuration based on provider type
+ * Return the exact model ID followed by IDs without one or more provider namespaces.
+ *
+ * Aggregators such as NewAPI and OpenRouter commonly expose IDs like
+ * `deepseek/deepseek-v4-flash`, while model-bank stores the same model as
+ * `deepseek-v4-flash`. Keep the original ID for requests and only use these
+ * candidates when looking up local metadata.
+ */
+const getModelIdCandidates = (modelId: string): string[] => {
+  const normalizedModelId = modelId.toLowerCase();
+  const candidates = [normalizedModelId];
+  let slashIndex = normalizedModelId.indexOf('/');
+
+  while (slashIndex !== -1 && slashIndex < normalizedModelId.length - 1) {
+    candidates.push(normalizedModelId.slice(slashIndex + 1));
+    slashIndex = normalizedModelId.indexOf('/', slashIndex + 1);
+  }
+
+  return Array.from(new Set(candidates));
+};
+
+const findModelById = <T extends { id: string }>(
+  models: readonly T[],
+  modelId: string,
+): T | undefined => {
+  for (const candidate of getModelIdCandidates(modelId)) {
+    const model = models.find((item) => item.id.toLowerCase() === candidate);
+    if (model) return model;
+  }
+
+  return undefined;
+};
+
+/**
+ * Find the corresponding local model configuration based on provider type.
  * @param modelId Model ID
  * @param provider Provider type
  * @returns Matching local model configuration
@@ -293,9 +327,7 @@ const isKeywordListMatch = (modelId: string, keywords: readonly string[]): boole
 const findKnownModelByProvider = async (
   modelId: string,
   provider: ModelProviderKey | keyof typeof MODEL_LIST_CONFIGS,
-): Promise<any> => {
-  const lowerModelId = modelId.toLowerCase();
-
+): Promise<AIBaseModelCard | null> => {
   try {
     // Attempt to dynamically import the corresponding configuration file
     const modules = await import('model-bank');
@@ -309,7 +341,7 @@ const findKnownModelByProvider = async (
 
     // If import succeeds and has data, perform search
     if (Array.isArray(providerModels)) {
-      return providerModels.find((m) => m.id.toLowerCase() === lowerModelId);
+      return findModelById(providerModels, modelId) ?? null;
     }
 
     return null;
@@ -317,6 +349,24 @@ const findKnownModelByProvider = async (
     // If import fails (file doesn't exist or other error), return null
     return null;
   }
+};
+
+const findKnownModel = async (
+  modelId: string,
+  provider: ModelProviderKey | keyof typeof MODEL_LIST_CONFIGS | undefined,
+  builtinModels: readonly AIBaseModelCard[],
+): Promise<AIBaseModelCard | null> => {
+  const providerModel = provider ? await findKnownModelByProvider(modelId, provider) : null;
+  const exactModelId = modelId.toLowerCase();
+  const exactBuiltinModel = builtinModels.find((model) => model.id.toLowerCase() === exactModelId);
+
+  // A provider-specific exact match wins. For qualified IDs, prefer an exact
+  // global card (for example NVIDIA's `deepseek-ai/...` card) over a
+  // family-level alias from the detected provider.
+  if (providerModel?.id.toLowerCase() === exactModelId) return providerModel;
+  if (exactBuiltinModel) return exactBuiltinModel;
+
+  return providerModel ?? findModelById(builtinModels, modelId) ?? null;
 };
 
 /**
@@ -518,7 +568,7 @@ const getModelLocalEnableConfig = (
   // If providerid is provided and has local configuration, try to get the model's enabled status from it
   let providerLocalModelConfig = null;
   if (providerLocalConfig && Array.isArray(providerLocalConfig)) {
-    providerLocalModelConfig = providerLocalConfig.find((m) => m.id === model.id);
+    providerLocalModelConfig = findModelById(providerLocalConfig, model.id) ?? null;
   }
   return providerLocalModelConfig;
 };
@@ -566,27 +616,45 @@ const processModelCard = (
 
   const mergedSettings = mergeSettings(model.settings, knownModel?.settings, options);
 
-  const formatPricing = (pricing?: {
-    cachedInput?: number;
-    input?: number;
-    output?: number;
-    units?: any[];
-    writeCacheInput?: number;
-  }) => {
+  const formatPricing = (
+    pricing?: Partial<Omit<Pricing, 'units'>> & {
+      cachedInput?: number;
+      input?: number;
+      output?: number;
+      units?: Pricing['units'];
+      writeCacheInput?: number;
+    },
+  ): Pricing | undefined => {
     if (!pricing || typeof pricing !== 'object') return undefined;
+
+    const metadata: Partial<Omit<Pricing, 'units'>> = {
+      ...(pricing.approximatePricePerImage !== undefined && {
+        approximatePricePerImage: pricing.approximatePricePerImage,
+      }),
+      ...(pricing.approximatePricePerVideo !== undefined && {
+        approximatePricePerVideo: pricing.approximatePricePerVideo,
+      }),
+      ...(pricing.audioTokensPerSecond !== undefined && {
+        audioTokensPerSecond: pricing.audioTokensPerSecond,
+      }),
+      ...(pricing.currency !== undefined && { currency: pricing.currency }),
+    };
+
     if (Array.isArray(pricing.units)) {
-      return { units: pricing.units };
+      return { ...metadata, units: pricing.units };
     }
+
     const { input, output, cachedInput, writeCacheInput } = pricing;
     if (
       typeof input !== 'number' &&
       typeof output !== 'number' &&
       typeof cachedInput !== 'number' &&
       typeof writeCacheInput !== 'number'
-    )
+    ) {
       return undefined;
+    }
 
-    const units = [];
+    const units: Pricing['units'] = [];
     if (typeof input === 'number') {
       units.push({
         name: 'textInput' as const,
@@ -619,7 +687,8 @@ const processModelCard = (
         unit: 'millionTokens' as const,
       });
     }
-    return { units };
+
+    return { ...metadata, units };
   };
 
   return {
@@ -639,7 +708,7 @@ const processModelCard = (
       ((isKeywordListMatch(model.id.toLowerCase(), imageOutputKeywords) && !isExcludedModel) ||
         false),
     maxOutput: model.maxOutput ?? knownModel?.maxOutput ?? undefined,
-    pricing: formatPricing(model?.pricing) ?? undefined,
+    pricing: formatPricing(model?.pricing) ?? formatPricing(knownModel?.pricing) ?? undefined,
     reasoning:
       model.reasoning ??
       knownModel?.abilities?.reasoning ??
@@ -691,18 +760,7 @@ export const processModelList = async (
         return undefined;
       }
 
-      let knownModel: any = null;
-
-      // If provider is provided, prioritize using provider-specific configuration
-      if (provider) {
-        knownModel = await findKnownModelByProvider(model.id, provider);
-      }
-
-      // If not found, fall back to global configuration
-      if (!knownModel) {
-        knownModel = builtinModels.find((m) => model.id.toLowerCase() === m.id.toLowerCase());
-      }
-
+      const knownModel = await findKnownModel(model.id, provider, builtinModels);
       const processedModel = processModelCard(model, config, knownModel);
 
       // If provider is provided and has local configuration, try to get the model's enabled status from it
@@ -747,13 +805,7 @@ export const processMultiProviderModelList = async (
       const detectedProvider = detectModelProvider(model.id);
       const config = MODEL_LIST_CONFIGS[detectedProvider];
 
-      // Prioritize using provider-specific configuration
-      let knownModel = await findKnownModelByProvider(model.id, detectedProvider);
-
-      // If not found, fall back to global configuration
-      if (!knownModel) {
-        knownModel = builtinModels.find((m) => model.id.toLowerCase() === m.id.toLowerCase());
-      }
+      const knownModel = await findKnownModel(model.id, detectedProvider, builtinModels);
 
       const includeKnownExtendParams =
         providerid === 'aihubmix' ||

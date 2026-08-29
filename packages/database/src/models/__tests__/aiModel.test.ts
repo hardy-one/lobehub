@@ -585,6 +585,30 @@ describe('AiModelModel', () => {
       expect(allModels.find((m) => m.id === 'new-model')?.displayName).toBe('New Model');
     });
 
+    it('should refresh stale remote model names and extend params', async () => {
+      const modelId = 'deepseek/deepseek-v4-pro';
+      await aiProviderModel.create({
+        displayName: modelId,
+        id: modelId,
+        providerId: 'newapi',
+        settings: {},
+        source: 'remote',
+      });
+
+      await aiProviderModel.batchUpdateAiModels('newapi', [
+        {
+          displayName: 'DeepSeek V4 Pro',
+          id: modelId,
+          settings: { extendParams: ['deepseekV4GAReasoningEffort'] },
+          source: 'remote',
+        },
+      ] as AiProviderModelListItem[]);
+
+      const model = await aiProviderModel.findById(modelId);
+      expect(model?.displayName).toBe('DeepSeek V4 Pro');
+      expect(model?.settings).toEqual({ extendParams: ['deepseekV4GAReasoningEffort'] });
+    });
+
     it('should fill NULL user-editable fields from incoming data', async () => {
       // Create a model with no displayName, contextWindowTokens, abilities, parameters, or type override
       await serverDB.insert(aiModels).values({

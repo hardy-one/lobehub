@@ -37,16 +37,15 @@ const getSelectionBody = (selection: ContextSelection): string => {
  * Each selection carries source metadata so non-page selections, such as code
  * diff lines, can be injected without overloading PageSelection.
  */
+export const formatContextSelection = (selection: ContextSelection): string =>
+  `<context_selection ${formatSelectionAttributes(selection)}>
+${getSelectionBody(selection)}
+</context_selection>`;
+
 export const formatContextSelections = (selections: ContextSelection[]): string => {
   if (!selections || selections.length === 0) return '';
 
-  const formattedSelections = selections
-    .map(
-      (selection) => `<context_selection ${formatSelectionAttributes(selection)}>
-${getSelectionBody(selection)}
-</context_selection>`,
-    )
-    .join('\n');
+  const formattedSelections = selections.map(formatContextSelection).join('\n');
 
   return `<user_context_selections count="${selections.length}">
 ${formattedSelections}

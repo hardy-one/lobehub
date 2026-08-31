@@ -70,6 +70,7 @@ import {
   DroidAcpSession,
   ensureClaudeCodeResumeTranscript,
   getCodexAppServerUnsupportedArgs,
+  getHeterogeneousAgentCancellationSignal,
   GrokAcpSession,
   isCodexAppServerCompatibilityError,
   isCursorAcpSessionNotFoundError,
@@ -1684,12 +1685,12 @@ export default class HeterogeneousAgentCtr {
       `(cwd: ${cwd})`,
     );
 
-    // `detached: true` on Unix puts the child in a new process group so we
-    // can SIGINT/SIGKILL the whole tree (claude + any tool subprocesses)
-    // via `process.kill(-pid, sig)` on cancel. Without this, SIGINT to just
-    // the claude binary can leave bash/grep/etc. tool children running and
-    // the CLI hung waiting on them. Windows has different semantics — use
-    // taskkill /T /F there; no detached flag needed.
+    // `detached: true` on Unix puts the child in a new process group. Graceful
+    // cancellation uses the agent-specific signal (Pi needs SIGTERM so it can
+    // clean up its own detached tools); forced cancellation uses SIGKILL.
+    // Without process groups, signalling only the CLI can leave bash/grep/etc.
+    // tool children running and the CLI hung waiting on them. Windows has
+    // different semantics — use taskkill /T /F there; no detached flag needed.
     const spawnOptions = {
       cwd,
       detached: process.platform !== 'win32',
@@ -2966,13 +2967,18 @@ export default class HeterogeneousAgentCtr {
       return;
     }
     const proc = session.process;
+    const cancellationSignal = getHeterogeneousAgentCancellationSignal(session.agentType);
     const gracefulExit = this.waitForProcessExit(proc, 2000);
-    this.killProcessTree(proc, 'SIGINT');
+    this.killProcessTree(proc, cancellationSignal);
 
     if (await gracefulExit) return;
     if (session.process !== proc) return;
 
-    logger.warn('Session did not exit after SIGINT, escalating to SIGKILL:', params.sessionId);
+    logger.warn(
+      'Session did not exit after %s, escalating to SIGKILL:',
+      cancellationSignal,
+      params.sessionId,
+    );
     const forcedExit = this.waitForProcessExit(proc, 2000);
     this.killProcessTree(proc, 'SIGKILL');
     if (!(await forcedExit)) {

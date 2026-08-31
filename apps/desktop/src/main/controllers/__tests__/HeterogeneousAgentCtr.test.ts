@@ -723,6 +723,53 @@ describe('HeterogeneousAgentCtr', () => {
       await cancellation;
       await prompt;
     });
+    it('uses SIGTERM for Pi so detached tool processes are cleaned up', async () => {
+      const processKill = vi.spyOn(process, 'kill').mockReturnValue(true);
+
+      try {
+        const { proc } = createFakeProc();
+        proc.__start = vi.fn();
+        proc.exitCode = null;
+        proc.pid = 4243;
+        proc.signalCode = null;
+        nextFakeProc = proc;
+        const ctr = new HeterogeneousAgentCtr({
+          appStoragePath,
+          storeManager: { get: vi.fn() },
+        } as any);
+        const { sessionId } = await ctr.startSession({
+          agentType: 'pi',
+          command: 'pi',
+        });
+        const prompt = ctr.sendPrompt({
+          operationId: 'op-pi-cancel',
+          prompt: 'run a long task',
+          sessionId,
+        });
+        const spawnCount = spawnCalls.length;
+        await vi.waitFor(() => expect(spawnCalls).toHaveLength(spawnCount + 1));
+
+        let cancellationSettled = false;
+        const cancellation = ctr.cancelSession({ sessionId }).then(() => {
+          cancellationSettled = true;
+        });
+        await Promise.resolve();
+
+        expect(processKill).toHaveBeenCalledWith(-4243, 'SIGTERM');
+        expect(processKill).not.toHaveBeenCalledWith(-4243, 'SIGINT');
+        expect(cancellationSettled).toBe(false);
+
+        proc.stdout.end();
+        proc.stderr.end();
+        proc.signalCode = 'SIGTERM';
+        proc.emit('exit', null, 'SIGTERM');
+
+        await cancellation;
+        await prompt;
+      } finally {
+        processKill.mockRestore();
+      }
+    });
 
     /**
      * @example A wedged native process ignores both graceful and forced termination.

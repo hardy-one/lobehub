@@ -354,6 +354,15 @@ const buildSpawnArgs = (params: BuildSpawnArgsParams): string[] => {
   }
 };
 
+/**
+ * Pi's print mode owns detached tool-process cleanup from its SIGTERM handler.
+ * Sending SIGINT only terminates Pi itself and leaves those tool processes orphaned.
+ */
+export const getHeterogeneousAgentCancellationSignal = (
+  agentType: string,
+  signal: NodeJS.Signals = 'SIGINT',
+): NodeJS.Signals => (agentType === 'pi' && signal === 'SIGINT' ? 'SIGTERM' : signal);
+
 const killProcessTree = (proc: ChildProcess, signal: NodeJS.Signals): void => {
   if (!proc.pid || proc.killed) return;
 
@@ -808,7 +817,7 @@ export const spawnAgent = async (options: SpawnAgentOptions): Promise<SpawnAgent
     exit,
     kill: (signal: NodeJS.Signals = 'SIGINT') => {
       killedByUs = true;
-      killProcessTree(proc, signal);
+      killProcessTree(proc, getHeterogeneousAgentCancellationSignal(options.agentType, signal));
     },
     pid: proc.pid,
     get sessionId() {

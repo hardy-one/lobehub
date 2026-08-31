@@ -432,6 +432,33 @@ describe('spawnAgent', () => {
     processKill.mockRestore();
   });
 
+  it('uses SIGTERM for Pi so its detached tool processes can clean up', async () => {
+    const fake = createFakeProc();
+    nextFakeProc = fake.proc;
+    const processKill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+
+    try {
+      const { spawnAgent } = await import('./spawnAgent');
+      const handle = await spawnAgent({
+        agentType: 'pi',
+        operationId: 'op-pi-cancel',
+        prompt: 'keep running',
+      });
+
+      handle.kill();
+
+      expect(processKill).toHaveBeenCalledWith(-12_345, 'SIGTERM');
+      expect(processKill).not.toHaveBeenCalledWith(-12_345, 'SIGINT');
+
+      fake.proc.stdout.end();
+      fake.proc.stderr.end();
+      fake.proc.emit('exit', null, 'SIGTERM');
+      await expect(handle.exit).resolves.toEqual({ code: null, signal: 'SIGTERM' });
+    } finally {
+      processKill.mockRestore();
+    }
+  });
+
   it('preserves SIGKILL when force-stopping a Grok ACP run', async () => {
     const fake = createGrokAcpProc({ promptAutoComplete: false });
     nextFakeProc = fake.proc;

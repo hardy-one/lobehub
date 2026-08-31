@@ -1973,8 +1973,8 @@ export const executeHeterogeneousAgent = async (
     writeTopicStatus('running');
 
     // Register cancel hook on the operation — when the user hits Stop, the op
-    // framework calls this; we SIGINT the CC process via the main-process IPC
-    // so the CLI exits instead of running to completion off-screen.
+    // framework calls this; the main process uses the agent's graceful
+    // cancellation signal so Pi can clean up its detached tool processes.
     const sidForCancel = ipcRunSessionId;
     get().onOperationCancel?.(operationId, async () => {
       try {

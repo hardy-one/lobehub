@@ -10,6 +10,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
+import { INSERT_CONTEXT_REFERENCE_COMMAND } from '@/features/ChatInput/InputEditor/ContextReference';
 import { useChatStore } from '@/store/chat';
 import { fileChatSelectors, useFileStore } from '@/store/file';
 
@@ -69,7 +70,6 @@ const TextSelectionActionLayer = memo<TextSelectionActionLayerProps>(({ children
   const [activeSelection, setActiveSelection] = useState<ActiveSelection | null>(null);
 
   const composerTarget = useConversationStore((s) => s.composerTarget);
-  const addChatContextSelection = useFileStore((s) => s.addChatContextSelection);
 
   const hideToolbar = useCallback(() => {
     setActiveSelection(null);
@@ -160,9 +160,20 @@ const TextSelectionActionLayer = memo<TextSelectionActionLayerProps>(({ children
         title: t('textSelection.title'),
       });
 
-    addChatContextSelection({ contextKey: composerTarget.contextKey, selection: context });
+    const editor = useChatStore.getState().mainInputEditor?.instance;
+    const inserted = editor?.dispatchCommand(INSERT_CONTEXT_REFERENCE_COMMAND, {
+      selection: context,
+    });
+
+    if (!inserted) {
+      useFileStore.getState().addChatContextSelection({
+        contextKey: composerTarget.contextKey,
+        selection: context,
+      });
+    }
+
     toast.success(t('textSelection.added'));
-  }, [activeSelection?.text, addChatContextSelection, composerTarget, t]);
+  }, [activeSelection?.text, composerTarget, t]);
 
   const handleAddToConversation = useCallback(() => {
     addSelectionToConversation();

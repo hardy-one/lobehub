@@ -26,6 +26,7 @@ import { operationSelectors } from '@/store/chat/selectors';
 import { selectCurrentTurnTodosFromMessages } from '@/store/chat/slices/message/selectors/dbMessage';
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 import { fileChatSelectors, useFileStore } from '@/store/file';
+import { extractContextReferences, mergeContextReferences } from '@/utils/contextReferences';
 
 import { buildMessageContextSelections } from '../../ChatInput/utils/contextSelections';
 import WideScreenContainer from '../../WideScreenContainer';
@@ -355,6 +356,7 @@ const ChatInput = memo<ChatInputProps>(
 
         // Capture editor JSON state before clearing for rich text rendering
         const editorData = getEditorData();
+        const inlineContexts = extractContextReferences(editorData);
 
         const clearComposer = () => {
           clearContent();
@@ -379,9 +381,9 @@ const ChatInput = memo<ChatInputProps>(
         // Clear content immediately for responsive UX
         clearComposer();
 
-        const { contextSelections, pageSelections } =
-          buildMessageContextSelections(currentContextList);
-
+        const { contextSelections, pageSelections } = buildMessageContextSelections(
+          mergeContextReferences(currentContextList, inlineContexts),
+        );
         // Fire and forget - send with captured message
         await sendMessage({
           contextSelections,

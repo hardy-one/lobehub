@@ -1,4 +1,5 @@
 export * from './base';
+export * from './contextReference';
 export * from './contextSelection';
 export * from './image';
 export * from './messageGroup';

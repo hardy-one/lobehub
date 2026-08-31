@@ -20,6 +20,7 @@ import { fileChatSelectors, useFileStore } from '@/store/file';
 import { useGlobalStore } from '@/store/global';
 import { useHomeStore } from '@/store/home';
 import { useTaskStore } from '@/store/task';
+import { extractContextReferences, mergeContextReferences } from '@/utils/contextReferences';
 
 import { useResolvedHomeAgentId } from '../AgentSelect/useResolvedHomeAgentId';
 import type { HomeMode } from '../types';
@@ -123,6 +124,8 @@ export const useSend = (mode: HomeMode = 'chat') => {
         ? undefined
         : (getEditorData?.() ?? mainInputEditor?.getJSONState());
 
+      const inlineContexts = extractContextReferences(editorData);
+      const allContextList = mergeContextReferences(contextList, inlineContexts);
       if (!canCreateContent) return;
 
       if ((mode === 'task' || !inputActiveMode) && !canUseResource) return;
@@ -130,18 +133,17 @@ export const useSend = (mode: HomeMode = 'chat') => {
       // Task persistence does not support attachments or context yet. Check
       // this before the empty-message guard so an attachment-only submission
       // explains why it cannot proceed instead of appearing inert.
-      if (mode === 'task' && (fileList.length > 0 || contextList.length > 0)) {
+      if (mode === 'task' && (fileList.length > 0 || allContextList.length > 0)) {
         toast.error(t('dashboard.task.unsupportedContext'));
         return;
       }
 
       // Require input content (except for default inbox which can have files/context)
-      if (!message && fileList.length === 0 && contextList.length === 0) return;
+      if (!message && fileList.length === 0 && allContextList.length === 0) return;
 
       let submitted = false;
       try {
-        const { contextSelections, pageSelections } = buildMessageContextSelections(contextList);
-
+        const { contextSelections, pageSelections } = buildMessageContextSelections(allContextList);
         // Task mode is a commitment, not a proposal: the row is written and the
         // run is launched here. Routing it through the agent would leave both
         // outcomes to a model that is told elsewhere not to start work on its
@@ -238,7 +240,7 @@ export const useSend = (mode: HomeMode = 'chat') => {
                 ...(activeWorkspaceSlug ? { workspaceSlug: activeWorkspaceSlug } : {}),
               },
               contextSelections,
-              contexts: contextList,
+              contexts: allContextList,
               editorData,
               files: fileList,
               message,

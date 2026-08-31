@@ -1,8 +1,10 @@
 import type { AgentStreamClientFeature } from '@lobechat/agent-gateway-client';
 import { CLIENT_PROTOCOL_VERSION } from '@lobechat/agent-gateway-client';
 import type {
+  ContextSelection,
   ExecAgentAppContext,
   ExecAgentResult,
+  PageSelection,
   RuntimeMentionedAgent,
   ScheduleAgentRunParams,
   ScheduleAgentRunResult,
@@ -141,6 +143,8 @@ export interface ExecAgentTaskParams {
    * live, to tell whether the client never saw it or its stop never landed.
    */
   clientOperations?: ClientOperationSnapshot[];
+  /** Generic context selections attached to the new user message. */
+  contextSelections?: ContextSelection[];
   deviceId?: string;
   existingMessageIds?: string[];
   /** File IDs of already-uploaded attachments to attach to the new user message */
@@ -152,6 +156,8 @@ export interface ExecAgentTaskParams {
    * context so the supervisor run delegates to them instead of answering itself.
    */
   mentionedAgents?: RuntimeMentionedAgent[];
+  /** Legacy page selections mirrored onto the new user message. */
+  pageSelections?: PageSelection[];
   /** Parent message ID for regeneration/continue (skip user message creation, branch from this message) */
   parentMessageId?: string;
   prompt: string;

@@ -321,6 +321,10 @@ export interface TurnSetupInput {
   appContext?: InternalExecAgentParams['appContext'];
   assistantAgentId: string;
   attachedFileIds?: string[];
+  /** Generic context selections attached to the new user message. */
+  contextSelections?: InternalExecAgentParams['contextSelections'];
+  /** Legacy page selections mirrored onto the new user message. */
+  pageSelections?: InternalExecAgentParams['pageSelections'];
   /** Spine anchor for a batch approval — overrides the assistant's parent. */
   batchApprovalAnchorId?: string;
   botContext?: InternalExecAgentParams['botContext'];
@@ -374,6 +378,8 @@ export interface TurnSetupResult {
    */
   requestedDeviceId?: string;
   requestTriggerMetadata: {
+    contextSelections?: InternalExecAgentParams['contextSelections'];
+    pageSelections?: InternalExecAgentParams['pageSelections'];
     agentDispatch?: { kind: 'callAgent'; visibility: 'internal' };
     steer?: true;
     trigger?: RequestTrigger;
@@ -412,6 +418,8 @@ export const setupTurn = async (
     appContext,
     assistantAgentId,
     attachedFileIds,
+    contextSelections,
+    pageSelections,
     batchApprovalAnchorId,
     botContext,
     botSender,
@@ -695,6 +703,8 @@ export const setupTurn = async (
 
   // ── Shared turn setup (runs for BOTH hetero and normal agents) ──────────
   const requestTriggerMetadata = {
+    ...(contextSelections?.length ? { contextSelections } : undefined),
+    ...(pageSelections?.length ? { pageSelections } : undefined),
     ...(trigger && Object.values(RequestTrigger).includes(trigger as RequestTrigger)
       ? { trigger: trigger as RequestTrigger }
       : undefined),

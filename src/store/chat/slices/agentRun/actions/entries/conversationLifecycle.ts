@@ -639,14 +639,23 @@ export class ConversationLifecycleActionImpl {
       selectedTools,
     });
     const requestTrigger = (metadata as Pick<MessageMetadata, 'trigger'> | undefined)?.trigger;
-    const requestMetadata = requestTrigger ? { trigger: requestTrigger } : undefined;
+    const requestMetadata =
+      requestTrigger || contextSelections?.length || pageSelections?.length
+        ? {
+            ...(requestTrigger ? { trigger: requestTrigger } : undefined),
+            ...(contextSelections?.length ? { contextSelections } : undefined),
+            ...(pageSelections?.length ? { pageSelections } : undefined),
+          }
+        : undefined;
 
     throwIfSendAborted(signal);
 
     const hasFile = !!fileIdList && fileIdList.length > 0;
+    const hasContextSelection =
+      (contextSelections?.length ?? 0) > 0 || (pageSelections?.length ?? 0) > 0;
 
-    // if message is empty or no files, then stop
-    if (!message && !hasFile) {
+    // A context-only send is valid: the selected context is the user's request input.
+    if (!message && !hasFile && !hasContextSelection) {
       onPreflightFailure?.();
       return;
     }

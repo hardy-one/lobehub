@@ -2,6 +2,7 @@ import type { LobeAgentChatConfig } from '../agent/chatConfig';
 import type { CreateThreadWithMessageParams } from '../aiChat';
 import type { WorkingDirConfig } from '../device';
 import type { TaskDetail, UIChatMessage } from '../message';
+import type { ContextSelection, PageSelection } from '../message/common';
 import type { ChatTopic } from '../topic';
 
 export type AgentSignalOperationKind =
@@ -222,6 +223,8 @@ export interface ExecAgentParams {
    * input — derived from the request context.
    */
   clientIp?: string;
+  /** Generic context selections attached to the new user message. */
+  contextSelections?: ContextSelection[];
   /** Explicit device ID to bind to the topic and activate for this run */
   deviceId?: string;
   /** Optional existing message IDs to include in context */
@@ -240,6 +243,8 @@ export interface ExecAgentParams {
   localDeviceId?: string;
   /** Override the agent's default model */
   model?: string;
+  /** Legacy page selections mirrored onto the new user message. */
+  pageSelections?: PageSelection[];
   /**
    * Parent operation ID when this run is a sub-agent invocation. Forwarded
    * to `agent_operations.parent_operation_id` so analytics can join the

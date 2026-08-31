@@ -166,6 +166,25 @@ describe('AI Agent Router Integration Tests', () => {
       expect(createdTopics[0].title).toBe('Hello, how are you?');
     });
 
+    it('should persist context selections on the created user message', async () => {
+      const caller = aiAgentRouter.createCaller(createTestContext());
+      const contextSelections = [
+        { content: 'Selected text', id: 'selection-1', source: 'text' as const },
+      ];
+
+      const result = await caller.execAgent({
+        agentId: testAgentId,
+        contextSelections,
+        prompt: '',
+      });
+
+      const userMessage = (
+        await serverDB.select().from(messages).where(eq(messages.topicId, result.topicId))
+      ).find((message) => message.role === 'user');
+
+      expect(userMessage?.metadata).toMatchObject({ contextSelections });
+    });
+
     it('should truncate long prompt for topic title', async () => {
       const caller = aiAgentRouter.createCaller(createTestContext());
       const longPrompt =

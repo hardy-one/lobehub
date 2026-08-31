@@ -154,6 +154,57 @@ describe('ConversationLifecycle actions', () => {
 
         expect(result.current.executeClientAgent).not.toHaveBeenCalled();
       });
+
+      it('should send when message is empty but context selections are provided', async () => {
+        const { result } = renderHook(() => useChatStore());
+        const context = { ...createTestContext(), topicId: TEST_IDS.TOPIC_ID };
+        const contextSelection = {
+          content: 'Selected text',
+          id: 'selection-1',
+          source: 'text' as const,
+          title: 'Message selection',
+        };
+        const sendMessageInServerSpy = vi
+          .spyOn(aiChatService, 'sendMessageInServer')
+          .mockResolvedValue({
+            assistantMessageId: TEST_IDS.ASSISTANT_MESSAGE_ID,
+            messages: [
+              createMockMessage({
+                content: '',
+                id: TEST_IDS.USER_MESSAGE_ID,
+                metadata: { contextSelections: [contextSelection] },
+                role: 'user',
+                topicId: TEST_IDS.TOPIC_ID,
+              }),
+              createMockMessage({
+                id: TEST_IDS.ASSISTANT_MESSAGE_ID,
+                role: 'assistant',
+                topicId: TEST_IDS.TOPIC_ID,
+              }),
+            ],
+            topicId: TEST_IDS.TOPIC_ID,
+            userMessageId: TEST_IDS.USER_MESSAGE_ID,
+          } as any);
+        useChatStore.setState({ executeClientAgent: vi.fn().mockResolvedValue(undefined) });
+
+        await act(async () => {
+          await result.current.sendMessage({
+            context,
+            contextSelections: [contextSelection],
+            message: TEST_CONTENT.EMPTY,
+          });
+        });
+
+        expect(sendMessageInServerSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            newUserMessage: expect.objectContaining({
+              content: '',
+              contextSelections: [contextSelection],
+            }),
+          }),
+          expect.any(AbortController),
+        );
+      });
     });
 
     describe('message creation', () => {
@@ -1588,6 +1639,9 @@ describe('ConversationLifecycle actions', () => {
         const agentId = TEST_IDS.SESSION_ID;
         const topicKey = topicMapKey({ agentId });
         const newTopicId = TEST_IDS.NEW_TOPIC_ID;
+        const contextSelections = [
+          { content: 'Selected text', id: 'selection-1', source: 'text' as const },
+        ];
         let resolveGateway!: () => void;
         const executeGatewayAgentSpy = vi.fn().mockImplementation(
           (params: any) =>
@@ -1638,11 +1692,15 @@ describe('ConversationLifecycle actions', () => {
         act(() => {
           sendPromise = result.current.sendMessage({
             context: { agentId, threadId: null, topicId: null },
+            contextSelections,
             message: 'hello',
           });
         });
 
         await waitFor(() => expect(executeGatewayAgentSpy).toHaveBeenCalled());
+        expect(executeGatewayAgentSpy).toHaveBeenCalledWith(
+          expect.objectContaining({ metadata: expect.objectContaining({ contextSelections }) }),
+        );
 
         const optimisticTopicId = useChatStore.getState().topicDataMap[topicKey]?.items[0]?.id;
         expect(optimisticTopicId).toMatch(/^tpc_/);

@@ -906,15 +906,19 @@ describe('GatewayActionImpl', () => {
         userMessageId: 'usr-1',
       });
 
+      const contextSelections = [
+        { content: 'Selected text', id: 'selection-1', source: 'text' as const },
+      ];
       await action.executeGatewayAgent({
         context: { agentId: 'agent-1', topicId: 'topic-1', threadId: null, scope: 'main' },
         message: 'Hello',
-        metadata: { trigger: RequestTrigger.Onboarding },
+        metadata: { contextSelections, trigger: RequestTrigger.Onboarding },
       });
 
       expect(aiAgentService.execAgentTask).toHaveBeenCalledWith(
         expect.objectContaining({
           prompt: 'Hello',
+          contextSelections,
           trigger: 'onboarding',
         }),
         expect.anything(),

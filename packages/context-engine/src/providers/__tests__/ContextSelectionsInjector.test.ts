@@ -1,3 +1,4 @@
+import { createContextReferenceMarker } from '@lobechat/types';
 import { describe, expect, it } from 'vitest';
 
 import type { PipelineContext } from '../../types';
@@ -82,6 +83,43 @@ describe('ContextSelectionsInjector', () => {
       expect(result.messages[0].content).not.toContain('Legacy page selection');
       expect(result.metadata.ContextSelectionsInjectorInjectedCount).toBe(1);
     });
+  });
+
+  it('should expand inline references in their original message order without duplicating them', async () => {
+    const injector = new ContextSelectionsInjector({ enabled: true });
+    const firstMarker = createContextReferenceMarker('text-1');
+    const secondMarker = createContextReferenceMarker('text-2');
+    const context = createContext([
+      {
+        content: `before ${firstMarker} between ${secondMarker} after`,
+        metadata: {
+          contextSelections: [
+            {
+              content: 'Selected A',
+              id: 'text-1',
+              source: 'text',
+            },
+            {
+              content: 'Selected B',
+              id: 'text-2',
+              source: 'text',
+            },
+          ],
+        },
+        role: 'user',
+      },
+    ]);
+
+    const result = await injector.process(context);
+    const content = result.messages[0].content as string;
+
+    expect(content.indexOf('before')).toBeLessThan(content.indexOf('Selected A'));
+    expect(content.indexOf('Selected A')).toBeLessThan(content.indexOf('between'));
+    expect(content.indexOf('between')).toBeLessThan(content.indexOf('Selected B'));
+    expect(content.indexOf('Selected B')).toBeLessThan(content.indexOf('after'));
+    expect(content).toContain('<context_selection source="text">');
+    expect(content).not.toContain('<user_context_selections>');
+    expect(result.metadata.ContextSelectionsInjectorInjectedCount).toBeUndefined();
   });
 
   describe('context sources', () => {

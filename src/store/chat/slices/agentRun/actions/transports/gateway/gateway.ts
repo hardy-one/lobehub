@@ -1106,6 +1106,8 @@ export class GatewayActionImpl {
               replacesOperationId,
               mentionedAgents,
               parentMessageId,
+              contextSelections: metadata?.contextSelections,
+              pageSelections: metadata?.pageSelections,
               prompt: message,
               resumeApproval,
               resumeApprovals,

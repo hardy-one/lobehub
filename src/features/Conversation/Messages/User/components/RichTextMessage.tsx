@@ -5,6 +5,7 @@ import type { CSSProperties } from 'react';
 import { memo, useMemo } from 'react';
 
 import { ActionTagNode } from '@/features/ChatInput/InputEditor/ActionTag/ActionTagNode';
+import { ContextReferenceNode } from '@/features/ChatInput/InputEditor/ContextReference';
 import { LocalFileTagNode } from '@/features/ChatInput/InputEditor/LocalFileTag';
 import { mentionPlainClassName } from '@/features/ChatInput/InputEditor/mentionStyle';
 import { ReferTopicNode } from '@/features/ChatInput/InputEditor/ReferTopic/ReferTopicNode';
@@ -19,7 +20,7 @@ interface RichTextMessageProps {
 
 const LINE_HEIGHT = 1.6;
 const style: CSSProperties = { '--common-line-height': LINE_HEIGHT } as CSSProperties;
-const EXTRA_NODES = [ActionTagNode, ReferTopicNode, LocalFileTagNode];
+const EXTRA_NODES = [ActionTagNode, ContextReferenceNode, ReferTopicNode, LocalFileTagNode];
 const PREVIEW_OPTIONS = { onDownload: downloadPreviewImage };
 
 const RichTextMessage = memo<RichTextMessageProps>(({ editorState, variant = 'chat' }) => {

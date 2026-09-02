@@ -1,4 +1,4 @@
-import type { ModelProviderKey } from 'model-bank';
+import type { ModelProviderKey, ModelSdkType } from 'model-bank';
 
 import { processMultiProviderModelList } from '../../utils/modelParse';
 
@@ -323,6 +323,24 @@ export type BankModelLike = {
   [key: string]: any;
 };
 
+const getModelSdkType = (npm?: string): ModelSdkType | undefined => {
+  switch (npm) {
+    case '@ai-sdk/anthropic': {
+      return 'anthropic';
+    }
+    case '@ai-sdk/google': {
+      return 'google';
+    }
+    case '@ai-sdk/openai':
+    case '@ai-sdk/openai-compatible': {
+      return 'openai';
+    }
+    default: {
+      return undefined;
+    }
+  }
+};
+
 /**
  * Enrich a model id with models.dev fields + bank settings / extendParams.
  */
@@ -341,11 +359,13 @@ export const enrichWithModelsDev = (
   const extendParams =
     mapReasoningOptionsToExtendParams(id, dev.reasoning_options) ?? bankSettings?.extendParams;
 
+  const sdkType = getModelSdkType(dev.provider?.npm);
   return {
     id,
     displayName: dev.name,
     contextWindowTokens: limit?.context,
     maxOutput: limit?.output,
+    ...(sdkType ? { sdkType } : {}),
     releasedAt: dev.release_date,
     functionCall: dev.tool_call || undefined,
     reasoning: dev.reasoning || undefined,

@@ -605,6 +605,7 @@ export default {
   'taskTemplate.section.title': 'Try these scheduled tasks',
   'tab.image': 'Image',
   'tab.audio': 'Audio',
+  'tab.agents': 'Agents',
   'tab.chat': 'Chat',
   'recents': 'Recents',
   'tab.community': 'Community',

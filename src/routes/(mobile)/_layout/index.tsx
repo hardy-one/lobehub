@@ -6,6 +6,7 @@ import { Outlet, useLocation } from 'react-router';
 
 import WorkspaceContextSlot from '@/business/client/WorkspaceContextSlot';
 import Loading from '@/components/Loading/BrandTextLoading';
+import PWAInstall from '@/features/PWAInstall';
 import { RouteMetaBridge } from '@/features/RouteMeta';
 import dynamic from '@/libs/next/dynamic';
 import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
@@ -32,6 +33,7 @@ const MobileMainLayout: FC = () => {
   return (
     <WorkspaceContextSlot>
       <RouteMetaBridge />
+      <PWAInstall />
       <Suspense fallback={null}>{showCloudPromotion && <CloudBanner mobile />}</Suspense>
       <Suspense fallback={<Loading debugId="MobileMainLayout > Outlet" />}>
         <Outlet />

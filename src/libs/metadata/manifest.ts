@@ -4,7 +4,7 @@ import qs from 'query-string';
 import { getCanonicalUrl } from '@/server/utils/url';
 
 const MAX_AGE = 31_536_000;
-const COLOR = '#000000';
+const COLOR = '#f8f8f8';
 
 interface IconItem {
   purpose: 'any' | 'maskable';

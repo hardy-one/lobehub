@@ -515,6 +515,35 @@ export class ServerCallLlmAttempt {
   }
 
   private logResult() {
+    const completedAt = Date.now();
+    const elapsedMs = this.llmStartedAt > 0 ? completedAt - this.llmStartedAt : undefined;
+    const firstTextMs = this.firstTokenAt ? this.firstTokenAt - this.llmStartedAt : undefined;
+    const firstReasoningMs = this.firstReasoningAt
+      ? this.firstReasoningAt - this.llmStartedAt
+      : undefined;
+    const usage = this.usage;
+
+    // Keep this summary free of prompt/output content so it is safe to enable when diagnosing
+    // provider completion behaviour. The detailed content logs below remain debug-only.
+    log('[%s] completion diagnostics | %O', this.operationLogId, {
+      attempt: this.attempt,
+      contentChars: this.streamSink.content.length,
+      elapsedMs,
+      finishReason: this.finishReason ?? 'unknown',
+      firstReasoningMs,
+      firstTextMs,
+      model: this.model,
+      provider: this.provider,
+      reasoningChars: this.streamSink.thinkingContent.length,
+      textTokens: usage?.outputTextTokens,
+      reasoningTokens: usage?.outputReasoningTokens,
+      totalOutputTokens: usage?.totalOutputTokens,
+      totalTokens: usage?.totalTokens,
+      toolCallCount: this.toolCalls.length + this.toolsCalling.length,
+      usagePresent: Boolean(usage),
+      usageMissingDiagnostics: this.completion?.usageMissingDiagnostics,
+    });
+
     log(
       '[%s] finish model-runtime calling | content: %d chars | reasoning: %d chars | tools: %d | usage: %s',
       this.operationLogId,

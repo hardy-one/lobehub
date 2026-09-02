@@ -31,6 +31,22 @@ describe('copySpaBuild', () => {
     }
   });
 
+  it('publishes the service worker and its precache assets beside the SPA', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'copy-spa-build-pwa-'));
+    testRoots.push(root);
+
+    const sourceDir = path.join(root, 'dist/desktop');
+    mkdirSync(sourceDir, { recursive: true });
+    writeFileSync(path.join(sourceDir, 'index.html'), '<!doctype html>');
+    writeFileSync(path.join(sourceDir, 'sw.js'), "self.addEventListener('fetch', () => {});");
+    writeFileSync(path.join(sourceDir, 'workbox-abc.js'), 'export default true;');
+
+    copySpaBuild(root);
+
+    expect(existsSync(path.join(root, 'public/_spa/index.html'))).toBe(true);
+    expect(existsSync(path.join(root, 'public/_spa/sw.js'))).toBe(true);
+    expect(existsSync(path.join(root, 'public/_spa/workbox-abc.js'))).toBe(true);
+  });
   // `new Worker` only accepts a same-origin script, so these are requested from the
   // page's own origin rather than the asset host — which means they have to reach
   // `public/`, and at its root, because that is the path the build emits.

@@ -42,11 +42,8 @@ const Token = memo(() => {
       <TokenTag
         maxValue={maxTokens}
         mode={'used'}
+        size={isMobile ? { blockSize: 24, size: 16 } : { blockSize: 28, size: 18 }}
         value={totalToken}
-        size={{
-          blockSize: 28,
-          size: 18,
-        }}
         text={{
           overload: t('tokenTag.overload'),
           remained: t('tokenTag.remained'),

@@ -74,9 +74,8 @@ GuardBanner.displayName = 'GuardBanner';
  * HeterogeneousChatInput
  *
  * Simplified ChatInput for heterogeneous agents (Claude Code, etc.).
- * Keeps only: text input, typo toggle, send button, and a working-directory
- * picker — no model/tools/memory/KB/MCP/runtime-mode/upload.
- *
+ * Keeps only: text input, attachments, typo toggle, send button, and a working-directory
+ * picker — no model/tools/memory/KB/MCP/runtime-mode controls.
  * In cloud (web) mode, shows a configuration prompt and disables the input
  * until the user sets up their cloud credentials in agent profile.
  */

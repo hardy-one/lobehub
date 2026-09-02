@@ -62,3 +62,12 @@ export const parseClientMetadata = (headers: Headers): ClientMetadata => {
 
   return { type: 'unknown' };
 };
+
+/**
+ * Whether a user-agent belongs to a native LobeHub mobile client.
+ *
+ * Keep this predicate aligned with parseClientMetadata so server-side feature
+ * flags can make the same mobile/web decision without depending on Next headers().
+ */
+export const isMobileClient = (userAgent: string | undefined): boolean =>
+  parseClientMetadata(new Headers({ 'user-agent': userAgent ?? '' })).type === 'mobile';

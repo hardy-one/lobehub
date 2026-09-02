@@ -484,6 +484,7 @@
   "sync.status.unconnected": "连接失败",
   "sync.title": "同步状态",
   "sync.unconnected.tip": "信令服务器连接失败，将无法建立点对点通信。请检查网络后重试",
+  "tab.agents": "助理",
   "tab.audio": "音频",
   "tab.chat": "会话",
   "tab.community": "社区",

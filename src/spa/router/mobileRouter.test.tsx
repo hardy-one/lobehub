@@ -42,6 +42,18 @@ describe('mobileRouter task routes', () => {
   });
 });
 
+describe('mobileRouter agent profile route', () => {
+  it('registers a real profile route instead of treating profile as a topic id', async () => {
+    const source = await readFile(
+      path.join(process.cwd(), 'src/spa/router/mobileRouter.config.tsx'),
+      'utf8',
+    );
+
+    expect(source).toContain("import('@/routes/(mobile)/chat/profile')");
+    expect(source).toContain("path: ':aid/profile'");
+  });
+});
+
 describe('mobileRouter workspace provider routes', () => {
   it('registers workspace provider list and path-shaped deep-link redirect', async () => {
     const source = await readFile(

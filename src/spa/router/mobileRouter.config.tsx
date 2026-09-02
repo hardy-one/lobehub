@@ -32,6 +32,15 @@ const mobileChatElement = dynamicElement(
 export const sharedMainAreaChildren: RouteObject[] = [
   // Chat routes
   {
+    element: dynamicElement(
+      () => import('@/routes/(mobile)/chat/profile'),
+      'Mobile > Agent > Profile',
+      { preloadId: 'mobile-agent' },
+    ),
+    handle: { meta: agentRouteMeta },
+    path: ':aid/profile',
+  },
+  {
     children: [
       {
         element: redirectElement('..'),

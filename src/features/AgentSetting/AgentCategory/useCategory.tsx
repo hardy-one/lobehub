@@ -1,6 +1,6 @@
 import { Icon } from '@lobehub/ui';
 import { type MenuItemType } from 'antd/es/menu/interface';
-import { Activity, Bot, Handshake, LinkIcon } from 'lucide-react';
+import { Activity, Handshake, LinkIcon } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -23,11 +23,8 @@ export const useCategory = ({ mobile }: UseCategoryOptions = {}) => {
   const cateItems: MenuProps['items'] = useMemo(
     () =>
       [
-        {
-          icon: <Icon icon={Bot} size={iconSize} />,
-          key: ChatSettingsTabs.Prompt,
-          label: t('agentTab.prompt'),
-        },
+        // Agent profile editing lives on /agent/:aid/profile. The legacy Prompt
+        // tab had no renderer in AgentSettingsContent and showed a blank panel.
         (!isInbox && {
           icon: <Icon icon={Handshake} size={iconSize} />,
           key: ChatSettingsTabs.Opening,

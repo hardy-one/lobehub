@@ -4061,7 +4061,7 @@ describe('LobeOpenAICompatibleFactory', () => {
             ],
           },
           providerId: 'azure',
-          releasedAt: '2024-05-13',
+          releasedAt: '2023-10-25',
           source: 'builtin',
           type: 'chat',
         },
@@ -4157,6 +4157,33 @@ describe('LobeOpenAICompatibleFactory', () => {
           type: 'chat',
         },
       ]);
+    });
+
+    it('should map provider model metadata fields from OpenAI-compatible model lists', async () => {
+      vi.spyOn(instance['client'].models, 'list').mockResolvedValue({
+        data: [
+          {
+            context_length: 1_000_000,
+            created: 1_788_364_711,
+            id: 'Qwen/Qwen3.8-Flash',
+            name: 'Qwen 3.8 Flash',
+            object: 'model',
+            owned_by: 'command-code',
+          },
+        ],
+      } as any);
+
+      const list = await instance.models();
+
+      expect(list).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            contextWindowTokens: 1_000_000,
+            displayName: 'Qwen 3.8 Flash',
+            id: 'Qwen/Qwen3.8-Flash',
+          }),
+        ]),
+      );
     });
   });
 

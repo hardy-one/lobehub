@@ -1,6 +1,10 @@
 import { LOBE_DEFAULT_MODEL_LIST, ModelProvider, opencodecodingplan } from 'model-bank';
 import type OpenAI from 'openai';
 
+import {
+  buildDefaultAnthropicPayload,
+  createAnthropicCompatibleRuntime,
+} from '../../core/anthropicCompatibleFactory';
 import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
 import { createRouterRuntime } from '../../core/RouterRuntime';
 import type { CreateRouterRuntimeOptions } from '../../core/RouterRuntime/createRuntime';
@@ -11,8 +15,8 @@ import {
   isKimiReasoningModel,
 } from '../moonshot/modelId';
 import {
+  getCachedModelsDevProvider,
   getCachedModelsDevRoutingMetadata,
-  refreshModelsDevApi,
   resolveModelsDevModelList,
 } from '../utils/modelsDev';
 import { resolveProviderRouteModels } from '../utils/resolveProviderRouteModels';
@@ -64,28 +68,64 @@ const getInterleavedModelIds = (): ReadonlySet<string> => {
  * to call from `routers` (which receives `ClientOptions` only and has no
  * `client` property during normal chat routing).
  */
-const getRoutingMetadata = () => {
+const getRoutingMetadata = (model?: string) => {
+  // models.dev is populated by the model-fetch path. Never refresh or await it
+  // while sending a chat request; use the cached mapping plus model-bank metadata.
   const metadata = getCachedModelsDevRoutingMetadata('opencode-go');
-  refreshModelsDevApi();
 
   if (metadata.interleavedModelIds.size > 0) {
     cachedInterleavedIds = metadata.interleavedModelIds;
   }
 
-  if (metadata.available) return metadata;
+  const anthropicModels = new Set(metadata.modelIdsBySdk['@ai-sdk/anthropic'] ?? []);
+  const modelCard = opencodecodingplan.find((item) => item.id === model);
 
-  // Fallback: prefix-match the static model-bank list. Equivalent to the
-  // pre-refactor hard-coded behavior when models.dev is unreachable.
+  // Static model-bank metadata is available synchronously and is the fallback
+  // for a cold models.dev cache. A fetched models.dev mapping remains additive
+  // and authoritative for dynamically discovered model ids.
+  for (const item of opencodecodingplan) {
+    if (item.sdkType === 'anthropic') anthropicModels.add(item.id);
+  }
+  if (modelCard?.sdkType === 'anthropic') anthropicModels.add(model);
+
+  // Preserve the historical family fallback for dynamic ids not yet present in
+  // model-bank, such as a newly released qwen model.
+  if (
+    !metadata.available &&
+    model &&
+    ANTHROPIC_MODEL_PREFIXES.some((prefix) => model.startsWith(prefix))
+  ) {
+    anthropicModels.add(model);
+  }
+
   return {
     ...metadata,
     modelIdsBySdk: {
-      '@ai-sdk/anthropic': opencodecodingplan
-        .map((model) => model.id)
-        .filter((id) => ANTHROPIC_MODEL_PREFIXES.some((prefix) => id.startsWith(prefix))),
+      ...metadata.modelIdsBySdk,
+      '@ai-sdk/anthropic': [...anthropicModels],
     },
   };
 };
 
+const getModelsDevProviderModels = () => {
+  const modelsById = new Map(
+    opencodecodingplan.map((model) => [model.id, { id: model.id, maxOutput: model.maxOutput }]),
+  );
+
+  // models.dev enrichment is populated by the model-fetch path. Prefer its
+  // current value when available, while keeping model-bank metadata usable on
+  // a cold cache.
+  for (const model of Object.values(getCachedModelsDevProvider('opencode-go'))) {
+    if (model.limit?.output === undefined) continue;
+    modelsById.set(model.id, { id: model.id, maxOutput: model.limit.output });
+  }
+
+  return [...modelsById.values()];
+};
+
+const getModelMaxOutput = (model: string) =>
+  getCachedModelsDevProvider('opencode-go')[model]?.limit?.output ??
+  opencodecodingplan.find((item) => item.id === model)?.maxOutput;
 // ============================================================================
 // Reasoning Content Helpers
 // ============================================================================
@@ -179,14 +219,21 @@ export const sanitizeJsonSchema = (schema: any): any => {
  * Build OpenAI-compatible payload with reasoning_content handling.
  * Applies to models with interleaved reasoning_content and Kimi K2.x models.
  */
-const buildOpenAIPayload = (
+export const buildOpenAIPayload = (
   payload: ChatStreamPayload,
 ): OpenAI.ChatCompletionCreateParamsStreaming => {
   const model = payload.model;
   const isKimi = isKimiThinkingToggleModel(model);
   const interleaved = isInterleavedModel(model);
+  const maxOutput = getModelMaxOutput(model);
+  const max_tokens = payload.max_tokens ?? maxOutput;
 
-  if (!isKimi && !interleaved) return payload as any;
+  if (!isKimi && !interleaved) {
+    return {
+      ...payload,
+      ...(max_tokens === undefined ? {} : { max_tokens }),
+    } as any;
+  }
 
   // Native-thinking Kimi models (k2.7-code, k3+) cannot turn reasoning off, so a
   // saved disabled-thinking setting must be ignored: they still require
@@ -251,6 +298,7 @@ const buildOpenAIPayload = (
 
   return {
     ...restPayload,
+    ...(max_tokens === undefined ? {} : { max_tokens }),
     messages,
     response_format,
     tools,
@@ -289,6 +337,20 @@ const LobeOpenCodeCodingPlanOpenAI = createOpenAICompatibleRuntime({
 // Anthropic SDK auto-appends /v1/messages to baseURL, so strip trailing /v1
 const stripV1 = (url?: string) => url?.replace(/\/v1$/, '');
 
+export const buildOpenCodeAnthropicPayload = (payload: ChatStreamPayload) =>
+  buildDefaultAnthropicPayload(payload, {
+    providerModels: getModelsDevProviderModels(),
+  });
+
+const LobeOpenCodeCodingPlanAnthropic = createAnthropicCompatibleRuntime({
+  provider: ModelProvider.OpenCodeCodingPlan,
+  baseURL: stripV1(GO_BASE_URL),
+  chatCompletion: { handlePayload: buildOpenCodeAnthropicPayload },
+  debug: {
+    chatCompletion: () => process.env.DEBUG_OPENCODE_GO_CHAT_COMPLETION === '1',
+  },
+});
+
 // ============================================================================
 // Provider Export
 // ============================================================================
@@ -310,7 +372,7 @@ export const params = {
   routers: (options, runtimeContext?: { model?: string }) => {
     const baseURL = options.baseURL || GO_BASE_URL;
 
-    const { modelIdsBySdk } = getRoutingMetadata();
+    const { modelIdsBySdk } = getRoutingMetadata(runtimeContext?.model);
     const anthropicModels = modelIdsBySdk['@ai-sdk/anthropic'] ?? [];
     const googleModels = modelIdsBySdk['@ai-sdk/google'] ?? [];
     const responseModels = modelIdsBySdk['@ai-sdk/openai'] ?? [];
@@ -320,6 +382,7 @@ export const params = {
       {
         apiType: 'anthropic',
         models: anthropicModels,
+        runtime: LobeOpenCodeCodingPlanAnthropic as any,
         options: { ...options, baseURL: stripV1(baseURL) },
       },
       {

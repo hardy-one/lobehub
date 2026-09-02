@@ -1,12 +1,16 @@
 'use client';
 
+import { validateVideoFileSize } from '@lobechat/utils/client';
 import { Icon } from '@lobehub/ui';
+import { toast } from '@lobehub/ui/base-ui';
+import { Upload } from 'antd';
 import { cssVar } from 'antd-style';
 import dayjs from 'dayjs';
 import {
   CalendarClockIcon,
   CheckIcon,
   ChevronRight,
+  FileUp,
   PlusIcon,
   TargetIcon,
   TypeIcon,
@@ -16,10 +20,12 @@ import { useTranslation } from 'react-i18next';
 
 import { type ActionDropdownMenuItems } from '@/features/ChatInput/ActionBar/components/ActionDropdown';
 import { ChatInputAction } from '@/features/ChatInput/ActionBar/components/ChatInputAction';
+import { useAgentId } from '@/features/ChatInput/hooks/useAgentId';
 import { insertGoalTag } from '@/features/ChatInput/InputEditor/ActionTag/goalTag';
 import { useChatInputStore } from '@/features/ChatInput/store';
 import { useConversationStore } from '@/features/Conversation';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { useFileStore } from '@/store/file';
 import { useUserStore } from '@/store/user';
 import { labPreferSelectors } from '@/store/user/selectors';
 
@@ -28,11 +34,9 @@ import { OFFSETS_IN_HOURS, resolveScheduleTime } from './scheduleTime';
 /**
  * The hetero action bar's `+` menu.
  *
- * Mirrors the agent composer's Plus, but carries only what a heterogeneous run
- * actually has: the formatting-toolbar toggle and "Send later". The agent Plus
- * is not reused — most of it (attachments, web search, skills, gateway mode) has
- * no meaning for a CLI agent, and a menu of mostly-inapplicable rows is worse
- * than a small one.
+ * Includes file attachments, formatting toolbar, and "Send later". The agent Plus
+ * is not reused — most of it (web search, skills, gateway mode) has no meaning
+ * for a CLI agent, and a menu of mostly-inapplicable rows is worse than a small one.
  *
  * Picking a time here only *arms* the send (`scheduledSendAt`); it creates
  * nothing. The send button remains the single commit action, and the armed state
@@ -44,11 +48,47 @@ const HeteroPlus = memo(() => {
   const [open, setOpen] = useState(false);
 
   const isMobile = useIsMobile();
+  const agentId = useAgentId();
+  const upload = useFileStore((s) => s.uploadChatFiles);
   const [editor, showTypoBar, setShowTypoBar] = useChatInputStore((s) => [
     s.editor,
     s.showTypoBar,
     s.setShowTypoBar,
   ]);
+
+  const attachmentItem = useMemo(() => {
+    const handleUpload = async (file: File) => {
+      const validation = validateVideoFileSize(file);
+      if (!validation.isValid) {
+        toast.error(
+          t('upload.validation.videoSizeExceeded', {
+            actualSize: validation.actualSize,
+            maxSize: validation.maxSize,
+          }),
+        );
+        return false;
+      }
+
+      setOpen(false);
+      editor?.focus();
+      await upload([file], agentId);
+
+      return false;
+    };
+
+    return {
+      closeOnClick: false,
+      icon: FileUp,
+      key: 'upload-attachment',
+      label: (
+        <Upload multiple beforeUpload={handleUpload} showUploadList={false}>
+          <span style={{ display: 'block', width: '100%' }}>
+            {t('upload.action.fileOrImageUpload')}
+          </span>
+        </Upload>
+      ),
+    } as ActionDropdownMenuItems[number];
+  }, [agentId, editor, t, upload]);
 
   const scheduledSendAt = useConversationStore((s) => s.scheduledSendAt);
   const setScheduledSendAt = useConversationStore((s) => s.setScheduledSendAt);
@@ -72,6 +112,8 @@ const HeteroPlus = memo(() => {
       : undefined;
 
     return [
+      attachmentItem,
+      { type: 'divider' },
       {
         children: OFFSETS_IN_HOURS.map((hours) => ({
           extra:
@@ -121,6 +163,7 @@ const HeteroPlus = memo(() => {
         : []),
     ];
   }, [
+    attachmentItem,
     t,
     tEditor,
     showTypoBar,
@@ -136,8 +179,7 @@ const HeteroPlus = memo(() => {
       icon={PlusIcon}
       open={open}
       size={{ blockSize: 32, borderRadius: 16, size: 18 }}
-      // Not the agent Plus's tooltip — it promises files / skills / context, none
-      // of which this menu has.
+      // The menu includes attachments, formatting, and scheduling actions.
       title={t('input.heteroPlus.tooltip')}
       tooltipProps={{ placement: 'top' }}
       dropdown={{

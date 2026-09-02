@@ -129,7 +129,10 @@ export const CHAT_MODELS_BLOCK_LIST = [
 
 // OpenAI SDK v6 widened `apiKey` to `string | ApiKeySetter`; lobehub only ever
 // passes a plain string, so narrow it back to keep `.trim()` / string assignments valid.
-type LobeClientOptions = Omit<ClientOptions, 'apiKey'> & { apiKey?: string };
+type LobeClientOptions = Omit<ClientOptions, 'apiKey'> & {
+  apiKey?: string;
+  modelSdkType?: 'openai' | 'openai-responses';
+};
 type ConstructorOptions<T extends Record<string, any> = any> = LobeClientOptions &
   ModelIdMappingOptions &
   T;
@@ -513,6 +516,11 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
       } = params;
 
       const log = debug(`${this.logPrefix}:shouldUseResponsesAPI`);
+
+      // Provider-scoped protocol metadata is stronger than global model-name heuristics.
+      if (this._options.modelSdkType) {
+        return this._options.modelSdkType === 'openai-responses';
+      }
 
       // Priority 0: Check built-in Responses API model rules FIRST (highest priority)
       // These models MUST use Responses API regardless of user settings.

@@ -157,6 +157,7 @@ export interface AnthropicCompatibleParamsInput<T extends Record<string, any> = 
  */
 export const buildDefaultAnthropicPayload = async (
   payload: ChatStreamPayload,
+  options?: { providerModels?: { id: string; maxOutput?: number }[] },
 ): Promise<Anthropic.MessageCreateParams> => {
   const {
     messages,
@@ -176,7 +177,7 @@ export const buildDefaultAnthropicPayload = async (
   const resolvedMaxTokens = await resolveMaxTokens({
     max_tokens,
     model,
-    providerModels: anthropicModels,
+    providerModels: options?.providerModels ?? anthropicModels,
     thinking,
   });
 

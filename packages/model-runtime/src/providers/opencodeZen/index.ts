@@ -1,14 +1,12 @@
-import { LOBE_DEFAULT_MODEL_LIST, ModelProvider } from 'model-bank';
+import { LOBE_DEFAULT_MODEL_LIST, ModelProvider, opencodezen } from 'model-bank';
 
+import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
 import { createRouterRuntime } from '../../core/RouterRuntime';
 import type { CreateRouterRuntimeOptions } from '../../core/RouterRuntime/createRuntime';
 import { detectModelProvider } from '../../utils/modelParse';
+import { resolveModelSdkType } from '../../utils/modelSdkRouting';
 import { responsesAPIModels } from '../openai/modelId';
-import {
-  getCachedModelsDevRoutingMetadata,
-  refreshModelsDevApi,
-  resolveModelsDevModelList,
-} from '../utils/modelsDev';
+import { getCachedModelsDevRoutingMetadata, resolveModelsDevModelList } from '../utils/modelsDev';
 import { resolveProviderRouteModels } from '../utils/resolveProviderRouteModels';
 
 // ============================================================================
@@ -16,22 +14,35 @@ import { resolveProviderRouteModels } from '../utils/resolveProviderRouteModels'
 // ============================================================================
 
 const ZEN_BASE_URL = 'https://opencode.ai/zen/v1';
+const ZenOpenAI = createOpenAICompatibleRuntime({
+  provider: ModelProvider.OpenCodeZen,
+  baseURL: ZEN_BASE_URL,
+});
 
 // Anthropic SDK auto-appends /v1/messages to baseURL, so strip trailing /v1
 const stripV1 = (url?: string) => url?.replace(/\/v1$/, '');
 
-// Route families are derived from model IDs so routing stays aligned with the shared runtime.
-const fallbackAnthropicModels = LOBE_DEFAULT_MODEL_LIST.map((model) => model.id).filter(
-  (id) => detectModelProvider(id) === 'anthropic',
-);
-
-const fallbackGoogleModels = LOBE_DEFAULT_MODEL_LIST.map((model) => model.id).filter(
-  (id) => detectModelProvider(id) === 'google',
-);
-
-const fallbackResponseModels = LOBE_DEFAULT_MODEL_LIST.map((model) => model.id).filter(
-  (id) => detectModelProvider(id) === 'openai',
-);
+// Legacy provider-local fallback; precise protocol metadata always wins.
+const fallbackAnthropicModels = opencodezen
+  .filter(
+    (model) =>
+      model.sdkType === 'anthropic' ||
+      (!model.sdkType && detectModelProvider(model.id) === 'anthropic'),
+  )
+  .map((model) => model.id);
+const fallbackGoogleModels = opencodezen
+  .filter(
+    (model) =>
+      model.sdkType === 'google' || (!model.sdkType && detectModelProvider(model.id) === 'google'),
+  )
+  .map((model) => model.id);
+const fallbackResponseModels = opencodezen
+  .filter(
+    (model) =>
+      model.sdkType === 'openai-responses' ||
+      (!model.sdkType && detectModelProvider(model.id) === 'openai'),
+  )
+  .map((model) => model.id);
 
 // ============================================================================
 // Provider Export
@@ -54,14 +65,39 @@ export const params = {
   routers: (options, runtimeContext?: { model?: string }) => {
     const baseURL = options.baseURL || ZEN_BASE_URL;
     const { available, modelIdsBySdk } = getCachedModelsDevRoutingMetadata('opencode');
-    refreshModelsDevApi();
-    const anthropicModels = available
-      ? (modelIdsBySdk['@ai-sdk/anthropic'] ?? [])
-      : fallbackAnthropicModels;
-    const googleModels = available ? (modelIdsBySdk['@ai-sdk/google'] ?? []) : fallbackGoogleModels;
-    const responseModels = available
-      ? (modelIdsBySdk['@ai-sdk/openai'] ?? [])
-      : fallbackResponseModels;
+    const sdkType = resolveModelSdkType({
+      bankModels: opencodezen,
+      model: runtimeContext?.model,
+      modelsDevProvider: 'opencode',
+      options: {
+        modelSdkOverrides: options.modelSdkOverrides,
+        modelSdkTypes: options.modelSdkTypes,
+        providerSdkType: options.providerSdkType,
+      },
+    });
+    const forSdk = (sdk: typeof sdkType, cached: string[], fallback: string[]) => {
+      const defaults = available ? cached : fallback;
+      if (!runtimeContext?.model || !sdkType) return defaults;
+      return [
+        ...defaults.filter((id) => id !== runtimeContext.model),
+        ...(sdkType === sdk ? [runtimeContext.model] : []),
+      ];
+    };
+    const anthropicModels = forSdk(
+      'anthropic',
+      modelIdsBySdk['@ai-sdk/anthropic'] ?? [],
+      fallbackAnthropicModels,
+    );
+    const googleModels = forSdk(
+      'google',
+      modelIdsBySdk['@ai-sdk/google'] ?? [],
+      fallbackGoogleModels,
+    );
+    const responseModels = forSdk(
+      'openai-responses',
+      modelIdsBySdk['@ai-sdk/openai'] ?? [],
+      fallbackResponseModels,
+    );
 
     return [
       {
@@ -83,13 +119,17 @@ export const params = {
       {
         apiType: 'openai',
         models: responseModels,
+        runtime: ZenOpenAI as any,
         options: {
           ...options,
           baseURL,
+          modelSdkType: 'openai-responses',
           chatCompletion: {
-            useResponseModels: available
+            useResponseModels: sdkType
               ? responseModels
-              : [...Array.from(responsesAPIModels), /gpt-\d(?!\d)/, /^o\d/],
+              : available
+                ? responseModels
+                : [...Array.from(responsesAPIModels), /gpt-\d(?!\d)/, /^o\d/],
           },
         },
       },
@@ -109,9 +149,11 @@ export const params = {
       // OpenAI-compatible fallback for all other models.
       {
         apiType: 'openai',
+        runtime: ZenOpenAI as any,
         options: {
           ...options,
           baseURL,
+          modelSdkType: sdkType === 'openai' ? 'openai' : undefined,
         },
       },
     ];

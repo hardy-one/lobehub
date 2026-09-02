@@ -164,7 +164,12 @@ export class AiModelModel {
         desc(aiModels.updatedAt),
       );
 
-    return result as AiProviderModelListItem[];
+    return result.map((model) => ({
+      ...model,
+      sdkType:
+        (model.config as { sdkType?: AiProviderModelListItem['sdkType'] } | null)?.sdkType ??
+        (model.settings as { sdkType?: AiProviderModelListItem['sdkType'] } | null)?.sdkType,
+    })) as AiProviderModelListItem[];
   };
 
   getAllModels = async () => {
@@ -188,7 +193,12 @@ export class AiModelModel {
       .from(aiModels)
       .where(this.scopeWhere());
 
-    return data as EnabledAiModel[];
+    return data.map((model) => ({
+      ...model,
+      sdkType:
+        (model.config as { sdkType?: EnabledAiModel['sdkType'] } | null)?.sdkType ??
+        (model.settings as { sdkType?: EnabledAiModel['sdkType'] } | null)?.sdkType,
+    })) as EnabledAiModel[];
   };
 
   findById = async (id: string) => {
@@ -325,7 +335,8 @@ export class AiModelModel {
     // non-chat model (e.g. a speech-to-text card) into a `chat` row, which would leak it into
     // chat pickers. Only the inserted row takes the builtin type; an existing row keeps its own.
     const type =
-      value.type ?? (await this.#resolveDefaultModelTypes(value.providerId, [value.id])).get(value.id);
+      value.type ??
+      (await this.#resolveDefaultModelTypes(value.providerId, [value.id])).get(value.id);
     if (type) insertValues.type = normalizeAiModelType(type);
 
     const updateValues: Partial<typeof aiModels.$inferInsert> = {
@@ -432,7 +443,12 @@ export class AiModelModel {
       // Include other fields from model
       if (input.config !== undefined) record.config = input.config;
       if (input.enabled !== undefined) record.enabled = input.enabled;
-      if (input.settings !== undefined) record.settings = input.settings;
+      if (input.settings !== undefined || input.sdkType !== undefined) {
+        record.settings = {
+          ...input.settings,
+          ...(input.sdkType !== undefined ? { sdkType: input.sdkType } : {}),
+        };
+      }
       if (input.source !== undefined) record.source = input.source;
 
       // Include optional internal fields if present via wider caller payloads.
@@ -518,6 +534,8 @@ export class AiModelModel {
             WHEN (ai_models.source = 'remote' OR ai_models.source = 'custom' OR ai_models.source IS NULL)
               AND excluded.settings IS NOT NULL
             THEN excluded.settings || COALESCE(ai_models.settings, '{}'::jsonb)
+              || CASE WHEN excluded.settings ? 'sdkType'
+                THEN jsonb_build_object('sdkType', excluded.settings->'sdkType') ELSE '{}'::jsonb END
             ELSE ai_models.settings
           END`,
           source: sql`COALESCE(ai_models.source, excluded.source)`,

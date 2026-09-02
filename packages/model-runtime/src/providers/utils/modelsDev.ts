@@ -1,4 +1,4 @@
-import type { ModelProviderKey } from 'model-bank';
+import type { ModelProviderKey, ModelSdkType } from 'model-bank';
 
 import { processMultiProviderModelList } from '../../utils/modelParse';
 
@@ -323,6 +323,26 @@ export type BankModelLike = {
   [key: string]: any;
 };
 
+const getModelSdkType = (npm?: string): ModelSdkType | undefined => {
+  switch (npm) {
+    case '@ai-sdk/anthropic': {
+      return 'anthropic';
+    }
+    case '@ai-sdk/google': {
+      return 'google';
+    }
+    case '@ai-sdk/openai': {
+      return 'openai-responses';
+    }
+    case '@ai-sdk/openai-compatible': {
+      return 'openai';
+    }
+    default: {
+      return undefined;
+    }
+  }
+};
+
 /**
  * Enrich a model id with models.dev fields + bank settings / extendParams.
  */
@@ -330,6 +350,7 @@ export const enrichWithModelsDev = (
   id: string,
   dev?: ModelsDevModel,
   bankSettings?: BankModelLike['settings'],
+  providerNpm?: string,
 ): { id: string; [key: string]: any } => {
   if (!dev) {
     return bankSettings ? { id, settings: bankSettings } : { id };
@@ -341,11 +362,13 @@ export const enrichWithModelsDev = (
   const extendParams =
     mapReasoningOptionsToExtendParams(id, dev.reasoning_options) ?? bankSettings?.extendParams;
 
+  const sdkType = getModelSdkType(dev.provider?.npm ?? providerNpm);
   return {
     id,
     displayName: dev.name,
     contextWindowTokens: limit?.context,
     maxOutput: limit?.output,
+    ...(sdkType ? { sdkType } : {}),
     releasedAt: dev.release_date,
     functionCall: dev.tool_call || undefined,
     reasoning: dev.reasoning || undefined,
@@ -408,8 +431,21 @@ export const resolveModelsDevModelList = async ({
 
   const bankOf = (id: string) => bankById.get(id) ?? bankByIdLower.get(id.toLowerCase());
 
-  const enrich = (id: string) =>
-    enrichWithModelsDev(id, modelsDev[id] ?? modelsDev[id.toLowerCase()], bankOf(id)?.settings);
+  const providerNpm = getCachedModelsDevData()?.[modelsDevProvider]?.npm;
+  const enrich = (id: string) => {
+    const enriched = enrichWithModelsDev(
+      id,
+      modelsDev[id] ?? modelsDev[id.toLowerCase()],
+      bankOf(id)?.settings,
+      providerNpm,
+    );
+    return {
+      ...enriched,
+      ...((enriched.sdkType ?? bankOf(id)?.sdkType)
+        ? { sdkType: enriched.sdkType ?? bankOf(id)?.sdkType }
+        : {}),
+    };
+  };
 
   // Official provider list is the source of truth for model availability.
   try {

@@ -1,13 +1,21 @@
 // @vitest-environment node
-import { ModelProvider } from 'model-bank';
 import OpenAI from 'openai';
 import { Stream } from 'openai/core/streaming';
 import type { Mock } from 'vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as debugStreamModule from '../../utils/debugStream';
-import { LobeOpenCodeCodingPlanAI, params, sanitizeJsonSchema } from './index';
+import { __resetModelsDevCacheForTests, fetchModelsDevRoutingMetadata } from '../utils/modelsDev';
+import {
+  buildOpenAIPayload,
+  buildOpenCodeAnthropicPayload,
+  LobeOpenCodeCodingPlanAI,
+  params,
+  sanitizeJsonSchema,
+} from './index';
 
+const defaultBaseURL = 'https://opencode.ai/zen/go/v1';
+const provider = 'opencodecodingplan';
 // The router pulls the cloud model-bank config for deepseek route resolution,
 // which transitively imports server-only modules (e.g. redis-client). Stub it
 // so the OpenAI-compatible chat route can be exercised in the node test env.
@@ -15,9 +23,6 @@ const { loadModelsMock } = vi.hoisted(() => ({ loadModelsMock: vi.fn() }));
 vi.mock('@lobechat/business-model-bank/model-config', () => ({
   loadModels: loadModelsMock,
 }));
-
-const provider = ModelProvider.OpenCodeCodingPlan;
-const defaultBaseURL = 'https://opencode.ai/zen/go/v1';
 
 // Avoid a real models.dev fetch during router resolution; the failure path falls
 // back to the hardcoded interleaved snapshot, which is what these tests assert on.
@@ -62,20 +67,15 @@ describe('LobeOpenCodeCodingPlanAI', () => {
       async (baseURL, openaiURL, anthropicURL) => {
         const routers = await params.routers({ apiKey: 'test', baseURL });
 
-        expect(routers).toEqual([
-          expect.objectContaining({
-            apiType: 'anthropic',
-            options: { apiKey: 'test', baseURL: anthropicURL },
-          }),
-          expect.objectContaining({
-            apiType: 'deepseek',
-            options: { apiKey: 'test', baseURL: openaiURL, sdkType: 'openai' },
-          }),
-          expect.objectContaining({
-            apiType: 'openai',
-            options: { apiKey: 'test', baseURL: openaiURL },
-          }),
-        ]);
+        expect(routers).toHaveLength(5);
+        for (const router of routers) {
+          expect(router.options?.baseURL).toBe(
+            router.apiType === 'anthropic' ? anthropicURL : openaiURL,
+          );
+        }
+        expect(routers.find((router) => router.apiType === 'deepseek')?.options?.sdkType).toBe(
+          'openai',
+        );
       },
     );
 
@@ -265,7 +265,6 @@ describe('Muse Spark Responses API routing', () => {
       const instance = new LobeOpenCodeCodingPlanAI({ apiKey: 'test' });
 
       await instance.chat({
-        apiMode: 'chatCompletion',
         messages: [{ content: 'Hello', role: 'user' }],
         model,
       });
@@ -274,6 +273,25 @@ describe('Muse Spark Responses API routing', () => {
       expect(chatCreateSpy).not.toHaveBeenCalled();
     },
   );
+
+  it('honors an explicit per-model Chat Completions override over a Responses-only name', async () => {
+    const model = 'muse-spark-1.3-contributor';
+    chatCreateSpy.mockResolvedValue({ choices: [{ message: { content: '{"answer":"Hello"}' } }] });
+    const instance = new LobeOpenCodeCodingPlanAI({
+      apiKey: 'test',
+      modelSdkOverrides: { [model]: 'openai' },
+    });
+    await instance.generateObject({
+      model,
+      messages: [{ content: 'Hello', role: 'user' }],
+      schema: {
+        name: 'answer',
+        schema: { type: 'object', properties: { answer: { type: 'string' } } },
+      },
+    });
+    expect(chatCreateSpy).toHaveBeenCalledOnce();
+    expect(responsesCreateSpy).not.toHaveBeenCalled();
+  });
 
   describe.each(['muse-spark-1.2-contributor', 'muse-spark-1.3-contributor'])(
     '%s structured generation with offline model discovery',
@@ -346,6 +364,7 @@ describe('Muse Spark Responses API routing', () => {
   it('uses Responses models discovered after runtime initialization', async () => {
     vi.resetModules();
     const { LobeOpenCodeCodingPlanAI: Runtime } = await import('./index');
+    const { fetchModelsDevRoutingMetadata: discoverModels } = await import('../utils/modelsDev');
     const model = 'discovered-responses-model';
     vi.spyOn(global, 'fetch').mockResolvedValueOnce(
       new Response(
@@ -358,6 +377,7 @@ describe('Muse Spark Responses API routing', () => {
     );
     responsesCreateSpy.mockResolvedValue({ output_text: '{"answer":"Hello"}' });
     const instance = new Runtime({ apiKey: 'test' });
+    await discoverModels('opencode-go');
 
     const result = await instance.generateObject({
       messages: [{ content: 'Hello', role: 'user' }],
@@ -501,6 +521,103 @@ describe('buildOpenAIPayload Kimi thinking semantics', () => {
       expect(payload.thinking).toEqual({ type: 'disabled' });
       // With thinking explicitly disabled, assistant messages are not forced to carry reasoning_content.
       expect(findAssistantMessage(payload)?.reasoning_content).toBeUndefined();
+    });
+  });
+
+  describe('models.dev routing and output limits', () => {
+    beforeEach(() => {
+      __resetModelsDevCacheForTests();
+    });
+
+    afterEach(() => {
+      __resetModelsDevCacheForTests();
+    });
+
+    const seedModelsDev = async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          'opencode-go': {
+            models: {
+              'qwen3.8-flash': {
+                id: 'qwen3.8-flash',
+                provider: { npm: '@ai-sdk/anthropic' },
+                limit: { context: 1_000_000, output: 131_072 },
+              },
+            },
+          },
+        }),
+      }) as any;
+
+      await fetchModelsDevRoutingMetadata('opencode-go');
+    };
+
+    it('routes models.dev Anthropic models to the Anthropic runtime', async () => {
+      await seedModelsDev();
+
+      const routers = await params.routers({ apiKey: 'test' }, { model: 'qwen3.8-flash' });
+      const anthropicRouter = routers.find((router) => router.apiType === 'anthropic');
+
+      expect(anthropicRouter?.models).toContain('qwen3.8-flash');
+      expect(anthropicRouter?.runtime).toBeDefined();
+    });
+
+    it('does not wait for a cold models.dev refresh before routing', () => {
+      __resetModelsDevCacheForTests();
+      global.fetch = vi.fn().mockRejectedValue(new Error('no network in test')) as any;
+
+      const routers = params.routers({ apiKey: 'test' }, { model: 'qwen3.8-flash' });
+
+      expect(Array.isArray(routers)).toBe(true);
+      expect(routers.find((router) => router.apiType === 'anthropic')?.models).toContain(
+        'qwen3.8-flash',
+      );
+    });
+
+    it('uses model-bank metadata without a models.dev request', async () => {
+      __resetModelsDevCacheForTests();
+      global.fetch = vi.fn().mockRejectedValue(new Error('no network in test')) as any;
+
+      const payload = await buildOpenCodeAnthropicPayload({
+        messages: [{ content: 'Hello', role: 'user' }],
+        model: 'qwen3.8-flash',
+        stream: true,
+      } as any);
+
+      expect(payload.max_tokens).toBe(131_072);
+    });
+
+    it('uses the cached output limit for OpenAI-compatible models', async () => {
+      await seedModelsDev();
+
+      expect(
+        buildOpenAIPayload({
+          messages: [{ content: 'Hello', role: 'user' }],
+          model: 'qwen3.8-flash',
+          stream: true,
+        } as any).max_tokens,
+      ).toBe(131_072);
+
+      expect(
+        buildOpenAIPayload({
+          max_tokens: 8192,
+          messages: [{ content: 'Hello', role: 'user' }],
+          model: 'qwen3.8-flash',
+          stream: true,
+        } as any).max_tokens,
+      ).toBe(8192);
+    });
+
+    it('uses the provider output limit for the Anthropic payload', async () => {
+      await seedModelsDev();
+
+      const payload = await buildOpenCodeAnthropicPayload({
+        messages: [{ content: 'Hello', role: 'user' }],
+        model: 'qwen3.8-flash',
+        stream: true,
+      } as any);
+
+      expect(payload.max_tokens).toBe(131_072);
     });
   });
 });

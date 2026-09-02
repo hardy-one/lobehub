@@ -89,6 +89,32 @@ describe('mapReasoningOptionsToExtendParams', () => {
   });
 });
 
+describe('protocol enrichment', () => {
+  it.each([
+    ['@ai-sdk/openai', 'openai-responses'],
+    ['@ai-sdk/openai-compatible', 'openai'],
+    ['@ai-sdk/anthropic', 'anthropic'],
+    ['@ai-sdk/google', 'google'],
+  ])('preserves protocol meaning for %s', (npm, sdkType) => {
+    expect(enrichWithModelsDev('same-model', { id: 'same-model', provider: { npm } }).sdkType).toBe(
+      sdkType,
+    );
+  });
+  it('inherits the provider protocol only when the exact model does not declare one', () => {
+    expect(
+      enrichWithModelsDev('same', { id: 'same' }, undefined, '@ai-sdk/openai-compatible').sdkType,
+    ).toBe('openai');
+    expect(
+      enrichWithModelsDev(
+        'same',
+        { id: 'same', provider: { npm: '@ai-sdk/anthropic' } },
+        undefined,
+        '@ai-sdk/openai-compatible',
+      ).sdkType,
+    ).toBe('anthropic');
+  });
+});
+
 describe('fetchModelsDevRoutingMetadata', () => {
   beforeEach(() => {
     __resetModelsDevCacheForTests();

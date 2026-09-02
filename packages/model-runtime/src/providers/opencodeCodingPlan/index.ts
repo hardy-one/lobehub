@@ -1,18 +1,23 @@
 import { LOBE_DEFAULT_MODEL_LIST, ModelProvider, opencodecodingplan } from 'model-bank';
 import type OpenAI from 'openai';
 
+import {
+  buildDefaultAnthropicPayload,
+  createAnthropicCompatibleRuntime,
+} from '../../core/anthropicCompatibleFactory';
 import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
 import { createRouterRuntime } from '../../core/RouterRuntime';
 import type { CreateRouterRuntimeOptions } from '../../core/RouterRuntime/createRuntime';
 import type { ChatStreamPayload } from '../../types';
+import { resolveModelSdkType } from '../../utils/modelSdkRouting';
 import {
   isKimiNativeThinkingModel,
   isKimiReasoningEffortModel,
   isKimiReasoningModel,
 } from '../moonshot/modelId';
 import {
+  getCachedModelsDevProvider,
   getCachedModelsDevRoutingMetadata,
-  refreshModelsDevApi,
   resolveModelsDevModelList,
 } from '../utils/modelsDev';
 import { resolveProviderRouteModels } from '../utils/resolveProviderRouteModels';
@@ -22,9 +27,6 @@ import { resolveProviderRouteModels } from '../utils/resolveProviderRouteModels'
 // ============================================================================
 
 const GO_BASE_URL = 'https://opencode.ai/zen/go/v1';
-
-// Fallback: models that need Anthropic SDK (used when models.dev is unavailable)
-const ANTHROPIC_MODEL_PREFIXES = ['minimax', 'qwen'];
 
 // Fallback: models with interleaved reasoning_content (used when models.dev
 // is unreachable). Mirrors the last-known state of models.dev.
@@ -55,37 +57,38 @@ const getInterleavedModelIds = (): ReadonlySet<string> => {
   return cachedInterleavedIds;
 };
 
-/**
- * Get anthropic models with self-contained fallback chain:
- *   1. models.dev (authoritative `provider.npm` field)
- *   2. static model-bank prefix match (used when models.dev is unreachable)
- *
- * Self-contained: does not depend on a runtime `client` object, so it's safe
- * to call from `routers` (which receives `ClientOptions` only and has no
- * `client` property during normal chat routing).
- */
 const getRoutingMetadata = () => {
   const metadata = getCachedModelsDevRoutingMetadata('opencode-go');
-  refreshModelsDevApi();
-
-  if (metadata.interleavedModelIds.size > 0) {
-    cachedInterleavedIds = metadata.interleavedModelIds;
-  }
-
-  if (metadata.available) return metadata;
-
-  // Fallback: prefix-match the static model-bank list. Equivalent to the
-  // pre-refactor hard-coded behavior when models.dev is unreachable.
-  return {
-    ...metadata,
-    modelIdsBySdk: {
-      '@ai-sdk/anthropic': opencodecodingplan
-        .map((model) => model.id)
-        .filter((id) => ANTHROPIC_MODEL_PREFIXES.some((prefix) => id.startsWith(prefix))),
-    },
+  if (metadata.interleavedModelIds.size > 0) cachedInterleavedIds = metadata.interleavedModelIds;
+  const anthropic = new Set(metadata.modelIdsBySdk['@ai-sdk/anthropic'] ?? []);
+  for (const model of opencodecodingplan)
+    if (model.sdkType === 'anthropic') anthropic.add(model.id);
+  const modelIdsBySdk: Record<string, string[]> = {
+    ...metadata.modelIdsBySdk,
+    '@ai-sdk/anthropic': [...anthropic],
   };
+  return { ...metadata, modelIdsBySdk };
 };
 
+const getModelsDevProviderModels = () => {
+  const modelsById = new Map(
+    opencodecodingplan.map((model) => [model.id, { id: model.id, maxOutput: model.maxOutput }]),
+  );
+
+  // models.dev enrichment is populated by the model-fetch path. Prefer its
+  // current value when available, while keeping model-bank metadata usable on
+  // a cold cache.
+  for (const model of Object.values(getCachedModelsDevProvider('opencode-go'))) {
+    if (model.limit?.output === undefined) continue;
+    modelsById.set(model.id, { id: model.id, maxOutput: model.limit.output });
+  }
+
+  return [...modelsById.values()];
+};
+
+const getModelMaxOutput = (model: string) =>
+  getCachedModelsDevProvider('opencode-go')[model]?.limit?.output ??
+  opencodecodingplan.find((item) => item.id === model)?.maxOutput;
 // ============================================================================
 // Reasoning Content Helpers
 // ============================================================================
@@ -179,14 +182,21 @@ export const sanitizeJsonSchema = (schema: any): any => {
  * Build OpenAI-compatible payload with reasoning_content handling.
  * Applies to models with interleaved reasoning_content and Kimi K2.x models.
  */
-const buildOpenAIPayload = (
+export const buildOpenAIPayload = (
   payload: ChatStreamPayload,
 ): OpenAI.ChatCompletionCreateParamsStreaming => {
   const model = payload.model;
   const isKimi = isKimiThinkingToggleModel(model);
   const interleaved = isInterleavedModel(model);
+  const maxOutput = getModelMaxOutput(model);
+  const max_tokens = payload.max_tokens ?? maxOutput;
 
-  if (!isKimi && !interleaved) return payload as any;
+  if (!isKimi && !interleaved) {
+    return {
+      ...payload,
+      ...(max_tokens === undefined ? {} : { max_tokens }),
+    } as any;
+  }
 
   // Native-thinking Kimi models (k2.7-code, k3+) cannot turn reasoning off, so a
   // saved disabled-thinking setting must be ignored: they still require
@@ -251,6 +261,7 @@ const buildOpenAIPayload = (
 
   return {
     ...restPayload,
+    ...(max_tokens === undefined ? {} : { max_tokens }),
     messages,
     response_format,
     tools,
@@ -289,6 +300,20 @@ const LobeOpenCodeCodingPlanOpenAI = createOpenAICompatibleRuntime({
 // Anthropic SDK auto-appends /v1/messages to baseURL, so strip trailing /v1
 const stripV1 = (url?: string) => url?.replace(/\/v1$/, '');
 
+export const buildOpenCodeAnthropicPayload = (payload: ChatStreamPayload) =>
+  buildDefaultAnthropicPayload(payload, {
+    providerModels: getModelsDevProviderModels(),
+  });
+
+const LobeOpenCodeCodingPlanAnthropic = createAnthropicCompatibleRuntime({
+  provider: ModelProvider.OpenCodeCodingPlan,
+  baseURL: stripV1(GO_BASE_URL),
+  chatCompletion: { handlePayload: buildOpenCodeAnthropicPayload },
+  debug: {
+    chatCompletion: () => process.env.DEBUG_OPENCODE_GO_CHAT_COMPLETION === '1',
+  },
+});
+
 // ============================================================================
 // Provider Export
 // ============================================================================
@@ -310,16 +335,37 @@ export const params = {
   routers: (options, runtimeContext?: { model?: string }) => {
     const baseURL = options.baseURL || GO_BASE_URL;
 
-    const { modelIdsBySdk } = getRoutingMetadata();
-    const anthropicModels = modelIdsBySdk['@ai-sdk/anthropic'] ?? [];
-    const googleModels = modelIdsBySdk['@ai-sdk/google'] ?? [];
-    const responseModels = modelIdsBySdk['@ai-sdk/openai'] ?? [];
-
+    const { available, modelIdsBySdk } = getRoutingMetadata();
+    const sdkType =
+      resolveModelSdkType({
+        bankModels: opencodecodingplan,
+        model: runtimeContext?.model,
+        modelsDevProvider: 'opencode-go',
+        options: {
+          modelSdkOverrides: options.modelSdkOverrides,
+          modelSdkTypes: options.modelSdkTypes,
+          providerSdkType: options.providerSdkType,
+        },
+      }) ??
+      (!available && /^(?:minimax|qwen)/.test(runtimeContext?.model ?? '')
+        ? 'anthropic'
+        : undefined);
+    const forSdk = (sdk: typeof sdkType, cached: string[]) => {
+      if (!runtimeContext?.model || !sdkType) return cached;
+      return [
+        ...cached.filter((id) => id !== runtimeContext.model),
+        ...(sdkType === sdk ? [runtimeContext.model] : []),
+      ];
+    };
+    const anthropicModels = forSdk('anthropic', modelIdsBySdk['@ai-sdk/anthropic'] ?? []);
+    const googleModels = forSdk('google', modelIdsBySdk['@ai-sdk/google'] ?? []);
+    const responseModels = forSdk('openai-responses', modelIdsBySdk['@ai-sdk/openai'] ?? []);
     return [
       // Anthropic SDK for models with provider.npm === '@ai-sdk/anthropic'
       {
         apiType: 'anthropic',
         models: anthropicModels,
+        runtime: LobeOpenCodeCodingPlanAnthropic as any,
         options: { ...options, baseURL: stripV1(baseURL) },
       },
       {
@@ -330,9 +376,11 @@ export const params = {
       {
         apiType: 'openai',
         models: responseModels,
+        runtime: LobeOpenCodeCodingPlanOpenAI as any,
         options: {
           ...options,
           baseURL,
+          modelSdkType: 'openai-responses',
           chatCompletion: { useResponseModels: responseModels },
         },
       },
@@ -350,7 +398,7 @@ export const params = {
       {
         apiType: 'openai',
         runtime: LobeOpenCodeCodingPlanOpenAI as any,
-        options: { ...options, baseURL },
+        options: { ...options, baseURL, modelSdkType: sdkType === 'openai' ? 'openai' : undefined },
       },
     ];
   },

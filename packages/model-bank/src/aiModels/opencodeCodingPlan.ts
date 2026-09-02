@@ -233,6 +233,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     family: 'qwen',
     generation: 'qwen3.7',
     id: 'qwen3.7-plus',
+    sdkType: 'anthropic',
     maxOutput: 65_536,
     organization: 'Alibaba',
     pricing: {
@@ -260,6 +261,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     family: 'qwen',
     generation: 'qwen3.7',
     id: 'qwen3.7-max',
+    sdkType: 'anthropic',
     maxOutput: 65_536,
     organization: 'Alibaba',
     pricing: {
@@ -287,6 +289,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     family: 'qwen',
     generation: 'qwen3.6',
     id: 'qwen3.6-plus',
+    sdkType: 'anthropic',
     maxOutput: 65_536,
     organization: 'Alibaba',
     pricing: {
@@ -360,6 +363,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     family: 'minimax',
     generation: 'minimax-m3',
     id: 'minimax-m3',
+    sdkType: 'anthropic',
     maxOutput: 131_072,
     organization: 'MiniMax',
     pricing: {
@@ -386,6 +390,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     family: 'minimax',
     generation: 'minimax-m2.7',
     id: 'minimax-m2.7',
+    sdkType: 'anthropic',
     maxOutput: 131_072,
     organization: 'MiniMax',
     pricing: {
@@ -400,7 +405,6 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     // reasoning_options: []
     type: 'chat',
   },
-
   {
     abilities: { functionCall: true, reasoning: true },
     contextWindowTokens: 202_752,
@@ -465,6 +469,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     family: 'minimax',
     generation: 'minimax-m2.5',
     id: 'minimax-m2.5',
+    sdkType: 'anthropic',
     maxOutput: 65_536,
     organization: 'MiniMax',
     pricing: {
@@ -492,6 +497,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     family: 'muse',
     generation: 'muse-spark-1.2',
     id: 'muse-spark-1.2-contributor',
+    sdkType: 'openai-responses',
     maxOutput: 131_072,
     organization: 'Meta',
     pricing: {
@@ -519,6 +525,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     family: 'muse',
     generation: 'muse-spark-1.3',
     id: 'muse-spark-1.3-contributor',
+    sdkType: 'openai-responses',
     maxOutput: 131_072,
     organization: 'Meta',
     pricing: {
@@ -533,6 +540,19 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['reasoningEffort'],
     },
+    type: 'chat',
+  },
+  {
+    abilities: { functionCall: true, reasoning: true, vision: true },
+    contextWindowTokens: 1_000_000,
+    displayName: 'Qwen3.8 Flash',
+    enabled: false,
+    family: 'qwen',
+    generation: 'qwen3.8',
+    id: 'qwen3.8-flash',
+    maxOutput: 131_072,
+    organization: 'Alibaba',
+    sdkType: 'anthropic',
     type: 'chat',
   },
 ];

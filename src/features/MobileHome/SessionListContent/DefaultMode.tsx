@@ -4,7 +4,11 @@ import { memo, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useActiveWorkspaceId } from '@/business/client/hooks/useActiveWorkspaceId';
+import { useHomeAgentRows } from '@/features/Home/AgentSelect/useHomeAgentRows';
+import { useFetchAgentList } from '@/hooks/useFetchAgentList';
 import { useFetchSessions } from '@/hooks/useFetchSessions';
+import { useAgentStore } from '@/store/agent';
+import { builtinAgentSelectors } from '@/store/agent/selectors';
 import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors';
 import { useServerConfigStore } from '@/store/serverConfig';
@@ -14,8 +18,10 @@ import { sessionSelectors } from '@/store/session/selectors';
 import { type LobeAgentSession, type LobeSessions } from '@/types/session';
 import { LobeSessionType, SessionDefaultGroup } from '@/types/session';
 
+import { AgentSearchList } from './AgentSearchList';
 import CollapseGroup from './CollapseGroup';
 import Actions from './CollapseGroup/Actions';
+import { getMobileAgentOnlyRows } from './getMobileAgentOnlyRows';
 import Inbox from './Inbox';
 import SessionList from './List';
 import ConfigGroupModal from './Modals/ConfigGroupModal';
@@ -27,12 +33,15 @@ const DefaultMode = memo(() => {
   const [configGroupModalOpen, setConfigGroupModalOpen] = useState(false);
 
   useFetchSessions();
+  useFetchAgentList();
 
   const isMobile = useServerConfigStore(serverConfigSelectors.isMobile);
 
   const defaultSessions = useSessionStore(sessionSelectors.defaultSessions, isEqual);
   const customSessionGroups = useSessionStore(sessionSelectors.customSessionGroups, isEqual);
   const pinnedSessions = useSessionStore(sessionSelectors.pinnedSessions, isEqual);
+  const inboxAgentId = useAgentStore(builtinAgentSelectors.inboxAgentId);
+  const { privateRows, workspaceRows } = useHomeAgentRows();
 
   const shouldHideSession = (session: LobeSessions[0]) =>
     !isMobile &&
@@ -55,6 +64,26 @@ const DefaultMode = memo(() => {
     ...group,
     children: filterSessionsForView(group.children),
   }));
+
+  const sessionsForAgentLookup = useMemo(
+    () => [
+      ...defaultSessions,
+      ...pinnedSessions,
+      ...(customSessionGroups?.flatMap((group) => group.children) || []),
+    ],
+    [customSessionGroups, defaultSessions, pinnedSessions],
+  );
+  const mobileAgentOnlyRows = useMemo(
+    () =>
+      isMobile
+        ? getMobileAgentOnlyRows(
+            [...privateRows, ...workspaceRows],
+            sessionsForAgentLookup,
+            inboxAgentId,
+          )
+        : [],
+    [inboxAgentId, isMobile, privateRows, sessionsForAgentLookup, workspaceRows],
+  );
 
   const activeWorkspaceId = useActiveWorkspaceId();
   const sessionGroupKeys = useGlobalStore(
@@ -86,13 +115,24 @@ const DefaultMode = memo(() => {
           label: name,
         })),
         {
-          children: <SessionList dataSource={filteredDefaultSessions || []} />,
+          children: (
+            <>
+              <SessionList dataSource={filteredDefaultSessions || []} />
+              <AgentSearchList dataSource={mobileAgentOnlyRows} />
+            </>
+          ),
           extra: <Actions openConfigModal={() => setConfigGroupModalOpen(true)} />,
           key: SessionDefaultGroup.Default,
           label: t('defaultList'),
         },
       ].filter(Boolean) as CollapseProps['items'],
-    [t, filteredCustomSessionGroups, filteredPinnedSessions, filteredDefaultSessions],
+    [
+      filteredCustomSessionGroups,
+      filteredDefaultSessions,
+      filteredPinnedSessions,
+      mobileAgentOnlyRows,
+      t,
+    ],
   );
 
   return (

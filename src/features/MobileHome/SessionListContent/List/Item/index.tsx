@@ -1,5 +1,6 @@
 import { ModelTag } from '@lobehub/icons';
 import { Flexbox } from '@lobehub/ui';
+import { Tag } from '@lobehub/ui/base-ui';
 import React, { memo, useMemo, useState } from 'react';
 import { shallow } from 'zustand/shallow';
 
@@ -16,6 +17,7 @@ import { useUserStore } from '@/store/user';
 import { userProfileSelectors } from '@/store/user/selectors';
 import { type LobeGroupSession } from '@/types/session';
 
+import { getHeterogeneousTypeLabel } from '../../getHeterogeneousTypeLabel';
 import ListItem from '../../ListItem';
 import { openCreateGroupModal } from '../../Modals/CreateGroupModal';
 import Actions from './Actions';
@@ -34,26 +36,40 @@ const SessionItem = memo<SessionItemProps>(({ id }) => {
     operationSelectors.isAgentRuntimeVisiblyRunning(s) && id === s.activeAgentId,
   ]);
 
-  const [pin, title, avatar, avatarBackground, updateAt, members, model, group, sessionType] =
-    useSessionStore((s) => {
-      const session = sessionSelectors.getSessionById(id)(s);
-      const meta = session.meta;
+  const [
+    pin,
+    title,
+    avatar,
+    avatarBackground,
+    updateAt,
+    members,
+    model,
+    group,
+    sessionType,
+    heterogeneousType,
+  ] = useSessionStore((s) => {
+    const session = sessionSelectors.getSessionById(id)(s);
+    const meta = session.meta;
 
-      return [
-        sessionHelpers.getSessionPinned(session),
-        sessionMetaSelectors.getTitle(meta),
-        sessionMetaSelectors.getAvatar(meta),
-        meta.backgroundColor,
-        session?.updatedAt,
-        (session as LobeGroupSession).members,
-        session.type === 'agent' ? (session as any).model : undefined,
-        session?.group,
-        session.type,
-      ];
-    });
+    return [
+      sessionHelpers.getSessionPinned(session),
+      sessionMetaSelectors.getTitle(meta),
+      sessionMetaSelectors.getAvatar(meta),
+      meta.backgroundColor,
+      session?.updatedAt,
+      (session as LobeGroupSession).members,
+      session.type === 'agent' ? (session as any).model : undefined,
+      session?.group,
+      session.type,
+      session.type === 'agent'
+        ? session.config?.agencyConfig?.heterogeneousProvider?.type
+        : undefined,
+    ];
+  });
 
   // Only hide the model tag for the inbox session itself (Lobe AI)
   const showModel = sessionType === 'agent' && model && id !== INBOX_SESSION_ID;
+  const heterogeneousLabel = getHeterogeneousTypeLabel(heterogeneousType);
 
   const handleDoubleClick = () => {
     if (isDesktop) {
@@ -83,17 +99,18 @@ const SessionItem = memo<SessionItemProps>(({ id }) => {
         setOpen={setOpen}
       />
     ),
-    [group, id],
+    [group, id, sessionType],
   );
 
   const addon = useMemo(
     () =>
-      !showModel ? undefined : (
+      !showModel && !heterogeneousLabel ? undefined : (
         <Flexbox horizontal gap={4} style={{ flexWrap: 'wrap' }}>
-          <ModelTag model={model} />
+          {heterogeneousLabel && <Tag size="small">{heterogeneousLabel}</Tag>}
+          {showModel && <ModelTag model={model} />}
         </Flexbox>
       ),
-    [showModel, model],
+    [heterogeneousLabel, model, showModel],
   );
 
   const currentUser = useUserStore((s) => ({

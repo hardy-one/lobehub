@@ -84,6 +84,7 @@ const SubmenuScrollStyle = createGlobalStyle`
     padding-block-end: 4px;
   }
 
+
   /* The skill submenu (the one with the search header) has collapsible groups,
      so shrink-to-fit makes it resize every time a group opens or closes —
      measured 243px collapsed vs 400px expanded, the jump driven by whichever
@@ -140,6 +141,37 @@ const SubmenuScrollStyle = createGlobalStyle`
 
   [role='menuitem']:has(.lobe-submenu-chevron) > * > *:last-child {
     display: none;
+  }
+
+  /* The mobile advanced-parameters panel is rendered in DropdownMenuHeader,
+     whose default slot is fixed and padded. Give this one slot the full
+     bounded viewport and let Controls.body own the vertical scroll. Without
+     this override the generic 50vh submenu cap clips the form before its
+     internal scroller can receive the available height. */
+  [data-submenu] > [role='menu']:has(.lobe-params-submenu-content) {
+    overflow: hidden;
+
+    box-sizing: border-box;
+    width: min(320px, calc(100vw - 32px));
+    min-width: 0;
+    max-width: calc(100vw - 32px);
+    height: min(calc(100vh - 112px), 640px);
+    height: min(calc(100dvh - 112px), 640px);
+    max-height: min(calc(100vh - 112px), 640px);
+    max-height: min(calc(100dvh - 112px), 640px);
+  }
+
+  /* renderDropdownMenuItems always mounts the slot viewport when a submenu
+     has a header, even when this submenu intentionally has no menu rows. */
+  [data-submenu] > [role='menu']:has(.lobe-params-submenu-content) > :empty {
+    display: none;
+  }
+
+  [data-submenu] > [role='menu']:has(.lobe-params-submenu-content) > *:has(.lobe-params-submenu-content) {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0;
   }
 `;
 

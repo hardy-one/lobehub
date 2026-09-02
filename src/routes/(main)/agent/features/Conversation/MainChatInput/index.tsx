@@ -13,6 +13,7 @@ import { useUserStore } from '@/store/user';
 import { userGeneralSettingsSelectors } from '@/store/user/selectors';
 
 import AgentConfigError from './AgentConfigError';
+import { getMainChatInputLeftActions } from './getMainChatInputLeftActions';
 import { useSendMenuItems } from './useSendMenuItems';
 
 const contextWindowRightActions: ActionKeys[] = ['model', 'voiceMessage', 'contextWindow'];
@@ -45,8 +46,10 @@ const MainChatInput = memo(() => {
     : contextWindowRightActions;
 
   // The model chip lives on the right, next to Send (see rightActions); the
-  // left bar keeps the "+" menu, dictation and the expand toggle.
-  const leftActions: ActionKeys[] = useMemo(() => ['plus', 'voiceDictation'], []);
+  // left bar keeps the plus menu and dictation action. Advanced parameters are
+  // available from the plus menu's secondary panel on mobile and its working
+  // sidebar on desktop.
+  const leftActions = useMemo(() => getMainChatInputLeftActions(), []);
 
   return (
     <>

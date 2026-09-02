@@ -19,6 +19,7 @@ import { ChatInputAction } from '@/features/ChatInput/ActionBar/components/ChatI
 import { insertGoalTag } from '@/features/ChatInput/InputEditor/ActionTag/goalTag';
 import { useChatInputStore } from '@/features/ChatInput/store';
 import { useConversationStore } from '@/features/Conversation';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useUserStore } from '@/store/user';
 import { labPreferSelectors } from '@/store/user/selectors';
 
@@ -42,6 +43,7 @@ const HeteroPlus = memo(() => {
   const { t: tEditor } = useTranslation('editor');
   const [open, setOpen] = useState(false);
 
+  const isMobile = useIsMobile();
   const [editor, showTypoBar, setShowTypoBar] = useChatInputStore((s) => [
     s.editor,
     s.showTypoBar,
@@ -141,6 +143,15 @@ const HeteroPlus = memo(() => {
       dropdown={{
         menu: { items },
         minWidth: 220,
+        popupProps: isMobile
+          ? {
+              style: {
+                maxWidth: 'calc(100vw - 32px)',
+                minWidth: 0,
+                width: 'min(320px, calc(100vw - 32px))',
+              },
+            }
+          : undefined,
         placement: 'topLeft',
       }}
       onOpenChange={setOpen}

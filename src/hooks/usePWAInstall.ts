@@ -1,5 +1,5 @@
 import { pwaInstallHandler } from 'pwa-install-handler';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { PWA_INSTALL_ID } from '@/const/layoutTokens';
 import { isOnServerSide } from '@/utils/env';
@@ -18,6 +18,13 @@ export const usePWAInstall = () => {
     };
   }, []);
 
+  const install = useCallback(() => {
+    const pwa: any = document.querySelector(`#${PWA_INSTALL_ID}`);
+    if (!pwa) return;
+    pwa.externalPromptEvent = pwaInstallHandler.getEvent();
+    pwa.showDialog(true);
+  }, []);
+
   const installCheck = () => {
     // Don't show install button when in PWA or environment that doesn't support PWA
     if (isPWA || !isSupportInstallPWA) return false;
@@ -28,11 +35,6 @@ export const usePWAInstall = () => {
 
   return {
     canInstall: installCheck(),
-    install: () => {
-      const pwa: any = document.querySelector(`#${PWA_INSTALL_ID}`);
-      if (!pwa) return;
-      pwa.externalPromptEvent = pwaInstallHandler.getEvent();
-      pwa?.showDialog(true);
-    },
+    install,
   };
 };

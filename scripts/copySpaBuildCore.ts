@@ -8,7 +8,7 @@ const copyDirs = ['assets', 'devtools', 'i18n', 'model-bank', 'shiki', 'vendor']
 // variants. So this one lands in `public/` itself rather than in each SPA
 // directory — a single copy behind a single path.
 const rootCopyDirs = ['app-workers'] as const;
-const copyRootFilePatterns = [/^favicon.*\.ico$/, /^apple-touch-icon\.png$/] as const;
+const copyRootFilePatterns = [/^favicon.*\.ico$/, /^apple-touch-icon\.png$/, /^.+\.html$/] as const;
 const targets = [
   { distDir: 'desktop', publicDir: 'public/_spa' },
   { distDir: 'mobile', publicDir: 'public/_spa' },
@@ -56,6 +56,18 @@ export const copySpaBuild = (root = path.resolve(import.meta.dirname, '..')) => 
 
       cpSync(sourceFile, path.resolve(spaDir, file));
       console.log(`Copied dist/${distDir}/${file} -> ${publicDir}/${file}`);
+    }
+  }
+  // Keep the worker beside the copied /_spa assets. Its default scope is /_spa/;
+  // it must not own document navigations because the server selects HTML by user agent.
+  const desktopDistRoot = path.resolve(root, 'dist/desktop');
+  const spaDir = path.resolve(root, 'public/_spa');
+  if (existsSync(desktopDistRoot)) {
+    mkdirSync(spaDir, { recursive: true });
+    for (const file of readdirSync(desktopDistRoot)) {
+      if (!/^(?:sw|workbox-.+)\.js$/.test(file)) continue;
+      cpSync(path.resolve(desktopDistRoot, file), path.resolve(spaDir, file));
+      console.log(`Copied dist/desktop/${file} -> public/_spa/${file}`);
     }
   }
 };

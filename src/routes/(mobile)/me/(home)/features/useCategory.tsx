@@ -2,11 +2,14 @@ import { LOBE_CHAT_CLOUD, UTM_SOURCE } from '@lobechat/business-const';
 import { DOWNLOAD_URL, OFFICIAL_URL } from '@lobechat/const';
 import {
   Book,
+  Bot,
   CircleUserRound,
   Cloudy,
+  Compass,
   Download,
   Feather,
   FileClockIcon,
+  ListTodo,
   Settings2,
 } from 'lucide-react';
 import { useMemo } from 'react';
@@ -25,7 +28,7 @@ import { authSelectors } from '@/store/user/selectors';
 export const useCategory = () => {
   const navigate = useNavigate();
   const { t } = useTranslation(['common', 'setting', 'auth']);
-  const { showCloudPromotion, hideDocs } = useServerConfigStore(featureFlagsSelectors);
+  const { showCloudPromotion, showMarket, hideDocs } = useServerConfigStore(featureFlagsSelectors);
   const [isLoginWithAuth] = useUserStore((s) => [authSelectors.isLoginWithAuth(s)]);
   const { isIOS, isAndroid } = usePlatform();
   const businessMeCells = useBusinessMeCells();
@@ -56,6 +59,26 @@ export const useCategory = () => {
       type: 'divider',
     },
   ];
+  const secondaryNavigation: CellProps[] = [
+    {
+      icon: Bot,
+      key: 'agents',
+      label: t('tab.agents'),
+      onClick: () => navigate('/agents'),
+    },
+    {
+      icon: ListTodo,
+      key: 'tasks',
+      label: t('tab.tasks'),
+      onClick: () => navigate('/tasks'),
+    },
+    showMarket && {
+      icon: Compass,
+      key: 'community',
+      label: t('tab.community'),
+      onClick: () => navigate('/community'),
+    },
+  ].filter(Boolean) as CellProps[];
 
   const getDesktopApp: CellProps[] = [
     {
@@ -102,6 +125,7 @@ export const useCategory = () => {
     },
     ...(isLoginWithAuth ? profile : []),
     ...(isLoginWithAuth ? settings : []),
+    ...(isLoginWithAuth ? secondaryNavigation : []),
     ...(isLoginWithAuth ? businessMeCells : []),
     ...getDesktopApp,
     ...(!hideDocs ? helps : []),

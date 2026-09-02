@@ -17,7 +17,7 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
     line-height: 16px;
     color: ${cssVar.colorTextTertiary};
     text-align: center;
-    overflow-wrap: anywhere;
+    white-space: nowrap;
 
     background: transparent;
 
@@ -150,9 +150,9 @@ function LevelSlider<T extends string = string>({
   const gridTemplateColumns =
     levels.length > 1
       ? [
-          'minmax(0, 0.5fr)',
+          'minmax(max-content, 0.5fr)',
           ...Array.from({ length: levels.length - 2 }).fill('minmax(0, 1fr)'),
-          'minmax(0, 0.5fr)',
+          'minmax(max-content, 0.5fr)',
         ].join(' ')
       : 'minmax(0, 1fr)';
 

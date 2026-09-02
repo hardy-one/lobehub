@@ -23,10 +23,12 @@ import { homeAgentListSelectors } from '@/store/home/selectors';
 export interface AgentRow {
   avatar?: string;
   backgroundColor?: string;
+  heterogeneousType?: string | null;
   id: string;
   pinned?: boolean;
   subtitle?: string;
   title: string;
+  updatedAt?: Date;
 }
 
 export interface HomeAgentRows {
@@ -85,10 +87,12 @@ export const useHomeAgentRows = (): HomeAgentRows => {
           out.push({
             avatar: typeof item.avatar === 'string' ? item.avatar : undefined,
             backgroundColor: item.backgroundColor || undefined,
+            heterogeneousType: item.heterogeneousType,
             id: item.id,
             pinned: item.pinned ?? false,
             subtitle: agentSecondaryDisplayName(item),
             title: agentDisplayName(item, t('untitledAgent')),
+            updatedAt: item.updatedAt,
           });
         }
       }

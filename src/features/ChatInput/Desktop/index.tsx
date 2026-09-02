@@ -58,6 +58,20 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
 
     background: ${cssVar.colorBgContainer};
   `,
+  viewportFullscreen: css`
+    position: fixed;
+    z-index: 100;
+    inset: 0;
+
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    margin-block-start: 0;
+    padding-block: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-bottom));
+    padding-inline: max(12px, env(safe-area-inset-left)) max(12px, env(safe-area-inset-right));
+
+    background: ${cssVar.colorBgContainer};
+  `,
   inputFullscreen: css`
     border: none;
     border-radius: 0 !important;
@@ -155,6 +169,9 @@ const DesktopChatInput = memo<DesktopChatInputProps>(
     // The ControlBar (or the custom slot standing in for it) hosts the
     // context-window token tag; without one, SendArea keeps it beside Send.
     const hasControlBar = Boolean(controlBarSlot) || showControlBar;
+    // Mobile has no DesktopLayoutContainer portal target; use a fixed viewport layer
+    // there instead of positioning against the composer-sized WideScreenContainer.
+    const isViewportFullscreen = expand && !layoutContainerRef.current;
 
     const setExpand = useChatInputStore((s) => s.setExpand);
     const skillDrop = useSkillDrop();
@@ -223,10 +240,14 @@ const DesktopChatInput = memo<DesktopChatInputProps>(
 
     const content = (
       <Flexbox
-        className={cx(styles.container, expand && styles.fullscreen)}
         gap={8}
         paddingBlock={expand ? 0 : showFootnote ? '0 12px' : '0 8px'}
         style={{ display: hidden ? 'none' : undefined }}
+        className={cx(
+          styles.container,
+          expand && styles.fullscreen,
+          isViewportFullscreen && styles.viewportFullscreen,
+        )}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >

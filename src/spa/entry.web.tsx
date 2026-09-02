@@ -10,11 +10,15 @@ import { createAppRouter } from '@/utils/router';
 import BootShell from './BootShell';
 import { isMainLayoutLocation } from './BootShell/routeScope';
 import { startAppInitialization } from './initialize/bootstrap';
+import { unregisterLegacyRootServiceWorker } from './registerServiceWorker';
 import { desktopRoutes } from './router/desktopRouter.config';
 import { createSPARoot } from './runtime';
 
 bootTiming.mark('bundle-eval');
 startAppInitialization();
+void unregisterLegacyRootServiceWorker().then((unregistered) => {
+  if (unregistered) window.location.reload();
+});
 
 const debugProxyBase = '/_dangerous_local_dev_proxy';
 const basename =

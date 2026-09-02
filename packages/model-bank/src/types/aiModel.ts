@@ -279,6 +279,8 @@ export interface ModelRating {
   writing?: ModelBenchmarkScore;
 }
 
+export type ModelSdkType = 'anthropic' | 'google' | 'openai';
+
 export interface AIBaseModelCard {
   /**
    * the context window (or input + output tokens limit)
@@ -316,8 +318,10 @@ export interface AIBaseModelCard {
    * who create this model
    */
   organization?: string;
-
   releasedAt?: string;
+
+  /** SDK/API format required by the provider for this model. */
+  sdkType?: ModelSdkType;
   /**
    * Whether the model should be shown in user-facing model lists.
    * Runtime-only aliases can set this to false while staying enabled and resolvable.

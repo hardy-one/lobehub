@@ -1,10 +1,16 @@
 // @vitest-environment node
-import { ModelProvider } from 'model-bank';
 import OpenAI from 'openai';
 import type { Mock } from 'vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { LobeOpenCodeCodingPlanAI, sanitizeJsonSchema } from './index';
+import { __resetModelsDevCacheForTests, fetchModelsDevRoutingMetadata } from '../utils/modelsDev';
+import {
+  buildOpenAIPayload,
+  buildOpenCodeAnthropicPayload,
+  LobeOpenCodeCodingPlanAI,
+  params,
+  sanitizeJsonSchema,
+} from './index';
 
 // The router pulls the cloud model-bank config for deepseek route resolution,
 // which transitively imports server-only modules (e.g. redis-client). Stub it
@@ -13,9 +19,6 @@ const { loadModelsMock } = vi.hoisted(() => ({ loadModelsMock: vi.fn() }));
 vi.mock('@lobechat/business-model-bank/model-config', () => ({
   loadModels: loadModelsMock,
 }));
-
-const provider = ModelProvider.OpenCodeCodingPlan;
-const defaultBaseURL = 'https://opencode.ai/zen/go/v1';
 
 // Avoid a real models.dev fetch during router resolution; the failure path falls
 // back to the hardcoded interleaved snapshot, which is what these tests assert on.
@@ -279,6 +282,103 @@ describe('buildOpenAIPayload Kimi thinking semantics', () => {
       expect(payload.thinking).toEqual({ type: 'disabled' });
       // With thinking explicitly disabled, assistant messages are not forced to carry reasoning_content.
       expect(findAssistantMessage(payload)?.reasoning_content).toBeUndefined();
+    });
+  });
+
+  describe('models.dev routing and output limits', () => {
+    beforeEach(() => {
+      __resetModelsDevCacheForTests();
+    });
+
+    afterEach(() => {
+      __resetModelsDevCacheForTests();
+    });
+
+    const seedModelsDev = async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          'opencode-go': {
+            models: {
+              'qwen3.8-flash': {
+                id: 'qwen3.8-flash',
+                provider: { npm: '@ai-sdk/anthropic' },
+                limit: { context: 1_000_000, output: 131_072 },
+              },
+            },
+          },
+        }),
+      }) as any;
+
+      await fetchModelsDevRoutingMetadata('opencode-go');
+    };
+
+    it('routes models.dev Anthropic models to the Anthropic runtime', async () => {
+      await seedModelsDev();
+
+      const routers = await params.routers({ apiKey: 'test' }, { model: 'qwen3.8-flash' });
+      const anthropicRouter = routers.find((router) => router.apiType === 'anthropic');
+
+      expect(anthropicRouter?.models).toContain('qwen3.8-flash');
+      expect(anthropicRouter?.runtime).toBeDefined();
+    });
+
+    it('does not wait for a cold models.dev refresh before routing', () => {
+      __resetModelsDevCacheForTests();
+      global.fetch = vi.fn().mockRejectedValue(new Error('no network in test')) as any;
+
+      const routers = params.routers({ apiKey: 'test' }, { model: 'qwen3.8-flash' });
+
+      expect(Array.isArray(routers)).toBe(true);
+      expect(routers.find((router) => router.apiType === 'anthropic')?.models).toContain(
+        'qwen3.8-flash',
+      );
+    });
+
+    it('uses model-bank metadata without a models.dev request', async () => {
+      __resetModelsDevCacheForTests();
+      global.fetch = vi.fn().mockRejectedValue(new Error('no network in test')) as any;
+
+      const payload = await buildOpenCodeAnthropicPayload({
+        messages: [{ content: 'Hello', role: 'user' }],
+        model: 'qwen3.8-flash',
+        stream: true,
+      } as any);
+
+      expect(payload.max_tokens).toBe(131_072);
+    });
+
+    it('uses the cached output limit for OpenAI-compatible models', async () => {
+      await seedModelsDev();
+
+      expect(
+        buildOpenAIPayload({
+          messages: [{ content: 'Hello', role: 'user' }],
+          model: 'qwen3.8-flash',
+          stream: true,
+        } as any).max_tokens,
+      ).toBe(131_072);
+
+      expect(
+        buildOpenAIPayload({
+          max_tokens: 8192,
+          messages: [{ content: 'Hello', role: 'user' }],
+          model: 'qwen3.8-flash',
+          stream: true,
+        } as any).max_tokens,
+      ).toBe(8192);
+    });
+
+    it('uses the provider output limit for the Anthropic payload', async () => {
+      await seedModelsDev();
+
+      const payload = await buildOpenCodeAnthropicPayload({
+        messages: [{ content: 'Hello', role: 'user' }],
+        model: 'qwen3.8-flash',
+        stream: true,
+      } as any);
+
+      expect(payload.max_tokens).toBe(131_072);
     });
   });
 });

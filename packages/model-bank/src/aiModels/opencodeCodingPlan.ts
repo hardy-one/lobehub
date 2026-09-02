@@ -400,6 +400,19 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     // reasoning_options: []
     type: 'chat',
   },
+  {
+    abilities: { functionCall: true, reasoning: true, vision: true },
+    contextWindowTokens: 1_000_000,
+    displayName: 'Qwen3.8 Flash',
+    enabled: false,
+    family: 'qwen',
+    generation: 'qwen3.8',
+    id: 'qwen3.8-flash',
+    maxOutput: 131_072,
+    organization: 'Alibaba',
+    sdkType: 'anthropic',
+    type: 'chat',
+  },
 ];
 
 export default opencodeCodingPlanChatModels;

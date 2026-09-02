@@ -14,8 +14,16 @@ const tokenMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@lobehub/ui/chat', () => ({
-  TokenTag: ({ value }: { value: number }) =>
-    createElement('div', { 'data-testid': 'token-tag' }, value),
+  TokenTag: ({ value, size }: { value: number; size?: { blockSize?: number; size?: number } }) =>
+    createElement(
+      'div',
+      {
+        'data-block-size': size?.blockSize,
+        'data-icon-size': size?.size,
+        'data-testid': 'token-tag',
+      },
+      value,
+    ),
 }));
 
 vi.mock('@/store/user', () => ({
@@ -106,6 +114,8 @@ describe('Context window token', () => {
 
     expect(tokenMocks.useTokenBreakdown).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('token-tag')).toHaveTextContent('6000');
+    expect(screen.getByTestId('token-tag')).toHaveAttribute('data-block-size', '24');
+    expect(screen.getByTestId('token-tag')).toHaveAttribute('data-icon-size', '16');
     expect(screen.getByTestId('token-tag').parentElement).toHaveAttribute(
       'data-popover-trigger',
       'click',
@@ -126,6 +136,8 @@ describe('Context window token', () => {
 
     render(createElement(Token));
 
+    expect(screen.getByTestId('token-tag')).toHaveAttribute('data-block-size', '28');
+    expect(screen.getByTestId('token-tag')).toHaveAttribute('data-icon-size', '18');
     expect(screen.getByTestId('token-tag').parentElement).toHaveAttribute(
       'data-popover-trigger',
       'hover',

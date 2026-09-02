@@ -11,6 +11,10 @@ import {
 // overflow: hidden;
 // ref: https://zhuanlan.zhihu.com/p/113855026
 const genGlobalStyle = ({ token }: { prefixCls: string; token: Theme }) => css`
+  html {
+    text-size-adjust: 100%;
+  }
+
   html,
   body,
   #__next {

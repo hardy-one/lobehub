@@ -193,6 +193,13 @@ export interface CustomClientOptions<T extends Record<string, any> = any> {
   createClient?: (options: ConstructorOptions<T>) => any;
 }
 
+type OpenAIModelWithProviderMetadata = OpenAI.Model & {
+  context_length?: number;
+  max_output_tokens?: number;
+  max_tokens?: number;
+  name?: string;
+};
+
 export interface OpenAICompatibleFactoryOptions<T extends Record<string, any> = any> {
   apiKey?: string;
   baseURL?: string;
@@ -1033,16 +1040,30 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
               return dayjs.utc(item.created * 1000).format('YYYY-MM-DD');
             };
 
-            // TODO: should refactor after remove v1 user/modelList code
+            const providerModel = item as OpenAIModelWithProviderMetadata;
+            const contextWindowTokens = providerModel.context_length;
+            const maxOutput = providerModel.max_tokens ?? providerModel.max_output_tokens;
+            const remoteModelMetadata = {
+              ...(contextWindowTokens === undefined ? {} : { contextWindowTokens }),
+              ...(maxOutput === undefined ? {} : { maxOutput }),
+              ...(providerModel.name ? { displayName: providerModel.name } : {}),
+            };
+
+            // The provider model list is authoritative for availability and any fields it
+            // supplies. Keep the local model-bank card only as a fallback for metadata that
+            // this OpenAI-compatible endpoint does not expose.
             const knownModel = LOBE_DEFAULT_MODEL_LIST.find((model) => model.id === item.id);
 
             if (knownModel) {
-              const releasedAt = knownModel.releasedAt ?? toReleasedAt();
-
-              return { ...knownModel, releasedAt };
+              return {
+                ...knownModel,
+                ...remoteModelMetadata,
+                releasedAt: toReleasedAt() ?? knownModel.releasedAt,
+              };
             }
 
             return {
+              ...remoteModelMetadata,
               id: item.id,
               releasedAt: toReleasedAt(),
             };

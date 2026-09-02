@@ -15,10 +15,16 @@ import { agentSelectors } from '@/store/agent/selectors';
 import { ChatSettingsTabs } from '@/store/global/initialState';
 import { useSessionStore } from '@/store/session';
 
+import { resolveChatSettingsTab } from './resolveChatSettingsTab';
+
 export default memo(() => {
-  const [tab, setTab] = useState(ChatSettingsTabs.Prompt);
+  const [tab, setTab] = useState(ChatSettingsTabs.Opening);
   const cateItems = useCategory();
   const id = useSessionStore((s) => s.activeId);
+  const activeTab = resolveChatSettingsTab(
+    tab,
+    cateItems?.flatMap((item) => (typeof item?.key === 'string' ? [item.key] : [])) ?? [],
+  );
   const { allowed: canEdit } = usePermission('edit_own_content');
 
   const [updateAgentConfig, updateAgentMeta, config, meta] = useAgentStore((s) => [
@@ -33,7 +39,7 @@ export default memo(() => {
   return (
     <MobileContentLayout header={<MobileHeader />}>
       <Tabs
-        activeKey={tab}
+        activeKey={activeTab}
         items={cateItems as any}
         style={{
           borderBottom: `1px solid ${cssVar.colorBorderSecondary}`,
@@ -46,7 +52,7 @@ export default memo(() => {
         id={id}
         loading={isLoading}
         meta={meta}
-        tab={tab}
+        tab={activeTab}
         onConfigChange={updateAgentConfig}
         onMetaChange={updateAgentMeta}
       />

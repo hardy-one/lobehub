@@ -481,7 +481,12 @@ export class GatewayStreamNotifier implements IStreamEventManager {
     const mirrorTo = this.mirrorTargets.get(operationId);
     if (mirrorTo) {
       if (log.enabled) {
-        log('push-event mirror: operationId=%s -> mirrorOperationId=%s type=%s', operationId, mirrorTo, event.type);
+        log(
+          'push-event mirror: operationId=%s -> mirrorOperationId=%s type=%s',
+          operationId,
+          mirrorTo,
+          event.type,
+        );
       }
       pushes.push(this.mirrorPush(mirrorTo, sanitizedEvent));
       await Promise.all(pushes);
@@ -631,7 +636,9 @@ export class GatewayStreamNotifier implements IStreamEventManager {
 
       if (!res.ok) {
         const text = await res.text().catch(() => '');
-        throw new Error(`Gateway ${path} returned ${res.status}: ${text} (bodySize=${bodySize}, duration=${durationMs}ms)`);
+        throw new Error(
+          `Gateway ${path} returned ${res.status}: ${text} (bodySize=${bodySize}, duration=${durationMs}ms)`,
+        );
       }
     } catch (error) {
       log(

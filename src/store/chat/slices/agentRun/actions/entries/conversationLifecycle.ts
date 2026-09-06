@@ -54,7 +54,6 @@ import { resolveSelectedSkillsWithContent } from '@/services/chat/mecha/skillPre
 import { resolveSelectedToolsWithContent } from '@/services/chat/mecha/toolPreload';
 import { messageService } from '@/services/message';
 import { topicService } from '@/services/topic';
-import { chatTiming } from '@/utils/chatTiming';
 import { getAgentStoreState } from '@/store/agent';
 import {
   agentByIdSelectors,
@@ -101,7 +100,6 @@ import { isLocalOnlyMessage } from '@/store/chat/utils/localMessages';
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 import { snapshotAgentModel, snapshotAgentReasoning } from '@/store/chat/utils/snapshotAgentModel';
 import { topicMapKey } from '@/store/chat/utils/topicMapKey';
-import { unescapeMarkdown } from '@/store/chat/utils/unescapeMarkdown';
 import { deviceSelectors, getDeviceStoreState } from '@/store/device';
 import { getElectronStoreState } from '@/store/electron';
 import { getFileStoreState } from '@/store/file/store';
@@ -339,11 +337,6 @@ export class ConversationLifecycleActionImpl {
     signal,
   }: SendMessageWithContextParams): Promise<SendMessageResult | undefined> => {
     throwIfSendAborted(signal);
-
-    // The rich-text editor's Markdown export escapes literal punctuation
-    // (e.g. `_` -> `\_`) for display round-tripping. Normalize before sending
-    // so the LLM receives what the user actually typed.
-    message = unescapeMarkdown(message);
 
     let detachCallerAbort = () => {};
     let hasNotifiedMessageAccepted = false;

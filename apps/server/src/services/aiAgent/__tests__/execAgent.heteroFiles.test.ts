@@ -496,6 +496,41 @@ describe('AiAgentService.execAgent - hetero early-exit file attachments', () => 
     expect(mockSpawnHeteroSandbox).not.toHaveBeenCalled();
   });
 
+  it('seeds the routing deviceId into runningOperation for device-dispatched local CLI runs', async () => {
+    // `InterventionController.interruptTask` reads `topic.metadata.runningOperation.deviceId`
+    // to route `cancelHeteroTask` at the device hosting the process. Without it the web
+    // Stop button cannot terminate a Pi (or any local CLI) run on a bound device.
+    heteroAgentConfig.model = 'pi';
+    heteroAgentConfig.provider = 'pi';
+    heteroAgentConfig.agencyConfig = {
+      boundDeviceId: 'device-1',
+      executionTarget: 'device',
+      heterogeneousProvider: { type: 'pi' },
+    } as any;
+
+    await service.execAgent({
+      agentId: 'agent-1',
+      prompt: 'Run a long task with Pi',
+    });
+
+    expect(mockDispatchAgentRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentType: 'pi',
+        deviceId: 'device-1',
+      }),
+    );
+    expect(topicMock.updateMetadata).toHaveBeenCalledWith(
+      'topic-1',
+      expect.objectContaining({
+        runningOperation: expect.objectContaining({
+          deviceId: 'device-1',
+          heteroType: 'pi',
+        }),
+      }),
+    );
+    expect(mockSpawnHeteroSandbox).not.toHaveBeenCalled();
+  });
+
   it('resumes Amp natively without loading or injecting fallback history', async () => {
     mockGetHeterogeneousResumeSessionId.mockResolvedValue('amp-thread-existing');
     heteroAgentConfig.model = 'amp';

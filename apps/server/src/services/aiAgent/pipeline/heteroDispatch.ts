@@ -455,6 +455,42 @@ export const dispatchHeteroAgent = async (
     ? deps.userId
     : (agentConfig.userId ?? deps.userId);
 
+  // Local CLI hetero plan, resolved up front (pure resolver — inputs below are
+  // all already in scope) so a device-dispatched run can seed its routing
+  // deviceId into `runningOperation` when childOperation is built. That marker
+  // is what `InterventionController.interruptTask` reads to route
+  // `cancelHeteroTask` at the device: without a deviceId the web Stop path
+  // only flips durable runtime state the standalone CLI never reads, and the
+  // process keeps running to completion off-screen.
+  const heteroPlan = resolveExecutionPlan({
+    agencyConfig: agentConfig.agencyConfig,
+    canUseDevice,
+    isHetero: true,
+    clientExecutionAvailable: false,
+    requestedDeviceId,
+    sandboxExecutionAvailable: supportsCloudHeterogeneousSandbox(heteroType),
+    trigger: requestTrigger,
+  });
+  const heteroDeviceId = heteroPlan.kind === 'device' ? heteroPlan.deviceId : undefined;
+  const heteroDeviceWorkspaceId = heteroDeviceId
+    ? await deps.resolveDeviceWorkspaceId(heteroDeviceId)
+    : undefined;
+  // Same personal-device heuristic as the remote branch above: a device that
+  // belongs to no workspace and was picked by (or for) this caller is the
+  // caller's own machine, so cancellation is authorized as the caller;
+  // otherwise cancel as the agent owner.
+  const heteroUsesCallersPersonalDevice =
+    heteroDeviceId != null &&
+    !heteroDeviceWorkspaceId &&
+    (requestedDeviceId === heteroDeviceId ||
+      (heteroPlan.kind === 'device' &&
+        heteroPlan.target === 'local' &&
+        agentConfig.agencyConfig?.executionTargetSelectionPolicy !== 'fixed') ||
+      (!canManageAgent && memberDeviceOverride?.boundDeviceId === heteroDeviceId));
+  const heteroDeviceUserId = heteroUsesCallersPersonalDevice
+    ? deps.userId
+    : (agentConfig.userId ?? deps.userId);
+
   // Register the run's lifecycle hooks so the hetero terminal path fires
   // onComplete/onError through the same `hookDispatcher` the normal LLM
   // runtime uses — driving the task lifecycle (onTopicComplete) and IM bot
@@ -471,11 +507,13 @@ export const dispatchHeteroAgent = async (
     heteroType,
     hooks: serializedHooks,
     startedAt: new Date().toISOString(),
-    ...(isRemoteHetero && remoteDeviceId
+    // Device identity for whichever plan routed this run to a device (remote
+    // platform agents and device-dispatched local CLI both land here).
+    ...(remoteDeviceId || heteroDeviceId
       ? {
-          deviceId: remoteDeviceId,
-          deviceUserId: remoteDeviceUserId,
-          deviceWorkspaceId: remoteDeviceWorkspaceId,
+          deviceId: remoteDeviceId ?? heteroDeviceId,
+          deviceUserId: remoteDeviceId ? remoteDeviceUserId : heteroDeviceUserId,
+          deviceWorkspaceId: remoteDeviceId ? remoteDeviceWorkspaceId : heteroDeviceWorkspaceId,
         }
       : {}),
     operationId,
@@ -774,15 +812,8 @@ export const dispatchHeteroAgent = async (
       log('execAgent: failed to init stream for local hetero: %O', err);
     }
 
-    const heteroPlan = resolveExecutionPlan({
-      agencyConfig: agentConfig.agencyConfig,
-      canUseDevice,
-      isHetero: true,
-      clientExecutionAvailable: false,
-      requestedDeviceId,
-      sandboxExecutionAvailable: supportsCloudHeterogeneousSandbox(heteroType),
-      trigger: requestTrigger,
-    });
+    // heteroPlan was resolved up front (before childOperation) so the device
+    // identity below could be seeded into the runningOperation marker.
 
     if (heteroPlan.kind !== 'sandbox') {
       const dispatchDeviceId = heteroPlan.kind === 'device' ? heteroPlan.deviceId : undefined;

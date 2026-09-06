@@ -117,6 +117,43 @@ describe('uploadRouter', () => {
     expect(routerMocks.model.create).not.toHaveBeenCalled();
   });
 
+  it('fails open when the existence probe is denied (403) by the S3 store', async () => {
+    // RustFS / restricted IAM deny HeadObject with a bare 403 (no body, so the
+    // AWS SDK surfaces `UnknownError`) for keys that do not exist yet.
+    routerMocks.getFileMetadata.mockRejectedValue(
+      Object.assign(new Error('UnknownError'), {
+        $metadata: { httpStatusCode: 403 },
+        name: 'Unknown',
+      }),
+    );
+
+    await expect(
+      caller.createS3PreSignedUrl({ pathname: 'files/test.bin', size: 100 }),
+    ).resolves.toBe('https://example.com/upload');
+
+    expect(routerMocks.businessFileUploadCheck).toHaveBeenCalled();
+    expect(routerMocks.model.create).toHaveBeenCalledWith(
+      expect.objectContaining({ pathname: 'files/test.bin', size: 100 }),
+      routerMocks.transactionClient,
+    );
+    expect(routerMocks.createPreSignedUrl).toHaveBeenCalledWith('files/test.bin', 100);
+  });
+
+  it('still surfaces unexpected storage errors from the existence probe', async () => {
+    routerMocks.getFileMetadata.mockRejectedValue(
+      Object.assign(new Error('InternalError'), {
+        $metadata: { httpStatusCode: 500 },
+        name: 'InternalError',
+      }),
+    );
+
+    await expect(
+      caller.createS3PreSignedUrl({ pathname: 'files/test.bin', size: 100 }),
+    ).rejects.toThrow('InternalError');
+
+    expect(routerMocks.createPreSignedUrl).not.toHaveBeenCalled();
+  });
+
   it('rejects oversized requests before reserving or creating storage state', async () => {
     await expect(
       caller.createS3PreSignedUrl({

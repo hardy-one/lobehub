@@ -61,6 +61,19 @@ const isMissingObject = (error: unknown) => {
   return value.name === 'NotFound' || value.$metadata?.httpStatusCode === 404;
 };
 
+/**
+ * HEAD responses carry no body, so an S3 deny on HeadObject surfaces as a bare
+ * 403 (often wrapped as `UnknownError` by the AWS SDK). Some S3-compatible
+ * stores (e.g. RustFS, or IAM policies without s3:ListBucket) deny HeadObject
+ * for keys that do not exist yet, which is exactly what the existence probe
+ * below requests. Treat denial as 'unknown' and fail open instead of failing
+ * every upload on stores where the probe is not permitted.
+ */
+const isAccessDenied = (error: unknown) => {
+  if (!error || typeof error !== 'object') return false;
+  const value = error as { $metadata?: { httpStatusCode?: number }; name?: string };
+  return value.name === 'AccessDenied' || value.$metadata?.httpStatusCode === 403;
+};
 const reserveUpload = async (params: {
   clientIp?: string;
   db: LobeChatDatabase;
@@ -91,6 +104,13 @@ const reserveUpload = async (params: {
       .then(() => true)
       .catch((error: unknown) => {
         if (isMissingObject(error)) return false;
+        if (isAccessDenied(error)) {
+          console.warn(
+            `[upload] existence probe denied for ${params.pathname}; skipping the check`,
+            error,
+          );
+          return false;
+        }
         throw error;
       });
     if (objectExists) throw uploadConflict('Upload pathname is already in use');

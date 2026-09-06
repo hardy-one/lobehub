@@ -134,8 +134,32 @@ describe('ChatInput store actions', () => {
       cleanDocument: vi.fn(),
       focus: vi.fn(),
       getDocument: vi.fn((type: string) =>
-        type === 'markdown' ? '/goal Ship the homepage' : { root: {} },
+        type === 'text' ? '/goal Ship the homepage' : { root: {} },
       ),
+    };
+    const store = createStore({
+      editor: editor as unknown as IEditor,
+      onSend,
+    });
+
+    store.getState().handleSendButton();
+
+    expect(onSend).toHaveBeenCalledOnce();
+    expect(editor.cleanDocument).toHaveBeenCalledOnce();
+  });
+
+  it('sends the plain-text document without Markdown reserialization', () => {
+    const message =
+      '- RUSTFS_CORS_ALLOWED_ORIGINS=<https://lobe.hardynio.xyz>\n' +
+      '- RUSTFS_CONSOLE_CORS_ALLOWED_ORIGINS=<https://lobe.hardynio.xyz>';
+    const onSend = vi.fn(({ clearContent, getMarkdownContent }) => {
+      expect(getMarkdownContent()).toBe(message);
+      clearContent();
+    });
+    const editor = {
+      cleanDocument: vi.fn(),
+      focus: vi.fn(),
+      getDocument: vi.fn((type: string) => (type === 'text' ? message : { root: {} })),
     };
     const store = createStore({
       editor: editor as unknown as IEditor,

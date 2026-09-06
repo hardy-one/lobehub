@@ -4,7 +4,7 @@ import os from 'node:os';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { spawnHeteroAgentRun } from './agentRun';
+import { cancelHeteroAgentRun, spawnHeteroAgentRun } from './agentRun';
 
 const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }));
 
@@ -24,8 +24,10 @@ const mockMissingDir = (missing: string) =>
 
 const makeFakeChild = () => {
   const child = new EventEmitter() as EventEmitter & {
+    kill: ReturnType<typeof vi.fn>;
     stdin: { end: ReturnType<typeof vi.fn>; write: ReturnType<typeof vi.fn> };
   };
+  child.kill = vi.fn();
   child.stdin = { end: vi.fn(), write: vi.fn() };
   return child;
 };
@@ -242,5 +244,25 @@ describe('spawnHeteroAgentRun', () => {
         { source: { id: 'file-1', type: 'url', url: 'https://signed/a.png' }, type: 'image' },
       ]),
     );
+  });
+
+  it('cancels a running wrapper by operation id', async () => {
+    const child = makeFakeChild();
+    spawnMock.mockReturnValue(child);
+
+    const ackPromise = spawnHeteroAgentRun({ ...baseParams, operationId: 'cancel-me' });
+    child.emit('spawn');
+    await ackPromise;
+
+    const cancellation = cancelHeteroAgentRun({ operationId: 'cancel-me' });
+
+    expect(child.kill).toHaveBeenCalledWith('SIGINT');
+    child.emit('exit', null, 'SIGINT');
+
+    await expect(cancellation).resolves.toEqual({
+      exited: true,
+      pid: undefined,
+      signal: 'SIGINT',
+    });
   });
 });

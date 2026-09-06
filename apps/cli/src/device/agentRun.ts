@@ -1,3 +1,4 @@
+import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
 
 import {
@@ -36,6 +37,76 @@ interface SpawnHeteroAgentRunLogger {
   error?: (msg: string) => void;
   info?: (msg: string) => void;
 }
+
+export interface HeteroAgentRunCancellationResult {
+  exited: boolean;
+  pid?: number;
+  signal: NodeJS.Signals;
+}
+
+interface RunningHeteroAgentRun {
+  cancellation?: Promise<HeteroAgentRunCancellationResult>;
+  exit: Promise<void>;
+  process: ChildProcess;
+}
+
+const runningHeteroAgentRuns = new Map<string, RunningHeteroAgentRun>();
+
+const waitForProcessExit = async (task: RunningHeteroAgentRun, timeoutMs: number) => {
+  let timer: NodeJS.Timeout | undefined;
+  const timedOut = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
+  });
+  const exited = await Promise.race([task.exit.then(() => true as const), timedOut]);
+  if (timer) clearTimeout(timer);
+  return exited;
+};
+
+/**
+ * Cancel a gateway-dispatched local CLI wrapper running in this CLI device.
+ * The wrapper owns the native Pi process and forwards the signal to its
+ * process group, so the connect daemon only needs to signal the wrapper.
+ */
+export const cancelHeteroAgentRun = async (params: {
+  operationId: string;
+  signal?: NodeJS.Signals;
+}): Promise<HeteroAgentRunCancellationResult | undefined> => {
+  const { operationId, signal = 'SIGINT' } = params;
+  const task = runningHeteroAgentRuns.get(operationId);
+  if (!task) return;
+  if (task.cancellation) return task.cancellation;
+
+  task.cancellation = (async () => {
+    try {
+      task.process.kill(signal);
+    } catch {
+      // The wrapper may have exited between lookup and signalling.
+    }
+    let exited = await waitForProcessExit(task, 2000);
+
+    if (!exited) {
+      try {
+        task.process.kill(signal === 'SIGINT' ? 'SIGINT' : 'SIGKILL');
+      } catch {
+        // Continue to the final bounded fallback below.
+      }
+      exited = await waitForProcessExit(task, 2000);
+    }
+
+    if (!exited) {
+      try {
+        task.process.kill('SIGKILL');
+      } catch {
+        // The process may have exited while the final signal was in flight.
+      }
+      exited = await waitForProcessExit(task, 1000);
+    }
+
+    return { exited, pid: task.process.pid, signal };
+  })();
+
+  return task.cancellation;
+};
 
 /**
  * Spawn `lh hetero exec` for a gateway-dispatched agent run. Mirrors the
@@ -131,6 +202,13 @@ export function spawnHeteroAgentRun(
       stdio: ['pipe', 'inherit', 'inherit'],
     });
 
+    const exit = new Promise<void>((resolve) => {
+      child.once('exit', () => resolve());
+      child.once('error', () => resolve());
+    });
+    const task: RunningHeteroAgentRun = { exit, process: child };
+    runningHeteroAgentRuns.set(operationId, task);
+
     child.once('spawn', () => {
       // Only safe to write stdin once the process actually started.
       try {
@@ -146,11 +224,17 @@ export function spawnHeteroAgentRun(
 
     child.once('error', (err) => {
       logger?.error?.(`hetero exec spawn failed (op=${operationId}): ${err.message}`);
+      if (runningHeteroAgentRuns.get(operationId)?.process === child) {
+        runningHeteroAgentRuns.delete(operationId);
+      }
       settle({ reason: err.message, status: 'rejected' });
     });
 
     child.on('exit', (code, signal) => {
       logger?.info?.(`hetero exec exited (op=${operationId}) code=${code} signal=${signal}`);
+      if (runningHeteroAgentRuns.get(operationId)?.process === child) {
+        runningHeteroAgentRuns.delete(operationId);
+      }
     });
   });
 }

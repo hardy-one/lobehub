@@ -9,6 +9,7 @@ import { resolveRemotePlatformRuntime } from '@lobechat/heterogeneous-agents/sca
 import { getTrpcClient } from '../api/client';
 import { CLI_PRODUCT_NAME, resolveCliDirName } from '../constants/identity';
 import { getTask, listTasks, removeTask, saveTask } from '../daemon/taskRegistry';
+import { cancelHeteroAgentRun } from '../device/agentRun';
 import { log } from '../utils/logger';
 
 // ─── Hermes session persistence ───
@@ -416,6 +417,9 @@ export async function runHeteroTask(params: RunHeteroTaskParams): Promise<string
 
 export async function cancelHeteroTask(params: CancelHeteroTaskParams): Promise<string> {
   const { signal = 'SIGINT', taskId } = params;
+  const localExec = await cancelHeteroAgentRun({ operationId: taskId, signal });
+  if (localExec) return JSON.stringify({ ...localExec, taskId });
+
   const entry = getTask(taskId);
 
   if (!entry) {

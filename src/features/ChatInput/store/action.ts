@@ -57,7 +57,10 @@ export const store: CreateStore = (publicState) => (set, get) => ({
     return readDocument(get().editor, 'json') as Record<string, any> | undefined;
   },
   getMarkdownContent: () => {
-    return String(readDocument(get().editor, 'markdown') || '').trimEnd();
+    const editor = get().editor;
+    const textContent = editor?.getDocument('text');
+    if (typeof textContent === 'string') return textContent.trimEnd();
+    return String(readDocument(editor, 'markdown') || '').trimEnd();
   },
   handleSendButton: () => {
     const editor = get().editor;

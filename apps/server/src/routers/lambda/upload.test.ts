@@ -123,6 +123,38 @@ describe('uploadRouter', () => {
     expect(routerMocks.model.create).not.toHaveBeenCalled();
   });
 
+  it('does not reserve a pathname or issue credentials when the existence probe is denied', async () => {
+    routerMocks.getFileMetadata.mockRejectedValue(
+      Object.assign(new Error('UnknownError'), {
+        $metadata: { httpStatusCode: 403 },
+        name: 'Unknown',
+      }),
+    );
+
+    await expect(
+      caller.createS3PreSignedUrl({ pathname: 'files/test.bin', size: 100 }),
+    ).rejects.toThrow('UnknownError');
+
+    expect(routerMocks.businessFileUploadCheck).not.toHaveBeenCalled();
+    expect(routerMocks.model.create).not.toHaveBeenCalled();
+    expect(routerMocks.createPreSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it('still surfaces unexpected storage errors from the existence probe', async () => {
+    routerMocks.getFileMetadata.mockRejectedValue(
+      Object.assign(new Error('InternalError'), {
+        $metadata: { httpStatusCode: 500 },
+        name: 'InternalError',
+      }),
+    );
+
+    await expect(
+      caller.createS3PreSignedUrl({ pathname: 'files/test.bin', size: 100 }),
+    ).rejects.toThrow('InternalError');
+
+    expect(routerMocks.createPreSignedUrl).not.toHaveBeenCalled();
+  });
+
   it('rejects oversized requests before reserving or creating storage state', async () => {
     await expect(
       caller.createS3PreSignedUrl({

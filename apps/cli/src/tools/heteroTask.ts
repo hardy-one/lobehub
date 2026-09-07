@@ -468,8 +468,17 @@ export async function cancelHeteroTask(
   params: CancelHeteroTaskParams,
 ): Promise<CancelHeteroTaskNotFoundResult | CancelHeteroTaskResult> {
   const { signal = 'SIGINT', taskId } = params;
+  log.info(`[hetero-cancel] requested taskId=${taskId} signal=${signal}`);
   const localExec = await cancelHeteroAgentRun({ operationId: taskId, signal });
-  if (localExec) return JSON.stringify({ ...localExec, taskId });
+  if (localExec) {
+    log.info(
+      `[hetero-cancel] local wrapper result taskId=${taskId} exited=${localExec.exited} pid=${localExec.pid ?? 'unknown'} signal=${localExec.signal}`,
+    );
+    return JSON.stringify({ ...localExec, taskId });
+  }
+  log.debug(
+    `[hetero-cancel] no local wrapper registry entry taskId=${taskId}; falling back to task registry`,
+  );
 
   const local = await cancelAgentRun(taskId, signal);
   if (local) return JSON.stringify({ ...local, taskId, success: local.exited });

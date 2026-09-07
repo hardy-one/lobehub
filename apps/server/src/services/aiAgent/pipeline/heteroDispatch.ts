@@ -567,6 +567,16 @@ export const dispatchHeteroAgent = async (
   const cliDeviceId = localDeviceIdForCancellation;
   const cliDeviceWorkspaceId = localDeviceWorkspaceId;
 
+  log(
+    '[hetero-cancel] resolved execution route op=%s type=%s remoteDevice=%s localDevice=%s localWorkspace=%s plan=%O',
+    operationId,
+    heteroType,
+    remoteDeviceId ?? 'none',
+    localDeviceIdForCancellation ?? 'none',
+    localDeviceWorkspaceId ?? 'none',
+    localPlan,
+  );
+
   // Register the run's lifecycle hooks so the hetero terminal path fires
   // onComplete/onError through the same `hookDispatcher` the normal LLM
   // runtime uses — driving the task lifecycle (onTopicComplete) and IM bot
@@ -663,6 +673,13 @@ export const dispatchHeteroAgent = async (
   } else if (!appContext?.isolationThread) {
     await deps.topicModel.updateMetadata(topicId, { runningOperation: childOperation });
   }
+  log(
+    '[hetero-cancel] runningOperation marker persisted op=%s topic=%s device=%s parent=%s',
+    operationId,
+    topicId,
+    remoteDeviceId ?? localDeviceIdForCancellation ?? 'none',
+    topicStartOwnerOperationId ?? parentOperationId ?? 'none',
+  );
 
   // Always persist operation metadata (userId/workspaceId) to the state
   // manager, not just for topic-owner-mirrored runs. `subAgentCallback`

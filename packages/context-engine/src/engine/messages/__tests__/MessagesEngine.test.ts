@@ -88,6 +88,21 @@ describe('MessagesEngine', () => {
         expect(system.content).toContain('<title>魔法使</title>');
       });
 
+      it('omits agent identity in lean prompt mode', async () => {
+        const result = await new MessagesEngine(
+          createBasicParams({
+            agentIdentity: { name: '芙莉莲', title: '魔法使' },
+            promptMode: 'lean',
+            systemRole: 'You are a helpful assistant.',
+          }),
+        ).process();
+
+        const system = result.messages[0];
+        expect(system.role).toBe('system');
+        expect(system.content).not.toContain('<agent_identity>');
+        expect(system.content).toContain('You are a helpful assistant.');
+      });
+
       it('injects identity even without a system role', async () => {
         const result = await new MessagesEngine(
           createBasicParams({ agentIdentity: { name: '芙莉莲' } }),
@@ -110,6 +125,41 @@ describe('MessagesEngine', () => {
         const system = result.messages.find((m) => m.role === 'system');
         expect(system?.content).not.toContain('<agent_identity>');
       });
+    });
+
+    it('injects the current plan as a synthetic tool result after the last user message', async () => {
+      const result = await new MessagesEngine(
+        createBasicParams({
+          planTodo: {
+            enabled: true,
+            plan: {
+              completed: false,
+              context: 'Keep the migration reversible.',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              description: 'Ship the migration safely.',
+              goal: 'Migrate the database',
+              id: 'plan-1',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+            },
+          },
+        }),
+      ).process();
+
+      const userIndex = result.messages.findIndex(
+        (message) => message.role === 'user' && message.content === 'Hello',
+      );
+      const assistantToolCall = result.messages[userIndex + 1];
+      const toolResult = result.messages[userIndex + 2];
+
+      expect(assistantToolCall?.role).toBe('assistant');
+      expect(assistantToolCall?.tool_calls?.[0]?.function?.name).toBe('getPlanContext');
+      expect(toolResult?.role).toBe('tool');
+      expect(toolResult?.content).toContain('<plan>');
+      expect(toolResult?.content).toContain('<goal>Migrate the database</goal>');
+      expect(result.messages.some((message) => message.meta?.systemInjection)).toBe(false);
+      expect(result.metadata.planInjected).toBe(true);
+      expect(result.metadata.planId).toBe('plan-1');
+      expect(result.metadata.contextBuckets?.tools).toContain('<plan>');
     });
 
     describe('TODO context priority', () => {

@@ -1,0 +1,963 @@
+---
+title: LobeHub Prompt 组装全链路与缓存边界审计
+description: 梳理一次 LLM 请求从运行时配置到最终 provider payload 的完整 Prompt 组装流程，并逐项审计 Context Injection 的位置、动态性与前缀缓存风险。
+tags:
+  - Context Engineering
+  - Prompt Assembly
+  - KV Cache
+  - Agent Runtime
+---
+
+# LobeHub Prompt 组装全链路与缓存边界审计
+
+> 审计基线：`next` 分支，包含 `d1212b5537`（将 Plan context 移到 Prompt 尾部）。
+>
+> 本文关注两个问题：
+>
+> 1. 一次请求最终是怎样组装出完整 Prompt 的；
+> 2. 每个上下文注入点是否像原来的 `PlanInjector` 一样，把会变化的内容放到了过早的位置，从而扩大前缀缓存失效范围。
+
+## 1. 先给结论
+
+### 1.1 Plan 的问题已经修复
+
+Plan 原来通过 `BaseFirstUserContentProvider` 合并到第一个真实 user message 前的 `systemInjection` user message。Plan 在长任务中会随着进度变化，因此会修改很早的 Prompt 前缀。
+
+当前改为 `PlanContextSyntheticInjector`，在最后一个真实 user message 后插入：
+
+```text
+assistant: synthetic tool call `getPlanContext`
+tool: <plan>...</plan>
+```
+
+它只改变 Prompt 尾部，不再改变稳定前缀。
+
+### 1.2 结合实际运行场景后的关注点
+
+> 下面按真实生命周期重新排序。Onboarding 只在初始化阶段运行，HistorySummary 会整体改写历史，Group 场景和 Builder 场景规模较小，因此不再列为当前优先改造项。
+
+| 优先级 | 注入点 / 环节                                                           | 当前放置位置                        | 当前判断                                                              |
+| --- | ------------------------------------------------------------------ | ----------------------------- | ----------------------------------------------------------------- |
+| P0  | `UserMemoryInjector`                                               | 第一个 user 前的 `systemInjection` | 动态 memory 可能在长期 topic 中变化，建议拆分稳定 persona 与动态 memory               |
+| P0  | `DiscordContextProvider`                                           | 第一个 user 前的 `systemInjection` | recent channel history 属于外部动态内容，应与静态平台规则拆分                        |
+| P0  | `BotPlatformContextInjector`                                       | system / first-user context   | recent topics、warnings 等动态内容应移到尾部；平台规则可保留                         |
+| P0  | 高频 `PlaceholderVariablesProcessor` 变量                              | 可能重新渲染 system/developer 和历史消息 | `timestamp`、`second`、`datetime` 等每请求变化的变量可能直接破坏早期缓存               |
+| P1  | `SkillContextProvider` 的 activated skill 内容                        | system message                | LLM tool-call 发生在尾部，但下一次请求可能重新把完整 skill 内容注入 system，需先抓真实 payload |
+| P1  | `RuntimeAdditionalContextProvider` 的 `stable_prefix` 调用契约          | 第一个 user 前的 `systemInjection` | Provider 设计合理，重点是确认调用方没有把动态 graph 状态错误标为 stable                   |
+| P1  | `KnowledgeInjector` 的动态检索结果                                        | 第一个 user 前的 `systemInjection` | 固定 Agent 文件可保留；动态检索结果后续单独讨论                                       |
+| 记录  | `OnboardingContextInjector`                                        | 第一个 user 前的 `systemInjection` | 只在初始化阶段使用，流程短、后续普通对话不再注入，当前收益不足以改造                                |
+| 记录  | `HistorySummaryProvider`                                           | system message / 历史摘要         | 摘要变化本来就会整体改写历史，尾部化不能直接恢复增量缓存                                      |
+| 记录  | `GroupContextInjector`                                             | 第一个 user 前的 `systemInjection` | 群聊场景先不改，保留调查结果                                                    |
+| 记录  | `AvailableToolsInjector`                                           | Lean system message           | 初始可发现工具目录，不是 LLM 激活 tool result；operation 内通常稳定                   |
+| 记录  | `ToolSystemRoleProvider`                                           | Full system message           | 主要由固定 manifest / 工具配置决定，暂不作为动态缓存问题                                |
+| 记录  | `AgentManagementContextInjector`                                   | 第一个 user 前的 `systemInjection` | Agent Management tool 的辅助目录，仅特定管理 /auto 场景使用                      |
+| 记录  | `AgentBuilderContextInjector` / `GroupAgentBuilderContextInjector` | 第一个 user 前的 `systemInjection` | 小场景、体积有限，暂不处理                                                     |
+
+因此当前真正需要优先验证和改造的是 Memory、Discord/Bot 动态上下文以及高频 placeholder；其他项目需要结合具体 payload，而不是仅凭 “内容会变化” 就迁移位置。
+
+这不是说这些内容都必须立即移到尾部。缓存风险取决于内容是否在同一 topic、同一 operation 中变化。本文的判断是结构性审计，最终收益仍应通过连续请求的真实 payload 和 provider usage 验证。
+
+### 1.3 当前放置方式基本合理的注入点
+
+以下内容已经位于最后一个 user、virtual tail 或 synthetic tool result 附近，动态变化时只影响 Prompt 后缀：
+
+- `PlanContextSyntheticInjector`
+- `GoalContextSyntheticInjector`
+- `OnboardingSyntheticStateInjector`
+- `OnboardingActionHintInjector`
+- `RuntimeAdditionalContextProvider` 的 `virtual_tail`
+- Page Editor context
+- Task Manager context
+- Todo context
+- Topic reference context
+- Selected skill/tool context
+- `mentionedAgents` delegation hint
+
+---
+
+## 2. 缓存审计的判断标准
+
+### 2.1 什么是 “类似 PlanInjector 的问题”
+
+这里的 “类似问题” 不是指内容一定错误，而是指：
+
+1. 内容在请求之间可能变化；
+2. 内容被放到了 system message 或第一个 user message 之前；
+3. 它后面还有大量不变的历史、工具结果或当前输入；
+4. 因此前面的一个小变化可能导致后续大段前缀无法复用。
+
+典型结构：
+
+```text
+早期动态上下文  ← 这里变化
+稳定的工具上下文
+完整历史消息
+当前用户输入
+```
+
+更适合高变动状态的结构是：
+
+```text
+稳定 system context
+稳定历史前缀
+当前用户输入
+动态运行时状态  ← 这里变化
+```
+
+### 2.2 三个容器不是同一回事
+
+| 容器                             | 代码实现                                 | 最终 API 中的常见表现                                               | 缓存特征            |
+| ------------------------------ | ------------------------------------ | ----------------------------------------------------------- | --------------- |
+| `system` message               | `BaseSystemRoleProvider`             | Chat Completions 中是 `system`；Responses API 中转换为 `developer` | 位于最前面，变化影响最大    |
+| `systemInjection` user message | `BaseFirstUserContentProvider`       | `role: user`，位于第一个真实 user 前                                 | 仍然是很早的前缀        |
+| 最后一个 user message              | `BaseLastUserContentProvider`        | 当前 user 内容追加上下文                                             | 通常只影响尾部         |
+| virtual tail user              | `BaseVirtualLastUserContentProvider` | 独立的尾部 user message                                          | 适合高变动指导         |
+| synthetic tool pair            | `BaseProcessor`                      | assistant tool call + tool result                           | 适合机器状态，不伪装成用户输入 |
+
+`BaseSystemRoleProvider` 会将内容通过 `\n\n` 追加到同一个 system message。`BaseFirstUserContentProvider` 会把多个 Provider 合并到同一个 `systemInjection` 消息，因此其中任意一个 Provider 发生变化，整个早期消息都会变化。
+
+---
+
+## 3. 从运行时配置到最终请求的完整流程
+
+## 3.1 模式和 Agent 配置解析
+
+### 客户端直接聊天链路
+
+主要入口：
+
+```text
+src/services/chat/index.ts
+  → contextEngineering(...)
+  → MessagesEngine
+```
+
+`contextEngineering` 将以下内容整理为 `MessagesEngine` 输入：
+
+- Agent 的 `systemRole`；
+- `enableAgentMode`；
+- `promptMode`；
+- model / provider / capability；
+- enabled tool manifests；
+- available skills；
+- user memory；
+- page、topic、group、runtime context；
+- Plan / Todo /onboarding 等运行时状态。
+
+代码：
+
+```text
+src/services/chat/index.ts
+src/services/chat/mecha/contextEngineering.ts
+```
+
+### Server Agent Runtime 链路
+
+主要流程：
+
+```text
+resolveRunAgentConfig
+  → toolDiscovery
+  → serverCallLlmContextBuilder
+  → serverMessagesEngine
+  → MessagesEngine
+```
+
+关键位置：
+
+```text
+apps/server/src/services/aiAgent/pipeline/resolveRunAgentConfig.ts
+apps/server/src/services/aiAgent/pipeline/toolDiscovery.ts
+apps/server/src/modules/AgentRuntime/adapters/serverCallLlmContextBuilder.ts
+apps/server/src/modules/Mecha/ContextEngineering/index.ts
+```
+
+Server builder 会将：
+
+```ts
+promptMode: agentConfig.chatConfig?.promptMode
+availableTools: tooling.availableTools
+agentIdentity: { name, title }
+planTodo
+onboardingContext
+```
+
+传入 `MessagesEngine`。
+
+### 工具契约的另一条并行链路
+
+工具不是全部写进 Prompt 文本：
+
+1. `ToolSystemRoleProvider` 负责 system 中的工具教学文本；
+2. `AvailableToolsInjector` 负责 Lean 模式的 `<available_tools>` 发现列表；
+3. `tools[]` /manifest schema 作为 provider API 的工具契约单独发送。
+
+因此需要同时审计：
+
+```text
+system/developer 文本
++ messages/input
++ tools schema 数组
+```
+
+只看 `system` 文本会漏掉大量工具上下文。
+
+---
+
+## 3.2 `MessagesEngine` 的 Phase 0–7
+
+入口：
+
+```text
+packages/context-engine/src/engine/messages/MessagesEngine.ts
+```
+
+### Phase 0：Placeholder Residue Filtering
+
+```ts
+new PlaceholderMessageFilterProcessor()
+```
+
+删除失败或废弃的 `...` assistant 占位消息，避免它们消耗 history quota 或出现在 payload 尾部。
+
+**缓存判断：** 如果历史中的占位消息被删除，会从被删除位置开始改变前缀。这是历史清理的预期行为，不属于早期 Injection 问题。
+
+### Phase 1：History Truncation
+
+```ts
+new HistoryTruncateProcessor({ enableHistoryCount, historyCount })
+```
+
+决定本轮保留哪些历史消息。它在所有 Context Injection 之前执行。
+
+**缓存判断：** `historyCount` 或摘要策略变化会改变历史前缀，这是必要的窗口策略，但应避免每轮改变截断边界。
+
+### Phase 2：System Message Assembly
+
+以下 Provider 都追加到同一个 `system` message：
+
+```text
+SystemRoleInjector
+AgentIdentityInjector
+EvalContextSystemInjector
+BotPlatformContextInjector
+SystemDateProvider
+ModelInfoProvider
+SkillContextProvider
+AvailableToolsInjector
+ToolSystemRoleProvider
+HistorySummaryProvider
+```
+
+Responses API 会把最终的 `role: system` 转为 `role: developer`：
+
+```text
+packages/model-runtime/src/core/contextBuilders/openai.ts
+```
+
+### Phase 3：First-user Context Injection
+
+以下 Provider 会合并到第一个真实 user 之前的 `systemInjection` user message：
+
+```text
+UserMemoryInjector
+ExpertiseContextInjector
+GroupContextInjector
+DiscordContextProvider
+KnowledgeInjector
+AgentBuilderContextInjector
+AgentManagementContextInjector
+GroupAgentBuilderContextInjector
+OnboardingContextInjector
+```
+
+这一步是 Plan 原来所在的位置，也是当前审计重点。
+
+### Phase 4：User Message Augmentation
+
+以下 Provider 修改最后一个或多个真实 user message：
+
+```text
+ActiveTopicDocumentContextInjector
+SelectedSkillInjector
+SelectedToolInjector
+ContextSelectionsInjector
+PageSelectionsInjector
+LocalSystemToolSnapshotInjector
+PageEditorContextInjector
+TaskManagerContextInjector
+TodoInjector
+TopicReferenceContextInjector
+```
+
+大多数文本会被放进 `<system_context>` wrapper。`LocalSystemToolSnapshotInjector` 不追加文本，而是插入 assistant tool call 和 tool result。
+
+### Phase 4.5：Virtual Tail Guidance
+
+```text
+GoalContextSyntheticInjector
+PlanContextSyntheticInjector
+OnboardingSyntheticStateInjector
+OnboardingActionHintInjector
+RuntimeAdditionalContextProvider
+```
+
+这是高动态上下文的推荐放置区域。
+
+### Phase 5：Message Transformation
+
+```text
+InputTemplateProcessor
+AgentCouncilFlattenProcessor
+GroupMessageFlattenProcessor
+TasksFlattenProcessor
+TaskMessageProcessor
+PlaceholderMessageFilterProcessor
+VerifyMessageProcessor
+TaskCallbackMessageProcessor
+SupervisorRoleRestoreProcessor
+CompressedGroupRoleTransformProcessor
+GroupOrchestrationFilterProcessor
+GroupRoleTransformProcessor
+ActivationResultTrimProcessor
+PlaceholderVariablesProcessor
+```
+
+这些 Processor 可能改变历史消息的角色、内容、顺序或 tool result。它们不是传统意义的 Context Injection，但会影响最终 Prompt 的缓存前缀。
+
+### Phase 6：Content Processing
+
+```text
+ReactionFeedbackProcessor
+MessageContentProcessor
+ToolCallProcessor
+DisabledToolCallFilter
+```
+
+处理图片、音频、视频、文件 URL、工具调用格式和被禁用的历史工具调用。
+
+### Phase 7：Cleanup
+
+```text
+ToolMessageReorder
+ForceFinishSummaryInjector
+MessageCleanupProcessor
+```
+
+完成 tool message 重排、强制结束提示和最终消息清理。
+
+---
+
+## 3.3 按阶段逐项判定矩阵
+
+> 判定问题不是 “是否会改变 Prompt”，而是 “是否会把可变内容放到过早的位置”。历史裁剪、角色转换等必要变换也可能改变缓存，但它们与把动态状态注入 stable prefix 的问题不同。
+
+| 环节 / 组件                                             | 是否产生或修改早期前缀                      | 变化来源                                        | 是否类似 PlanInjector | 独立结论                                               |
+| --------------------------------------------------- | -------------------------------- | ------------------------------------------- | ----------------- | -------------------------------------------------- |
+| 模式与 Agent 配置解析                                      | 否，负责提供参数                         | Agent 设置、成员覆盖、`/mode`                       | 否                 | 本身不是缓存问题，但错误解析 `promptMode` 会导致后续 Provider 选择错误    |
+| 工具发现与 schema 生成                                     | 是，影响 system 工具文本和 `tools[]`      | 工具启用 / 禁用、激活、模型能力                           | 部分类似              | 配置变化可接受；同一 operation 内应尽量冻结工具集合                    |
+| Phase 0 占位消息过滤                                      | 否，删除历史行                          | assistant 失败 / 废弃状态                         | 否                 | 改变历史是预期清理，不是早期 Injection                           |
+| Phase 1 历史截断                                        | 间接，决定后续历史前缀                      | `historyCount`、压缩策略                         | 部分类似              | 若窗口边界频繁变化会影响缓存，但属于窗口策略；应保持同一模式稳定                   |
+| `SystemRoleInjector`                                | 是                                | 用户编辑 system prompt、HTML renderer 开关         | 否                 | 稳定根 Prompt；变化时失效缓存是预期行为                            |
+| `AgentIdentityInjector`                             | 是（仅 Full）                        | Agent 重命名                                   | 轻度类似              | 低频配置变化；Lean 已关闭，Full 暂不需要迁移                        |
+| `EvalContextSystemInjector`                         | 是                                | eval 环境 Prompt                              | 可能类似              | 取决于 eval 是否复用同一 topic；需按 eval 场景实测                 |
+| `BotPlatformContextInjector`                        | 是                                | 平台固定信息、recent topics、warnings               | 是                 | 动态 recent 内容位于 system 前缀，应拆分静态规则与动态状态              |
+| `SystemDateProvider`                                | 是                                | 日期跨天、时区                                     | 轻度类似              | 日期级精度且体积小，当前可接受                                    |
+| `ModelInfoProvider`                                 | 是（仅 Full）                        | model/provider/capability                   | 否                 | model 改变通常伴随独立 cache key；风险低                       |
+| `SkillContextProvider`                              | 是                                | skill 列表、skill 激活和内容加载                      | 是                 | activated skill 大段内容会改变早期 system prefix，应按需尾部化     |
+| `AvailableToolsInjector`                            | 是（仅 Lean）                        | available tool 列表                           | 部分类似              | 不能移除；应保证 operation 内工具发现列表稳定                       |
+| `ToolSystemRoleProvider`                            | 是（仅 Full）                        | manifest、工具配置                               | 部分类似              | 主要是配置变化风险，不是每轮动态风险                                 |
+| `HistorySummaryProvider`                            | 是                                | 历史压缩和摘要更新                                   | 是                 | 摘要更新会从 system 开始破坏后续缓存，建议尾部化或拆分                    |
+| `UserMemoryInjector`                                | 是，位于 first-user injection        | memory 写入、检索和 persona 更新                    | 是                 | 高体积且可在长期会话中变化，应拆分稳定 persona 与动态 memory             |
+| `ExpertiseContextInjector`                          | 是，位于 first-user injection        | operation 初始 snapshot                       | 否                 | operation-scoped immutable，当前位置符合契约                |
+| `GroupContextInjector`                              | 是，位于 first-user injection        | 当前 Agent、成员、role、group 配置                   | 是                 | 应拆分静态 group 信息与每轮 current-agent state              |
+| `DiscordContextProvider`                            | 是，位于 first-user injection        | guild/channel/thread、recent history         | 是                 | recent history 不能放在早期共享前缀                          |
+| `KnowledgeInjector`                                 | 是，位于 first-user injection        | 文件、知识库、重新加载                                 | 部分类似              | 通常稳定；频繁更新时需要版本快照或尾部检索结果                            |
+| `AgentBuilderContextInjector`                       | 是，位于 first-user injection        | Builder 中当前 Agent 配置                        | 部分类似              | 仅 Builder 场景；长 Builder 对话中应考虑尾部状态                  |
+| `AgentManagementContextInjector`                    | 是，目录部分位于 first-user              | Agent/plugin/provider 目录                    | 部分类似              | 目录应在 operation 内冻结；`mentionedAgents` 已经正确放在尾部      |
+| `GroupAgentBuilderContextInjector`                  | 是，位于 first-user injection        | group builder 编辑状态                          | 是                 | 编辑过程中可能频繁变化，应拆出动态部分                                |
+| `OnboardingContextInjector`                         | 是，位于 first-user injection        | phase、SOUL、Persona、user info                | 是                 | 与尾部 onboarding synthetic state 重复，是当前最明显的早期动态注入之一  |
+| `stable_prefix` runtime context                     | 是，位于 first-user injection        | Graph/node runtime context                  | 取决于调用方            | 名称本身是稳定契约；错误标记动态 state 时完全复现 Plan 问题               |
+| Page/topic/skill/tool/user selections               | 否，主要改尾部 user                     | 当前请求输入                                      | 否                 | 当前请求动态内容位于尾部，位置合理                                  |
+| Page Editor / Task Manager / Todo / Topic Reference | 否，改最后一个 user                     | 页面和任务实时状态                                   | 否                 | 尾部注入，缓存影响范围小                                       |
+| `LocalSystemToolSnapshotInjector`                   | 否，插入尾部附近 tool rows               | 当前发送时文件 / 工具快照                              | 否                 | 不是 system prefix；历史 snapshot 重建时才影响对应历史位置          |
+| `GoalContextSyntheticInjector`                      | 否，插入最后 user 后                    | goal page runtime state                     | 否                 | synthetic tool pair 是正确参考模式；需补 token accounting 覆盖 |
+| `PlanContextSyntheticInjector`                      | 否，插入最后 user 后                    | Plan 进度更新                                   | 已修复               | 当前实现符合动态状态尾部化原则                                    |
+| `OnboardingSyntheticStateInjector`                  | 否，插入最后 user 后                    | onboarding state                            | 否                 | 位置正确，但与早期 onboarding context 重复                    |
+| `OnboardingActionHintInjector`                      | 否，virtual tail                   | phase action guidance                       | 否                 | 位置正确，不应回到 first-user injection                     |
+| `RuntimeAdditionalContextProvider: virtual_tail`    | 否，virtual tail                   | graph/runtime guidance                      | 否                 | 适合高变动指导                                            |
+| Phase 5 历史转换                                        | 不直接写早期 system；可能修改历史行            | flatten、verify、task callback、role transform | 不属于同类             | 可能从被修改的历史位置开始影响缓存，但不是 early injection              |
+| `ActivationResultTrimProcessor`                     | 不直接写早期 system；可能修改历史 tool result | 当前 skill/tool manifest                      | 部分类似              | 状态变化会同时改早期 context 与历史结果，需要单独观察                    |
+| Phase 6 内容和工具处理                                     | 通常不写早期文本                         | model capability、工具过滤、文件编码                  | 不属于同类             | 影响 payload 细节或历史工具行，通常不是 stable prefix 注入          |
+| Phase 7 cleanup                                     | 主要在尾部或最终重排                       | force finish、tool reorder、cleanup           | 否                 | `ForceFinishSummaryInjector` 位于尾部，位置合理             |
+
+这张矩阵的结论与后续详细章节一致：当前最需要继续处理的是 `OnboardingContextInjector`、`UserMemoryInjector`、Discord/Bot recent context、activated skill 内容和历史摘要；其他项主要是配置变化或历史行变化，不应在没有实测前统一迁移。
+
+---
+
+## 4. `promptMode` 对组装流程的影响
+
+当前代码中的模式差异集中在以下 Provider：
+
+| Provider                 | Full / 智能            | Lean / 轻量              |
+| ------------------------ | -------------------- | ---------------------- |
+| `AgentIdentityInjector`  | 注入                   | 当前已关闭                  |
+| `ModelInfoProvider`      | 注入                   | 关闭                     |
+| `SkillContextProvider`   | Agent 模式下按 skills 注入 | Agent 模式下仍注入           |
+| `AvailableToolsInjector` | 关闭                   | 注入 `<available_tools>` |
+| `ToolSystemRoleProvider` | 完整工具教学               | 不注入完整 teaching blocks  |
+| API `tools[]` schema     | 仍发送                  | 仍发送                    |
+
+因此 Lean 并不是 “所有上下文都放到尾部”，而是只减少了部分 system/tool Prompt。User memory、knowledge、group、onboarding 等 Provider 没有统一的 Lean 动态性策略。
+
+---
+
+## 5. 各个 Injection 的独立审计
+
+风险定义：
+
+- **低**：内容通常稳定，变化一般伴随配置或模型切换；当前放置合理。
+- **中**：内容可能在同一 topic 或 operation 内变化，但频率较低；建议监控或拆分。
+- **高**：内容可能每轮变化，却位于早期 system 或 first-user prefix；结构上与 Plan 原问题相同。
+
+## 5.1 System message Provider
+
+### `SystemRoleInjector`
+
+**内容：** Agent 的系统提示词，另外可能包含 HTML renderer 等最终系统规则。
+
+**位置：** 最早的 system/developer message。
+
+**独立判断：**
+
+- 系统提示词本来就是稳定 Prompt 的根；
+- 用户编辑 system prompt 时必须失效缓存；
+- 不应把频繁变化的运行时状态通过拼接方式写入这里。
+
+**结论：低风险，属于预期的配置变更。**
+
+### `AgentIdentityInjector`
+
+**内容：** Agent name/title 的 `<agent_identity>`。
+
+**位置：** system message，紧跟 systemRole。
+
+**模式：** 当前 Lean 关闭，Full 保留。
+
+**独立判断：**
+
+- Agent 重命名时会修改早期 system prefix；
+- 重命名通常是低频配置操作；
+- Full 模式下如果需要最大化跨重命名缓存复用，可以将它也改为尾部 identity state，但目前收益有限。
+
+**结论：低到中风险；Lean 已按需求关闭，Full 暂不需要继续改。**
+
+### `EvalContextSystemInjector`
+
+**内容：** eval 环境 Prompt。
+
+**位置：** system message。
+
+**独立判断：**
+
+- eval 场景通常会为每个测试用例建立独立上下文；
+- 若同一 topic 内 eval prompt 固定，则没有问题；
+- 若每个请求动态生成，则会破坏早期缓存。
+
+**结论：中风险，取决于 eval runner 是否复用 topic；建议在 eval 复用场景验证。**
+
+### `BotPlatformContextInjector`
+
+**内容：** 平台行为规则、Markdown 能力、消息发送规则、`recent_topics` 和处理警告。
+
+代码明确支持动态的 `recentChannelHistory`。
+
+**位置：** system message。
+
+**独立判断：**
+
+- `platformName`、Markdown 能力属于稳定配置；
+- `recent_topics` 是跨请求变化的频道上下文；
+- `warnings` 也可能只在当前请求产生；
+- 把这些内容整体放到 system message 会让一条新频道消息改变整个早期 developer prefix。
+
+**结论：高风险。建议拆分：平台静态规则保留在 system，`recent_topics` 和 processing warnings 移到尾部 context/tool result。**
+
+### `SystemDateProvider`
+
+**内容：** `Current date: YYYY-MM-DD (timezone)`。
+
+**位置：** system message。
+
+**独立判断：**
+
+- 当前精度是天，不是分钟，已经避免了每次请求变化；
+- 跨天时会使早期 prefix 变化；
+- 这是低体积、低频变化，通常不值得为它单独重构。
+
+**结论：低风险，当前日期精度合理。**
+
+### `ModelInfoProvider`
+
+**内容：** model display name、model ID、knowledge cutoff、原生媒体能力。
+
+**位置：** system message，仅 Full 模式。
+
+**独立判断：**
+
+- model 变化通常同时改变 provider payload 和 cache key；
+- 其内容相对稳定；
+- Lean 已关闭该 Provider。
+
+**结论：低风险。**
+
+### `SkillContextProvider`
+
+**内容：**
+
+- activated skill 的完整内容；
+- 未激活 skill 的 `<available_skills>` 列表。
+
+**位置：** system message。
+
+**独立判断：**
+
+- available skill 列表通常随 Agent 配置变化，频率不高；
+- activated skill 内容可能在某一轮被激活，直接改变早期 system prefix；
+- activated skill 还可能很大，既扩大了失效范围，也增加了重建成本；
+- `ActivationResultTrimProcessor` 会根据已注入 skill 决定是否缩短历史 tool result，进一步说明 skill 状态会影响历史消息。
+
+**结论：需要区分激活路径，先验证后决定。**
+
+- 用户通过 UI /slash 等方式显式选择的 skill 由 `SelectedSkillInjector` 追加到最后一个 user，位置合理；
+- LLM 调用 `activateSkill` 时，当前 tool call/result 也在消息尾部；
+- 但下一次请求的 `SkillResolver` 会把 step-level activation 转成 `activated: true + content`，`SkillContextProvider` 可能再次把完整内容放入 system；
+- 因此应先抓取 “LLM 激活 skill → 下一次请求” 的真实 payload，再决定是否把 activated skill content 改成尾部 context。
+
+### `AvailableToolsInjector`
+
+**内容：** Lean 模式下的 `<available_tools>` 发现列表。
+
+**位置：** system message。
+
+**独立判断：**
+
+- 工具列表由当前工具解析结果决定；
+- Agent 安装、启用、禁用工具时会改变它；
+- 同一 topic 内如果工具配置固定，缓存没有问题；
+- 它是工具激活决策输入，不能简单移除。
+  **结论：低风险，暂不处理。它是 Lean 模式下的初始可发现工具目录，不是 LLM 激活后的 tool result；正常情况下 operation 内保持稳定。**
+
+### `ToolSystemRoleProvider`
+
+**内容：** Full 模式下的完整工具教学、manifest API 描述和策略。
+
+**位置：** system message。
+
+**独立判断：**
+
+- 体积大，但一般由 Agent 的工具配置决定；
+- 工具激活或禁用后会改变 manifest 集合；
+- Lean 已经跳过完整 teaching blocks，但 `tools[]` schema 仍发送。
+
+**结论：低风险，暂不处理。它主要由固定 manifest / 用户工具配置决定；工具激活结果本身通过 tool call/result 进入消息。**
+
+### `HistorySummaryProvider`
+
+**内容：** 压缩后的历史摘要。
+
+**位置：** system message。
+
+**独立判断：**
+
+- 历史摘要天然会在压缩时更新；
+- 摘要通常位于完整历史之前；
+- 摘要一旦改变，后续完整历史和当前输入都无法继续复用旧前缀；
+- 这是与 Plan 相似的早期动态状态，只是变化频率更低。
+
+**结论：记录但暂不处理。摘要变化会伴随历史压缩或重写，本身已经破坏原历史前缀；单独把摘要移到尾部不能直接恢复增量缓存。**
+
+## 5.2 First-user `systemInjection` Provider
+
+### `UserMemoryInjector`
+
+**内容：** persona、identity、preference、experience、activity、context 等用户记忆。
+
+**位置：** 第一个真实 user 前的 `systemInjection` user message。
+
+**独立判断：**
+
+- 记忆写入工具可能在同一长期会话中更新 memories；
+- 当前请求结束后下一轮重新读取的 memory 可能不同；
+- persona 往往体积较大；
+- 这是最接近 Plan 原问题的 Provider 之一。
+
+**结论：高风险。建议将稳定 persona 与动态检索记忆拆分：稳定身份 / 偏好可保留，刚写入或本轮检索结果应放到尾部 memory context/tool result。**
+
+### `ExpertiseContextInjector`
+
+**内容：** operation 开始时捕获的 learned expertise snapshot。
+
+**位置：** first-user `systemInjection`。
+
+**独立判断：**
+
+- 代码注释明确表示它是 operation-scoped，并在多个 step 间复用同一 snapshot；
+- 在一个 operation 内通常不会变化；
+- 跨 operation 变化不一定可以复用同一个 Prompt cache。
+
+**结论：低风险，当前 first-user 位置符合其稳定快照语义。**
+
+### `GroupContextInjector`
+
+**内容：** 当前 Agent、Agent role、group title、成员列表、group system prompt。
+
+**位置：** first-user `systemInjection`。
+
+**独立判断：**
+
+- group title、system prompt 可能稳定；
+- 当前发言 Agent、成员 roster、成员 role 可能变化；
+- 多 Agent 长对话中切换当前 Agent 会修改很早的 context。
+
+**结论：记录但暂不处理。群聊场景先保留现状，不在本轮缓存优化中拆分 current-agent/member state。**
+
+### `DiscordContextProvider`
+
+**内容：** guild/channel/thread 以及平台侧最近 topic/history。
+
+**位置：** first-user `systemInjection`。
+
+**独立判断：**
+
+- channel、guild、thread 标识通常稳定；
+- recent channel history 明确是动态内容；
+- 与 `BotPlatformContextInjector` 的 `recent_topics` 存在相似的早期动态注入问题。
+
+**结论：高风险。应拆分静态 Discord 身份与动态 recent history。**
+
+### `KnowledgeInjector`
+
+**内容：** Agent 文件内容和 knowledge base 信息。
+
+**位置：** first-user `systemInjection`。
+
+**独立判断：**
+
+- Agent 文件和知识库通常是稳定上下文；
+- 用户编辑文件、切换知识库或重新加载内容时会变化；
+- 内容可能较大，因此一次变更会带来较大重建成本；
+- 但它不是每轮天然变化的运行时状态。
+
+**结论：中风险。保持 first-user 位置可以接受；若知识内容频繁更新，应改为版本化快照或尾部检索结果。**
+
+### `AgentBuilderContextInjector`
+
+**内容：** 当前正在编辑的 Agent 配置、模型、工具和系统提示信息。
+
+**位置：** first-user `systemInjection`。
+
+**独立判断：**
+
+- 只在 Agent Builder 场景启用；
+- Builder 操作本身会修改这些配置；
+- 变化频率高于普通聊天，但 Builder topic 通常短且专用。
+
+**结论：中风险，场景受限；如果 Builder 需要长对话，应将实时配置状态移到尾部。**
+
+### `AgentManagementContextInjector`
+
+**内容：** 可用 providers、plugins、agents 等管理上下文。
+
+**位置：**
+
+- available management context：first-user `systemInjection`；
+- `mentionedAgents` delegation hint：最后一个 user 后的独立 user message。
+
+**独立判断：**
+
+- 可用 Agent/plugin 列表可能变化；
+- `mentionedAgents` 已经是尾部注入，位置合理；
+- 管理目录通常比当前请求稳定，但编辑 Agent 后可能改变。
+
+**结论：低风险、场景受限，暂不处理。它是 Agent Management tool 的辅助目录，不是 tool result；普通聊天中不作为主要缓存问题。**
+
+### `GroupAgentBuilderContextInjector`
+
+**内容：** 当前 group 配置、成员、supervisor 和工具信息。
+
+**位置：** first-user `systemInjection`。
+
+**独立判断：**
+
+- 只在 Group Builder 场景启用；
+- 编辑 group 时信息可能频繁变化；
+- 与普通群聊相比，这是更明显的动态状态。
+
+**结论：低风险、场景受限，暂不处理。Group Builder 对话短且专用，当前不值得为缓存单独拆分。**
+
+### `OnboardingContextInjector`
+
+**内容：**
+
+```xml
+<onboarding_context>
+  phaseGuidance
+  current_soul_document
+  current_user_persona
+  user_info
+</onboarding_context>
+```
+
+**位置：** first-user `systemInjection`。
+
+**独立判断：**
+
+- `phaseGuidance` 会随 Agent Identity、User Identity、Discovery、Summary 阶段变化；
+- SOUL.md 和 User Persona 正是 onboarding 过程中被工具修改的文件；
+- `userInfo` 也可能在确认后发生变化；
+- 同一个 onboarding topic 的每轮都可能重新注入不同内容；
+- 当前代码注释称其为 “stable, cacheable”，但字段本身并不满足长期稳定条件；
+- 另外，`OnboardingSyntheticStateInjector` 和 `OnboardingActionHintInjector` 已经在尾部注入相似状态和动作指导，存在前置内容与尾部内容重复的问题。
+
+**结论：结构上存在早期动态注入，但当前场景下暂不处理。**
+
+- onboarding 只在初始化阶段运行；
+- 流程短、token 量有限；
+- 后续正常对话不会继续注入这部分内容；
+- 缓存收益不足以支撑本轮迁移；
+- 与尾部 synthetic onboarding state 的重复问题保留为语义调查结果。
+
+### `RuntimeAdditionalContextProvider: stable_prefix`
+
+**内容：** Runtime 或 Graph 运行时提供的结构化上下文。
+
+**位置：** first-user `systemInjection`。
+
+**独立判断：**
+
+- `stable_prefix` 是显式的调用方契约；
+- Graph 的 `graph_node_context` 适合放在这里，因为同一 node execution 内应保持稳定；
+- 但类型系统没有阻止调用方把动态数据标记为 `stable_prefix`；
+- 一旦错误标记，问题与 PlanInjector 完全相同。
+
+**结论：Provider 设计合理，当前只需审计调用方，不立即改造。**
+
+## 5.3 Last-user、virtual-tail 和 synthetic Provider
+
+### `ActiveTopicDocumentContextInjector`
+
+当前文档快照追加到最后一个 user，属于动态尾部状态。
+
+**结论：低风险，位置合理。**
+
+### `SelectedSkillInjector` / `SelectedToolInjector`
+
+当前请求临时选择的 skill/tool 追加到最后一个 user。
+
+**结论：低风险，位置合理。**
+
+### `ContextSelectionsInjector` / `PageSelectionsInjector`
+
+将用户在对应消息上选择的文本或页面上下文包在 `<system_context>` 中。当前输入的 selection 位于对话尾部时不会破坏早期前缀；如果历史消息 metadata 被重新补写，则会从对应历史位置开始影响缓存。
+
+**结论：低风险到中风险，取决于是否修改历史消息。**
+
+### `LocalSystemToolSnapshotInjector`
+
+不拼接 system 文本，而是在 user message 后插入 assistant tool call 和 tool result。
+
+**结论：低风险，属于尾部消息注入；历史 snapshot 重新生成时仍会影响对应历史位置。**
+
+### `PageEditorContextInjector`
+
+当前页面的最新内容追加到最后一个 user。
+
+**结论：低风险，符合动态 context 放在尾部的原则。**
+
+### `TaskManagerContextInjector`
+
+任务列表或任务详情追加到最后一个 user。
+
+**结论：低风险，位置合理。**
+
+### `TodoInjector`
+
+实时 Todo 列表追加到最后一个 user。
+
+**结论：低风险，位置合理。**
+
+### `TopicReferenceContextInjector`
+
+引用 topic 的摘要或获取上下文提示追加到最后一个 user。
+
+**结论：低风险，位置合理。**
+
+### `GoalContextSyntheticInjector`
+
+在最后一个 user 后插入 `getGoalContext` synthetic tool call/result。
+
+**结论：缓存位置合理，是 Plan 当前实现的参考模式。**
+
+需要单独留意：当前 `MessagesEngine` 的 `contextBuckets` 包装列表包含 Plan，但没有显式包含 `GoalContextSyntheticInjector`。这可能导致 Goal synthetic 内容没有被单独记录到 token accounting bucket，需要补充测试确认。
+
+### `PlanContextSyntheticInjector`
+
+当前已移到最后一个 user 后的 synthetic tool pair。
+
+**结论：缓存位置合理，已修复原问题。**
+
+### `OnboardingSyntheticStateInjector`
+
+在最后一个 user 后插入 `getOnboardingState` synthetic tool call/result。
+
+**结论：缓存位置合理，但和早期 `OnboardingContextInjector` 形成重复；应优先处理重复和前置动态状态问题。**
+
+### `OnboardingActionHintInjector`
+
+创建独立的 virtual tail user message，放置 `<next_actions>`。
+
+**结论：缓存位置合理。它不应该移回 first-user injection。**
+
+### `RuntimeAdditionalContextProvider: virtual_tail`
+
+将高变动 runtime guidance 放到现有 virtual tail 或新建尾部 user message。
+
+**结论：缓存位置合理，是推荐的动态上下文位置。**
+
+### `ForceFinishSummaryInjector`
+
+在 pipeline 最后追加一条 system message，要求模型停止工具调用并总结。
+
+**结论：属于一次性的请求尾部控制指令，位置合理。**
+
+---
+
+## 6. 非 Injection 但会改变 Prompt 的后续环节
+
+### `InputTemplateProcessor`
+
+对 user message 应用 Agent 的输入模板。模板配置变化会修改历史 user 文本；如果模板只作用于当前请求，则影响主要在尾部。
+
+### Group / Council / Task flatten
+
+会将嵌套消息展开成普通消息。群组角色或任务状态改变时，可能修改历史中间位置，缓存从该位置开始失效。
+
+### `ActivationResultTrimProcessor`
+
+根据当前已经注入的 tool manifest /skill，决定是否把历史 activateTools /activateSkill 的完整结果替换为短确认。工具或技能状态变化不仅会改变 system/tool context，也可能改变历史 tool result。
+
+### `PlaceholderVariablesProcessor`
+
+会遍历消息内容并替换 `{{variable}}`。如果变量生成器返回日期、语言、设备状态等动态值，历史消息中仍未替换的 placeholder 可能在每次请求重新变化。
+
+**建议：** 对 placeholder 做 send-once 物化，或明确哪些变量允许重新渲染；不要让已进入历史的内容依赖当前请求的动态变量。
+
+当前 Server 变量生成器明确提供了高频时间变量：`datetime`、`time`、`minute`、`second`、`timestamp` 等，并且代码已经注明：这些变量如果写入 system prompt 会破坏 Prompt cache。相反，`date`、`hour` 等粗粒度变量变化较慢。
+
+> 这意味着这里存在一个比普通 Placeholder 更具体的 Plan 类问题：systemRole 本身可能是稳定的，但在 Phase 5 被重新渲染成每请求不同的 developer 内容。应审计所有内置 systemRole 和用户自定义 Prompt，禁止在早期 system prefix 中使用秒级 / 毫秒级变量。
+
+### `MessageContentProcessor` / `ToolCallProcessor`
+
+处理多模态内容、文件 URL、工具名称和参数格式。model/provider 切换时结果可能变化，但这通常伴随独立的 provider cache key 变化。
+
+### `DisabledToolCallFilter` / `ToolMessageReorder`
+
+工具禁用配置或消息重排会改变历史消息顺序或内容。它们是必要的语义处理，但要避免在同一 topic 中频繁改变工具作用域。
+
+---
+
+## 7. 结合实际运行场景后的改造优先级
+
+前面的结构性审计需要结合实际触发频率修正。缓存优化的目标不是把所有 early context 都搬到尾部，而是优先处理 “高频变化、体积较大、且会被长期复用” 的内容。
+
+### P0：当前值得实际改造
+
+1. `UserMemoryInjector`
+   - 区分稳定 persona 与本轮动态 memory result；
+   - 动态检索结果和写入结果改为尾部 context。
+2. `DiscordContextProvider` / `BotPlatformContextInjector`
+   - 平台身份和格式规则留在早期；
+   - recent history、recent topics、warnings 移到尾部。
+3. 高频 `PlaceholderVariablesProcessor` 变量
+   - 审计 systemRole 和用户自定义 Prompt 中的 `timestamp`、`second`、`datetime` 等变量；
+   - 进入历史后应 send-once 物化，或只允许出现在尾部 runtime context。
+
+### P1：需要进一步确认后再处理
+
+1. `SkillContextProvider` 的 activated skill content
+   - LLM 的 `activateSkill` tool call 本身位于消息尾部；
+   - 但下一次 LLM 请求的 step-level skill delta 会被 `SkillResolver` 转成 `activated: true + content`，随后 `SkillContextProvider` 会把完整内容重新放入 system；
+   - 因此应先抓取一次真实的 “LLM 激活 skill → 下一次请求”payload，再决定是否尾部化。
+2. `RuntimeAdditionalContextProvider` 的 `stable_prefix` 调用契约
+   - Provider 本身按设计提供 stable prefix 和 virtual tail 两种位置；
+   - 当前重点是审计调用方是否把动态 graph/node 状态错误放入 stable prefix，而不是立即修改 Provider。
+3. `KnowledgeInjector`
+   - 先区分固定 Agent 文件与本轮动态检索结果；
+   - 具体改造留待后续单独讨论。
+
+### 暂不处理 / 记录即可
+
+- `OnboardingContextInjector`：只在初始化阶段使用，流程短、后续正常对话不再注入，当前收益不足以支持改造；
+- `HistorySummaryProvider`：摘要变化会整体重写历史，本身已经破坏原历史前缀，尾部化不能直接带来预期的增量缓存收益；
+- `GroupContextInjector`：群聊场景先保留现状，调查结论存档；
+- `AvailableToolsInjector`：它是初始的可发现工具目录，不是 LLM 激活结果本身；正常情况下 operation 内保持稳定，暂不视为 Plan 类问题；
+- `ToolSystemRoleProvider`：主要由固定工具 manifest / 用户工具配置决定，工具激活结果本身通过 tool call/result 进入消息；当前不作为高优先级问题；
+- `AgentBuilderContextInjector` / `GroupAgentBuilderContextInjector`：使用场景小、上下文体积有限，暂不处理；
+- `AgentManagementContextInjector`：只在 Agent 管理能力或 auto skill mode 相关场景注入，暂不作为普通聊天的缓存问题处理；
+- Full 模式 `AgentIdentityInjector`、`SystemDateProvider`、`ModelInfoProvider`：属于低频配置或模型变化，收益有限。
+
+这些结论是基于当前运行场景对结构性风险的重新排序，不表示被列为 “暂不处理” 的组件绝对不会改变 Prompt；它们只是当前不值得优先改造。
+
+## 8. 建议的验证方法
+
+不能只通过 Provider 单测判断缓存收益，需要抓取连续的最终 provider payload。
+
+建议使用同一 topic、同一 model、同一 provider，依次记录：
+
+1. 连续发送两次普通消息，不改变任何上下文；
+2. 更新 Plan 后再发送；
+3. 写入一条 user memory 后再发送；
+4. 激活一个 skill 后再发送；
+5. onboarding 从一个 phase 进入下一个 phase；
+6. Discord channel 产生新 topic/history 后再发送；
+7. 更新 Todo、Page、Knowledge、Group roster 后再发送。
+
+每次记录：
+
+- 最终 `input` / `messages` 的每一条 message；
+- `tools` 数组；
+- `prompt_cache_key`；
+- provider 返回的 cached input tokens；
+- 第一个发生变化的 message index；
+- 变化前后 prefix 的 hash。
+
+期望结果：
+
+| 操作                        | 理想的第一个变化位置                                       |
+| ------------------------- | ------------------------------------------------ |
+| Plan 更新                   | 当前 user 后的 synthetic tool result                 |
+| Todo 更新                   | 当前 user 的尾部 context                              |
+| Page 更新                   | 当前 user 的尾部 context                              |
+| Onboarding phase 更新       | 尾部 state/action context，而不是 first-user injection |
+| Discord recent history 更新 | 尾部 context，而不是 system/developer 前缀               |
+| Memory 写入                 | 动态 memory 尾部，而不是 first-user injection            |
+| Tool 配置更新                 | system/tool prefix，属于配置变化可接受                     |
+
+---
+
+## 9. 最终判断
+
+`PlanInjector` 暴露的是一个更普遍的架构原则：
+
+> “需要模型知道” 不等于 “应该放在 Prompt 最前面”。
+
+应该按照变化频率和语义类型选择容器：
+
+- Agent 核心规则、稳定工具契约：system /stable prefix；
+- operation-scoped immutable context：first-user injection；
+- 当前页面、Todo、选择内容：last user；
+- 当前 Plan、Goal、Onboarding 状态、运行时指导：virtual tail 或 synthetic tool result；
+- 不属于用户所说内容的机器状态：优先 synthetic tool result，不要伪装成 user input。
+
+当前最值得继续处理的不是已经修复的 Plan，而是 **Onboarding、User Memory、Discord recent history、activated skill content 和 History Summary**。它们都具备 “内容会变 + 注入位置很早” 的组合特征，应该分别通过真实 payload 复测后再进行拆分或尾部化改造。

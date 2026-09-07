@@ -15,6 +15,7 @@ import { getTrpcClient } from '../api/client';
 import { CLI_PRODUCT_NAME, resolveCliDirName } from '../constants/identity';
 import { getTask, listTasks, removeTask, saveTask } from '../daemon/taskRegistry';
 import { cancelAgentRun } from '../device/agentRunRegistry';
+import { cancelHeteroAgentRun } from '../device/agentRun';
 import { log } from '../utils/logger';
 
 // ─── Hermes session persistence ───
@@ -467,6 +468,11 @@ export async function cancelHeteroTask(
   params: CancelHeteroTaskParams,
 ): Promise<CancelHeteroTaskNotFoundResult | CancelHeteroTaskResult> {
   const { signal = 'SIGINT', taskId } = params;
+  const localExec = await cancelHeteroAgentRun({ operationId: taskId, signal });
+  if (localExec) return JSON.stringify({ ...localExec, taskId });
+
+  const local = await cancelAgentRun(taskId, signal);
+  if (local) return JSON.stringify({ ...local, taskId, success: local.exited });
   const entry = getTask(taskId);
 
   if (!entry) {
@@ -484,6 +490,9 @@ export async function cancelHeteroTask(
     return { exited, pid: entry.pid, signal, taskId };
   }
 
+  // Platform tasks are still owned by the task registry. Unlike local CLI
+  // runs, they are deliberately detached and therefore retain the existing
+  // PID-based cancellation path.
   try {
     process.kill(-entry.pid, signal);
   } catch (err) {

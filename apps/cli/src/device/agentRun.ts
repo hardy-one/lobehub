@@ -1,3 +1,4 @@
+import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
 
 import {
@@ -36,25 +37,106 @@ export interface AgentRunAckResult {
   status: 'accepted' | 'rejected';
 }
 
+export interface AgentRunCancellationResult {
+  exited: boolean;
+  pid?: number;
+  signal: NodeJS.Signals;
+}
+
 interface SpawnHeteroAgentRunLogger {
   error?: (msg: string) => void;
   info?: (msg: string) => void;
 }
 
+interface RunningHeteroAgentRun {
+  agentType: string;
+  cancellation?: Promise<AgentRunCancellationResult>;
+  child: ChildProcess;
+  exit: Promise<void>;
+}
+
 /**
- * Spawn `lh hetero exec` for a gateway-dispatched agent run. Mirrors the
- * desktop app's `spawnLhHeteroExec`: the spawned CLI owns the full pipeline
- * (spawn -> adapt -> BatchIngester -> server ingest), so the connect daemon
- * needs no local stream handling — it only kicks off the process.
+ * The connect daemon is the process that owns the wrapper and, transitively,
+ * the native Pi process. Keep the owner-side registry here instead of trying
+ * to discover a PID later from the server. A cancellation is therefore sent
+ * to the exact child created for the operation, not to a stale topic or a
+ * reused process id.
+ */
+const runningHeteroAgentRuns = new Map<string, RunningHeteroAgentRun>();
+
+const waitForExit = async (task: RunningHeteroAgentRun, timeoutMs: number): Promise<boolean> => {
+  let timer: NodeJS.Timeout | undefined;
+  const timedOut = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
+  });
+  const exited = await Promise.race([task.exit.then(() => true as const), timedOut]);
+  if (timer) clearTimeout(timer);
+  return exited;
+};
+
+/**
+ * Cancel a gateway-dispatched local CLI wrapper.
  *
- * Re-invokes the current CLI entry (`process.execPath` + `process.argv[1]`)
- * instead of relying on `lh` being on `PATH`, so it also works inside the
- * detached `lh connect --daemon` child where `PATH` may be minimal.
- *
- * Resolves only once the child's outcome is known: `accepted` on the `spawn`
- * event, `rejected` on an early wrapper-process `error`. A missing target cwd
- * is handled inside `lh hetero exec`, which can classify it and emit
- * `heteroFinish`; other wrapper spawn failures flow back as rejected dispatches.
+ * The wrapper installs an early signal handler and forwards the signal to the
+ * native agent's own process group. A repeated graceful signal asks the
+ * wrapper to escalate its inner process group; only after that bounded drain
+ * do we force-kill the wrapper itself. This makes the device response mean
+ * "the owner stopped" rather than merely "the device received an RPC".
+ */
+export const cancelHeteroAgentRun = async (params: {
+  operationId: string;
+  signal?: NodeJS.Signals;
+}): Promise<AgentRunCancellationResult | undefined> => {
+  const { operationId, signal = 'SIGINT' } = params;
+  const task = runningHeteroAgentRuns.get(operationId);
+  if (!task) return;
+  if (task.cancellation) return task.cancellation;
+
+  // Pi's print/json mode does not reliably clean up its detached tool workers
+  // on SIGINT. SIGTERM is the provider's cooperative process-tree shutdown
+  // signal; the wrapper still reports the run as cancelled to the server.
+  const cancellationSignal = task.agentType === 'pi' && signal === 'SIGINT' ? 'SIGTERM' : signal;
+
+  task.cancellation = (async () => {
+    try {
+      task.child.kill(cancellationSignal);
+    } catch {
+      // The wrapper may have exited between lookup and signalling.
+    }
+
+    let exited = await waitForExit(task, 2_000);
+    if (!exited) {
+      try {
+        // A repeated signal is handled by `lh hetero exec`, which force-
+        // kills the native agent's detached process group. Do this before
+        // killing the wrapper, otherwise Pi's tool workers can be orphaned.
+        task.child.kill(cancellationSignal);
+      } catch {
+        // Continue to the bounded result below.
+      }
+      exited = await waitForExit(task, 2_000);
+    }
+
+    if (!exited) {
+      try {
+        task.child.kill('SIGKILL');
+      } catch {
+        // The wrapper may have exited while the final signal was in flight.
+      }
+      exited = await waitForExit(task, 1_000);
+    }
+
+    return { exited, pid: task.child.pid, signal: cancellationSignal };
+  })();
+
+  return task.cancellation;
+};
+
+/**
+ * Spawn `lh hetero exec` for a gateway-dispatched agent run. The wrapper owns
+ * the full pipeline (spawn -> adapt -> BatchIngester -> server ingest), so the
+ * connect daemon only kicks it off and retains its process handle for a later
+ * cancellation request.
  */
 export function spawnHeteroAgentRun(
   params: SpawnHeteroAgentRunParams,
@@ -82,8 +164,6 @@ export function spawnHeteroAgentRun(
   // structured working_directory_not_found error through heteroFinish.
   const spawnCwd = resolveHeteroSpawnCwd(workDir);
 
-  // Server-ingest mode (--topic + --operation-id): events are batch-POSTed to
-  // the server, not rendered. `--input-json -` reads the prompt from stdin.
   const cliArgs = [
     process.argv[1],
     'hetero',
@@ -104,10 +184,6 @@ export function spawnHeteroAgentRun(
     ...(extraArgs ?? []),
   ];
 
-  // systemContext / image attachments turn the payload into a content-block
-  // array: context block first, then the user's prompt, then images — mirrors
-  // the desktop path. `lh hetero exec` coerces both shapes via
-  // coerceJsonPrompt.
   const stdinPayload = buildHeteroExecStdinPayload({
     imageList,
     prompt,
@@ -139,7 +215,10 @@ export function spawnHeteroAgentRun(
     let pid: number | undefined;
     const child = spawn(process.execPath, [...process.execArgv, ...cliArgs], {
       cwd: spawnCwd,
-      detached: true,
+      // Give the wrapper its own group. The wrapper's signal handler then
+      // forwards cancellation to the native agent group it creates, while a
+      // force-kill still cannot take down the connect daemon itself.
+      detached: process.platform !== 'win32',
       env: {
         ...childEnv,
         ...(assistantMessageId ? { LOBEHUB_ASSISTANT_MESSAGE_ID: assistantMessageId } : {}),
@@ -153,6 +232,13 @@ export function spawnHeteroAgentRun(
       stdio: ['pipe', 'inherit', 'inherit'],
       windowsHide: true,
     });
+
+    const exit = new Promise<void>((resolveExit) => {
+      child.once('exit', () => resolveExit());
+      child.once('error', () => resolveExit());
+    });
+    const task: RunningHeteroAgentRun = { agentType, child, exit };
+    runningHeteroAgentRuns.set(operationId, task);
 
     child.once('spawn', () => {
       registerAgentRun(operationId, child);
@@ -188,6 +274,9 @@ export function spawnHeteroAgentRun(
 
     child.once('error', (err) => {
       logger?.error?.(`hetero exec spawn failed (op=${operationId}): ${err.message}`);
+      if (runningHeteroAgentRuns.get(operationId)?.child === child) {
+        runningHeteroAgentRuns.delete(operationId);
+      }
       settle({ reason: err.message, status: 'rejected' });
     });
 
@@ -199,6 +288,9 @@ export function spawnHeteroAgentRun(
         removeTask(operationId);
       }
       logger?.info?.(`hetero exec exited (op=${operationId}) code=${code} signal=${signal}`);
+      if (runningHeteroAgentRuns.get(operationId)?.child === child) {
+        runningHeteroAgentRuns.delete(operationId);
+      }
     });
   });
 }

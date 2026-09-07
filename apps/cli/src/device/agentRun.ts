@@ -10,6 +10,7 @@ import { resolveHeteroSpawnCwd } from '@lobechat/heterogeneous-agents/workingDir
 
 import { getTask, removeTask, saveTask } from '../daemon/taskRegistry';
 import { registerAgentRun } from './agentRunRegistry';
+import { log } from '../utils/logger';
 
 export interface SpawnHeteroAgentRunParams {
   agentType: string;
@@ -77,10 +78,11 @@ const waitForExit = async (task: RunningHeteroAgentRun, timeoutMs: number): Prom
 /**
  * Cancel a gateway-dispatched local CLI wrapper.
  *
- * The wrapper installs an early signal handler and forwards the signal to the
- * native agent's own process group. A repeated graceful signal asks the
- * wrapper to escalate its inner process group; only after that bounded drain
- * do we force-kill the wrapper itself. This makes the device response mean
+ * The wrapper installs an early signal handler and forwards SIGTERM to the
+ * native agent's own process group. JSON/print mode has no control channel for
+ * an AbortController-style cancel, so use the same two-stage shutdown policy
+ * as the native CLI: give graceful SIGTERM cleanup time, then force-kill the
+ * wrapper if it remains alive.
  * "the owner stopped" rather than merely "the device received an RPC".
  */
 export const cancelHeteroAgentRun = async (params: {
@@ -89,13 +91,21 @@ export const cancelHeteroAgentRun = async (params: {
 }): Promise<AgentRunCancellationResult | undefined> => {
   const { operationId, signal = 'SIGINT' } = params;
   const task = runningHeteroAgentRuns.get(operationId);
-  if (!task) return;
-  if (task.cancellation) return task.cancellation;
+  if (!task) {
+    log.debug(`[hetero-cancel] no local wrapper found op=${operationId}`);
+    return;
+  }
+  if (task.cancellation) {
+    log.debug(`[hetero-cancel] reusing in-flight cancellation op=${operationId}`);
+    return task.cancellation;
+  }
 
-  // Pi's print/json mode does not reliably clean up its detached tool workers
-  // on SIGINT. SIGTERM is the provider's cooperative process-tree shutdown
-  // signal; the wrapper still reports the run as cancelled to the server.
-  const cancellationSignal = task.agentType === 'pi' && signal === 'SIGINT' ? 'SIGTERM' : signal;
+  // Pi's JSON/print mode exposes no AbortController/RPC abort command. Its
+  // cooperative process-level cancellation entry point is SIGTERM.
+  const cancellationSignal = task.agentType === 'pi' ? 'SIGTERM' : signal;
+  log.info(
+    `[hetero-cancel] sending signal op=${operationId} type=${task.agentType} pid=${task.child.pid ?? 'unknown'} requested=${signal} effective=${cancellationSignal}`,
+  );
 
   task.cancellation = (async () => {
     try {
@@ -106,10 +116,12 @@ export const cancelHeteroAgentRun = async (params: {
 
     let exited = await waitForExit(task, 2_000);
     if (!exited) {
+      log.warn(
+        `[hetero-cancel] wrapper did not exit after initial ${cancellationSignal} grace period op=${operationId}; retrying graceful signal`,
+      );
       try {
-        // A repeated signal is handled by `lh hetero exec`, which force-
-        // kills the native agent's detached process group. Do this before
-        // killing the wrapper, otherwise Pi's tool workers can be orphaned.
+        // A repeated signal lets the wrapper forward another cancellation
+        // request to the native agent process group before escalation.
         task.child.kill(cancellationSignal);
       } catch {
         // Continue to the bounded result below.
@@ -118,6 +130,9 @@ export const cancelHeteroAgentRun = async (params: {
     }
 
     if (!exited) {
+      log.warn(
+        `[hetero-cancel] wrapper did not exit after graceful cancellation op=${operationId}; escalating to SIGKILL`,
+      );
       try {
         task.child.kill('SIGKILL');
       } catch {
@@ -126,6 +141,9 @@ export const cancelHeteroAgentRun = async (params: {
       exited = await waitForExit(task, 1_000);
     }
 
+    log.info(
+      `[hetero-cancel] completed op=${operationId} pid=${task.child.pid ?? 'unknown'} exited=${exited} signal=${cancellationSignal}`,
+    );
     return { exited, pid: task.child.pid, signal: cancellationSignal };
   })();
 
@@ -239,6 +257,9 @@ export function spawnHeteroAgentRun(
     });
     const task: RunningHeteroAgentRun = { agentType, child, exit };
     runningHeteroAgentRuns.set(operationId, task);
+    log.debug(
+      `[hetero-run] registered op=${operationId} type=${agentType} pid=${child.pid ?? 'unknown'} cwd=${workDir}`,
+    );
 
     child.once('spawn', () => {
       registerAgentRun(operationId, child);

@@ -24,6 +24,7 @@ import type {
 import {
   classifyHeteroProcessFailure,
   createFileStoreImageUploader,
+  getHeterogeneousAgentCancellationSignal,
   isHeteroStatusGuideErrorData,
   spawnAgent,
 } from '@lobechat/heterogeneous-agents/spawn';
@@ -418,6 +419,32 @@ const exec = async (options: ExecOptions): Promise<void> => {
 
   const operationId = options.operationId || randomUUID();
 
+  // Install the cancellation gate before any async prompt/image setup. The
+  // device can send Stop immediately after the wrapper process is spawned;
+  // waiting until spawnAgent resolves would otherwise let the wrapper exit
+  // without ever forwarding the signal to the native Pi process.
+  type ActiveHandle = Awaited<ReturnType<typeof spawnAgent>>;
+  let activeHandle: ActiveHandle | undefined;
+  let cancellationSignal: NodeJS.Signals | undefined;
+  let cancellationCount = 0;
+  const requestCancellation = (signal: NodeJS.Signals) => {
+    cancellationSignal ??= signal;
+    cancellationCount += 1;
+    const killSignal =
+      cancellationCount > 1
+        ? 'SIGKILL'
+        : getHeterogeneousAgentCancellationSignal(options.type, signal);
+    activeHandle?.kill(killSignal);
+  };
+  const onSigint = () => requestCancellation('SIGINT');
+  const onSigterm = () => requestCancellation('SIGTERM');
+  process.on('SIGINT', onSigint);
+  process.on('SIGTERM', onSigterm);
+  const cleanupCancellationHandlers = () => {
+    process.off('SIGINT', onSigint);
+    process.off('SIGTERM', onSigterm);
+  };
+
   // Optional raw stream dump (pre-adapter stdout/stderr) for debugging.
   let rawDump: RawStreamDump | undefined;
   if (options.rawDump) {
@@ -688,6 +715,14 @@ const exec = async (options: ExecOptions): Promise<void> => {
     let handle: Awaited<ReturnType<typeof spawnAgent>>;
     try {
       handle = await spawnAgent({ ...spawnOpts, onRawStdout: dumpAttempt?.writeStdout });
+      activeHandle = handle;
+      if (cancellationSignal) {
+        handle.kill(
+          cancellationCount > 1
+            ? 'SIGKILL'
+            : getHeterogeneousAgentCancellationSignal(options.type, cancellationSignal),
+        );
+      }
     } catch (err) {
       await dumpAttempt?.close();
       const message = err instanceof Error ? err.message : String(err);
@@ -711,6 +746,7 @@ const exec = async (options: ExecOptions): Promise<void> => {
           // best-effort; process is exiting anyway
         }
       }
+      cleanupCancellationHandlers();
       process.exit(1);
     }
 
@@ -737,30 +773,9 @@ const exec = async (options: ExecOptions): Promise<void> => {
       return { code: 1, signal: null as NodeJS.Signals | null };
     });
 
-    // Direct CLI runs own a detached child group and forward terminal signals.
-    // Device-dispatched wrappers share their outer detached group, so the
-    // gateway cancellation owner signals that group directly instead.
-    const inheritsWrapperProcessGroup =
-      process.platform !== 'win32' && process.env[HETERO_EXEC_INHERIT_PROCESS_GROUP_ENV] === '1';
-    let interrupted = false;
-    const onSigint = () => {
-      if (inheritsWrapperProcessGroup) {
-        interrupted = true;
-        return;
-      }
-      if (interrupted) {
-        handle.kill('SIGKILL');
-        return;
-      }
-      interrupted = true;
-      handle.kill('SIGINT');
-    };
-    const onSigterm = () => {
-      interrupted = true;
-      if (!inheritsWrapperProcessGroup) handle.kill('SIGTERM');
-    };
-    process.on('SIGINT', onSigint);
-    process.on('SIGTERM', onSigterm);
+    // The process-level handlers were installed before prompt setup. Keep this
+    // handle active so a cancellation that arrived during spawn is forwarded
+    // immediately; the outer signal gate owns repeated-signal escalation.
 
     // Stream events. Each event is optionally written as JSONL and pushed
     // into the ingester.  When intercepting resume errors, a matching
@@ -839,13 +854,12 @@ const exec = async (options: ExecOptions): Promise<void> => {
         }
       }
       await dumpAttempt?.close();
+      cleanupCancellationHandlers();
       process.exit(1);
-    } finally {
-      process.off('SIGINT', onSigint);
-      process.off('SIGTERM', onSigterm);
     }
 
     const { code, signal } = await exit;
+    if (activeHandle === handle) activeHandle = undefined;
     await stderrEnded;
     await dumpAttempt?.close();
 
@@ -861,7 +875,7 @@ const exec = async (options: ExecOptions): Promise<void> => {
     }
 
     return {
-      cancelled: interrupted,
+      cancelled: cancellationSignal !== undefined,
       code,
       ingestError,
       resumeNotFound,
@@ -1048,6 +1062,7 @@ const exec = async (options: ExecOptions): Promise<void> => {
   } else askBridge?.cancelAll('session_ended');
   if (askMcpConfigPath) await unlink(askMcpConfigPath).catch(() => {});
 
+  cleanupCancellationHandlers();
   if (code !== null) {
     const hasRunError =
       finishDeliveryFailed || result.ingestError || (!result.cancelled && result.sawTerminalError);

@@ -358,6 +358,15 @@ const buildSpawnArgs = (params: BuildSpawnArgsParams): string[] => {
     }
   }
 };
+/**
+ * Return the signal used for a user cancellation of a native CLI process.
+ * Pi's JSON/print mode owns detached tool workers from its SIGTERM handler;
+ * SIGINT can stop only the Pi foreground process and strand those workers.
+ */
+export const getHeterogeneousAgentCancellationSignal = (
+  agentType: string,
+  signal: NodeJS.Signals = 'SIGINT',
+): NodeJS.Signals => (agentType === 'pi' && signal === 'SIGINT' ? 'SIGTERM' : signal);
 
 const killProcessTree = (proc: ChildProcess, signal: NodeJS.Signals, detached: boolean): void => {
   if (!proc.pid || proc.killed) return;

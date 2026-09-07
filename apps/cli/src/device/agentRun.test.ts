@@ -5,7 +5,7 @@ import os from 'node:os';
 import { HETERO_EXEC_INHERIT_PROCESS_GROUP_ENV } from '@lobechat/heterogeneous-agents/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { spawnHeteroAgentRun } from './agentRun';
+import { cancelHeteroAgentRun, spawnHeteroAgentRun } from './agentRun';
 
 const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }));
 const { saveTaskMock, getTaskMock, removeTaskMock } = vi.hoisted(() => ({
@@ -35,8 +35,10 @@ const mockMissingDir = (missing: string) =>
 
 const makeFakeChild = () => {
   const child = new EventEmitter() as EventEmitter & {
+    kill: ReturnType<typeof vi.fn>;
     stdin: { end: ReturnType<typeof vi.fn>; write: ReturnType<typeof vi.fn> };
   };
+  child.kill = vi.fn();
   child.stdin = { end: vi.fn(), write: vi.fn() };
   return child;
 };
@@ -350,5 +352,28 @@ describe('spawnHeteroAgentRun', () => {
     child.emit('exit', 0, null);
 
     expect(removeTaskMock).not.toHaveBeenCalled();
+  });
+  it('cancels the exact local Pi wrapper and waits for its exit', async () => {
+    const child = makeFakeChild();
+    spawnMock.mockReturnValue(child);
+    const ackPromise = spawnHeteroAgentRun({
+      ...baseParams,
+      agentType: 'pi',
+      operationId: 'pi-cancel',
+    });
+    child.emit('spawn');
+    await expect(ackPromise).resolves.toEqual({ status: 'accepted' });
+
+    const cancellation = cancelHeteroAgentRun({
+      operationId: 'pi-cancel',
+      signal: 'SIGINT',
+    });
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+
+    child.emit('exit', null, 'SIGTERM');
+    await expect(cancellation).resolves.toMatchObject({
+      exited: true,
+      signal: 'SIGTERM',
+    });
   });
 });

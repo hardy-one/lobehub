@@ -533,24 +533,39 @@ export const dispatchHeteroAgent = async (
     ? deps.userId
     : (agentConfig.userId ?? deps.userId);
 
-  // Resolve CLI-device routing before persisting the marker. Cancellation
-  // must address the same device even though local CLI agents use a different
-  // dispatch transport from notify-based platform agents.
-  const deviceHeteroPlan = !isRemoteHetero
+  // Resolve the local device plan before publishing the running marker. The
+  // marker is the durable cancellation route used by the web Stop action;
+  // resolving it here also keeps CLI dispatch and cancellation on the same device.
+  const localPlan = !isRemoteHetero
     ? resolveExecutionPlan({
         agencyConfig: agentConfig.agencyConfig,
         canUseDevice,
-        isHetero: true,
         clientExecutionAvailable: false,
+        isHetero: true,
         requestedDeviceId,
         sandboxExecutionAvailable: supportsCloudHeterogeneousSandbox(heteroType),
         trigger: requestTrigger,
       })
     : undefined;
-  const cliDeviceId = deviceHeteroPlan?.kind === 'device' ? deviceHeteroPlan.deviceId : undefined;
-  const cliDeviceWorkspaceId = cliDeviceId
-    ? await deps.resolveDeviceWorkspaceId(cliDeviceId)
+  const localDeviceIdForCancellation =
+    localPlan?.kind === 'device' ? localPlan.deviceId : undefined;
+  const localDeviceWorkspaceId = localDeviceIdForCancellation
+    ? await deps.resolveDeviceWorkspaceId(localDeviceIdForCancellation)
     : undefined;
+  const localUsesCallersPersonalDevice =
+    localPlan?.kind === 'device' &&
+    !localDeviceWorkspaceId &&
+    (requestedDeviceId === localDeviceIdForCancellation ||
+      (localPlan.target === 'local' &&
+        agentConfig.agencyConfig?.executionTargetSelectionPolicy !== 'fixed') ||
+      (!canManageAgent && memberDeviceOverride?.boundDeviceId === localDeviceIdForCancellation));
+  const localDeviceUserId = localUsesCallersPersonalDevice
+    ? deps.userId
+    : (agentConfig.userId ?? deps.userId);
+  // Preserve the CLI routing names used by the device dispatch path while sharing
+  // the plan resolved above for cancellation-marker persistence.
+  const cliDeviceId = localDeviceIdForCancellation;
+  const cliDeviceWorkspaceId = localDeviceWorkspaceId;
 
   // Register the run's lifecycle hooks so the hetero terminal path fires
   // onComplete/onError through the same `hookDispatcher` the normal LLM
@@ -568,11 +583,11 @@ export const dispatchHeteroAgent = async (
     heteroType,
     hooks: serializedHooks,
     startedAt: new Date().toISOString(),
-    ...(isRemoteHetero && remoteDeviceId
+    ...(remoteDeviceId || localDeviceIdForCancellation
       ? {
-          deviceId: remoteDeviceId,
-          deviceUserId: remoteDeviceUserId,
-          deviceWorkspaceId: remoteDeviceWorkspaceId,
+          deviceId: remoteDeviceId ?? localDeviceIdForCancellation,
+          deviceUserId: remoteDeviceId ? remoteDeviceUserId : localDeviceUserId,
+          deviceWorkspaceId: remoteDeviceId ? remoteDeviceWorkspaceId : localDeviceWorkspaceId,
         }
       : cliDeviceId
         ? {
@@ -892,7 +907,7 @@ export const dispatchHeteroAgent = async (
       log('execAgent: failed to init stream for local hetero: %O', err);
     }
 
-    const heteroPlan = deviceHeteroPlan!;
+    const heteroPlan = localPlan!;
 
     if (heteroPlan.kind !== 'sandbox') {
       const dispatchDeviceId = heteroPlan.kind === 'device' ? heteroPlan.deviceId : undefined;

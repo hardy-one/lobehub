@@ -597,6 +597,34 @@ describe('AiAgentService.execAgent - hetero early-exit file attachments', () => 
       }),
     );
   });
+  it('persists the local device route needed by web cancellation', async () => {
+    heteroAgentConfig.model = 'pi';
+    heteroAgentConfig.provider = 'pi';
+    heteroAgentConfig.agencyConfig = {
+      boundDeviceId: 'device-1',
+      executionTarget: 'device',
+      heterogeneousProvider: { type: 'pi' },
+    } as any;
+
+    await service.execAgent({
+      agentId: 'agent-1',
+      prompt: 'Run a long Pi task',
+    });
+
+    const runningOperation = topicMock.updateMetadata.mock.calls
+      .map(([, patch]) => patch?.runningOperation)
+      .find((operation) => operation?.operationId);
+    expect(runningOperation).toEqual(
+      expect.objectContaining({
+        deviceId: 'device-1',
+        heteroType: 'pi',
+        operationId: expect.any(String),
+      }),
+    );
+    expect(mockDispatchAgentRun).toHaveBeenCalledWith(
+      expect.objectContaining({ agentType: 'pi', deviceId: 'device-1' }),
+    );
+  });
 
   it('resumes Amp natively without loading or injecting fallback history', async () => {
     mockGetHeterogeneousResumeSessionId.mockResolvedValue('amp-thread-existing');

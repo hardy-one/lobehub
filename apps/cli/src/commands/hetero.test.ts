@@ -780,7 +780,14 @@ describe('hetero exec command', () => {
       expect.objectContaining({
         agentType: 'pi',
         command: 'pi',
-        extraArgs: ['--provider', 'anthropic', '--model', 'anthropic/claude-sonnet-4-5'],
+        extraArgs: [
+          '--provider',
+          'anthropic',
+          '--model',
+          'anthropic/claude-sonnet-4-5',
+          '--thinking',
+          'high',
+        ],
         resumeSessionId: 'pi-session-1',
       }),
     );
@@ -935,7 +942,7 @@ describe('hetero exec command', () => {
     for (let i = 0; i < 20 && !sigintHandler; i += 1) await Promise.resolve();
 
     sigintHandler?.();
-    expect(kill).toHaveBeenCalledWith('SIGINT');
+    await vi.waitFor(() => expect(kill).toHaveBeenCalledWith('SIGINT'));
     expect(mockHeteroFinishMutate).not.toHaveBeenCalled();
 
     resolveFirstEvent?.({

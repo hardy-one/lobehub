@@ -162,9 +162,9 @@ export class InterventionController {
             arguments: JSON.stringify({ signal: 'SIGINT', taskId }),
             identifier: 'cancelHeteroTask',
           },
-          // The device first gives the wrapper/native CLI 2s to stop
-          // cooperatively, then escalates and drains its terminal callback.
-          10_000,
+          // The device gives Pi up to 8s to finish SIGTERM cleanup, plus
+          // transport/terminal handling time.
+          15_000,
         );
 
         if (isLocalHeterogeneousType(targetOperation.heteroType)) {

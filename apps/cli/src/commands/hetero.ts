@@ -430,10 +430,14 @@ const exec = async (options: ExecOptions): Promise<void> => {
   const requestCancellation = (signal: NodeJS.Signals) => {
     cancellationSignal ??= signal;
     cancellationCount += 1;
-    const killSignal =
-      cancellationCount > 1
-        ? 'SIGKILL'
-        : getHeterogeneousAgentCancellationSignal(options.type, signal);
+    const gracefulSignal = getHeterogeneousAgentCancellationSignal(options.type, signal);
+    // JSON/print mode has no external abort command. After the wrapper has
+    // already given Pi one graceful SIGTERM window, terminate Pi's process
+    // group on the repeated cancellation signal rather than leaving it behind.
+    const killSignal = options.type === 'pi' && cancellationCount > 1 ? 'SIGKILL' : gracefulSignal;
+    log.debug(
+      `[hetero-cancel] signal received op=${operationId} type=${options.type} signal=${signal} effective=${killSignal} count=${cancellationCount} active=${Boolean(activeHandle)}`,
+    );
     activeHandle?.kill(killSignal);
   };
   const onSigint = () => requestCancellation('SIGINT');
@@ -717,12 +721,15 @@ const exec = async (options: ExecOptions): Promise<void> => {
       handle = await spawnAgent({ ...spawnOpts, onRawStdout: dumpAttempt?.writeStdout });
       activeHandle = handle;
       if (cancellationSignal) {
-        handle.kill(
-          cancellationCount > 1
+        const pendingKillSignal =
+          options.type === 'pi' && cancellationCount > 1
             ? 'SIGKILL'
-            : getHeterogeneousAgentCancellationSignal(options.type, cancellationSignal),
-        );
+            : getHeterogeneousAgentCancellationSignal(options.type, cancellationSignal);
+        handle.kill(pendingKillSignal);
       }
+      log.debug(
+        `[hetero-run] native handle attached op=${operationId} type=${options.type} pid=${handle.pid ?? 'unknown'} pendingCancellation=${cancellationSignal ?? 'none'}`,
+      );
     } catch (err) {
       await dumpAttempt?.close();
       const message = err instanceof Error ? err.message : String(err);
@@ -775,7 +782,8 @@ const exec = async (options: ExecOptions): Promise<void> => {
 
     // The process-level handlers were installed before prompt setup. Keep this
     // handle active so a cancellation that arrived during spawn is forwarded
-    // immediately; the outer signal gate owns repeated-signal escalation.
+    // immediately; a repeated signal escalates Pi's process group after the
+    // graceful SIGTERM window.
 
     // Stream events. Each event is optionally written as JSONL and pushed
     // into the ingester.  When intercepting resume errors, a matching
@@ -874,6 +882,9 @@ const exec = async (options: ExecOptions): Promise<void> => {
       resumeNotFound = true;
     }
 
+    log.debug(
+      `[hetero-run] native process exited op=${operationId} type=${options.type} pid=${handle.pid ?? 'unknown'} code=${code ?? 'null'} signal=${signal ?? 'none'} cancelled=${cancellationSignal !== undefined}`,
+    );
     return {
       cancelled: cancellationSignal !== undefined,
       code,

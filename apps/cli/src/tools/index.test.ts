@@ -234,4 +234,17 @@ describe('executeToolCall', () => {
     expect(result.success).toBe(false);
     expect((result.state as { success: boolean }).success).toBe(false);
   });
+  it('exposes structured cancellation results in state', async () => {
+    const taskId = `missing-cancel-${process.pid}-${Date.now()}`;
+    const result = await executeToolCall(
+      'cancelHeteroTask',
+      JSON.stringify({ signal: 'SIGINT', taskId }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.state).toMatchObject({
+      message: `No task found with taskId: ${taskId}`,
+      success: false,
+    });
+  });
 });

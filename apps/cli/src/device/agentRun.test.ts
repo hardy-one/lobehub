@@ -376,4 +376,34 @@ describe('spawnHeteroAgentRun', () => {
       signal: 'SIGTERM',
     });
   });
+  it('force-kills a Pi wrapper when SIGTERM cleanup exceeds the grace period', async () => {
+    vi.useFakeTimers();
+    try {
+      const child = makeFakeChild();
+      spawnMock.mockReturnValue(child);
+      const ackPromise = spawnHeteroAgentRun({
+        ...baseParams,
+        agentType: 'pi',
+        operationId: 'pi-slow-cancel',
+      });
+      child.emit('spawn');
+      await expect(ackPromise).resolves.toEqual({ status: 'accepted' });
+
+      const cancellation = cancelHeteroAgentRun({
+        operationId: 'pi-slow-cancel',
+        signal: 'SIGINT',
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      await expect(cancellation).resolves.toMatchObject({
+        exited: false,
+        signal: 'SIGTERM',
+      });
+      expect(child.kill).toHaveBeenNthCalledWith(1, 'SIGTERM');
+      expect(child.kill).toHaveBeenNthCalledWith(2, 'SIGTERM');
+      expect(child.kill).toHaveBeenNthCalledWith(3, 'SIGKILL');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

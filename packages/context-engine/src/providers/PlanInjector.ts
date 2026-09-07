@@ -1,7 +1,7 @@
 import debug from 'debug';
 
-import { BaseFirstUserContentProvider } from '../base/BaseFirstUserContentProvider';
-import type { PipelineContext, ProcessorOptions } from '../types';
+import { BaseProcessor } from '../base/BaseProcessor';
+import type { Message, PipelineContext, ProcessorOptions } from '../types';
 
 declare module '../types' {
   interface PipelineContextMetadataOverrides {
@@ -10,7 +10,7 @@ declare module '../types' {
   }
 }
 
-const log = debug('context-engine:provider:PlanInjector');
+const log = debug('context-engine:provider:PlanContextSyntheticInjector');
 
 /**
  * Plan data structure
@@ -41,7 +41,7 @@ export interface PlanInjectorConfig {
 }
 
 /**
- * Format Plan content for injection
+ * Format Plan content for injection.
  */
 function formatPlan(plan: Plan): string {
   const lines: string[] = ['<plan>', `<goal>${plan.goal}</goal>`];
@@ -61,12 +61,13 @@ function formatPlan(plan: Plan): string {
 }
 
 /**
- * Plan Injector
- * Responsible for injecting the current plan into context before the first user message
- * This provides the AI with awareness of the user's current goal and plan context
+ * Injects the current plan as a synthetic tool result after the last user
+ * message. Plan state can change frequently during a long-running task, so it
+ * must stay at the prompt tail rather than changing the stable prefix before
+ * the first user message.
  */
-export class PlanInjector extends BaseFirstUserContentProvider {
-  readonly name = 'PlanInjector';
+export class PlanContextSyntheticInjector extends BaseProcessor {
+  readonly name = 'PlanContextSyntheticInjector';
 
   constructor(
     private config: PlanInjectorConfig,
@@ -75,34 +76,61 @@ export class PlanInjector extends BaseFirstUserContentProvider {
     super(options);
   }
 
-  protected buildContent(_context: PipelineContext): string | null {
-    const { enabled, plan } = this.config;
-
-    if (!enabled || !plan) {
-      log('Plan not enabled or no plan provided');
-      return null;
-    }
-
-    if (plan.completed) {
-      log('Plan is completed, skipping injection');
-      return null;
-    }
-
-    const formattedContent = formatPlan(plan);
-
-    log(`Plan prepared: goal="${plan.goal}"`);
-
-    return formattedContent;
-  }
-
   protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
-    const result = await super.doProcess(context);
-
-    if (this.config.enabled && this.config.plan && !this.config.plan.completed) {
-      result.metadata.planInjected = true;
-      result.metadata.planId = this.config.plan.id;
+    const { enabled, plan } = this.config;
+    if (!enabled || !plan || plan.completed) {
+      log('Plan not enabled, missing, or completed; skipping injection');
+      return this.markAsExecuted(context);
     }
 
-    return result;
+    const clonedContext = this.cloneContext(context);
+    let lastUserIndex = -1;
+    for (let i = clonedContext.messages.length - 1; i >= 0; i--) {
+      if (clonedContext.messages[i].role === 'user') {
+        lastUserIndex = i;
+        break;
+      }
+    }
+
+    if (lastUserIndex === -1) {
+      log('No user message found, skipping plan injection');
+      return this.markAsExecuted(context);
+    }
+
+    const toolCallId = `synthetic-getPlanContext-${Date.now()}`;
+    const assistantMessage: Message = {
+      content: '',
+      id: `synthetic-assistant-plan-${Date.now()}`,
+      role: 'assistant',
+      tool_calls: [
+        {
+          function: {
+            arguments: '{}',
+            name: 'getPlanContext',
+          },
+          id: toolCallId,
+          type: 'function',
+        },
+      ],
+    };
+    const toolMessage: Message = {
+      content: formatPlan(plan),
+      id: `synthetic-tool-plan-${Date.now()}`,
+      role: 'tool',
+      tool_call_id: toolCallId,
+    };
+
+    clonedContext.messages.splice(lastUserIndex + 1, 0, assistantMessage, toolMessage);
+    clonedContext.metadata.planInjected = true;
+    clonedContext.metadata.planId = plan.id;
+
+    log('Injected synthetic getPlanContext pair after user message %d', lastUserIndex);
+    return this.markAsExecuted(clonedContext);
   }
 }
+
+/**
+ * @deprecated Use PlanContextSyntheticInjector. Kept as a compatibility export
+ * for callers importing the historical provider name.
+ */
+export class PlanInjector extends PlanContextSyntheticInjector {}

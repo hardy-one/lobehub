@@ -50,7 +50,7 @@ import {
   OnboardingSyntheticStateInjector,
   PageEditorContextInjector,
   PageSelectionsInjector,
-  PlanInjector,
+  PlanContextSyntheticInjector,
   RuntimeAdditionalContextProvider,
   selectActivatedSkills,
   SelectedSkillInjector,
@@ -112,7 +112,6 @@ const CONTEXT_BUCKET_RULES: Record<
   // chats: conversation-environment injectors that ride the rows
   GroupContextInjector: { bucket: 'chats', container: 'injection' },
   DiscordContextProvider: { bucket: 'chats', container: 'injection' },
-  PlanInjector: { bucket: 'chats', container: 'injection' },
   ActiveTopicDocumentContextInjector: { bucket: 'chats', container: 'lastUser' },
   SelectedSkillInjector: { bucket: 'chats', container: 'lastUser' },
   SelectedToolInjector: { bucket: 'chats', container: 'lastUser' },
@@ -435,10 +434,11 @@ export class MessagesEngine {
       // Agent's system role (creates the initial system message)
       new SystemRoleInjector({ systemRole }),
       // Agent identity (name/title) — lets the model answer "who are you?"
-      // with the user-given name. Group chat establishes identity through
+      // with the user-given name. Lean mode omits this optional context to keep
+      // the prompt compact. Group chat establishes identity through
       // GroupContextInjector instead, so it is suppressed there.
       new AgentIdentityInjector({
-        enabled: !isGroupContextEnabled,
+        enabled: !isGroupContextEnabled && promptMode !== 'lean',
         identity: agentIdentity,
       }),
       // Eval context (appends envPrompt)
@@ -518,8 +518,6 @@ export class MessagesEngine {
       }),
       // Discord context (channel/guild info)
       new DiscordContextProvider({ context: discordContext, enabled: !!discordContext }),
-      // Plan (high-level plan document)
-      new PlanInjector({ enabled: !!isPlanEnabled, plan: planTodo?.plan }),
       // Knowledge (agent files + knowledge bases)
       new KnowledgeInjector({
         fileContents: knowledge?.fileContents,
@@ -610,6 +608,12 @@ export class MessagesEngine {
       new GoalContextSyntheticInjector({
         enabled: !!initialContext?.goalOverview,
         overview: initialContext?.goalOverview,
+      }),
+      // Current plan — dynamic task state stays at the prompt tail instead of
+      // invalidating the stable prefix before the first user message.
+      new PlanContextSyntheticInjector({
+        enabled: !!isPlanEnabled,
+        plan: planTodo?.plan,
       }),
       // Onboarding synthetic state (fake getOnboardingState tool call pair to drive action loop)
       new OnboardingSyntheticStateInjector({
@@ -762,12 +766,14 @@ export class MessagesEngine {
       }
       const rule = CONTEXT_BUCKET_RULES[processor.name];
       if (rule) return withContextBucket(processor, rule);
-      // Processors that inject whole messages (a synthetic tool-call pair, the
+      // Processors that inject whole messages (synthetic tool-call pairs, the
       // onboarding action-hint row, a force-finish system row, runtime context
-      // fragments) don't append to one of the three containers — bucket them
-      // by full-list line diff. Chats rides the conversation rows (input[2:]),
-      // everything else is system/tooling side (tools).
+      // fragments, or the dynamic plan) don't append to one of the three
+      // containers — bucket them by full-list line diff. Chats rides the
+      // conversation rows (input[2:]), everything else is system/tooling side
+      // (tools).
       if (
+        processor.name === 'PlanContextSyntheticInjector' ||
         processor.name === 'OnboardingSyntheticStateInjector' ||
         processor.name === 'RuntimeAdditionalContextProvider' ||
         processor.name === 'ForceFinishSummaryInjector'

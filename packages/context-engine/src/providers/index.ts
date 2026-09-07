@@ -1,7 +1,6 @@
 // Context Provider exports
 export { ActiveTopicDocumentContextInjector } from './ActiveTopicDocumentContextInjector';
 export { AgentBuilderContextInjector } from './AgentBuilderContextInjector';
-export { AvailableToolsInjector, type AvailableToolItem, type AvailableToolsInjectorConfig } from './AvailableToolsInjector';
 export {
   AGENT_DOCUMENT_INJECTION_POSITIONS,
   AgentDocumentBeforeSystemInjector,
@@ -12,6 +11,11 @@ export {
 } from './AgentDocumentInjector';
 export { AgentIdentityInjector } from './AgentIdentityInjector';
 export { AgentManagementContextInjector } from './AgentManagementContextInjector';
+export {
+  type AvailableToolItem,
+  AvailableToolsInjector,
+  type AvailableToolsInjectorConfig,
+} from './AvailableToolsInjector';
 export { BotPlatformContextInjector } from './BotPlatformContextInjector';
 export { ContextSelectionsInjector } from './ContextSelectionsInjector';
 export { DiscordContextProvider } from './DiscordContextProvider';
@@ -34,7 +38,7 @@ export { OnboardingContextInjector } from './OnboardingContextInjector';
 export { OnboardingSyntheticStateInjector } from './OnboardingSyntheticStateInjector';
 export { PageEditorContextInjector } from './PageEditorContextInjector';
 export { PageSelectionsInjector } from './PageSelectionsInjector';
-export { PlanInjector } from './PlanInjector';
+export { PlanContextSyntheticInjector, PlanInjector } from './PlanInjector';
 export { RuntimeAdditionalContextProvider } from './RuntimeAdditionalContextProvider';
 export {
   formatSelectedSkills,

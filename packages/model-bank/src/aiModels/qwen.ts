@@ -95,7 +95,7 @@ const qwenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-09-02',
     settings: {
-      extendParams: ['qwen38ReasoningEffort', 'preserveThinking'],
+      extendParams: ['qwenReasoningEffort', 'qwen38ReasoningEffort', 'preserveThinking'],
       searchImpl: 'params',
     },
     type: 'chat',
@@ -130,7 +130,7 @@ const qwenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-08-02',
     settings: {
-      extendParams: ['qwen38ReasoningEffort', 'preserveThinking'],
+      extendParams: ['qwenReasoningEffort', 'qwen38ReasoningEffort', 'preserveThinking'],
       searchImpl: 'params',
     },
     type: 'chat',
@@ -1144,7 +1144,7 @@ const qwenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-04-23',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['qwenReasoningEffort'],
     },
     type: 'chat',
   },
@@ -1173,7 +1173,7 @@ const qwenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-04-16',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['qwenReasoningEffort'],
     },
     type: 'chat',
   },
@@ -1224,7 +1224,7 @@ const qwenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-02-16',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['qwenReasoningEffort'],
     },
     type: 'chat',
   },
@@ -1275,7 +1275,7 @@ const qwenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-02-24',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['qwenReasoningEffort'],
     },
     type: 'chat',
   },
@@ -1326,7 +1326,7 @@ const qwenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-02-24',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['qwenReasoningEffort'],
     },
     type: 'chat',
   },
@@ -1377,7 +1377,7 @@ const qwenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-02-24',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['qwenReasoningEffort'],
     },
     type: 'chat',
   },
@@ -1814,7 +1814,7 @@ const qwenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-08-26',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken', 'preserveThinking'],
+      extendParams: ['qwenReasoningEffort', 'preserveThinking'],
       searchImpl: 'params',
     },
     type: 'chat',
@@ -1876,7 +1876,7 @@ const qwenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-07-21',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken', 'preserveThinking'],
+      extendParams: ['qwenReasoningEffort', 'preserveThinking'],
       searchImpl: 'params',
     },
     type: 'chat',
@@ -1935,7 +1935,7 @@ const qwenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-04-16',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['qwenReasoningEffort', 'preserveThinking'],
       searchImpl: 'params',
     },
     type: 'chat',
@@ -1997,7 +1997,7 @@ const qwenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-02-24',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['qwenReasoningEffort', 'preserveThinking'],
       searchImpl: 'params',
     },
     type: 'chat',
@@ -2123,7 +2123,7 @@ const qwenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-06-01',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken', 'preserveThinking'],
+      extendParams: ['qwenReasoningEffort', 'preserveThinking'],
       searchImpl: 'params',
     },
     type: 'chat',
@@ -2191,7 +2191,7 @@ const qwenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-04-02',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken80k', 'preserveThinking'],
+      extendParams: ['qwenReasoningEffort', 'preserveThinking'],
       searchImpl: 'params',
     },
     type: 'chat',
@@ -2275,7 +2275,7 @@ const qwenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-04-22',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['qwenReasoningEffort', 'preserveThinking'],
       searchImpl: 'params',
     },
     type: 'chat',
@@ -2359,7 +2359,7 @@ const qwenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-02-15',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken'],
+      extendParams: ['qwenReasoningEffort', 'preserveThinking'],
       searchImpl: 'params',
     },
     type: 'chat',
@@ -2463,7 +2463,7 @@ const qwenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-05-20',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken', 'preserveThinking'],
+      extendParams: ['qwenReasoningEffort', 'preserveThinking'],
       searchImpl: 'params',
     },
     type: 'chat',
@@ -2529,7 +2529,7 @@ const qwenChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-04-18',
     settings: {
-      extendParams: ['enableReasoning', 'reasoningBudgetToken', 'preserveThinking'],
+      extendParams: ['qwenReasoningEffort', 'preserveThinking'],
       searchImpl: 'params',
     },
     type: 'chat',

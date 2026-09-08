@@ -552,6 +552,14 @@ describe('resolveEffectiveReasoningChatConfig', () => {
     expect(result.textVerbosity).toBe('low');
     expect(result.thinkingBudget).toBe(2048);
   });
+  it('keeps legacy Qwen3.8 effort as a fallback for existing agent configs', () => {
+    const result = resolveEffectiveReasoningChatConfig({
+      agentChatConfig: chatConfig({ qwen38ReasoningEffort: 'xhigh' }),
+      modelReasoningConfig: {},
+    });
+
+    expect(result.qwen38ReasoningEffort).toBe('xhigh');
+  });
 
   it('should apply model-instance defaults over the stripped agent config', () => {
     const result = resolveEffectiveReasoningChatConfig({

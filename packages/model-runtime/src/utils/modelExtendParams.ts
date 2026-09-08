@@ -48,7 +48,11 @@ export const resolveEffectiveReasoningChatConfig = (
   ctx: ResolveEffectiveReasoningChatConfigContext,
 ): LobeAgentChatConfig => {
   const base: LobeAgentChatConfig = { ...ctx.agentChatConfig };
-  for (const key of MODEL_REASONING_EXTEND_PARAMS) delete base[key];
+  for (const key of MODEL_REASONING_EXTEND_PARAMS) {
+    // qwen38ReasoningEffort was previously stored in agent chatConfig; keep it
+    // as a fallback while new model-scoped values are being adopted.
+    if (key !== 'qwen38ReasoningEffort') delete base[key];
+  }
 
   return {
     ...base,
@@ -404,13 +408,16 @@ export const applyModelExtendParams = (ctx: ApplyModelExtendParamsContext): Mode
   // Qwen uses an internal budget abstraction; the provider serializes it as
   // DashScope's thinking_budget. The legacy Qwen3.8 effort remains below.
   if (modelExtendParams.includes('qwenReasoningEffort')) {
-    const qwenReasoningEffort = chatConfig.qwenReasoningEffort ?? 'medium';
-    const budgetTokens = resolveQwenThinkingBudget(model, qwenReasoningEffort);
+    const qwenReasoningEffort = chatConfig.qwenReasoningEffort;
 
-    extendParams.thinking = {
-      budget_tokens: budgetTokens,
-      type: budgetTokens === 0 ? 'disabled' : 'enabled',
-    };
+    if (typeof qwenReasoningEffort === 'string') {
+      const budgetTokens = resolveQwenThinkingBudget(model, qwenReasoningEffort);
+
+      extendParams.thinking = {
+        budget_tokens: budgetTokens,
+        type: budgetTokens === 0 ? 'disabled' : 'enabled',
+      };
+    }
   }
 
   // Qwen3.8 Max: none disables thinking; otherwise enable thinking + set effort.

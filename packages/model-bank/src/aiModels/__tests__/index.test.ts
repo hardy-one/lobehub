@@ -365,6 +365,7 @@ describe('recent direct-provider models', () => {
       expect(models).toHaveLength(1);
       expect(models[0].settings?.extendParams).toEqual([
         'qwen38ReasoningEffort',
+        'qwenReasoningEffort',
         'preserveThinking',
       ]);
     },

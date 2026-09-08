@@ -48,7 +48,11 @@ export const resolveEffectiveReasoningChatConfig = (
   ctx: ResolveEffectiveReasoningChatConfigContext,
 ): LobeAgentChatConfig => {
   const base: LobeAgentChatConfig = { ...ctx.agentChatConfig };
-  for (const key of MODEL_REASONING_EXTEND_PARAMS) delete base[key];
+  for (const key of MODEL_REASONING_EXTEND_PARAMS) {
+    // qwen38ReasoningEffort was previously stored in agent chatConfig; keep it
+    // as a fallback while new model-scoped values are being adopted.
+    if (key !== 'qwen38ReasoningEffort') delete base[key];
+  }
 
   return {
     ...base,
@@ -179,6 +183,22 @@ export const resolveDefaultEnableAdaptiveThinkingForModel = (
   if (!model) return;
 
   return isAdaptiveThinkingDefaultOnModel(model) || undefined;
+};
+
+const QWEN_REASONING_BUDGETS = {
+  low: 4_096,
+  medium: 16_384,
+  high: 32_768,
+  xhigh: 65_536,
+} as const;
+
+const resolveQwenThinkingBudget = (
+  model: string,
+  effort: NonNullable<LobeAgentChatConfig['qwenReasoningEffort']>,
+) => {
+  if (effort === 'none') return 0;
+  if (effort === 'max') return /qwen3\.(?:7|8)/.test(model) ? 262_144 : 81_920;
+  return QWEN_REASONING_BUDGETS[effort];
 };
 
 export interface ApplyModelExtendParamsContext {
@@ -389,11 +409,27 @@ export const applyModelExtendParams = (ctx: ApplyModelExtendParamsContext): Mode
     }
   }
 
+  // Qwen uses an internal budget abstraction; the provider serializes it as
+  // DashScope's thinking_budget. The legacy Qwen3.8 effort remains below.
+  if (modelExtendParams.includes('qwenReasoningEffort')) {
+    const qwenReasoningEffort = chatConfig.qwenReasoningEffort;
+
+    if (typeof qwenReasoningEffort === 'string') {
+      const budgetTokens = resolveQwenThinkingBudget(model, qwenReasoningEffort);
+
+      extendParams.thinking = {
+        budget_tokens: budgetTokens,
+        type: budgetTokens === 0 ? 'disabled' : 'enabled',
+      };
+    }
+  }
+
   // Qwen3.8 Max: none disables thinking; otherwise enable thinking + set effort.
   if (modelExtendParams.includes('qwen38ReasoningEffort')) {
     const qwen38ReasoningEffort = chatConfig.qwen38ReasoningEffort;
 
     if (typeof qwen38ReasoningEffort === 'string') {
+      delete extendParams.thinking?.budget_tokens;
       if (qwen38ReasoningEffort === 'none') {
         delete extendParams.reasoning_effort;
         extendParams.thinking = {

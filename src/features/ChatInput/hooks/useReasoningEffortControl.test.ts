@@ -96,6 +96,17 @@ describe('useReasoningEffortControl', () => {
     expect(result.current.effortValue).toBe(fallback);
   });
 
+  it('exposes Qwen3.8 reasoning effort in the model selector', () => {
+    testState.ai.reasoningParams = ['qwen38ReasoningEffort'];
+    testState.ai.config = { qwen38ReasoningEffort: 'medium' };
+
+    const { result } = renderHook(() => useReasoningEffortControl('qwen3.8-max', 'qwen'));
+
+    expect(result.current.effortKey).toBe('qwen38ReasoningEffort');
+    expect(result.current.effortLevels).toEqual(['none', 'low', 'medium', 'xhigh']);
+    expect(result.current.effortValue).toBe('medium');
+  });
+
   it('keeps the reasoning mode separate from the effort level', () => {
     testState.ai.reasoningParams = ['effort', 'reasoningMode'];
     testState.ai.config = { reasoningMode: 'pro' };

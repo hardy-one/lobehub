@@ -46,6 +46,7 @@ import ImageResolutionSlider from './ImageResolutionSlider';
 import { KimiK3ReasoningEffortSlider } from './KimiK3ReasoningEffortSlider';
 import Opus47EffortSlider from './Opus47EffortSlider';
 import Qwen38ReasoningEffortSlider from './Qwen38ReasoningEffortSlider';
+import QwenReasoningEffortSlider from './QwenReasoningEffortSlider';
 import ReasoningEffortSlider from './ReasoningEffortSlider';
 import ReasoningModeSegmented from './ReasoningModeSegmented';
 import ReasoningTokenSlider from './ReasoningTokenSlider';
@@ -269,6 +270,16 @@ const ControlsForm = memo<ControlsFormProps>(
         layout: 'vertical',
         minWidth: undefined,
         name: 'deepseekV4ReasoningEffort',
+        style: {
+          paddingBottom: 0,
+        },
+      },
+      {
+        children: <QwenReasoningEffortSlider />,
+        label: t('extendParams.reasoningEffort.title'),
+        layout: 'vertical',
+        minWidth: undefined,
+        name: 'qwenReasoningEffort',
         style: {
           paddingBottom: 0,
         },
@@ -635,7 +646,14 @@ const ControlsForm = memo<ControlsFormProps>(
           variant={'borderless'}
           items={
             (modelExtendParams || [])
-              .filter((item: any) => !(hideReasoningParams && REASONING_PARAMS_SET.has(item)))
+              .filter(
+                (item: any) =>
+                  !(hideReasoningParams && REASONING_PARAMS_SET.has(item)) &&
+                  !(
+                    item === 'qwen38ReasoningEffort' &&
+                    modelExtendParams?.includes('qwenReasoningEffort')
+                  ),
+              )
               .map((item: any) => items.find((i) => i.name === item))
               .filter(Boolean) as FormItemProps[]
           }

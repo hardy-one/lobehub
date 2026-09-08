@@ -360,6 +360,7 @@ export interface AiModelReasoningConfig {
   hy3ReasoningEffort?: 'no_think' | 'low' | 'high';
   kimiK3ReasoningEffort?: 'low' | 'high' | 'max';
   opus47Effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  qwen38ReasoningEffort?: 'none' | 'low' | 'medium' | 'xhigh';
   qwenReasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   reasoningEffort?: 'low' | 'medium' | 'high';
   reasoningMode?: 'standard' | 'pro';
@@ -392,6 +393,7 @@ export const AiModelReasoningConfigSchema = z.object({
   kimiK3ReasoningEffort: z.enum(['low', 'high', 'max']).optional(),
   opus47Effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional(),
   qwenReasoningEffort: z.enum(['none', 'low', 'medium', 'high', 'xhigh', 'max']).optional(),
+  qwen38ReasoningEffort: z.enum(['none', 'low', 'medium', 'xhigh']).optional(),
   reasoningEffort: z.enum(['low', 'medium', 'high']).optional(),
   reasoningMode: z.enum(['standard', 'pro']).optional(),
   ring2_6ReasoningEffort: z.enum(['high', 'xhigh']).optional(),
@@ -439,6 +441,7 @@ export const MODEL_REASONING_PARAM_LEVELS: {
   kimiK3ReasoningEffort: ['low', 'high', 'max'],
   opus47Effort: ['low', 'medium', 'high', 'xhigh', 'max'],
   qwenReasoningEffort: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+  qwen38ReasoningEffort: ['none', 'low', 'medium', 'xhigh'],
   reasoningEffort: ['low', 'medium', 'high'],
   reasoningMode: ['standard', 'pro'],
   ring2_6ReasoningEffort: ['high', 'xhigh'],
@@ -477,6 +480,7 @@ export const MODEL_REASONING_PARAM_DEFAULTS: {
   kimiK3ReasoningEffort: 'max',
   opus47Effort: 'high',
   qwenReasoningEffort: 'medium',
+  qwen38ReasoningEffort: 'xhigh',
   reasoningEffort: 'medium',
   reasoningMode: 'standard',
   ring2_6ReasoningEffort: 'high',

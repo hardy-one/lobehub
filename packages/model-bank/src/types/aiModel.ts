@@ -360,6 +360,7 @@ export interface AiModelReasoningConfig {
   hy3ReasoningEffort?: 'no_think' | 'low' | 'high';
   kimiK3ReasoningEffort?: 'low' | 'high' | 'max';
   opus47Effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  qwenReasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   reasoningEffort?: 'low' | 'medium' | 'high';
   reasoningMode?: 'standard' | 'pro';
   ring2_6ReasoningEffort?: 'high' | 'xhigh';
@@ -390,6 +391,7 @@ export const AiModelReasoningConfigSchema = z.object({
   hy3ReasoningEffort: z.enum(['no_think', 'low', 'high']).optional(),
   kimiK3ReasoningEffort: z.enum(['low', 'high', 'max']).optional(),
   opus47Effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional(),
+  qwenReasoningEffort: z.enum(['none', 'low', 'medium', 'high', 'xhigh', 'max']).optional(),
   reasoningEffort: z.enum(['low', 'medium', 'high']).optional(),
   reasoningMode: z.enum(['standard', 'pro']).optional(),
   ring2_6ReasoningEffort: z.enum(['high', 'xhigh']).optional(),
@@ -436,6 +438,7 @@ export const MODEL_REASONING_PARAM_LEVELS: {
   hy3ReasoningEffort: ['no_think', 'low', 'high'],
   kimiK3ReasoningEffort: ['low', 'high', 'max'],
   opus47Effort: ['low', 'medium', 'high', 'xhigh', 'max'],
+  qwenReasoningEffort: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
   reasoningEffort: ['low', 'medium', 'high'],
   reasoningMode: ['standard', 'pro'],
   ring2_6ReasoningEffort: ['high', 'xhigh'],
@@ -473,6 +476,7 @@ export const MODEL_REASONING_PARAM_DEFAULTS: {
   hy3ReasoningEffort: 'high',
   kimiK3ReasoningEffort: 'max',
   opus47Effort: 'high',
+  qwenReasoningEffort: 'medium',
   reasoningEffort: 'medium',
   reasoningMode: 'standard',
   ring2_6ReasoningEffort: 'high',
@@ -514,6 +518,7 @@ export type ExtendParamsType =
   | 'effort'
   | 'deepseekV4GAReasoningEffort'
   | 'deepseekV4ReasoningEffort'
+  | 'qwenReasoningEffort'
   | 'qwen38ReasoningEffort'
   | 'reasoningEffort'
   | 'reasoningMode'
@@ -576,6 +581,7 @@ export const ExtendParamsTypeSchema = z.enum([
   'effort',
   'deepseekV4GAReasoningEffort',
   'deepseekV4ReasoningEffort',
+  'qwenReasoningEffort',
   'qwen38ReasoningEffort',
   'reasoningEffort',
   'reasoningMode',

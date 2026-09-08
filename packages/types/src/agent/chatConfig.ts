@@ -149,12 +149,6 @@ export interface LobeAgentChatConfig extends AgentMemoryChatConfig, AgentSelfIte
    */
   preserveThinking?: boolean;
   /**
-   * Qwen3.8 Max hybrid thinking depth. `none` disables thinking; otherwise sets
-   * `reasoning_effort` to low / medium / xhigh (API default).
-   */
-  qwen38ReasoningEffort?: 'none' | 'low' | 'medium' | 'xhigh';
-
-  /**
    * Prompt construction mode. Together with `enableAgentMode` it selects one
    * of the three chat modes:
    *   - Lobe (agent + full prompt): enableAgentMode=true,  promptMode=full
@@ -165,6 +159,14 @@ export interface LobeAgentChatConfig extends AgentMemoryChatConfig, AgentSelfIte
    * tokens. Undefined means full (legacy behaviour).
    */
   promptMode?: 'full' | 'lean';
+  /**
+   * Qwen3.8 Max hybrid thinking depth. `none` disables thinking; otherwise sets
+   * `reasoning_effort` to low / medium / xhigh (API default).
+   */
+  qwen38ReasoningEffort?: 'none' | 'low' | 'medium' | 'xhigh';
+
+  /** User-selected Qwen thinking intensity, mapped to the provider's thinking budget. */
+  qwenReasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   reasoningBudgetToken?: number;
   /**
    * Reasoning budget token for models with 32k max (GLM-5/GLM-4.7)

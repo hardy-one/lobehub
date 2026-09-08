@@ -374,6 +374,52 @@ describe('applyModelExtendParams', () => {
     expect(result.thinking).toEqual({ type: 'enabled' });
   });
 
+  it.each([
+    ['none', 0, 'disabled'],
+    ['low', 4_096, 'enabled'],
+    ['medium', 16_384, 'enabled'],
+    ['high', 32_768, 'enabled'],
+    ['xhigh', 65_536, 'enabled'],
+  ] as const)('maps qwenReasoningEffort %s to thinking budget', (effort, budget, type) => {
+    const result = applyModelExtendParams({
+      chatConfig: chatConfig({ qwenReasoningEffort: effort }),
+      extendParams: ['qwenReasoningEffort'],
+      model: 'qwen3.6-plus',
+    });
+
+    expect(result.thinking).toEqual({ budget_tokens: budget, type });
+  });
+
+  it('maps max to the generation-specific Qwen budget', () => {
+    expect(
+      applyModelExtendParams({
+        chatConfig: chatConfig({ qwenReasoningEffort: 'max' }),
+        extendParams: ['qwenReasoningEffort'],
+        model: 'qwen3.6-plus',
+      }).thinking,
+    ).toEqual({ budget_tokens: 81_920, type: 'enabled' });
+    expect(
+      applyModelExtendParams({
+        chatConfig: chatConfig({ qwenReasoningEffort: 'max' }),
+        extendParams: ['qwenReasoningEffort'],
+        model: 'qwen3.8-max',
+      }).thinking,
+    ).toEqual({ budget_tokens: 262_144, type: 'enabled' });
+  });
+
+  it('prefers legacy Qwen3.8 effort when both controls are present', () => {
+    expect(
+      applyModelExtendParams({
+        chatConfig: chatConfig({
+          qwen38ReasoningEffort: 'xhigh',
+          qwenReasoningEffort: 'high',
+        }),
+        extendParams: ['qwenReasoningEffort', 'qwen38ReasoningEffort'],
+        model: 'qwen3.8-max',
+      }),
+    ).toEqual({ reasoning_effort: 'xhigh', thinking: { type: 'enabled' } });
+  });
+
   it('maps qwen38ReasoningEffort none to disabled thinking', () => {
     const result = applyModelExtendParams({
       chatConfig: chatConfig({ qwen38ReasoningEffort: 'none' }),

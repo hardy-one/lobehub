@@ -275,6 +275,36 @@ describe('ToolSystemRoleProvider lean mode', () => {
     );
   });
 
+  it('keeps minimal working-directory guidance for Local System in lean mode', async () => {
+    const provider = new ToolSystemRoleProvider({
+      manifests: [
+        {
+          identifier: 'lobe-local-system',
+          api: [{ name: 'runCommand', description: 'run a command', parameters: {} }],
+          meta: { title: 'Local System' },
+          systemRole: 'full Local System instructions',
+          type: 'builtin',
+        },
+      ],
+      model: 'gpt-4',
+      promptMode: 'lean',
+      provider: 'openai',
+      isCanUseFC: () => true,
+    });
+
+    const ctx = createContext([{ id: 'u1', role: 'user', content: 'hi' }]);
+    const result = await provider.process(ctx);
+    const systemMessage = result.messages.find((msg) => msg.role === 'system');
+
+    expect(systemMessage?.content).toContain(
+      '<working-directory>{{workingDirectory}}</working-directory>',
+    );
+    expect(systemMessage?.content).toContain(
+      'All relative paths and file operations should be based on this directory unless the user specifies otherwise.',
+    );
+    expect(systemMessage?.content).not.toContain('full Local System instructions');
+  });
+
   it('keeps the teaching blocks when promptMode is full or undefined', async () => {
     const provider = new ToolSystemRoleProvider({
       manifests: [

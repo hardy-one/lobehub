@@ -1,4 +1,7 @@
-import { LEAN_TOOL_USAGE_POLICY, ToolNameResolver } from '@lobechat/context-engine';
+import {
+  LEAN_LOCAL_SYSTEM_WORKING_DIRECTORY_PROMPT,
+  ToolNameResolver,
+} from '@lobechat/context-engine';
 import { pluginPrompts, promptUserMemory, skillsPrompts } from '@lobechat/prompts';
 import { resolveModelScopedChatConfig } from '@lobechat/types';
 import { debounce } from 'es-toolkit/compat';
@@ -211,9 +214,15 @@ export const useTokenBreakdown = (): TokenBreakdown => {
     });
     const schemaNumber = tools?.map((i) => JSON.stringify(i)).join('') || '';
 
-    // Efficient mode: teaching blocks are replaced by the compact policy.
+    const hasLeanLocalSystem = enabledManifests.some(
+      (manifest) => manifest.identifier === 'lobe-local-system',
+    );
+    // Lean mode mirrors ToolSystemRoleProvider: only the minimal Local System
+    // working-directory guidance is retained.
     const toolsSystemRole = isLeanPrompt
-      ? LEAN_TOOL_USAGE_POLICY
+      ? hasLeanLocalSystem
+        ? LEAN_LOCAL_SYSTEM_WORKING_DIRECTORY_PROMPT
+        : ''
       : enabledManifests.length > 0
         ? pluginPrompts({
             tools: enabledManifests.map((manifest) => ({

@@ -1,5 +1,6 @@
 import {
   LEAN_LOCAL_SYSTEM_WORKING_DIRECTORY_PROMPT,
+  LEAN_WEB_BROWSING_CITATION_PROMPT,
   ToolNameResolver,
 } from '@lobechat/context-engine';
 import { pluginPrompts, promptUserMemory, skillsPrompts } from '@lobechat/prompts';
@@ -213,16 +214,21 @@ export const useTokenBreakdown = (): TokenBreakdown => {
       toolIds: pluginIds,
     });
     const schemaNumber = tools?.map((i) => JSON.stringify(i)).join('') || '';
-
     const hasLeanLocalSystem = enabledManifests.some(
       (manifest) => manifest.identifier === 'lobe-local-system',
     );
-    // Lean mode mirrors ToolSystemRoleProvider: only the minimal Local System
-    // working-directory guidance is retained.
+    const hasLeanWebBrowsing = enabledManifests.some(
+      (manifest) => manifest.identifier === 'lobe-web-browsing',
+    );
+    // Lean mode mirrors ToolSystemRoleProvider: retain only compact operational
+    // guidance for active Local System and Web Browsing tools.
     const toolsSystemRole = isLeanPrompt
-      ? hasLeanLocalSystem
-        ? LEAN_LOCAL_SYSTEM_WORKING_DIRECTORY_PROMPT
-        : ''
+      ? [
+          hasLeanLocalSystem ? LEAN_LOCAL_SYSTEM_WORKING_DIRECTORY_PROMPT : '',
+          hasLeanWebBrowsing ? LEAN_WEB_BROWSING_CITATION_PROMPT : '',
+        ]
+          .filter(Boolean)
+          .join('\n\n')
       : enabledManifests.length > 0
         ? pluginPrompts({
             tools: enabledManifests.map((manifest) => ({

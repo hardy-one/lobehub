@@ -57,6 +57,16 @@ export const LEAN_LOCAL_SYSTEM_WORKING_DIRECTORY_PROMPT = `<working-directory>{{
 All relative paths and file operations should be based on this directory unless the user specifies otherwise.`;
 
 /**
+ * The compact citation guidance retained for Web Browsing in lean mode.
+ * Search behavior remains in the tool schema; response-format policy belongs
+ * in the system role instead of the API description.
+ */
+export const LEAN_WEB_BROWSING_CITATION_PROMPT = `<citation-requirements>
+- Always cite web sources using markdown footnotes such as [^1].
+- List all referenced URLs at the end of the response.
+</citation-requirements>`;
+
+/**
  * Tool System Role Configuration
  */
 export interface ToolSystemRoleConfig {
@@ -104,19 +114,20 @@ export class ToolSystemRoleProvider extends BaseSystemRoleProvider {
   protected buildSystemRoleContent(_context: PipelineContext): string | null {
     if (this.config.enabled === false) return null;
 
-    // Lean mode keeps only the minimal working-directory guidance for the
-    // Local System tool. The manifest is active only when the normal device/local
-    // system tool gates enabled it for this run.
+    // Lean mode keeps compact operational guidance for the active Local System
+    // and Web Browsing tools. Their full teaching blocks remain omitted.
     const isLean = this.config.promptMode === 'lean';
     if (isLean) {
-      const hasLocalSystem = this.config.manifests?.some(
-        (manifest) => manifest.identifier === 'lobe-local-system',
-      );
-      if (!hasLocalSystem) {
-        log('Lean mode: Local System is not active, skipping tool system role');
+      const activeIds = new Set(this.config.manifests?.map((manifest) => manifest.identifier));
+      const leanPrompts = [
+        activeIds.has('lobe-local-system') ? LEAN_LOCAL_SYSTEM_WORKING_DIRECTORY_PROMPT : '',
+        activeIds.has('lobe-web-browsing') ? LEAN_WEB_BROWSING_CITATION_PROMPT : '',
+      ].filter(Boolean);
+      if (leanPrompts.length === 0) {
+        log('Lean mode: no operational tool guidance is active');
         return null;
       }
-      return LEAN_LOCAL_SYSTEM_WORKING_DIRECTORY_PROMPT;
+      return leanPrompts.join('\n\n');
     }
 
     const toolSystemRole = this.getToolSystemRole();

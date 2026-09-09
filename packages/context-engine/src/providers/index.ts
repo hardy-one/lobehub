@@ -62,6 +62,7 @@ export { SystemRoleInjector } from './SystemRoleInjector';
 export { TaskManagerContextInjector } from './TaskManagerContextInjector';
 export { TodoInjector } from './TodoInjector';
 export {
+  LEAN_LOCAL_SYSTEM_WORKING_DIRECTORY_PROMPT,
   LEAN_TOOL_USAGE_POLICY,
   selectToolPromptManifests,
   ToolSystemRoleProvider,

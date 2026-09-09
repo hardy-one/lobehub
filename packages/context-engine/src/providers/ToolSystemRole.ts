@@ -49,6 +49,14 @@ export const LEAN_TOOL_USAGE_POLICY = `<lobe_tool_policy>
 </lobe_tool_policy>`;
 
 /**
+ * The minimal working-directory guidance retained for Local System in lean
+ * mode. This is emitted as a system-role fragment so the placeholder is
+ * resolved by the normal context-engineering pipeline.
+ */
+export const LEAN_LOCAL_SYSTEM_WORKING_DIRECTORY_PROMPT = `<working-directory>{{workingDirectory}}</working-directory>
+All relative paths and file operations should be based on this directory unless the user specifies otherwise.`;
+
+/**
  * Tool System Role Configuration
  */
 export interface ToolSystemRoleConfig {
@@ -96,13 +104,19 @@ export class ToolSystemRoleProvider extends BaseSystemRoleProvider {
   protected buildSystemRoleContent(_context: PipelineContext): string | null {
     if (this.config.enabled === false) return null;
 
-    // 轻量 mode: tools are ordinary tools — drop the nine teaching
-    // blocks and the compact policy. A minimal `<available_tools>` discovery
-    // block is injected separately by AvailableToolsInjector.
+    // Lean mode keeps only the minimal working-directory guidance for the
+    // Local System tool. The manifest is active only when the normal device/local
+    // system tool gates enabled it for this run.
     const isLean = this.config.promptMode === 'lean';
     if (isLean) {
-      log('轻量 mode: skipping compact tool usage policy (available_tools injector handles discovery)');
-      return null;
+      const hasLocalSystem = this.config.manifests?.some(
+        (manifest) => manifest.identifier === 'lobe-local-system',
+      );
+      if (!hasLocalSystem) {
+        log('Lean mode: Local System is not active, skipping tool system role');
+        return null;
+      }
+      return LEAN_LOCAL_SYSTEM_WORKING_DIRECTORY_PROMPT;
     }
 
     const toolSystemRole = this.getToolSystemRole();

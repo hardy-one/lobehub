@@ -274,7 +274,6 @@ describe('ToolSystemRoleProvider lean mode', () => {
       '<tool name="demo">',
     );
   });
-
   it('keeps minimal working-directory guidance for Local System in lean mode', async () => {
     const provider = new ToolSystemRoleProvider({
       manifests: [
@@ -303,6 +302,31 @@ describe('ToolSystemRoleProvider lean mode', () => {
       'All relative paths and file operations should be based on this directory unless the user specifies otherwise.',
     );
     expect(systemMessage?.content).not.toContain('full Local System instructions');
+  });
+  it('keeps compact citation guidance for Web Browsing in lean mode', async () => {
+    const provider = new ToolSystemRoleProvider({
+      manifests: [
+        {
+          identifier: 'lobe-web-browsing',
+          api: [{ name: 'search', description: 'search the web', parameters: {} }],
+          meta: { title: 'Web Browsing' },
+          systemRole: 'full Web Browsing instructions',
+          type: 'builtin',
+        },
+      ],
+      model: 'gpt-4',
+      promptMode: 'lean',
+      provider: 'openai',
+      isCanUseFC: () => true,
+    });
+
+    const ctx = createContext([{ id: 'u1', role: 'user', content: 'hi' }]);
+    const result = await provider.process(ctx);
+    const systemMessage = result.messages.find((msg) => msg.role === 'system');
+
+    expect(systemMessage?.content).toContain('Always cite web sources using markdown footnotes');
+    expect(systemMessage?.content).toContain('List all referenced URLs at the end');
+    expect(systemMessage?.content).not.toContain('full Web Browsing instructions');
   });
 
   it('keeps the teaching blocks when promptMode is full or undefined', async () => {

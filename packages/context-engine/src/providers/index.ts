@@ -64,6 +64,7 @@ export { TodoInjector } from './TodoInjector';
 export {
   LEAN_LOCAL_SYSTEM_WORKING_DIRECTORY_PROMPT,
   LEAN_TOOL_USAGE_POLICY,
+  LEAN_WEB_BROWSING_CITATION_PROMPT,
   selectToolPromptManifests,
   ToolSystemRoleProvider,
 } from './ToolSystemRole';

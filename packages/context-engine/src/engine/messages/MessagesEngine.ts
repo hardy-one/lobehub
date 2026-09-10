@@ -407,10 +407,10 @@ export class MessagesEngine {
         ? selectToolPromptManifests(toolsConfig?.manifests)
         : [];
     // The skill-import route is only actionable when the Skill Store is reachable this
-    // run via an enabled skill-store manifest.
-    const isSkillStoreReachable = (toolsConfig?.manifests ?? []).some(
-      (m) => m.identifier === SKILL_STORE_TOOL_ID,
-    );
+    // run — either already enabled, or listed for the activator to turn on.
+    const isSkillStoreReachable =
+      (toolsConfig?.manifests ?? []).some((m) => m.identifier === SKILL_STORE_TOOL_ID) ||
+      (availableTools ?? []).some((t) => t.identifier === SKILL_STORE_TOOL_ID);
     const processors = [
       // =============================================
       // Phase 0: Placeholder Residue Filtering

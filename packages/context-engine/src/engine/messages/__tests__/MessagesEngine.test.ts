@@ -72,6 +72,39 @@ describe('MessagesEngine', () => {
   });
 
   describe('process', () => {
+    describe('skill import routing', () => {
+      it('routes marketplace links when the Skill Store is available', async () => {
+        const skillUrl = 'https://lobehub.com/skills/example-skill/skill.md';
+        const result = await new MessagesEngine(
+          createBasicParams({
+            availableTools: [
+              {
+                description: 'Browse and install agent skills',
+                identifier: 'lobe-skill-store',
+                name: 'Skill Store',
+              },
+            ],
+            messages: [
+              {
+                content: `Install ${skillUrl}`,
+                createdAt: Date.now(),
+                id: 'skill-message',
+                role: 'user',
+                updatedAt: Date.now(),
+              } as UIChatMessage,
+            ],
+          }),
+        ).process();
+
+        const userMessage = result.messages.find((message) => message.role === 'user');
+        expect(userMessage?.content).toContain('importFromMarket');
+        expect(result.metadata.skillImportRoute).toEqual({
+          injected: true,
+          urls: [skillUrl],
+        });
+      });
+    });
+
     describe('agent identity', () => {
       it('appends the agent identity after the system role', async () => {
         const result = await new MessagesEngine(

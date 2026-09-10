@@ -407,7 +407,7 @@ export class MessagesEngine {
     // run — either already enabled, or listed for the activator to turn on.
     const isSkillStoreReachable =
       (toolsConfig?.manifests ?? []).some((m) => m.identifier === SKILL_STORE_TOOL_ID) ||
-      (toolDiscoveryConfig?.availableTools ?? []).some((t) => t.identifier === SKILL_STORE_TOOL_ID);
+      (availableTools ?? []).some((t) => t.identifier === SKILL_STORE_TOOL_ID);
 
     const processors = [
       // =============================================

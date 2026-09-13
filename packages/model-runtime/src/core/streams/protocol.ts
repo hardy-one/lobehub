@@ -730,51 +730,68 @@ export const createTokenSpeedCalculator = (
     inputStartAt,
     streamStack,
     enableStreaming = true, // Select TPS calculation method (pass false for non-streaming)
-  }: { enableStreaming?: boolean; inputStartAt?: number; streamStack?: StreamContext } = {},
+    getSpeedOutputTokens,
+    isSpeedStartChunk,
+  }: {
+    enableStreaming?: boolean;
+    getSpeedOutputTokens?: (usage: ModelUsage) => number;
+    inputStartAt?: number;
+    isSpeedStartChunk?: (chunk: StreamProtocolChunk) => boolean;
+    streamStack?: StreamContext;
+  } = {},
 ) => {
-  let outputStartAt: number | undefined;
+  let firstOutputAt: number | undefined;
+  let speedStartAt: number | undefined;
+
+  const isDefaultOutputChunk = (chunk: StreamProtocolChunk) =>
+    chunk.type === 'text' ||
+    chunk.type === 'reasoning' ||
+    chunk.type === 'content_part' ||
+    chunk.type === 'reasoning_part' ||
+    chunk.type === 'tool_calls';
 
   const process = (chunk: StreamProtocolChunk) => {
     const result = [chunk];
-    // Set outputStartAt when receiving the first content chunk (for TTFT calculation)
-    // - text/reasoning: standard text output events
-    // - content_part/reasoning_part: multimodal output events used by Gemini 3+ models
-    //   which emit structured parts instead of plain text events
-    // - tool_calls: function calling output events
-    if (
-      !outputStartAt &&
-      (chunk.type === 'text' ||
-        chunk.type === 'reasoning' ||
-        chunk.type === 'content_part' ||
-        chunk.type === 'reasoning_part' ||
-        chunk.type === 'tool_calls')
-    ) {
-      outputStartAt = Date.now();
-    }
+    // Track the first model output separately from the start of the speed window.
+    // Providers can use a later, visible-content event for TPS while preserving
+    // TTFT from the first output event (for example, Gemini thinking streams).
+    const isFirstOutputChunk = isDefaultOutputChunk(chunk);
+    const isSpeedWindowStart = isSpeedStartChunk?.(chunk) ?? isFirstOutputChunk;
+    const shouldSetFirstOutput = firstOutputAt === undefined && isFirstOutputChunk;
+    const shouldSetSpeedStart = speedStartAt === undefined && isSpeedWindowStart;
 
-    // if the chunk is the stop chunk, set as output finish
-    if (inputStartAt && outputStartAt && chunk.type === 'usage') {
-      // TPS should always include all generated tokens (including reasoning tokens)
-      // because it measures generation speed, not just visible content
-      const usage = chunk.data as ModelUsage;
-      const outputTokens = usage?.totalOutputTokens ?? 0;
+    if (shouldSetFirstOutput || shouldSetSpeedStart || chunk.type === 'usage') {
       const now = Date.now();
-      const elapsed = now - (enableStreaming ? outputStartAt : inputStartAt);
-      const duration = now - outputStartAt;
-      const latency = now - inputStartAt;
-      const ttft = outputStartAt - inputStartAt;
-      const tps = elapsed === 0 ? undefined : (outputTokens / elapsed) * 1000;
 
-      result.push({
-        data: {
-          duration,
-          latency,
-          tps,
-          ttft,
-        } as ModelPerformance,
-        id: TOKEN_SPEED_CHUNK_ID,
-        type: 'speed',
-      });
+      if (shouldSetFirstOutput) firstOutputAt = now;
+      if (shouldSetSpeedStart) speedStartAt = now;
+
+      if (
+        inputStartAt !== undefined &&
+        firstOutputAt !== undefined &&
+        speedStartAt !== undefined &&
+        chunk.type === 'usage'
+      ) {
+        const usage = chunk.data as ModelUsage;
+        const outputTokens = getSpeedOutputTokens?.(usage) ?? usage?.totalOutputTokens ?? 0;
+        const elapsed = now - (enableStreaming ? speedStartAt : inputStartAt);
+        const duration = now - speedStartAt;
+        const latency = now - inputStartAt;
+        const ttft = firstOutputAt - inputStartAt;
+        const tps = elapsed === 0 ? undefined : (outputTokens / elapsed) * 1000;
+
+        result.push({
+          data: {
+            duration,
+            latency,
+            tps,
+            speedOutputTokens: outputTokens,
+            ttft,
+          } as ModelPerformance,
+          id: TOKEN_SPEED_CHUNK_ID,
+          type: 'speed',
+        });
+      }
     }
     return result;
   };

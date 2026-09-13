@@ -288,6 +288,19 @@ describe('MessageTransformer', () => {
       expect(result.performance?.tps).toBeCloseTo(1500 / 21);
     });
 
+    it('uses provider-declared speed output tokens when aggregating', () => {
+      const result = transformer.aggregateMetadata([
+        {
+          content: 'Answer',
+          id: 'msg-1',
+          performance: { duration: 2000, speedOutputTokens: 20, tps: 10 },
+          usage: { outputReasoningTokens: 80, outputTextTokens: 20, totalOutputTokens: 100 },
+        },
+      ]);
+
+      expect(result.performance?.tps).toBe(10);
+      expect(result.performance?.speedOutputTokens).toBe(20);
+    });
     it.each([
       [undefined, 1000],
       [100, undefined],

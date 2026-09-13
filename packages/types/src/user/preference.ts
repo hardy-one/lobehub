@@ -226,6 +226,7 @@ export const UserLabSchema = z.object({
    * to the client's declared protocol, which removes this field.
    */
   enableGatewayMux: z.boolean().optional(),
+  /**
    * render raw HTML fragments wrapped in `<!-- html-render-start -->` /
    * `<!-- html-render-end -->` markers inline in assistant messages
    */

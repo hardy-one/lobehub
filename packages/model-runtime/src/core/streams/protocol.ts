@@ -754,41 +754,69 @@ export const createTokenSpeedCalculator = (
     inputStartAt,
     streamStack,
     enableStreaming = true, // Select TPS calculation method (pass false for non-streaming)
-  }: { enableStreaming?: boolean; inputStartAt?: number; streamStack?: StreamContext } = {},
+    getSpeedOutputTokens,
+    isSpeedStartChunk,
+  }: {
+    enableStreaming?: boolean;
+    getSpeedOutputTokens?: (usage: ModelUsage) => number;
+    inputStartAt?: number;
+    isSpeedStartChunk?: (chunk: StreamProtocolChunk) => boolean;
+    streamStack?: StreamContext;
+  } = {},
 ) => {
-  let outputStartAt: number | undefined;
-  let outputEndAt: number | undefined;
+  let firstOutputAt: number | undefined;
+  let speedStartAt: number | undefined;
+  let speedEndAt: number | undefined;
 
   const process = (chunk: StreamProtocolChunk) => {
     const result = [chunk];
-    if (hasEffectiveOutput(chunk)) {
-      const now = Date.now();
-      outputStartAt ??= now;
-      outputEndAt = now;
-    }
+    const hasOutput = hasEffectiveOutput(chunk);
+    // Track the first model output separately from the speed window. Providers
+    // can use a later, visible-content event for TPS while preserving TTFT from
+    // the first effective output event (for example, Gemini thinking streams).
+    const hasCustomSpeedStart = isSpeedStartChunk !== undefined;
+    const isSpeedWindowStart = isSpeedStartChunk?.(chunk) ?? hasOutput;
+    const shouldSetFirstOutput = firstOutputAt === undefined && hasOutput;
+    const shouldSetSpeedStart = speedStartAt === undefined && isSpeedWindowStart;
+    const shouldTrackOutputEnd = !hasCustomSpeedStart && hasOutput && speedStartAt !== undefined;
 
-    if (inputStartAt !== undefined && outputStartAt !== undefined && chunk.type === 'usage') {
-      // TPS should always include all generated tokens (including reasoning tokens)
-      // because it measures generation speed, not just visible content
-      const usage = chunk.data as ModelUsage;
-      const outputTokens = usage?.totalOutputTokens ?? 0;
+    if (shouldSetFirstOutput || shouldSetSpeedStart || shouldTrackOutputEnd || chunk.type === 'usage') {
       const now = Date.now();
-      const duration = (outputEndAt ?? outputStartAt) - outputStartAt;
-      const tps =
-        enableStreaming && duration > 0 && outputTokens > 1
-          ? (outputTokens / duration) * 1000
-          : undefined;
 
-      result.push({
-        data: {
-          duration: enableStreaming ? duration : undefined,
-          latency: now - inputStartAt,
-          tps,
-          ttft: enableStreaming ? outputStartAt - inputStartAt : undefined,
-        } as ModelPerformance,
-        id: TOKEN_SPEED_CHUNK_ID,
-        type: 'speed',
-      });
+      if (shouldSetFirstOutput) firstOutputAt = now;
+      if (shouldSetSpeedStart) speedStartAt = now;
+      if (!hasCustomSpeedStart && hasOutput && speedStartAt !== undefined) speedEndAt = now;
+
+      if (
+        inputStartAt !== undefined &&
+        firstOutputAt !== undefined &&
+        speedStartAt !== undefined &&
+        chunk.type === 'usage'
+      ) {
+        const usage = chunk.data as ModelUsage;
+        const outputTokens = getSpeedOutputTokens?.(usage) ?? usage?.totalOutputTokens ?? 0;
+        const generationDuration = hasCustomSpeedStart
+          ? now - speedStartAt
+          : (speedEndAt ?? speedStartAt) - speedStartAt;
+        const elapsed = enableStreaming ? generationDuration : now - inputStartAt;
+        const latency = now - inputStartAt;
+        const tps =
+          enableStreaming && generationDuration > 0 && outputTokens > 1
+            ? (outputTokens / elapsed) * 1000
+            : undefined;
+
+        result.push({
+          data: {
+            duration: enableStreaming ? generationDuration : undefined,
+            latency,
+            tps,
+            speedOutputTokens: outputTokens,
+            ttft: enableStreaming ? firstOutputAt - inputStartAt : undefined,
+          } as ModelPerformance,
+          id: TOKEN_SPEED_CHUNK_ID,
+          type: 'speed',
+        });
+      }
     }
     return result;
   };

@@ -132,6 +132,82 @@ describe('GoogleGenerativeAIStream', () => {
       expect(onCompletionMock).toHaveBeenCalledTimes(1);
     });
 
+    it('calculates tok/s from visible text after the thinking phase', async () => {
+      vi.spyOn(Date, 'now')
+        .mockReturnValueOnce(1100)
+        .mockReturnValueOnce(2500)
+        .mockReturnValueOnce(5000);
+
+      const data = [
+        {
+          candidates: [
+            {
+              content: { parts: [{ text: 'Thinking', thought: true }], role: 'model' },
+              index: 0,
+            },
+          ],
+          modelVersion: 'gemini-3-pro-preview',
+          usageMetadata: {
+            candidatesTokenCount: 0,
+            promptTokenCount: 1,
+            promptTokensDetails: [{ modality: 'TEXT', tokenCount: 1 }],
+            thoughtsTokenCount: 100,
+            totalTokenCount: 101,
+          },
+        },
+        {
+          candidates: [
+            {
+              content: { parts: [{ text: 'Answer' }], role: 'model' },
+              index: 0,
+            },
+          ],
+          modelVersion: 'gemini-3-pro-preview',
+          usageMetadata: {
+            candidatesTokenCount: 5,
+            promptTokenCount: 1,
+            promptTokensDetails: [{ modality: 'TEXT', tokenCount: 1 }],
+            thoughtsTokenCount: 100,
+            totalTokenCount: 106,
+          },
+        },
+        {
+          candidates: [
+            {
+              content: { parts: [{ text: '!' }], role: 'model' },
+              finishReason: 'STOP',
+              index: 0,
+            },
+          ],
+          modelVersion: 'gemini-3-pro-preview',
+          usageMetadata: {
+            candidatesTokenCount: 12,
+            candidatesTokensDetails: [{ modality: 'TEXT', tokenCount: 12 }],
+            promptTokenCount: 1,
+            promptTokensDetails: [{ modality: 'TEXT', tokenCount: 1 }],
+            thoughtsTokenCount: 100,
+            totalTokenCount: 113,
+          },
+        },
+      ] as unknown as GenerateContentResponse[];
+
+      const mockGoogleStream = new ReadableStream({
+        start(controller) {
+          data.forEach((item) => controller.enqueue(item));
+          controller.close();
+        },
+      });
+
+      const chunks = await decodeStreamChunks(
+        GoogleGenerativeAIStream(mockGoogleStream, { inputStartAt: 1000 }),
+      );
+
+      expect(chunks).toContain('event: speed\n');
+      expect(chunks).toContain(
+        'data: {"duration":2500,"latency":4000,"tps":4.8,"speedOutputTokens":12,"ttft":100}\n\n',
+      );
+    });
+
     it('should handle empty stream', async () => {
       vi.spyOn(uuidModule, 'nanoid').mockReturnValueOnce('E5M9dFKw');
       const mockGoogleStream = new ReadableStream({

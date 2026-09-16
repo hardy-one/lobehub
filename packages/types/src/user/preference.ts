@@ -216,6 +216,7 @@ export const UserLabSchema = z.object({
    * (protocol v2 mux) instead of one socket per run
    */
   enableGatewayMux: z.boolean().optional(),
+  /**
    * render raw HTML fragments wrapped in `<!-- html-render-start -->` /
    * `<!-- html-render-end -->` markers inline in assistant messages
    */

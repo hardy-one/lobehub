@@ -1,6 +1,7 @@
 import type {
   HeterogeneousProviderConfig,
   HeterogeneousReasoningEffort,
+  HeterogeneousReasoningEffortLevel,
   HeterogeneousSpeedMode,
   HeteroSelection,
   HeteroSelectorCapability,
@@ -104,10 +105,16 @@ export const resolveModelSwitchSelection = ({
 export const buildSelectorView = ({
   capability,
   provider,
+  runtimeEffortLevels,
   t,
 }: {
   capability: HeteroSelectorCapability;
   provider: HeterogeneousProviderConfig;
+  /**
+   * Levels the current model actually serves, when the host could probe them.
+   * Omitted (or empty) falls back to the capability's static vocabulary.
+   */
+  runtimeEffortLevels?: readonly HeterogeneousReasoningEffortLevel[];
   t: Translate;
 }): SelectorView => {
   const model = capability.model?.resolve(provider) ?? HETEROGENEOUS_AGENT_DEFAULT_SELECTION;
@@ -163,14 +170,21 @@ export const buildSelectorView = ({
     });
   }
 
-  if (capability.effort && effort) {
+  // The runtime list is the model's real capability set; the capability's own
+  // list is only the fallback used while no probe has answered.
+  const effortLevels =
+    runtimeEffortLevels && runtimeEffortLevels.length > 0
+      ? runtimeEffortLevels
+      : (capability.effort?.levels(model) ?? []);
+  // A single level means this model cannot think — there is nothing to pick.
+  if (capability.effort && effort && effortLevels.length > 1) {
     dimensions.push({
       current: effort,
       key: 'reasoning',
       label: t('heteroAgent.modelSelector.reasoning'),
       options: [
         { label: defaultLabel, value: HETEROGENEOUS_AGENT_DEFAULT_SELECTION },
-        ...capability.effort.levels(model).map((level) => ({
+        ...effortLevels.map((level) => ({
           label: t(effortLabelKeys[level]),
           value: level,
         })),

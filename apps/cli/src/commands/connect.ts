@@ -17,7 +17,10 @@ import type {
   ToolCallRequestMessage,
 } from '@lobechat/device-gateway-client';
 import { GatewayClient } from '@lobechat/device-gateway-client';
-import { listHeterogeneousAgentModels } from '@lobechat/heterogeneous-agents/models';
+import {
+  listHeterogeneousAgentModels,
+  probeHeterogeneousThinkingLevels,
+} from '@lobechat/heterogeneous-agents/models';
 import { getShellInfo } from '@lobechat/local-file-shell';
 import type { Command } from 'commander';
 
@@ -446,6 +449,11 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     getProjectFileIndex: defaultGetProjectFileIndex,
     listHeterogeneousAgentModels: (params) =>
       listHeterogeneousAgentModels({
+        ...params,
+        env: { ...process.env, ...params.env },
+      }),
+    probeHeterogeneousThinkingLevels: (params) =>
+      probeHeterogeneousThinkingLevels({
         ...params,
         env: { ...process.env, ...params.env },
       }),

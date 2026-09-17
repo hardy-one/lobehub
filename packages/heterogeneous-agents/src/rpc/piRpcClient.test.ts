@@ -56,6 +56,8 @@ const createProcess = () => {
 /** Fixture: an RPC process that answers the startup `get_state` handshake. */
 const createReadyClient = async (
   options: Partial<ConstructorParameters<typeof PiRpcClient>[0]> = {},
+  /** `get_state` payload the fixture answers the handshake with. */
+  handshakeState: Record<string, unknown> = { sessionId: 'sess-1' },
 ) => {
   const { child, stdout, writes } = createProcess();
   spawnMock.mockReturnValue(child);
@@ -77,7 +79,7 @@ const createReadyClient = async (
   });
   const getState = writes.find((w) => w.type === 'get_state')!;
   stdout.write(
-    `${JSON.stringify({ command: 'get_state', data: { sessionId: 'sess-1' }, id: getState.id, success: true, type: 'response' })}\n`,
+    `${JSON.stringify({ command: 'get_state', data: handshakeState, id: getState.id, success: true, type: 'response' })}\n`,
   );
   await started;
   return { child, client, events, stdout, writes };
@@ -277,6 +279,58 @@ describe('PiRpcClient', () => {
   it('exposes the native session id from the get_state handshake (RPC has no session event)', async () => {
     const { client } = await createReadyClient();
     expect(client.sessionId).toBe('sess-1');
+    await client.close();
+  });
+
+  it('reads the model and thinking level from the handshake and follows level changes', async () => {
+    const { client, stdout } = await createReadyClient(
+      {},
+      {
+        model: { id: 'claude-sonnet-4-5', name: 'Sonnet 4.5' },
+        sessionId: 'sess-1',
+        thinkingLevel: 'low',
+      },
+    );
+
+    expect(client.model).toEqual({ id: 'claude-sonnet-4-5', name: 'Sonnet 4.5' });
+    expect(client.thinkingLevel).toBe('low');
+
+    // Pi reports the level it ACTUALLY applied, so a clamp stays observable.
+    stdout.write(`${JSON.stringify({ level: 'medium', type: 'thinking_level_changed' })}\n`);
+    await vi.waitFor(() => expect(client.thinkingLevel).toBe('medium'));
+    await client.close();
+  });
+
+  it('asks for the levels the bound model serves', async () => {
+    const { client, stdout, writes } = await createReadyClient(
+      {},
+      { model: { id: 'm-1' }, sessionId: 'sess-1' },
+    );
+
+    const levels = client.getAvailableThinkingLevels();
+    const request = writes.at(-1)!;
+    expect(request.type).toBe('get_available_thinking_levels');
+    stdout.write(
+      `${JSON.stringify({ command: 'get_available_thinking_levels', data: { levels: ['off', 'medium', 'high'] }, id: request.id, success: true, type: 'response' })}\n`,
+    );
+
+    await expect(levels).resolves.toEqual(['off', 'medium', 'high']);
+    await client.close();
+  });
+
+  it('applies a thinking level over RPC', async () => {
+    const { client, stdout, writes } = await createReadyClient();
+
+    const applied = client.setThinkingLevel('xhigh');
+    const request = writes.at(-1)!;
+    expect(request).toEqual(
+      expect.objectContaining({ level: 'xhigh', type: 'set_thinking_level' }),
+    );
+    stdout.write(
+      `${JSON.stringify({ command: 'set_thinking_level', id: request.id, success: true, type: 'response' })}\n`,
+    );
+
+    await expect(applied).resolves.toBeUndefined();
     await client.close();
   });
 

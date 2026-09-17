@@ -155,10 +155,21 @@ describe('probePiThinkingLevels', () => {
     child.killed = false;
     child.exitCode = null;
     child.signalCode = null;
-    child.kill = vi.fn(() => true);
+    // The probe closes the process in its `finally`; a fixture that never exits
+    // would leave the graceful-close path waiting forever.
+    child.kill = vi.fn(() => {
+      child.emit('close', null, 'SIGTERM');
+      return true;
+    });
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
-    child.stdin = { end: vi.fn(), once: vi.fn(), write: vi.fn(() => true) };
+    child.stdin = {
+      end: vi.fn(() => {
+        child.emit('close', 0, null);
+      }),
+      once: vi.fn(),
+      write: vi.fn(() => true),
+    };
     spawnMock.mockReturnValue(child);
 
     await expect(

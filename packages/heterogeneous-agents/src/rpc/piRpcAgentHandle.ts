@@ -169,6 +169,12 @@ export const createPiRpcAgentHandle = async (
   // CLI's existing spawn-failure classification runs.
   await session.start();
 
+  // A thinking level is a protocol value, not a launch flag: Pi applies it
+  // through `set_thinking_level` on the session this handle just started.
+  if (options.initialThinkingLevel) {
+    await session.setThinkingLevel(options.initialThinkingLevel);
+  }
+
   runStarted = true;
   const exit = session
     .run(options.prompt)

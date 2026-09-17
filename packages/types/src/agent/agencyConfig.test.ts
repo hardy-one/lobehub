@@ -561,7 +561,7 @@ describe('buildHeteroSpawnArgs', () => {
     ).toBeUndefined();
   });
 
-  it('forwards Pi native args and an explicit provider/model selection', () => {
+  it('forwards Pi native args, its model, and the thinking level', () => {
     const provider = {
       args: ['--offline'],
       effort: 'high',
@@ -573,9 +573,35 @@ describe('buildHeteroSpawnArgs', () => {
       '--offline',
       '--model',
       'anthropic/claude-sonnet-4-5',
+      '--thinking',
+      'high',
     ]);
     expect(buildHeteroExecArgs(provider)).toEqual([
       '--agent-arg=--offline',
+      '--model',
+      'anthropic/claude-sonnet-4-5',
+      '--effort',
+      'high',
+    ]);
+  });
+
+  it('keeps an explicit Pi thinking level from native args', () => {
+    const provider = {
+      args: ['--thinking', 'max'],
+      effort: 'low',
+      model: 'anthropic/claude-sonnet-4-5',
+      type: 'pi',
+    } satisfies HeterogeneousProviderConfig;
+
+    expect(buildHeteroSpawnArgs(provider)).toEqual([
+      '--thinking',
+      'max',
+      '--model',
+      'anthropic/claude-sonnet-4-5',
+    ]);
+    expect(buildHeteroExecArgs(provider)).toEqual([
+      '--agent-arg=--thinking',
+      '--agent-arg=max',
       '--model',
       'anthropic/claude-sonnet-4-5',
     ]);

@@ -90,10 +90,38 @@ export type QoderReasoningEffort = (typeof QODER_REASONING_EFFORT_LEVELS)[number
 
 export const QODER_REASONING_EFFORT_FLAG = '--reasoning-effort';
 
+/**
+ * Pi thinking levels, mirrored 1:1 with the CLI's `--thinking <level>` flag.
+ *
+ * This is the whole vocabulary pi accepts. Which of these a given model
+ * actually serves is decided inside pi (`getSupportedThinkingLevels`), so the
+ * host probes `get_available_thinking_levels` over RPC and narrows the menu to
+ * the model's own list. This constant is the fallback used while that probe is
+ * unavailable (remote device, older CLI): pi clamps an unsupported level to the
+ * nearest valid one instead of failing, so the run still honours the intent.
+ */
+export const PI_THINKING_LEVELS = [
+  'off',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+] as const;
+
+export type PiThinkingEffort = (typeof PI_THINKING_LEVELS)[number];
+
+export const PI_THINKING_FLAG = '--thinking';
+
+export const isPiThinkingEffort = (value: string | undefined): value is PiThinkingEffort =>
+  !!value && (PI_THINKING_LEVELS as readonly string[]).includes(value);
+
 export type HeterogeneousReasoningEffortLevel =
   | ClaudeCodeReasoningEffort
   | CodexReasoningEffort
   | GrokBuildReasoningEffort
+  | PiThinkingEffort
   | QoderReasoningEffort;
 
 export type HeterogeneousReasoningEffort =
@@ -277,6 +305,13 @@ const resolveQoderReasoningEffort = (
   return isQoderReasoningEffort(effort) ? effort : HETEROGENEOUS_AGENT_DEFAULT_SELECTION;
 };
 
+const resolvePiThinkingEffort = (
+  source: HeteroSelectionSource | null | undefined,
+): PiThinkingEffort | HeterogeneousAgentDefaultSelection => {
+  const effort = (getCliFlagValue(source?.args, PI_THINKING_FLAG) ?? source?.effort)?.trim();
+  return isPiThinkingEffort(effort) ? effort : HETEROGENEOUS_AGENT_DEFAULT_SELECTION;
+};
+
 /**
  * Catalog providers persist the picked model id verbatim and never read it back
  * out of `args`. Widening them to the arg-first order that `buildHeteroSpawnArgs`
@@ -318,6 +353,15 @@ export interface HeteroSelectorModelCapability {
 export interface HeteroSelectorEffortCapability {
   encodings: readonly HeteroCliEncoding[];
   levels: (model: string) => readonly HeterogeneousReasoningEffortLevel[];
+  /**
+   * `static` (default) — `levels` is the whole truth.
+   *
+   * `runtime` — the host can probe the levels the current model actually
+   * serves (pi answers `get_available_thinking_levels` per model). `levels`
+   * then only provides the fallback vocabulary for hosts that cannot probe,
+   * so a UI must never treat it as the model's real list.
+   */
+  levelsSource?: 'runtime' | 'static';
   resolve: (source: HeteroSelectionSource | null | undefined) => HeterogeneousReasoningEffort;
 }
 
@@ -434,6 +478,12 @@ export const HETERO_SELECTOR_CAPABILITIES = {
     model: { encodings: [MODEL_FLAGS_ENCODING], resolve: resolvePersistedModel, source: 'catalog' },
   },
   'pi': {
+    effort: {
+      encodings: [{ flags: [PI_THINKING_FLAG], kind: 'flag' }],
+      levels: () => PI_THINKING_LEVELS,
+      levelsSource: 'runtime',
+      resolve: resolvePiThinkingEffort,
+    },
     model: {
       encodings: [{ flags: ['--model'], kind: 'flag' }],
       extraStripFlags: ['--provider'],

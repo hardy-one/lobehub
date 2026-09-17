@@ -444,6 +444,41 @@ export const deviceRouter = router({
       }),
     ),
 
+  /** Probe the thinking levels a heterogeneous CLI serves for one model on the executing device. */
+  probeHeterogeneousThinkingLevels: deviceProcedure
+    .input(
+      z.object({
+        args: z.array(z.string()).optional(),
+        command: z.string().optional(),
+        cwd: z.string().optional(),
+        deviceId: z.string(),
+        env: z.record(z.string(), z.string()).optional(),
+        type: z.enum([
+          'codebuddy',
+          'cursor',
+          'droid',
+          'devin',
+          'grok-build',
+          'opencode',
+          'pi',
+          'qoder',
+          'trae',
+        ]),
+      }),
+    )
+    .query(async ({ ctx, input }) =>
+      deviceGateway.probeHeterogeneousThinkingLevels({
+        args: input.args,
+        command: input.command,
+        cwd: input.cwd,
+        deviceId: input.deviceId,
+        env: input.env,
+        type: input.type,
+        userId: ctx.userId,
+        workspaceId: ctx.workspaceId,
+      }),
+    ),
+
   /**
    * List the git worktrees attached to the same repository as a directory on a
    * remote device, via the device's `listGitWorktrees` RPC. Lets the web/remote

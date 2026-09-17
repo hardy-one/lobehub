@@ -204,6 +204,7 @@ vi.mock('@/store/agent/selectors', () => ({
     getExecutionTargetById: () => () => (desktopEnv.enabled ? 'local' : 'none'),
     getRuntimeModeById: () => () => '',
     isLocalSystemEnabledById: () => () => false,
+  },
 }));
 
 vi.mock('@/store/aiInfra', () => ({

@@ -844,7 +844,7 @@ describe('hetero exec command', () => {
     );
   });
 
-  it('runs Pi over the RPC transport with model, resume, and native args while ignoring effort and speed', async () => {
+  it('runs Pi over the RPC transport with model, resume, thinking, and native args while ignoring speed', async () => {
     vi.stubEnv('HOME', '/pi-test-home');
     vi.stubEnv('PI_CODING_AGENT_DIR', '/pi-test-config');
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-only-key');
@@ -876,6 +876,9 @@ describe('hetero exec command', () => {
       expect.objectContaining({
         args: ['--provider', 'anthropic', '--model', 'anthropic/claude-sonnet-4-5'],
         commandPath: 'pi',
+        // The level is a protocol value: the handle applies it through
+        // `set_thinking_level` once the RPC session is up.
+        initialThinkingLevel: 'high',
         env: expect.objectContaining({
           HOME: '/pi-test-home',
           PI_CODING_AGENT_DIR: '/pi-test-config',

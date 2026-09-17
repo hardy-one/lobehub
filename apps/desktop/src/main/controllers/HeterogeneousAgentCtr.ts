@@ -85,6 +85,11 @@ export default class HeterogeneousAgentCtr extends ControllerModule {
   }
 
   @IpcMethod()
+  async getThinkingLevels(...args: Parameters<Implementation['getThinkingLevels']>) {
+    return (await this.getImplementation()).getThinkingLevels(...args);
+  }
+
+  @IpcMethod()
   async getCodexQuota(...args: Parameters<Implementation['getCodexQuota']>) {
     return (await this.getImplementation()).getCodexQuota(...args);
   }

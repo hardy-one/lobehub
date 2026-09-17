@@ -34,7 +34,10 @@ import type {
   LobeBuiltinMcpServer,
   McpToolResult,
 } from '@lobechat/heterogeneous-agents/builtinMcp';
-import { listHeterogeneousAgentModels } from '@lobechat/heterogeneous-agents/models';
+import {
+  listHeterogeneousAgentModels,
+  probeHeterogeneousThinkingLevels,
+} from '@lobechat/heterogeneous-agents/models';
 import type {
   HeteroExecImageRef,
   HeterogeneousAgentCancellationResult,
@@ -111,8 +114,10 @@ import {
 import type {
   HeterogeneousAgentModelCatalog,
   HeterogeneousServerDefaultApiConfig,
+  HeterogeneousThinkingLevels,
   HeteroSessionImportMessage,
   ListHeterogeneousAgentModelsParams,
+  ProbeHeterogeneousThinkingLevelsParams,
 } from '@lobechat/types';
 import { sleep } from '@lobechat/utils/sleep';
 import { app as electronApp, BrowserWindow } from 'electron';
@@ -289,6 +294,8 @@ interface StartSessionParams {
   env?: Record<string, string>;
   /** Protocol-native model selected after session setup (TRAE ACP only). */
   initialModel?: string;
+  /** Protocol-native thinking level applied after session setup (Pi RPC only). */
+  initialThinkingLevel?: string;
   /** Credential-free LobeHub Provider reference. Desktop main resolves its secrets. */
   providerBinding?: HeterogeneousProviderBindingReference;
   /** Session ID to resume (for multi-turn) */
@@ -480,6 +487,8 @@ interface AgentSession {
   env?: Record<string, string>;
   grokAcpSession?: GrokAcpSession;
   hostedProviderBinding?: HostedProviderBinding;
+  /** Protocol-native thinking level applied to the Pi session before each run. */
+  initialThinkingLevel?: string;
   model?: string;
   modelSource?: string;
   modelVerificationLastAttemptAt?: number;
@@ -1724,6 +1733,7 @@ export default class HeterogeneousAgentCtr {
           ? params.providerBinding.apiConfig
           : undefined,
       model: agentType === 'trae' && hostedProviderBinding ? undefined : params.initialModel,
+      initialThinkingLevel: params.initialThinkingLevel,
       sessionId,
       resumeSessionId,
       useClaudeCodeSdk: params.useClaudeCodeSdk,
@@ -3001,6 +3011,16 @@ export default class HeterogeneousAgentCtr {
     // rebind to THIS run's IPC session / trace or events would broadcast to
     // a stale sessionId.
     if (pooledSession) pooledSession.rebind(callbacks);
+    // A thinking level is a protocol value, not a launch flag: Pi applies it
+    // through `set_thinking_level` on the session about to run, so a reused
+    // process moves in place instead of being recycled.
+    if (session.initialThinkingLevel) {
+      try {
+        await rpcSession.setThinkingLevel(session.initialThinkingLevel);
+      } catch (error) {
+        logger.warn('Failed to apply the Pi thinking level:', error);
+      }
+    }
     session.piRpcSession = rpcSession;
 
     logger.info(pooledSession ? 'Reusing pooled Pi RPC process:' : 'Starting Pi RPC session:', {
@@ -3672,6 +3692,29 @@ export default class HeterogeneousAgentCtr {
     };
 
     return listHeterogeneousAgentModels({
+      ...params,
+      cwd: params.cwd || electronApp.getPath('desktop'),
+      env,
+    });
+  }
+
+  /**
+   * Thinking levels the selected pi model serves, probed over the RPC transport.
+   *
+   * Pi answers this per session, so the probe spawns `pi --mode rpc` with the
+   * same args a run would use (including `--model`) and closes it again. The
+   * renderer caches per model; only a cache miss pays a process start.
+   */
+  async getThinkingLevels(
+    params: ProbeHeterogeneousThinkingLevelsParams,
+  ): Promise<HeterogeneousThinkingLevels> {
+    const env = {
+      ...buildInheritedSpawnEnv(),
+      ...buildProxyEnv(this.app.storeManager.get('networkProxy')),
+      ...params.env,
+    };
+
+    return probeHeterogeneousThinkingLevels({
       ...params,
       cwd: params.cwd || electronApp.getPath('desktop'),
       env,

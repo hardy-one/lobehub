@@ -1944,6 +1944,15 @@ export const executeHeterogeneousAgent = async (
         heterogeneousProvider.model !== HETEROGENEOUS_AGENT_DEFAULT_SELECTION
           ? heterogeneousProvider.model
           : undefined,
+      // Pi applies the level through `set_thinking_level` after the RPC session
+      // starts, so it travels as a value instead of an argv flag.
+      initialThinkingLevel:
+        adapterType === 'pi' &&
+        !providerBindingActive &&
+        heterogeneousProvider.effort &&
+        heterogeneousProvider.effort !== HETEROGENEOUS_AGENT_DEFAULT_SELECTION
+          ? heterogeneousProvider.effort
+          : undefined,
       providerBinding,
       resumeSessionId,
       useClaudeCodeSdk: labPreferSelectors.enableClaudeCodeSdk(useUserStore.getState()),

@@ -164,6 +164,7 @@ const {
   piRpcSessionCloseMock,
   piRpcSessionConstructMock,
   piRpcSessionRebindMock,
+  piRpcSessionSetThinkingLevelMock,
   piRpcSessionRunMock,
 } = vi.hoisted(() => ({
   claudeSdkSessionCloseMock: vi.fn(),
@@ -203,6 +204,7 @@ const {
   piRpcSessionCloseMock: vi.fn(),
   piRpcSessionConstructMock: vi.fn(),
   piRpcSessionRebindMock: vi.fn(),
+  piRpcSessionSetThinkingLevelMock: vi.fn(),
   piRpcSessionRunMock: vi.fn(),
 }));
 
@@ -559,6 +561,7 @@ vi.mock('@lobechat/heterogeneous-agents/spawn', async (importOriginal) => {
 vi.mock('@lobechat/heterogeneous-agents/rpc', () => {
   class MockPiRpcSession {
     isReusable = true;
+    thinkingLevel?: string;
     constructor(private readonly options: any) {
       piRpcSessionConstructMock(options);
     }
@@ -573,6 +576,11 @@ vi.mock('@lobechat/heterogeneous-agents/rpc', () => {
 
     rebind(callbacks: any) {
       piRpcSessionRebindMock(callbacks);
+    }
+
+    async setThinkingLevel(level: string) {
+      this.thinkingLevel = level;
+      piRpcSessionSetThinkingLevelMock(level);
     }
 
     async run() {
@@ -771,6 +779,7 @@ describe('HeterogeneousAgentCtr', () => {
     piRpcSessionCloseMock.mockReset();
     piRpcSessionConstructMock.mockReset();
     piRpcSessionRebindMock.mockReset();
+    piRpcSessionSetThinkingLevelMock.mockReset();
     piRpcSessionRunMock.mockReset();
     droidAcpSessionCloseMock.mockReset();
     droidAcpSessionConstructMock.mockReset();
@@ -4324,6 +4333,40 @@ describe('HeterogeneousAgentCtr', () => {
       expect(send).toHaveBeenCalledWith('heteroAgentSessionComplete', {
         sessionId: second.sessionId,
       });
+    });
+
+    it('applies the thinking level on a reused process instead of spawning fresh', async () => {
+      const send = vi.fn();
+      mockGetAllWindows.mockReturnValue([{ isDestroyed: () => false, webContents: { send } }]);
+      const ctr = new HeterogeneousAgentCtr({
+        appStoragePath,
+        storeManager: { get: vi.fn() },
+      } as any);
+
+      const env = { LOBEHUB_AGENT_ID: 'agent-pi', LOBEHUB_TOPIC_ID: 'topic-pi' };
+      const first = await ctr.startSession({
+        agentType: 'pi',
+        command: 'pi',
+        env: { ...env, LOBEHUB_OPERATION_ID: 'op-1' },
+        initialThinkingLevel: 'low',
+      });
+      await ctr.sendPrompt({ operationId: 'op-1', prompt: 'first', sessionId: first.sessionId });
+      await ctr.stopSession({ sessionId: first.sessionId });
+
+      // Same conversation, only the level changed: the level is a protocol
+      // value, so the warm process is reused and moved in place.
+      const second = await ctr.startSession({
+        agentType: 'pi',
+        command: 'pi',
+        env: { ...env, LOBEHUB_OPERATION_ID: 'op-2' },
+        initialThinkingLevel: 'high',
+        resumeSessionId: 'pi_sess_1',
+      });
+      await ctr.sendPrompt({ operationId: 'op-2', prompt: 'second', sessionId: second.sessionId });
+      await ctr.stopSession({ sessionId: second.sessionId });
+
+      expect(piRpcSessionConstructMock).toHaveBeenCalledTimes(1);
+      expect(piRpcSessionSetThinkingLevelMock.mock.calls).toEqual([['low'], ['high']]);
     });
 
     it.each([

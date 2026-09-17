@@ -55,6 +55,7 @@ import type {
   ListProjectSkillsParams,
   LocalFilePreviewUrlParams,
   PrepareSkillDirectoryParams,
+  ProbeHeterogeneousThinkingLevelsParams,
   ProjectDirectoryListParams,
   ProjectFileIndexParams,
   ProjectFileSearchParams,
@@ -75,6 +76,7 @@ export const DEVICE_RPC_METHODS = [
   'unenrollWorkspace',
   'initWorkspace',
   'listHeterogeneousAgentModels',
+  'probeHeterogeneousThinkingLevels',
   'getClaudeCodeQuota',
   'getCodexQuota',
   'getKimiCodeQuota',
@@ -193,6 +195,17 @@ export const executeDeviceRpc = async (
         throw new Error('This device client does not support heterogeneous agent model discovery');
       }
       return deps.listHeterogeneousAgentModels(params as ListHeterogeneousAgentModelsParams);
+    }
+
+    case 'probeHeterogeneousThinkingLevels': {
+      if (!deps.probeHeterogeneousThinkingLevels) {
+        throw new Error(
+          'This device client does not support heterogeneous agent thinking-level discovery',
+        );
+      }
+      return deps.probeHeterogeneousThinkingLevels(
+        params as ProbeHeterogeneousThinkingLevelsParams,
+      );
     }
 
     case 'getClaudeCodeQuota': {

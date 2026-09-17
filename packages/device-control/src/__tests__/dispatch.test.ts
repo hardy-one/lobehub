@@ -194,6 +194,27 @@ describe('executeDeviceRpc', () => {
     expect(result).toMatchObject({ status: 'success' });
   });
 
+  it('routes heterogeneous agent thinking-level probes to the execution host', async () => {
+    const deps = makeDeps();
+    deps.probeHeterogeneousThinkingLevels = vi.fn(async () => ({
+      levels: ['off', 'high'],
+      status: 'success' as const,
+      thinkingLevel: 'high',
+      updatedAt: 1,
+    }));
+    const params = {
+      args: ['--model', 'anthropic/claude-sonnet-4-5'],
+      command: 'pi',
+      cwd: root,
+      type: 'pi' as const,
+    };
+
+    const result = await executeDeviceRpc('probeHeterogeneousThinkingLevels', params, deps);
+
+    expect(deps.probeHeterogeneousThinkingLevels).toHaveBeenCalledWith(params);
+    expect(result).toMatchObject({ levels: ['off', 'high'], status: 'success' });
+  });
+
   it('reports model discovery as unsupported when the device client is too old', async () => {
     await expect(
       executeDeviceRpc('listHeterogeneousAgentModels', { type: 'opencode' }, makeDeps()),

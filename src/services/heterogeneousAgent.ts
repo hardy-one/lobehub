@@ -34,7 +34,11 @@ class HeterogeneousAgentCatalogService {
     deviceId,
     ...params
   }: ListModelsParams): Promise<HeterogeneousThinkingLevels | undefined> {
-    if (deviceId) return undefined;
+    // A bound device answers through its own gateway RPC; only a client too old
+    // to know the method falls back to the static vocabulary upstream.
+    if (deviceId) {
+      return lambdaClient.device.probeHeterogeneousThinkingLevels.query({ deviceId, ...params });
+    }
 
     return electronHeterogeneousAgentService.getThinkingLevels(params);
   }

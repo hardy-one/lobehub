@@ -578,7 +578,7 @@ describe('buildHeteroSpawnArgs', () => {
     ).toBeUndefined();
   });
 
-  it('forwards Pi native args and an explicit provider/model selection', () => {
+  it('forwards Pi native args and its model, leaving the thinking level to the session', () => {
     const provider = {
       args: ['--offline'],
       effort: 'high',
@@ -586,6 +586,8 @@ describe('buildHeteroSpawnArgs', () => {
       type: 'pi',
     } satisfies HeterogeneousProviderConfig;
 
+    // Pi applies the persisted level through `set_thinking_level` on its RPC
+    // session, so the desktop spawn args stay free of any thinking flag.
     expect(buildHeteroSpawnArgs(provider)).toEqual([
       '--offline',
       '--model',
@@ -595,6 +597,34 @@ describe('buildHeteroSpawnArgs', () => {
       '--agent-arg=--offline',
       '--model',
       'anthropic/claude-sonnet-4-5',
+      '--effort',
+      'high',
+    ]);
+  });
+
+  it('still carries the persisted Pi level when native args set one', () => {
+    const provider = {
+      args: ['--thinking', 'max'],
+      effort: 'low',
+      model: 'anthropic/claude-sonnet-4-5',
+      type: 'pi',
+    } satisfies HeterogeneousProviderConfig;
+
+    expect(buildHeteroSpawnArgs(provider)).toEqual([
+      '--thinking',
+      'max',
+      '--model',
+      'anthropic/claude-sonnet-4-5',
+    ]);
+    // The persisted level travels as the wrapper's `--effort` and is applied
+    // after session setup, so it wins over a native flag in the user's args.
+    expect(buildHeteroExecArgs(provider)).toEqual([
+      '--agent-arg=--thinking',
+      '--agent-arg=max',
+      '--model',
+      'anthropic/claude-sonnet-4-5',
+      '--effort',
+      'low',
     ]);
   });
 

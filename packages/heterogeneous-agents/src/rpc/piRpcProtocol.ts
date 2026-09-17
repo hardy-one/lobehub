@@ -168,6 +168,21 @@ export interface PiMessageEndEvent extends PiRpcEvent {
   type: 'message_end';
 }
 
+/** Response payload of `get_available_thinking_levels` — what the bound model serves. */
+export interface PiRpcThinkingLevelsData {
+  levels: string[];
+}
+
+/**
+ * The `thinking_level_changed` event pi emits after a level change. It carries
+ * the EFFECTIVE level, so a host that asked for an unsupported level learns
+ * what pi clamped it to instead of showing a value the run never used.
+ */
+export interface PiThinkingLevelChangedEvent extends PiRpcEvent {
+  level: string;
+  type: 'thinking_level_changed';
+}
+
 /** First npm release with agent_settled, idle abort and --session-id open-or-create. */
 export const PI_RPC_MIN_CLI_VERSION = '0.80.5';
 

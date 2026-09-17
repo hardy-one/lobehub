@@ -29,8 +29,10 @@ export {
   type PiRpcImage,
   type PiRpcResponse,
   type PiRpcStateData,
+  type PiRpcThinkingLevelsData,
   type PiSessionEvent,
   type PiStreamingBehavior,
+  type PiThinkingLevelChangedEvent,
 } from './piRpcProtocol';
 export {
   type PiRpcPromptInput,
@@ -38,4 +40,9 @@ export {
   type PiRpcSessionCallbacks,
   type PiRpcSessionOptions,
 } from './piRpcSession';
+export {
+  type PiThinkingLevelsResult,
+  probePiThinkingLevels,
+  type ProbePiThinkingLevelsParams,
+} from './probePiThinkingLevels';
 export { RpcStdioClient, RpcStdioConnectionError } from './rpcStdioClient';

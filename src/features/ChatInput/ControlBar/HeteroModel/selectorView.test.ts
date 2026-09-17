@@ -1,5 +1,9 @@
 import type { HeterogeneousProviderConfig, HeteroSelectorCapability } from '@lobechat/types';
-import { applyHeteroSelection, getHeteroSelectorCapability } from '@lobechat/types';
+import {
+  applyHeteroSelection,
+  getHeteroSelectorCapability,
+  HETEROGENEOUS_AGENT_DEFAULT_SELECTION,
+} from '@lobechat/types';
 import type { TFunction } from 'i18next';
 import { describe, expect, it } from 'vitest';
 
@@ -46,11 +50,11 @@ describe('resolveSelectorShape', () => {
 
   it('gives catalog-only providers the bare picker', () => {
     expect(resolveSelectorShape({ type: 'opencode' }, true).kind).toBe('catalog');
-    expect(resolveSelectorShape({ type: 'pi' }, true).kind).toBe('catalog');
   });
 
   it('gives a catalog provider with another dimension the full menu', () => {
     expect(resolveSelectorShape({ type: 'codebuddy' }, true).kind).toBe('menu');
+    expect(resolveSelectorShape({ type: 'pi' }, true).kind).toBe('menu');
     expect(resolveSelectorShape({ type: 'qoder' }, true).kind).toBe('menu');
   });
 
@@ -319,6 +323,45 @@ describe('what a pick persists', () => {
         }),
       ),
     ).toEqual({ args: [], model: 'gpt-5.6-sol' });
+  });
+
+  it('renders the thinking levels the host probed for the bound Pi model', () => {
+    const provider: HeterogeneousProviderConfig = {
+      model: 'anthropic/claude-sonnet-4-5',
+      type: 'pi',
+    };
+
+    const view = buildSelectorView({
+      capability: selectorCapabilityOf('pi'),
+      provider,
+      runtimeEffortLevels: ['off', 'high'],
+      t,
+    });
+    const reasoning = view.dimensions.find((dimension) => dimension.key === 'reasoning');
+
+    // The probed list wins over the static vocabulary: this model does not
+    // serve low/medium, so they must not be offered.
+    expect(reasoning?.options.map((option) => option.value)).toEqual([
+      HETEROGENEOUS_AGENT_DEFAULT_SELECTION,
+      'off',
+      'high',
+    ]);
+  });
+
+  it('hides the reasoning row when the model serves a single thinking level', () => {
+    const provider: HeterogeneousProviderConfig = {
+      model: 'anthropic/claude-sonnet-4-5',
+      type: 'pi',
+    };
+
+    const view = buildSelectorView({
+      capability: selectorCapabilityOf('pi'),
+      provider,
+      runtimeEffortLevels: ['off'],
+      t,
+    });
+
+    expect(view.dimensions.some((dimension) => dimension.key === 'reasoning')).toBe(false);
   });
 
   it('clears the qoder reasoning-effort flag', () => {

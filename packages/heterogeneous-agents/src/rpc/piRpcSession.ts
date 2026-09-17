@@ -146,6 +146,32 @@ export class PiRpcSession {
   }
 
   /**
+   * Effective thinking level of the live process, or `undefined` before the
+   * handshake. Pi reports the level it actually applied (clamped).
+   */
+  get thinkingLevel(): string | undefined {
+    return this.client.thinkingLevel;
+  }
+
+  /**
+   * Thinking levels the bound model serves. Starts the process on demand — the
+   * answer follows the model pi resolved from the session args.
+   */
+  async getAvailableThinkingLevels(timeoutMs?: number): Promise<string[]> {
+    if (!this.client.isReady) await this.start();
+    return this.client.getAvailableThinkingLevels(timeoutMs);
+  }
+
+  /**
+   * Apply a thinking level to the live process. Pi clamps to the model's own
+   * levels; read {@link thinkingLevel} afterwards for the effective value.
+   */
+  async setThinkingLevel(level: string): Promise<void> {
+    if (!this.client.isReady) await this.start();
+    await this.client.setThinkingLevel(level);
+  }
+
+  /**
    * Rebind the host callbacks — required when a pooled process is reused by
    * a later run whose IPC session (and trace) differs from the run that
    * spawned the process.

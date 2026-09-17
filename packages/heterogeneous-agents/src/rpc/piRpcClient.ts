@@ -12,6 +12,9 @@ import {
   type PiRpcCommand,
   type PiRpcEvent,
   type PiRpcResponse,
+  type PiRpcStateData,
+  type PiRpcThinkingLevelsData,
+  type PiThinkingLevelChangedEvent,
 } from './piRpcProtocol';
 import { RpcStdioClient, RpcStdioConnectionError } from './rpcStdioClient';
 
@@ -92,7 +95,9 @@ export class PiRpcClient {
   private readonly transport: RpcStdioClient;
   private readonly options: PiRpcClientOptions;
   private handshakeResolved = false;
+  private handshakeModel?: PiRpcStateData['model'];
   private handshakeSessionId?: string;
+  private handshakeThinkingLevel?: string;
   private startPromise?: Promise<void>;
   private readonly probeAbort = new AbortController();
   private probeExit?: Promise<void>;
@@ -148,6 +153,22 @@ export class PiRpcClient {
    */
   get sessionId(): string | undefined {
     return this.handshakeSessionId;
+  }
+
+  /**
+   * Model the handshake reported. `--model` is resolved before `get_state`
+   * answers, so a probe that bound a model sees it here.
+   */
+  get model(): PiRpcStateData['model'] {
+    return this.handshakeModel;
+  }
+
+  /**
+   * Effective thinking level, kept fresh by `thinking_level_changed` events —
+   * pi reports the level it actually applied, not the one we asked for.
+   */
+  get thinkingLevel(): string | undefined {
+    return this.handshakeThinkingLevel;
   }
 
   /**
@@ -295,6 +316,28 @@ export class PiRpcClient {
   }
 
   /**
+   * Thinking levels the CURRENT model serves. Pi derives this from the model's
+   * own capability table, so the answer narrows once `--model` is bound — an
+   * unbound session answers the whole vocabulary.
+   */
+  async getAvailableThinkingLevels(timeoutMs?: number): Promise<string[]> {
+    const response = await this.command<PiRpcThinkingLevelsData>(
+      { type: 'get_available_thinking_levels' },
+      timeoutMs,
+    );
+    return response.data?.levels ?? [];
+  }
+
+  /**
+   * Apply a thinking level. Pi clamps to what the model serves instead of
+   * failing, and reports the effective level through
+   * `thinking_level_changed`.
+   */
+  async setThinkingLevel(level: string): Promise<void> {
+    await this.command({ level, type: 'set_thinking_level' });
+  }
+
+  /**
    * Graceful close: send EOF, wait for pi to exit, escalate only if needed.
    * Resolves when the child is gone (or was never spawned).
    */
@@ -343,10 +386,7 @@ export class PiRpcClient {
   private async performHandshake(): Promise<void> {
     // No command-level timeout on the handshake — the watchdog below owns it
     // so the failure message is deterministic.
-    const handshake = this.command<{ sessionId?: string; sessionFile?: string }>(
-      { type: 'get_state' },
-      false,
-    );
+    const handshake = this.command<PiRpcStateData>({ type: 'get_state' }, false);
     const timeout = setTimeout(() => {
       // Reject the pending handshake directly; start() then recycles the
       // process. The message must be deterministic — no generic timeout text.
@@ -372,6 +412,10 @@ export class PiRpcClient {
       if (typeof response.data?.sessionId === 'string') {
         this.handshakeSessionId = response.data.sessionId;
       }
+      this.handshakeModel = response.data?.model ?? undefined;
+      if (typeof response.data?.thinkingLevel === 'string') {
+        this.handshakeThinkingLevel = response.data.thinkingLevel;
+      }
     } catch (error) {
       clearTimeout(timeout);
       throw error;
@@ -383,6 +427,10 @@ export class PiRpcClient {
     if (message.type === 'extension_ui_request') {
       await this.handleExtensionUiRequest(message as unknown as PiExtensionUiRequest);
       return;
+    }
+    if (message.type === 'thinking_level_changed') {
+      const { level } = message as unknown as PiThinkingLevelChangedEvent;
+      if (typeof level === 'string') this.handshakeThinkingLevel = level;
     }
     await this.options.onEvent(message as PiRpcEvent);
   }

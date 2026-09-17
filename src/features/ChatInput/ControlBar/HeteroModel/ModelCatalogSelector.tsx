@@ -38,17 +38,8 @@ import {
 import { memo, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { isDesktop } from '@/const/version';
-import { resolveTargetDeviceId } from '@/helpers/agentWorkingDirectory';
-import { resolveExecutionTarget } from '@/helpers/executionTarget';
-import { useEffectiveAgencyConfig } from '@/hooks/useEffectiveAgencyConfig';
-import { useEffectiveWorkingDirectory } from '@/hooks/useEffectiveWorkingDirectory';
-import { useDeviceStore } from '@/store/device';
-import { useElectronStore } from '@/store/electron';
-import { useUserStore } from '@/store/user';
-import { authSelectors } from '@/store/user/selectors';
-
 import { useMenuContentLifecycle } from '../useMenuContentLifecycle';
+import { useHeteroCatalogTarget } from './useHeteroCatalogTarget';
 import { useModelCatalog } from './useModelCatalog';
 
 const styles = createStaticStyles(({ css }) => ({
@@ -171,27 +162,10 @@ export const ModelCatalogSelector = memo<ModelCatalogSelectorProps>(
       handleOpenChangeComplete: completeOpenChange,
       open,
     } = useMenuContentLifecycle(onSelect);
-    const { agencyConfig, isPreferenceLoading, workspaceScoped } =
-      useEffectiveAgencyConfig(agentId);
-    const isLogin = useUserStore(authSelectors.isLogin);
-    const { isLoading: isDeviceListLoading } = useDeviceStore((s) => s.useFetchDevices)(
-      isLogin || isDesktop,
-    );
-    const cwd = useEffectiveWorkingDirectory(agentId);
-    const provider = agencyConfig?.heterogeneousProvider;
-    useElectronStore((s) => s.useFetchGatewayDeviceInfo)();
-    const currentDeviceId = useElectronStore((s) => s.gatewayDeviceInfo?.deviceId);
-    const executionTarget = resolveExecutionTarget(agencyConfig, {
-      clientExecutionAvailable: isDesktop,
-      isHetero: true,
-      workspaceScoped,
-    });
-    const targetDeviceId = resolveTargetDeviceId(agencyConfig, currentDeviceId, {
-      workspaceScoped,
-    });
-    const useLocalIpc = isDesktop && executionTarget === 'local';
-    const rpcDeviceId = useLocalIpc ? undefined : targetDeviceId;
-    const targetReady = useLocalIpc || (executionTarget === 'device' && !!rpcDeviceId);
+    // The catalog and the thinking-level probe address the same host, so the
+    // target resolution lives in one hook.
+    const { cwd, isDeviceListLoading, isPreferenceLoading, provider, rpcDeviceId, targetReady } =
+      useHeteroCatalogTarget(agentId);
     const currentModel =
       model && model !== HETEROGENEOUS_AGENT_DEFAULT_SELECTION
         ? model

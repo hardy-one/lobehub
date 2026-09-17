@@ -114,7 +114,6 @@ const setupDocument = {
 };
 
 describe('contextEngineering', () => {
-  it('should read the agent documents from the store cache without refetching', async () => {
   it('does not inject provided agent documents into the context (tool-only access)', async () => {
     const messages = [{ content: 'Summarize the setup', role: 'user' }] as UIChatMessage[];
     useAgentStore.setState({
@@ -134,7 +133,6 @@ describe('contextEngineering', () => {
     } as any);
     const ensureSpy = vi.spyOn(useAgentStore.getState(), 'ensureAgentDocuments');
 
-    const output = await contextEngineering({
     const { messages: output } = await contextEngineering({
       agentDocuments: [
         {
@@ -169,7 +167,6 @@ describe('contextEngineering', () => {
 
   it('should suppress agent documents when runtime agent mode is disabled', async () => {
     useAgentStore.setState({ agentDocumentsMap: { 'agent-1': [setupDocument] } } as any);
-    const output = await contextEngineering({
     const { messages: output } = await contextEngineering({
       agentDocuments: [
         {
@@ -210,9 +207,8 @@ describe('contextEngineering', () => {
       },
     } as any);
 
-    const output = await contextEngineering({
-      agentId: 'agent-1',
     const { messages: output } = await contextEngineering({
+      agentId: 'agent-1',
       agentDocuments: [
         {
           content: 'Project setup steps',
@@ -248,7 +244,7 @@ describe('contextEngineering', () => {
       },
     } as any);
 
-    const output = await contextEngineering({
+    const { messages: output } = await contextEngineering({
       agentId: 'builder-agent',
       messages: [{ content: 'Improve my agent', role: 'user' }] as UIChatMessage[],
       model: 'gpt-4',
@@ -765,7 +761,7 @@ describe('contextEngineering', () => {
       vi.setSystemTime(new Date('2023-12-25T23:30:00Z'));
       useUserStore.setState({ settings: { general: { timezone: 'Asia/Tokyo' } } } as any);
 
-      const result = await contextEngineering({
+      const { messages: result } = await contextEngineering({
         messages: [
           {
             role: 'user',
@@ -789,7 +785,7 @@ describe('contextEngineering', () => {
       vi.setSystemTime(new Date('2023-12-25T23:30:00Z'));
       useUserStore.setState({ settings: { general: { timezone: 'Asia/Tokyo' } } } as any);
 
-      const result = await contextEngineering({
+      const { messages: result } = await contextEngineering({
         messages: [
           {
             role: 'user',

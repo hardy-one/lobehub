@@ -33,7 +33,10 @@ import type {
   LobeBuiltinMcpServer,
   McpToolResult,
 } from '@lobechat/heterogeneous-agents/builtinMcp';
-import { listHeterogeneousAgentModels } from '@lobechat/heterogeneous-agents/models';
+import {
+  listHeterogeneousAgentModels,
+  probeHeterogeneousThinkingLevels,
+} from '@lobechat/heterogeneous-agents/models';
 import type {
   HeteroExecImageRef,
   HeterogeneousAgentCancellationResult,
@@ -104,9 +107,12 @@ import {
 import type {
   HeterogeneousAgentModelCatalog,
   HeterogeneousServerDefaultApiConfig,
+  HeterogeneousThinkingLevels,
   HeteroSessionImportMessage,
   ListHeterogeneousAgentModelsParams,
+  ProbeHeterogeneousThinkingLevelsParams,
 } from '@lobechat/types';
+import { getCliFlagValue, PI_THINKING_FLAG, stripCliFlags } from '@lobechat/types';
 import { sleep } from '@lobechat/utils/sleep';
 import { app as electronApp, BrowserWindow } from 'electron';
 import { isPlainObject } from 'es-toolkit';
@@ -2756,10 +2762,16 @@ export default class HeterogeneousAgentCtr {
     // Fingerprint the runtime options that shape the spawned process (command
     // path, args, env) so a pool hit under changed settings — model/provider,
     // proxy env, cwd env — spawns fresh instead of reusing stale config.
+    //
+    // The thinking level is deliberately NOT part of the fingerprint: Pi owns
+    // `set_thinking_level`, so a level change moves the warm process below
+    // instead of recycling it.
+    const requestedThinkingLevel = getCliFlagValue(session.args, PI_THINKING_FLAG);
+    const fingerprintArgs = stripCliFlags(session.args ?? [], [PI_THINKING_FLAG]) ?? [];
     const spawnFingerprint = [
       commandPath,
       cwd,
-      JSON.stringify(session.args ?? []),
+      JSON.stringify(fingerprintArgs),
       JSON.stringify(
         Object.entries(spawnEnv)
           .filter(([key]) => key !== 'LOBEHUB_OPERATION_ID')
@@ -2784,6 +2796,20 @@ export default class HeterogeneousAgentCtr {
     // rebind to THIS run's IPC session / trace or events would broadcast to
     // a stale sessionId.
     if (pooledSession) pooledSession.rebind(callbacks);
+    if (
+      pooledSession &&
+      requestedThinkingLevel &&
+      pooledSession.thinkingLevel !== requestedThinkingLevel
+    ) {
+      // A pooled process keeps the level it was spawned with; move it in place
+      // so a selector change lands without paying another Pi start. Pi clamps
+      // to the model's own levels and reports the effective one back.
+      try {
+        await pooledSession.setThinkingLevel(requestedThinkingLevel);
+      } catch (error) {
+        logger.warn('Failed to move the pooled Pi thinking level:', error);
+      }
+    }
     session.piRpcSession = rpcSession;
 
     logger.info(pooledSession ? 'Reusing pooled Pi RPC process:' : 'Starting Pi RPC session:', {
@@ -3139,6 +3165,29 @@ export default class HeterogeneousAgentCtr {
     };
 
     return listHeterogeneousAgentModels({
+      ...params,
+      cwd: params.cwd || electronApp.getPath('desktop'),
+      env,
+    });
+  }
+
+  /**
+   * Thinking levels the selected pi model serves, probed over the RPC transport.
+   *
+   * Pi answers this per session, so the probe spawns `pi --mode rpc` with the
+   * same args a run would use (including `--model`) and closes it again. The
+   * renderer caches per model; only a cache miss pays a process start.
+   */
+  async getThinkingLevels(
+    params: ProbeHeterogeneousThinkingLevelsParams,
+  ): Promise<HeterogeneousThinkingLevels> {
+    const env = {
+      ...buildInheritedSpawnEnv(),
+      ...buildProxyEnv(this.app.storeManager.get('networkProxy')),
+      ...params.env,
+    };
+
+    return probeHeterogeneousThinkingLevels({
       ...params,
       cwd: params.cwd || electronApp.getPath('desktop'),
       env,

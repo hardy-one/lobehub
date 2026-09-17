@@ -289,10 +289,17 @@ export interface DeviceControlDeps extends SkillDirectoryDeps, WorkspaceScanDeps
   getLocalFilePreview: (params: LocalFilePreviewUrlParams) => Promise<LocalFilePreviewResult>;
   /** Build the project file index. */
   getProjectFileIndex: (params: ProjectFileIndexParams) => Promise<ProjectFileIndexResult>;
-  /** Query a heterogeneous CLI's model catalog on this execution host. */
   listHeterogeneousAgentModels?: (
     params: ListHeterogeneousAgentModelsParams,
   ) => Promise<HeterogeneousAgentModelCatalog>;
+  /** Query a heterogeneous CLI's model catalog on this execution host. */
+  /**
+   * Thinking levels this host's heterogeneous CLI serves for one model. Pi
+   * answers per session, so the caller passes the run's args (incl. `--model`).
+   */
+  probeHeterogeneousThinkingLevels?: (
+    params: ProbeHeterogeneousThinkingLevelsParams,
+  ) => Promise<HeterogeneousThinkingLevels>;
   /** Read raw bytes after the user explicitly approved an external publish closure. */
   readExternalAssetForPublish?: (
     params: ExternalAssetForPublishParams,
@@ -353,6 +360,34 @@ export type HeterogeneousAgentModelCatalog =
     }
   | {
       models: HeterogeneousAgentModelCatalogItem[];
+      status: 'success';
+      updatedAt: number;
+    };
+
+// ─── Heterogeneous agent thinking levels ───
+
+/**
+ * Structural mirror of the canonical `@lobechat/types` thinking-level probe
+ * contract, kept local for the same reason as the catalog mirrors above.
+ */
+export type ProbeHeterogeneousThinkingLevelsParams = ListHeterogeneousAgentModelsParams;
+
+export type HeterogeneousThinkingLevels =
+  | {
+      error: {
+        code:
+          | 'cli_not_found'
+          | 'command_failed'
+          | 'device_unavailable'
+          | 'timeout'
+          | 'unsupported_client';
+        message: string;
+      };
+      status: 'error';
+      updatedAt: number;
+    }
+  | {
+      levels: string[];
       status: 'success';
       updatedAt: number;
     };

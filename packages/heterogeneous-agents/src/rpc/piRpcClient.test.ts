@@ -280,6 +280,36 @@ describe('PiRpcClient', () => {
     await client.close();
   });
 
+  it('asks for the levels the bound model serves', async () => {
+    const { client, stdout, writes } = await createReadyClient();
+
+    const levels = client.getAvailableThinkingLevels();
+    const request = writes.at(-1)!;
+    expect(request.type).toBe('get_available_thinking_levels');
+    stdout.write(
+      `${JSON.stringify({ command: 'get_available_thinking_levels', data: { levels: ['off', 'medium', 'high'] }, id: request.id, success: true, type: 'response' })}\n`,
+    );
+
+    await expect(levels).resolves.toEqual(['off', 'medium', 'high']);
+    await client.close();
+  });
+
+  it('applies a thinking level over RPC', async () => {
+    const { client, stdout, writes } = await createReadyClient();
+
+    const applied = client.setThinkingLevel('xhigh');
+    const request = writes.at(-1)!;
+    expect(request).toEqual(
+      expect.objectContaining({ level: 'xhigh', type: 'set_thinking_level' }),
+    );
+    stdout.write(
+      `${JSON.stringify({ command: 'set_thinking_level', id: request.id, success: true, type: 'response' })}\n`,
+    );
+
+    await expect(applied).resolves.toBeUndefined();
+    await client.close();
+  });
+
   it('rejects on `success: false` responses with the command name', async () => {
     const { client, stdout, writes } = await createReadyClient();
     const request = client.command({ type: 'set_model', provider: 'x', modelId: 'y' });

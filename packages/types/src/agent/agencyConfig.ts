@@ -17,6 +17,7 @@ import type {
   HeterogeneousAgentMode,
   HeterogeneousReasoningEffort,
   HeterogeneousSpeedMode,
+  PiThinkingEffort,
   QoderReasoningEffort,
 } from './heteroSelectorCapabilities';
 import {
@@ -32,6 +33,7 @@ import {
   isCodexFastServiceTier,
   isCodexReasoningEffort,
   isGrokBuildReasoningEffort,
+  isPiThinkingEffort,
   isQoderReasoningEffort,
   QODER_REASONING_EFFORT_FLAG,
 } from './heteroSelectorCapabilities';
@@ -86,6 +88,39 @@ export interface HeterogeneousAgentModelCatalogFailure {
 
 export type HeterogeneousAgentModelCatalog =
   HeterogeneousAgentModelCatalogFailure | HeterogeneousAgentModelCatalogSuccess;
+
+/**
+ * Parameters for probing the thinking levels a heterogeneous CLI serves for
+ * the selected model. Same routing as the model catalog: a bound device answers
+ * through the device gateway, the local Desktop answers over IPC.
+ */
+export type ProbeHeterogeneousThinkingLevelsParams = ListHeterogeneousAgentModelsParams;
+
+export interface HeterogeneousThinkingLevelsSuccess {
+  /** Levels the bound model serves, in the CLI's own order (may be one level). */
+  levels: string[];
+  status: 'success';
+  /** Level the probe session sits on — the CLI's own default when none was requested. */
+  thinkingLevel?: string;
+  updatedAt: number;
+}
+
+export interface HeterogeneousThinkingLevelsFailure {
+  error: {
+    code: HeterogeneousAgentModelCatalogErrorCode;
+    message: string;
+  };
+  status: 'error';
+  updatedAt: number;
+}
+
+/**
+ * Thinking levels a heterogeneous CLI serves for one model. Pi answers this per
+ * session (`get_available_thinking_levels`), so an entry only ever describes
+ * the model the probe was bound to.
+ */
+export type HeterogeneousThinkingLevels =
+  HeterogeneousThinkingLevelsFailure | HeterogeneousThinkingLevelsSuccess;
 
 /** Authentication source used by a heterogeneous agent CLI. */
 export type HeterogeneousAuthMode = 'api' | 'subscription';
@@ -442,6 +477,12 @@ interface GrokBuildSelectionSource {
   model?: string | null;
 }
 
+interface PiSelectionSource {
+  args?: string[];
+  effort?: string | null;
+  model?: string | null;
+}
+
 interface QoderSelectionSource {
   args?: string[];
   effort?: string | null;
@@ -505,6 +546,13 @@ const getExplicitGrokBuildReasoningEffort = (
 ): GrokBuildReasoningEffort | undefined => {
   const effort = source?.effort?.trim();
   return isGrokBuildReasoningEffort(effort) ? effort : undefined;
+};
+
+const getExplicitPiThinkingEffort = (
+  source: PiSelectionSource | null | undefined,
+): PiThinkingEffort | undefined => {
+  const effort = source?.effort?.trim();
+  return isPiThinkingEffort(effort) ? effort : undefined;
 };
 
 const getExplicitQoderReasoningEffort = (
@@ -821,6 +869,11 @@ export const buildHeteroExecArgs = (
     ) {
       selectorArgs.push('--model', model);
     }
+    // The wrapper takes the resolved reasoning effort as `--effort` and applies
+    // it to its own Pi session (`set_thinking_level`), mirroring how the
+    // post-setup agents receive their persisted value.
+    const effort = getExplicitPiThinkingEffort(provider);
+    if (effort) selectorArgs.push('--effort', effort);
   }
 
   if (provider.type === 'qoder') {

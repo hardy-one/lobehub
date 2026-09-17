@@ -15,6 +15,7 @@ export interface PiRpcAgentHandleOptions {
   cwd: string;
   detached?: boolean;
   env: NodeJS.ProcessEnv;
+  initialThinkingLevel?: string;
   /** Raw RPC stdout tee, installed before the process is spawned. */
   onRawStdout?: (chunk: Buffer) => void;
   /** Exposes cancellation synchronously, before the eager startup await. */
@@ -168,6 +169,12 @@ export const createPiRpcAgentHandle = async (
   // Eager spawn + handshake: a missing/broken pi install rejects here so the
   // CLI's existing spawn-failure classification runs.
   await session.start();
+
+  // A thinking level is a protocol value, not a launch flag: Pi applies it
+  // through `set_thinking_level` on the session this handle just started.
+  if (options.initialThinkingLevel) {
+    await session.setThinkingLevel(options.initialThinkingLevel);
+  }
 
   runStarted = true;
   const exit = session

@@ -46,8 +46,10 @@ export interface SpawnAgentOptions {
    * connected client renders live token streaming.
    */
   includePartialMessages?: boolean;
-  /** Initial model selected through the agent protocol after session setup (Droid/TRAE ACP). */
   initialModel?: string;
+  /** Initial model selected through the agent protocol after session setup (Droid/TRAE ACP). */
+  /** Initial thinking level applied through the agent protocol after session setup (Pi RPC). */
+  initialThinkingLevel?: string;
   /**
    * Image normalization options (URL fetch + on-disk cache + path
    * materialization). Forwarded to `buildAgentInput`. When `prompt` is a

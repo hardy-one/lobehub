@@ -10,8 +10,10 @@ import type {
 } from '@lobechat/heterogeneous-agents';
 import type {
   HeterogeneousAgentModelCatalog,
+  HeterogeneousThinkingLevels,
   HeteroSessionImportMessage,
   ListHeterogeneousAgentModelsParams,
+  ProbeHeterogeneousThinkingLevelsParams,
 } from '@lobechat/types';
 
 import { ensureElectronIpc } from '@/utils/electron/ipc';
@@ -31,6 +33,7 @@ class HeterogeneousAgentService {
     cwd?: string;
     env?: Record<string, string>;
     initialModel?: string;
+    initialThinkingLevel?: string;
     providerBinding?: HeterogeneousProviderBindingReference;
     resumeSessionId?: string;
     useClaudeCodeSdk?: boolean;
@@ -131,6 +134,17 @@ class HeterogeneousAgentService {
     params: ListHeterogeneousAgentModelsParams,
   ): Promise<HeterogeneousAgentModelCatalog> {
     return this.ipc.heterogeneousAgent.listModels(params);
+  }
+
+  /**
+   * Thinking levels the selected model serves, probed in the main process.
+   * Only Pi answers this; other types return an `unsupported_client` error and
+   * callers fall back to the static vocabulary.
+   */
+  async getThinkingLevels(
+    params: ProbeHeterogeneousThinkingLevelsParams,
+  ): Promise<HeterogeneousThinkingLevels> {
+    return this.ipc.heterogeneousAgent.getThinkingLevels(params);
   }
 
   async getCodexQuota(params?: {

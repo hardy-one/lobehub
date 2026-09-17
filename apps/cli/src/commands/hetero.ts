@@ -112,6 +112,7 @@ const spawnRuntimeRegistry: Partial<
       onStartupControl: lifecycle?.onStartupControl,
       prompt: await toPiRpcPrompt(spawnOpts.prompt),
       resumeSessionId: spawnOpts.resumeSessionId,
+      initialThinkingLevel: spawnOpts.initialThinkingLevel,
       uploadImage: spawnOpts.uploadImage,
       waitForBackgroundTasks: (pid, sessionId) =>
         waitForPiBackgroundTasks(spawnOpts.cwd ?? process.cwd(), pid, sessionId),
@@ -1120,6 +1121,7 @@ const exec = async (options: ExecOptions): Promise<void> => {
         options.type === 'droid' || options.type === 'devin' || options.type === 'trae'
           ? options.model
           : undefined,
+      initialThinkingLevel: options.type === 'pi' ? options.effort : undefined,
       operationId,
       prompt: resolved.prompt,
       resumeSessionId: options.resume,
@@ -1159,6 +1161,7 @@ const exec = async (options: ExecOptions): Promise<void> => {
           options.type === 'droid' || options.type === 'devin' || options.type === 'trae'
             ? options.model
             : undefined,
+        initialThinkingLevel: options.type === 'pi' ? options.effort : undefined,
         operationId,
         permissionMode,
         prompt: resolved.resumeFallbackPrompt ?? resolved.prompt,

@@ -1,5 +1,3 @@
-import { fetchAdvertisedServerUrls } from './runtimeEndpoints';
-
 /** Reaching a private address is a same-network trip: fast, or not at all. */
 const PROBE_TIMEOUT_MS = 1_500;
 
@@ -36,16 +34,18 @@ const isReachable = async (url: string): Promise<boolean> => {
  * answer; if the private path goes away, the next connect re-evaluates it.
  */
 export const chooseServerUrl = async (params: {
+  /** Addresses the deployment offers, in the order to try them. */
+  advertised: string[];
   /** The server `lh login` stored — the fallback, never the answer being verified. */
   configuredUrl: string;
 }): Promise<ChosenServerUrl> => {
-  const { configuredUrl } = params;
+  const { advertised, configuredUrl } = params;
 
   // Every advertised address is probed, including one that happens to equal what
   // this machine resolves to right now: that value *is* the address verified at an
   // earlier connect, so skipping it would leave the address in use unverified and
   // report it as unreachable while still dialling it.
-  for (const url of await fetchAdvertisedServerUrls()) {
+  for (const url of advertised) {
     if (await isReachable(url)) return { source: 'advertised', url };
   }
 

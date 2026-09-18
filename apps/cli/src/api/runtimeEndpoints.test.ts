@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { fetchAdvertisedServerUrls } from './runtimeEndpoints';
+import { fetchAdvertisedRuntimeEndpoints } from './runtimeEndpoints';
 
 const { queryMock, clientMock } = vi.hoisted(() => ({
   clientMock: vi.fn(),
@@ -9,7 +9,7 @@ const { queryMock, clientMock } = vi.hoisted(() => ({
 
 vi.mock('./client', () => ({ getTrpcClient: clientMock }));
 
-describe('fetchAdvertisedServerUrls', () => {
+describe('fetchAdvertisedRuntimeEndpoints', () => {
   beforeEach(() => {
     queryMock.mockReset();
     clientMock.mockReset();
@@ -19,15 +19,24 @@ describe('fetchAdvertisedServerUrls', () => {
   });
 
   it('returns the addresses the deployment offers, normalized', async () => {
-    queryMock.mockResolvedValue({ serverUrls: ['http://100.76.35.114:3210/'] });
+    queryMock.mockResolvedValue({
+      agentGatewayUrls: ['http://100.76.35.114:8787/', 'https://agent-gateway.example.com'],
+      serverUrls: ['http://100.76.35.114:3210/'],
+    });
 
-    await expect(fetchAdvertisedServerUrls()).resolves.toEqual(['http://100.76.35.114:3210']);
+    await expect(fetchAdvertisedRuntimeEndpoints()).resolves.toEqual({
+      agentGatewayUrls: ['http://100.76.35.114:8787', 'https://agent-gateway.example.com'],
+      serverUrls: ['http://100.76.35.114:3210'],
+    });
   });
 
   it('reports none when the server offers none', async () => {
     queryMock.mockResolvedValue({ serverUrls: [] });
 
-    await expect(fetchAdvertisedServerUrls()).resolves.toEqual([]);
+    await expect(fetchAdvertisedRuntimeEndpoints()).resolves.toEqual({
+      agentGatewayUrls: [],
+      serverUrls: [],
+    });
   });
 
   it('reports none instead of throwing when the lookup fails', async () => {
@@ -35,12 +44,18 @@ describe('fetchAdvertisedServerUrls', () => {
     // URL this machine is configured with.
     queryMock.mockRejectedValue(new Error('offline'));
 
-    await expect(fetchAdvertisedServerUrls()).resolves.toEqual([]);
+    await expect(fetchAdvertisedRuntimeEndpoints()).resolves.toEqual({
+      agentGatewayUrls: [],
+      serverUrls: [],
+    });
   });
 
   it('gives up on a lookup that takes too long', async () => {
     queryMock.mockImplementation(() => new Promise(() => {}));
 
-    await expect(fetchAdvertisedServerUrls({ timeoutMs: 10 })).resolves.toEqual([]);
+    await expect(fetchAdvertisedRuntimeEndpoints({ timeoutMs: 10 })).resolves.toEqual({
+      agentGatewayUrls: [],
+      serverUrls: [],
+    });
   });
 });

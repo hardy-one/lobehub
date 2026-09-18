@@ -26,8 +26,10 @@ import {
 import { getShellInfo } from '@lobechat/local-file-shell';
 import type { Command } from 'commander';
 
+import { chooseAgentGatewayUrl } from '../api/chooseAgentGatewayUrl';
 import { chooseServerUrl } from '../api/chooseServerUrl';
 import { createLambdaClient } from '../api/client';
+import { fetchAdvertisedRuntimeEndpoints } from '../api/runtimeEndpoints';
 import { resolveToken } from '../auth/resolveToken';
 import { CLI_API_KEY_ENV } from '../constants/auth';
 import {
@@ -72,6 +74,7 @@ import {
   loadWorkspaceEnrollments,
   normalizeUrl,
   removeWorkspaceEnrollment,
+  resolveAgentGatewayUrl,
   resolveDeviceMetricsBacklogPath,
   saveSettings,
 } from '../settings';
@@ -331,7 +334,7 @@ function buildDaemonArgs(options: ConnectOptions): string[] {
 async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   let auth = await resolveToken(options);
   const settings = loadSettings();
-
+  let settingsToPersist = settings;
   // Decide the address for *this* connection: the deployment may offer one its
   // devices reach more directly than the public entry (e.g. a private network
   // address), and it is verified before use. Nothing is stored — the address is a
@@ -341,16 +344,41 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   // An explicit `LOBEHUB_SERVER` (how a dispatched run is told which address to
   // use) wins over both, so it is left untouched.
   if (!process.env.LOBEHUB_SERVER) {
-    const configuredUrl = normalizeUrl(settings?.serverUrl) || OFFICIAL_SERVER_URL;
-    const chosen = await chooseServerUrl({ configuredUrl });
+    // One lookup, two decisions: which app origin to stream events to, and which
+    // agent gateway to stream a run through.
+    const advertised = await fetchAdvertisedRuntimeEndpoints();
 
+    const chosen = await chooseServerUrl({
+      advertised: advertised.serverUrls,
+      configuredUrl: normalizeUrl(settings?.serverUrl) || OFFICIAL_SERVER_URL,
+    });
     if (chosen.source === 'advertised') {
       log.info(`Using the address this server provides for devices: ${chosen.url}`);
       auth = { ...auth, serverUrl: chosen.url };
     }
+
+    // Unlike the app origin, this one is persisted: `lh agent` is a separate
+    // invocation that cannot see this process' memory, and `settings.agentGatewayUrl`
+    // is the field `resolveAgentGatewayUrl()` already reads. Each connect overwrites
+    // it, so a deployment that moves the gateway is picked up rather than sticking.
+    const configuredAgentGateway = resolveAgentGatewayUrl();
+    const chosenAgentGateway = await chooseAgentGatewayUrl({
+      advertised: advertised.agentGatewayUrls,
+      configuredUrl: configuredAgentGateway,
+    });
+    if (chosenAgentGateway.url !== configuredAgentGateway) {
+      log.info(
+        `Using the agent gateway this server provides for devices: ${chosenAgentGateway.url}`,
+      );
+    }
+    const verifiedAgentGateway =
+      chosenAgentGateway.source === 'advertised' ? chosenAgentGateway.url : undefined;
+    if (verifiedAgentGateway !== normalizeUrl(settings?.agentGatewayUrl)) {
+      settingsToPersist = { ...settings, agentGatewayUrl: verifiedAgentGateway };
+    }
   }
 
-  const gatewayUrl = normalizeUrl(options.gateway) || settings?.gatewayUrl;
+  const gatewayUrl = normalizeUrl(options.gateway) || settingsToPersist?.gatewayUrl;
 
   if (!gatewayUrl && settings?.serverUrl) {
     log.error(
@@ -361,8 +389,9 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   }
 
   if (options.gateway && gatewayUrl) {
-    saveSettings({ ...settings, gatewayUrl });
+    settingsToPersist = { ...settingsToPersist, gatewayUrl };
   }
+  if (settingsToPersist !== settings && settingsToPersist) saveSettings(settingsToPersist);
 
   const resolvedGatewayUrl = gatewayUrl || OFFICIAL_GATEWAY_URL;
 
@@ -939,9 +968,6 @@ function bindGatewayClientHandlers(
       );
     } else {
       log.toolResult(requestId, result.success, result.content, operationId);
-      log.debug(
-        `Tool call finished: apiName=${toolCall.apiName}, requestId=${requestId}, duration=${executionTimeMs}ms`,
-      );
     }
 
     client.sendToolCallResponse({

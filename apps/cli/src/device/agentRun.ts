@@ -8,6 +8,7 @@ import {
 import { resolveHeteroSpawnCwd } from '@lobechat/heterogeneous-agents/workingDirectory';
 
 import { getTask, removeTask, saveTask } from '../daemon/taskRegistry';
+import { resolveAgentGatewayUrl } from '../settings';
 import { registerAgentRun } from './agentRunRegistry';
 
 export interface SpawnHeteroAgentRunParams {
@@ -145,6 +146,9 @@ export function spawnHeteroAgentRun(
         ...childEnv,
         ...(assistantMessageId ? { LOBEHUB_ASSISTANT_MESSAGE_ID: assistantMessageId } : {}),
         [HETERO_EXEC_INHERIT_PROCESS_GROUP_ENV]: '1',
+        // Device-side runs and the commands they nest (lh notify) stream through the
+        // deployment's own gateway when it offered one at connect.
+        ...(resolveAgentGatewayUrl() ? { AGENT_GATEWAY_URL: resolveAgentGatewayUrl()! } : {}),
         LOBEHUB_JWT: jwt,
         LOBEHUB_OPERATION_ID: operationId,
         LOBEHUB_SERVER: serverUrl,

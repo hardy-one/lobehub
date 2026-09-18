@@ -1,3 +1,4 @@
+import { fetchAdvertisedRuntimeEndpoints } from '../../api/runtimeEndpoints';
 import { OFFICIAL_AGENT_GATEWAY_URL } from '../../constants/urls';
 import { resolveAgentGatewayUrl } from '../../settings';
 import { probeClient, probeGlobalConfig, probeProviders } from '../probes';
@@ -66,11 +67,19 @@ const capabilities: DoctorCheck = {
     const config = (await probeGlobalConfig(ctx)) as Record<string, any>;
     const serverConfig = (config?.serverConfig ?? {}) as Record<string, any>;
     const cliAgentGateway = resolveAgentGatewayUrl();
+    // The app config advertises the *browser-facing* gateway; a device may
+    // legitimately be configured with a private address for the same gateway, so
+    // the device-facing list is what a machine's own value is compared against.
+    // Comparing against the browser-facing one alone reported a correct private
+    // setup as a mismatch.
+    const deviceGateways =
+      (await fetchAdvertisedRuntimeEndpoints().catch(() => undefined))?.agentGatewayUrls ?? [];
     const evidence = {
       cliAgentGatewayUrl: cliAgentGateway,
       enableGatewayMode: serverConfig.enableGatewayMode,
       enableUploadFileToServer: serverConfig.enableUploadFileToServer,
       serverAgentGatewayUrl: serverConfig.agentGatewayUrl,
+      serverDeviceGateways: deviceGateways,
     };
 
     const problems: string[] = [];
@@ -84,7 +93,11 @@ const capabilities: DoctorCheck = {
       fixes.push('set AGENT_RUNTIME_MODE / the gateway env on the server');
     }
 
+    const cliOnDeviceGateway =
+      !!cliAgentGateway && deviceGateways.includes(cliAgentGateway.replace(/\/$/, ''));
+
     if (
+      !cliOnDeviceGateway &&
       serverConfig.agentGatewayUrl &&
       cliAgentGateway &&
       serverConfig.agentGatewayUrl.replace(/\/$/, '') !== cliAgentGateway.replace(/\/$/, '')

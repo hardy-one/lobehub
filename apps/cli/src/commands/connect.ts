@@ -24,6 +24,7 @@ import {
 import { getShellInfo } from '@lobechat/local-file-shell';
 import type { Command } from 'commander';
 
+import { chooseServerUrl } from '../api/chooseServerUrl';
 import { createLambdaClient } from '../api/client';
 import { resolveToken } from '../auth/resolveToken';
 import { CLI_API_KEY_ENV } from '../constants/auth';
@@ -33,7 +34,7 @@ import {
   CLI_DISPLAY_NAME,
   CLI_PRIMARY_BIN,
 } from '../constants/identity';
-import { OFFICIAL_GATEWAY_URL } from '../constants/urls';
+import { OFFICIAL_GATEWAY_URL, OFFICIAL_SERVER_URL } from '../constants/urls';
 import {
   appendLog,
   getLogPath,
@@ -143,6 +144,7 @@ export function registerConnectCommand(program: Command) {
         log.info(`  Started at       : ${status.startedAt}`);
         log.info(`  Connection       : ${status.connectionStatus}`);
         log.info(`  Gateway          : ${status.gatewayUrl}`);
+        log.info(`  Server           : ${status.serverUrl ?? 'unknown'}`);
         const uptime = formatUptime(new Date(status.startedAt));
         log.info(`  Uptime           : ${uptime}`);
       }
@@ -261,6 +263,7 @@ export function registerConnectCommand(program: Command) {
       if (status) {
         log.info(`  Connection       : ${status.connectionStatus}`);
         log.info(`  Gateway          : ${status.gatewayUrl}`);
+        log.info(`  Server           : ${status.serverUrl ?? 'unknown'}`);
         const uptime = formatUptime(new Date(status.startedAt));
         log.info(`  Uptime           : ${uptime}`);
       }
@@ -323,6 +326,25 @@ function buildDaemonArgs(options: ConnectOptions): string[] {
 async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   let auth = await resolveToken(options);
   const settings = loadSettings();
+
+  // Decide the address for *this* connection: the deployment may offer one its
+  // devices reach more directly than the public entry (e.g. a private network
+  // address), and it is verified before use. Nothing is stored — the address is a
+  // property of the current session, so a deployment that moves it is picked up
+  // by the next connect instead of being remembered stale.
+  //
+  // An explicit `LOBEHUB_SERVER` (how a dispatched run is told which address to
+  // use) wins over both, so it is left untouched.
+  if (!process.env.LOBEHUB_SERVER) {
+    const configuredUrl = normalizeUrl(settings?.serverUrl) || OFFICIAL_SERVER_URL;
+    const chosen = await chooseServerUrl({ configuredUrl });
+
+    if (chosen.source === 'advertised') {
+      log.info(`Using the address this server provides for devices: ${chosen.url}`);
+      auth = { ...auth, serverUrl: chosen.url };
+    }
+  }
+
   const gatewayUrl = normalizeUrl(options.gateway) || settings?.gatewayUrl;
 
   if (!gatewayUrl && settings?.serverUrl) {
@@ -420,6 +442,9 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
       connectionStatus,
       deviceId: client.currentDeviceId,
       gatewayUrl: resolvedGatewayUrl,
+      // Runtime state, rewritten on every start: which server address this
+      // session actually settled on (the deployment's own, or the configured one).
+      serverUrl: auth.serverUrl,
       pid: process.pid,
       startedAt: startedAt.toISOString(),
     });

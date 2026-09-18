@@ -3233,14 +3233,22 @@ export const aiAgentRouter = router({
     }),
 
   /**
-   * Addresses this deployment offers its devices for their own traffic
-   * (`PRIVATE_APP_URLS`), in the order the operator listed them.
+   * Addresses this deployment offers its devices, in the order to try them.
    *
    * A device asks once, while connecting, and verifies whichever address it can
    * reach; asking the server is the point, because a container cannot discover
    * the address by which devices reach it (it only sees its own bridge IP).
+   *
+   * - `serverUrls`: app origins a device can stream events to (`PRIVATE_APP_URLS`).
+   * - `agentGatewayUrls`: agent gateways to stream a run through, the private one
+   *   first and the public one as the fallback. The browser keeps using
+   *   `AGENT_GATEWAY_URL` from the app config: it is an HTTPS page and cannot dial
+   *   a private ws:// endpoint.
    */
   heteroRuntimeEndpoints: heteroAgentProcedure.query(() => ({
+    agentGatewayUrls: [appEnv.PRIVATE_AGENT_GATEWAY_URL, appEnv.AGENT_GATEWAY_URL]
+      .map((url) => (url ?? '').trim().replace(/\/+$/, ''))
+      .filter((url, index, urls) => Boolean(url) && urls.indexOf(url) === index),
     serverUrls: (appEnv.PRIVATE_APP_URLS ?? '')
       .split(',')
       .map((url) => url.trim().replace(/\/+$/, ''))

@@ -32,6 +32,7 @@ import { operationSelectors } from '@/store/chat/slices/operation/selectors';
 import type { ChatStore } from '@/store/chat/store';
 import { notifyDesktopHumanApprovalRequired } from '@/store/chat/utils/desktopNotification';
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
+import { heteroTraceWeb } from '@/utils/heteroTrace';
 
 // `agent_runtime_end` reasons that are NOT a clean completion: a mid-stream
 // cancel and a deferred-tool park. These must NOT mark the topic unread, and
@@ -1211,6 +1212,13 @@ export const createGatewayEventHandler = (
       case 'agent_runtime_end': {
         enqueue(async () => {
           const data = event.data as { reason?: string; uiMessages?: UIChatMessage[] } | undefined;
+          // Web leg of the cross-end timing trace: the moment the browser
+          // learned the run is over. Line it up against the CLI's
+          // `agent:terminalEvent` and the server's `stream:terminal:published`.
+          heteroTraceWeb(operationId, 'web:terminal:received', {
+            reason: data?.reason ?? null,
+            topicId: context.topicId ?? undefined,
+          });
 
           void emitAgentSignal({
             payload: {
@@ -1342,6 +1350,13 @@ export const createGatewayEventHandler = (
               });
             }
           }
+          // The UI actually stops spinning here: the run's operation is
+          // completed and the pending/loading state is cleared. This is the
+          // line to compare against the device's `agent:terminalEvent`.
+          heteroTraceWeb(operationId, 'web:run:completed', {
+            reason: data?.reason ?? null,
+            topicId: context.topicId ?? undefined,
+          });
         });
         break;
       }

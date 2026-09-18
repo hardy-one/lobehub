@@ -38,6 +38,11 @@ import type { Command } from 'commander';
 
 import { getTrpcClient } from '../api/client';
 import { CoalescingBatchIngester } from '../utils/CoalescingBatchIngester';
+import {
+  createHeteroTraceScope,
+  isOutputStreamEvent,
+  isTerminalStreamEvent,
+} from '../utils/heteroTraceLog';
 import { HeteroTraceRecorder } from '../utils/HeteroTraceRecorder';
 import { log } from '../utils/logger';
 import { createOperationHeartbeat } from '../utils/OperationHeartbeat';
@@ -93,6 +98,7 @@ const spawnRuntimeRegistry: Partial<
     (
       spawnOpts: Parameters<typeof spawnAgent>[0],
       lifecycle?: {
+        onPhase?: (phase: string, detail?: Record<string, unknown>) => void;
         onRawStdout?: (chunk: Buffer) => void;
         onStartupControl?: (control: PiRpcStartupControl) => void;
       },
@@ -109,6 +115,7 @@ const spawnRuntimeRegistry: Partial<
       operationId: spawnOpts.operationId,
       onRawStdout: lifecycle?.onRawStdout,
       onStartupControl: lifecycle?.onStartupControl,
+      onPhase: lifecycle?.onPhase,
       prompt: await toPiRpcPrompt(spawnOpts.prompt),
       resumeSessionId: spawnOpts.resumeSessionId,
       initialThinkingLevel: spawnOpts.initialThinkingLevel,
@@ -125,9 +132,10 @@ const spawnAgentOrRuntime = (
   spawnOpts: Parameters<typeof spawnAgent>[0],
   onRawStdout?: (chunk: Buffer) => void,
   onStartupControl?: (control: PiRpcStartupControl) => void,
+  onPhase?: (phase: string, detail?: Record<string, unknown>) => void,
 ): Promise<Awaited<ReturnType<typeof spawnAgent>>> => {
   const runtimeFactory = spawnRuntimeRegistry[spawnOpts.agentType as LocalHeterogeneousAgentType];
-  if (runtimeFactory) return runtimeFactory(spawnOpts, { onRawStdout, onStartupControl });
+  if (runtimeFactory) return runtimeFactory(spawnOpts, { onPhase, onRawStdout, onStartupControl });
   return spawnAgent({ ...spawnOpts, onRawStdout });
 };
 
@@ -499,6 +507,25 @@ const exec = async (options: ExecOptions): Promise<void> => {
 
   const operationId = options.operationId || randomUUID();
 
+  // ─── Cross-end timing trace ───────────────────────────────────────────────
+  // One line per phase with an ABSOLUTE timestamp, emitted on stderr (stdout
+  // carries the JSONL event stream in `--render jsonl` mode). Paired with the
+  // server/web lines of the same `op=…`, this is what makes "the UI kept
+  // spinning" attributable to one leg instead of guessed at.
+  const trace = createHeteroTraceScope({
+    extra: {
+      agentType: options.type,
+      cwd: options.cwd || process.cwd(),
+      effort: options.effort ?? null,
+      model: options.model ?? null,
+      render: options.render ?? (serverIngest ? 'none' : 'jsonl'),
+      resume: options.resume ?? null,
+      topic: options.topic ?? null,
+    },
+    operationId,
+    side: 'cli-exec',
+  });
+  trace.phase('exec:start', { rawDump: options.rawDump ?? null, serverIngest });
   // Optional raw stream dump (pre-adapter stdout/stderr) for debugging.
   let rawDump: RawStreamDump | undefined;
   if (options.rawDump) {
@@ -549,8 +576,50 @@ const exec = async (options: ExecOptions): Promise<void> => {
       options.topic!,
       process.env.LOBEHUB_ASSISTANT_MESSAGE_ID,
     );
-    serverIngester = new CoalescingBatchIngester(sink);
-
+    // Ingest-queue telemetry: the terminal `agent_runtime_end` is delivered to
+    // the server through this queue, so its enqueue/ack times (plus the queue
+    // depth it sits behind) are the difference between "agent finished" and
+    // "the UI was told".
+    serverIngester = new CoalescingBatchIngester(sink, undefined, {
+      onBatchFailed: ({ error, eventCount }) =>
+        trace.phase('ingest:batch:failed', { error: error.message, eventCount }),
+      onBatchRetry: ({ attempt, delayMs, error, eventCount }) =>
+        trace.phase('ingest:batch:retry', {
+          attempt,
+          delayMs,
+          error: error.message,
+          eventCount,
+        }),
+      onBatchSent: ({ attempt, eventCount, events, ms }) => {
+        const terminal = events.find((event) => isTerminalStreamEvent(event.type));
+        trace.phase('ingest:batch:sent', {
+          attempt,
+          eventCount,
+          firstEventAgeMs: events[0] ? Date.now() - events[0].timestamp : null,
+          lastEventAgeMs: events.at(-1) ? Date.now() - events.at(-1)!.timestamp : null,
+          ms,
+          ...(terminal
+            ? {
+                terminalAgeMs: Date.now() - terminal.timestamp,
+                terminalType: terminal.type,
+              }
+            : {}),
+        });
+      },
+      onDrain: ({ eventCount, ms, pendingBytes, phase }) =>
+        trace.phase(`ingest:drain:${phase}`, { eventCount, ms: ms ?? null, pendingBytes }),
+      onEnqueue: ({ depth, event, pendingBytes }) => {
+        if (isTerminalStreamEvent(event.type)) {
+          trace.phase('ingest:terminal:queued', {
+            depth,
+            pendingBytes,
+            type: event.type,
+          });
+        } else if (depth > 0 && depth % 200 === 0) {
+          trace.phase('ingest:queue:depth', { depth, lastType: event.type, pendingBytes });
+        }
+      },
+    });
     uploadImage = createFileStoreImageUploader(async () => {
       const lambda = await getTrpcClient();
       return {
@@ -829,12 +898,18 @@ const exec = async (options: ExecOptions): Promise<void> => {
     // registry picks the transport: pi runs over RPC, everything else spawns
     // one-shot (same handle shape, so the event loop below is unchanged).
     try {
-      handle = await spawnAgentOrRuntime(spawnOpts, dumpAttempt?.writeStdout, (control) => {
-        startupControl = control;
-        if (cancellationSignal && !inheritsWrapperProcessGroup) {
-          cancelStartup(control, cancellationSignal);
-        }
-      });
+      handle = await spawnAgentOrRuntime(
+        spawnOpts,
+        dumpAttempt?.writeStdout,
+        (control) => {
+          startupControl = control;
+          if (cancellationSignal && !inheritsWrapperProcessGroup) {
+            cancelStartup(control, cancellationSignal);
+          }
+        },
+        (phase, detail) => trace.phase(`pi.${phase}`, detail),
+      );
+      trace.phase('agent:spawned', { pid: handle.pid, runLabel });
       if (cancellationSignal && !startupControl && !inheritsWrapperProcessGroup) {
         handle.kill(cancellationSignal);
       }
@@ -914,8 +989,35 @@ const exec = async (options: ExecOptions): Promise<void> => {
     let terminalErrorMessage: string | undefined;
     let terminalErrorData: Record<string, unknown> | undefined;
     const ingestError = false;
+    // Run-scoped counters live outside the try so the post-loop `agent:exit`
+    // phase can report how long the process outlived the terminal event.
+    let eventCount = 0;
+    // Timestamp of the last OUTPUT event (text / reasoning / tool work).
+    // The settlement batch's bookkeeping events (`stream_end`,
+    // `visible_output_end`) must not reset it, or the gap collapses to 0 and
+    // hides the wait it is supposed to measure.
+    let lastOutputAt: number | undefined;
+    let terminalEventAt: number | undefined;
     try {
       for await (const event of handle.events) {
+        eventCount += 1;
+        if (eventCount === 1) {
+          trace.phase('agent:firstEvent', { type: event.type, runLabel });
+        }
+        if (isTerminalStreamEvent(event.type)) {
+          // The gap between the last OUTPUT event (final answer text / last
+          // tool result) and this terminal marker is the part the UI
+          // experiences as "answer is done but the spinner is still there".
+          terminalEventAt = Date.now();
+          trace.phase('agent:terminalEvent', {
+            eventAt: new Date(event.timestamp).toISOString(),
+            runLabel,
+            sinceLastOutputMs: lastOutputAt === undefined ? null : terminalEventAt - lastOutputAt,
+            type: event.type,
+          });
+        } else if (isOutputStreamEvent(event.type)) {
+          lastOutputAt = Date.now();
+        }
         if (interceptResumeErrors && event.type === 'error') {
           const data = event.data as Record<string, unknown> | undefined;
           const msg = String(data?.message ?? data?.error ?? '');
@@ -992,6 +1094,13 @@ const exec = async (options: ExecOptions): Promise<void> => {
     }
 
     const { code, signal } = await exit;
+    trace.phase('agent:exit', {
+      code,
+      eventCount,
+      runLabel,
+      signal,
+      sinceTerminalEventMs: terminalEventAt === undefined ? null : Date.now() - terminalEventAt,
+    });
     await stderrEnded;
     await dumpAttempt?.close();
     try {
@@ -1124,12 +1233,18 @@ const exec = async (options: ExecOptions): Promise<void> => {
 
   const { code, signal, sessionId } = result;
 
+  trace.phase('finish:begin', {
+    code,
+    runResultPending: true,
+    sessionId: sessionId ?? null,
+    signal,
+  });
+
   // Why the run failed to upload, when it did. `sawTerminalError`/stderr stay
   // ahead of it: those explain a failing agent, while this explains an agent
   // that worked and lost its output — the least obvious of the three, and the
   // only one with no other trace in the conversation.
   let ingestErrorMessage: string | undefined;
-
   if (serverIngester && sink) {
     operationHeartbeat?.stop();
     try {
@@ -1137,6 +1252,9 @@ const exec = async (options: ExecOptions): Promise<void> => {
     } catch (err) {
       ingestErrorMessage = err instanceof Error ? err.message : String(err);
       log.error('Failed to flush events to server:', ingestErrorMessage);
+      trace.phase('ingest:drain:error', {
+        error: ingestErrorMessage,
+      });
       result = { ...result, ingestError: true };
     }
   }
@@ -1183,10 +1301,13 @@ const exec = async (options: ExecOptions): Promise<void> => {
   // same signals the server finish uses, so a standalone run records the same
   // completion reason a server-ingest one does. Runs before the sink so a
   // failing server call still leaves a complete snapshot on disk.
+  trace.phase('trace:finalize:start', { runResult });
   await traceRecorder.finalize({ error: finishError, result: runResult });
+  trace.phase('trace:finalize:end', { runResult });
   let finishDeliveryFailed = false;
 
   if (serverIngester && sink) {
+    trace.phase('finish:send:start', { runResult });
     try {
       await sink.finish({
         error: finishError,
@@ -1194,9 +1315,13 @@ const exec = async (options: ExecOptions): Promise<void> => {
         result: runResult,
         sessionId,
       });
+      trace.phase('finish:send:end', { runResult });
     } catch (err) {
       finishDeliveryFailed = true;
       log.error('Failed to send heteroFinish:', err instanceof Error ? err.message : String(err));
+      trace.phase('finish:send:error', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
   // Only now: the drain and the finish receipt above both authenticate with the
@@ -1206,13 +1331,16 @@ const exec = async (options: ExecOptions): Promise<void> => {
   // Tear down the AskUserQuestion MCP: stop polling, cancel any in-flight
   // pending (→ CC's tool returns cleanly), close the server, drop the temp
   // config. Best-effort — the process is about to exit anyway.
+  trace.phase('teardown:start', {});
   askPollAbort.abort();
   if (askServer) {
     askServer.unregisterOperation(operationId);
     await askServer.stop().catch(() => {});
   } else askBridge?.cancelAll('session_ended');
   if (askMcpConfigPath) await unlink(askMcpConfigPath).catch(() => {});
+  trace.phase('teardown:end', { finishDeliveryFailed });
 
+  trace.phase('exec:exit', { code, finishDeliveryFailed, runResult, signal });
   if (code !== null) {
     const hasRunError =
       finishDeliveryFailed || result.ingestError || (!result.cancelled && result.sawTerminalError);

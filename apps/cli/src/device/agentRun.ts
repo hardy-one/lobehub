@@ -8,6 +8,7 @@ import {
 import { resolveHeteroSpawnCwd } from '@lobechat/heterogeneous-agents/workingDirectory';
 
 import { getTask, removeTask, saveTask } from '../daemon/taskRegistry';
+import { createHeteroTraceScope } from '../utils/heteroTraceLog';
 import { registerAgentRun } from './agentRunRegistry';
 
 export interface SpawnHeteroAgentRunParams {
@@ -108,6 +109,18 @@ export function spawnHeteroAgentRun(
   // array: context block first, then the user's prompt, then images — mirrors
   // the desktop path. `lh hetero exec` coerces both shapes via
   // coerceJsonPrompt.
+  // Cross-end trace: anchors this run on the DEVICE side, so the gap between the
+  // server dispatching the run and the device actually spawning it is visible.
+  const daemonTrace = createHeteroTraceScope({
+    extra: { agentType, cwd: workDir, topicId },
+    operationId,
+    side: 'cli-daemon',
+  });
+  daemonTrace.phase('request:received', {
+    imageCount: imageList?.length ?? 0,
+    resume: resumeSessionId ?? null,
+    workspaceId: workspaceId ?? null,
+  });
   const stdinPayload = buildHeteroExecStdinPayload({
     imageList,
     prompt,
@@ -162,6 +175,13 @@ export function spawnHeteroAgentRun(
       // group; the inherited-group env contract keeps its agent descendants
       // in that same group without affecting the connect daemon.
       pid = child.pid;
+      daemonTrace.phase('exec:spawned', {
+        agentType,
+        cwd: workDir,
+        pid: pid ?? null,
+        resume: resumeSessionId ?? null,
+        topicId,
+      });
       if (pid !== undefined) {
         saveTask({
           agentType,
@@ -173,7 +193,6 @@ export function spawnHeteroAgentRun(
           workspaceId,
         });
       }
-
       // Only safe to write stdin once the process actually started.
       try {
         child.stdin?.write(stdinPayload);
@@ -198,6 +217,7 @@ export function spawnHeteroAgentRun(
       if (pid !== undefined && getTask(operationId)?.pid === pid) {
         removeTask(operationId);
       }
+      daemonTrace.phase('exec:exited', { code, pid: pid ?? null, signal });
       logger?.info?.(`hetero exec exited (op=${operationId}) code=${code} signal=${signal}`);
     });
   });

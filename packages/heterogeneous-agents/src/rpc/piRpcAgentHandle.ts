@@ -15,6 +15,13 @@ export interface PiRpcAgentHandleOptions {
   cwd: string;
   detached?: boolean;
   env: NodeJS.ProcessEnv;
+  /**
+   * Reasoning effort applied through the RPC `set_thinking_level` command
+   * (a protocol value, not a launch flag).
+   */
+  initialThinkingLevel?: string;
+  /** Cross-end timing hook; forwarded to the RPC session phases. */
+  onPhase?: (phase: string, detail?: Record<string, unknown>) => void;
   /** Raw RPC stdout tee, installed before the process is spawned. */
   onRawStdout?: (chunk: Buffer) => void;
   /** Exposes cancellation synchronously, before the eager startup await. */
@@ -141,6 +148,7 @@ export const createPiRpcAgentHandle = async (
     uploadImage: options.uploadImage,
     onEvents: (events: AgentStreamEvent[]) => queue.push(events),
     onRawStdout: options.onRawStdout,
+    onPhase: options.onPhase,
     onRuntimeStatus: () => {
       /* no-op — the CLI surfaces state via events */
     },

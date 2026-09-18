@@ -53,6 +53,44 @@ export class IngestRejectedError extends Error {
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
+ * Observability hooks for the upload queue. Diagnostics only — every hook is
+ * best-effort and never changes delivery semantics.
+ *
+ * Why this exists: a tool-heavy run can emit far more events than the uploader
+ * ships, so the queue (and with it the terminal `agent_runtime_end`) can lag
+ * behind the agent. These hooks make that lag measurable per run instead of
+ * leaving "the UI kept spinning" as the only symptom.
+ */
+export interface BatchIngesterObservers {
+  /** Called when a batch send fails for good (retries exhausted). */
+  onBatchFailed?: (info: { error: Error; eventCount: number; events: AgentStreamEvent[] }) => void;
+  /** Called before a retry so the backoff delay is visible in the timeline. */
+  onBatchRetry?: (info: {
+    attempt: number;
+    delayMs: number;
+    error: Error;
+    eventCount: number;
+    events: AgentStreamEvent[];
+  }) => void;
+  /** Called after the sink accepted a batch (acknowledged by the server). */
+  onBatchSent?: (info: {
+    attempt: number;
+    eventCount: number;
+    events: AgentStreamEvent[];
+    ms: number;
+  }) => void;
+  /** Called when a drain starts/finishes so the remaining backlog is visible. */
+  onDrain?: (info: {
+    eventCount: number;
+    ms?: number;
+    pendingBytes: number;
+    phase: 'start' | 'end';
+  }) => void;
+  /** Called for every queued event with the current queue depth. */
+  onEnqueue?: (info: { depth: number; event: AgentStreamEvent; pendingBytes: number }) => void;
+}
+
+/**
  * Sends ordered event batches with bounded retries. A temporary outage leaves
  * the failed batch at the front of the queue; a later push or drain retries it
  * before any newer event. The buffer is byte-limited, so an extended outage
@@ -70,6 +108,7 @@ export class BatchIngester {
   constructor(
     private readonly sink: IngestSink,
     private readonly maxBufferedBytes = 16 * 1024 * 1024,
+    private readonly observers?: BatchIngesterObservers,
   ) {}
 
   /** Only a lost/overflowed stream is permanent; a transport outage can recover. */
@@ -90,6 +129,11 @@ export class BatchIngester {
     }
     this.buffer.push({ event, size });
     this.bufferedBytes += size;
+    this.observers?.onEnqueue?.({
+      depth: this.buffer.length,
+      event,
+      pendingBytes: this.bufferedBytes,
+    });
     if (this.pumping) return;
     if (this.buffer.length >= MAX_BATCH) {
       if (this.timer) clearTimeout(this.timer);
@@ -105,10 +149,22 @@ export class BatchIngester {
 
   /** A failed final drain still prevents the caller from reporting success. */
   async drain(): Promise<void> {
+    const startedAt = Date.now();
+    this.observers?.onDrain?.({
+      eventCount: this.buffer.length,
+      pendingBytes: this.bufferedBytes,
+      phase: 'start',
+    });
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     this.startPump();
     await this.worker;
+    this.observers?.onDrain?.({
+      eventCount: this.buffer.length,
+      ms: Date.now() - startedAt,
+      pendingBytes: this.bufferedBytes,
+      phase: 'end',
+    });
     if (this.fatalError) throw this.fatalError;
     if (this.lastSendError) throw this.lastSendError;
   }
@@ -142,6 +198,7 @@ export class BatchIngester {
     let delay = 500;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       if (this.fatalError) throw this.fatalError;
+      const startedAt = Date.now();
       try {
         const ack = await this.sink.ingest(batch);
         // A refusal is terminal, not transport noise: the server has closed the
@@ -151,13 +208,34 @@ export class BatchIngester {
         if (ack && ack.accepted === false) {
           throw new IngestRejectedError(ack.reason);
         }
+        this.observers?.onBatchSent?.({
+          attempt,
+          eventCount: batch.length,
+          events: batch,
+          ms: Date.now() - startedAt,
+        });
         return;
       } catch (error) {
+        const failure = error instanceof Error ? error : new Error(String(error));
         if (error instanceof IngestRejectedError) {
           this.fatalError = error;
           throw error;
         }
-        if (attempt === MAX_RETRIES) throw error;
+        if (attempt === MAX_RETRIES) {
+          this.observers?.onBatchFailed?.({
+            error: failure,
+            eventCount: batch.length,
+            events: batch,
+          });
+          throw error;
+        }
+        this.observers?.onBatchRetry?.({
+          attempt,
+          delayMs: delay,
+          error: failure,
+          eventCount: batch.length,
+          events: batch,
+        });
         await sleep(delay);
         delay = Math.min(delay * 2, 8_000);
       }

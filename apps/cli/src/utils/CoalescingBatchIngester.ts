@@ -1,6 +1,6 @@
 import type { AgentStreamEvent } from '@lobechat/heterogeneous-agents/spawn';
 
-import { BatchIngester, type IngestSink } from './BatchIngester';
+import { BatchIngester, type BatchIngesterObservers, type IngestSink } from './BatchIngester';
 
 /**
  * Server ingester for `lh hetero exec`: coalesces main-agent text and
@@ -38,8 +38,9 @@ export class CoalescingBatchIngester {
   constructor(
     sink: IngestSink,
     private readonly snapshotFlushMs = 200,
+    observers?: BatchIngesterObservers,
   ) {
-    this.batcher = new BatchIngester(sink);
+    this.batcher = new BatchIngester(sink, undefined, observers);
   }
 
   push(event: AgentStreamEvent): void {

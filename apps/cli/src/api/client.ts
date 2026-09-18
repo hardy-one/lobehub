@@ -10,6 +10,7 @@ import { CLI_API_KEY_ENV } from '../constants/auth';
 import { CLI_PRIMARY_BIN } from '../constants/identity';
 import { cliPackageName } from '../pkg';
 import { resolveServerUrl } from '../settings';
+import { tracedFetch } from '../utils/heteroFetchTrace';
 import { log } from '../utils/logger';
 import { resolveWorkspaceId, withWorkspaceHeader } from './workspace';
 
@@ -77,6 +78,7 @@ export async function getTrpcClient(workspaceId?: string): Promise<TrpcClient> {
     links: [
       httpLink({
         headers: () => withWorkspaceHeader(headers(), wsId),
+        fetch: tracedFetch(),
         transformer: superjson,
         url: `${serverUrl}/trpc/lambda`,
       }),
@@ -111,6 +113,7 @@ export function createLambdaClient(
     links: [
       httpLink({
         headers: workspaceId ? { ...headers, 'X-Workspace-Id': workspaceId } : headers,
+        fetch: tracedFetch(),
         transformer: superjson,
         url: `${auth.serverUrl}/trpc/lambda`,
       }),
@@ -135,6 +138,7 @@ export async function getToolsTrpcClient(workspaceId?: string): Promise<ToolsTrp
     links: [
       httpLink({
         headers: () => withWorkspaceHeader(headers(), wsId),
+        fetch: tracedFetch(),
         transformer: superjson,
         url: `${serverUrl}/trpc/tools`,
       }),

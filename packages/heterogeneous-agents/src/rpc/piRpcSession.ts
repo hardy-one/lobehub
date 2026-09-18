@@ -45,6 +45,12 @@ export interface PiRpcSessionOptions {
   onExtensionUiRequest?: (
     request: PiExtensionUiRequest,
   ) => Promise<PiExtensionUiResponse | undefined> | PiExtensionUiResponse | undefined;
+  /**
+   * Cross-end timing hook (absolute timestamps are added by the caller). The
+   * host uses it to separate "pi finished answering" from "pi told us it
+   * settled" from "we tore the process down".
+   */
+  onPhase?: (phase: string, detail?: Record<string, unknown>) => void;
   onRawStdout?: (chunk: Buffer) => void;
   onRuntimeStatus: (status: HeterogeneousAgentRuntimeStatus) => void;
   /** Freshest native pi session id (RPC mode: from the get_state handshake). */
@@ -105,6 +111,15 @@ export class PiRpcSession {
   private resolveRun?: (result: { aborted: boolean }) => void;
   private rejectRun?: (error: Error) => void;
   private runStarted = false;
+  private sawRunEvent = false;
+  // Settlement-gap bookkeeping: `agent_settled` only arrives after pi's own
+  // post-run work (retry / compaction / queued continuations). These track how
+  // long pi stayed silent after its last output and how chatty the gap was,
+  // which is the part a host cannot see from the adapter's event stream.
+  private agentEndAt?: number;
+  private eventsSinceAgentEnd = 0;
+  private lastOutputAt?: number;
+  private turnEndAt?: number;
   private runPromise?: Promise<{ aborted: boolean }>;
   private abortPromise?: Promise<void>;
   private startPromise?: Promise<void>;
@@ -200,9 +215,19 @@ export class PiRpcSession {
       if (this.closed) throw new PiRpcConnectionError('Pi RPC session is closed');
       const sessionId = this.client.sessionId;
       if (sessionId) this.callbacks.onSessionId(sessionId);
+      this.phase('ready', { pid: this.pid, sessionId: sessionId ?? null });
       this.emitStatus('idle');
     });
     return this.startPromise;
+  }
+
+  /** Best-effort timing hook — diagnostics must never break a run. */
+  private phase(name: string, detail?: Record<string, unknown>): void {
+    try {
+      this.options.onPhase?.(name, detail);
+    } catch {
+      /* ignore */
+    }
   }
 
   private async startClient(): Promise<void> {
@@ -228,6 +253,11 @@ export class PiRpcSession {
     if (this.runStarted) return Promise.reject(new Error('PiRpcSession already has an active run'));
     if (this.closed) return Promise.reject(new PiRpcConnectionError('Pi RPC session is closed'));
     this.runStarted = true;
+    this.sawRunEvent = false;
+    this.agentEndAt = undefined;
+    this.eventsSinceAgentEnd = 0;
+    this.lastOutputAt = undefined;
+    this.turnEndAt = undefined;
     this.abortPromise = undefined;
     this.runPromise = this.runPrompt(prompt);
     return this.runPromise;
@@ -267,6 +297,7 @@ export class PiRpcSession {
         ...(prompt.images?.length ? { images: prompt.images } : {}),
       };
       const response = await this.client.command(command);
+      this.phase('prompt:accepted', { success: response.success });
       if (!response.success) {
         throw new PiRpcResponseError('prompt', response.error ?? 'Unknown error');
       }
@@ -276,6 +307,7 @@ export class PiRpcSession {
       // Observe both promises immediately: process death may precede the ACK,
       // and agent_settled may arrive before command() resumes.
       const [result] = await Promise.all([completion, sendPrompt()]);
+      this.phase('run:settled', { aborted: result.aborted, contextInstalled });
       this.clearInactivityTimer();
       if (contextInstalled && !this.closed) {
         try {
@@ -348,7 +380,9 @@ export class PiRpcSession {
     }
     this.closed = true;
     this.clearInactivityTimer();
+    this.phase('close:start', { force: options?.force === true });
     this.closePromise = this.client.close(options).finally(() => {
+      this.phase('close:end', {});
       this.settleRun({ aborted: true });
       this.emitStatus('closed');
     });
@@ -377,6 +411,38 @@ export class PiRpcSession {
     });
   }
 
+  /**
+   * Track the run's own progress so the settlement gap can be attributed: a
+   * long `sinceLastOutputMs` with `eventsAfterAgentEnd === 0` means pi went
+   * quiet after finishing (no retry, no compaction) — the host simply waited.
+   */
+  private trackRunProgress(event: PiRpcEvent): void {
+    const now = Date.now();
+    if (this.agentEndAt !== undefined && event.type !== 'agent_end') {
+      this.eventsSinceAgentEnd += 1;
+    }
+    switch (event.type) {
+      case 'agent_end': {
+        this.agentEndAt = now;
+        this.eventsSinceAgentEnd = 0;
+        break;
+      }
+      case 'bash_execution_update':
+      case 'message_end':
+      case 'message_update':
+      case 'tool_execution_end': {
+        this.lastOutputAt = now;
+        break;
+      }
+      case 'turn_end': {
+        this.turnEndAt = now;
+        this.lastOutputAt = now;
+        break;
+      }
+      default:
+    }
+  }
+
   private async handleEvent(event: PiRpcEvent): Promise<void> {
     if (this.closed) return;
     this.lastEventAt = Date.now();
@@ -394,10 +460,30 @@ export class PiRpcSession {
     }
 
     if (!this.runStarted) return;
+    if (!this.sawRunEvent) {
+      this.sawRunEvent = true;
+      this.phase('run:firstEvent', { type: event.type });
+    }
+    this.trackRunProgress(event);
     this.armInactivityTimer();
     if (isTerminalAbortedEvent(event)) this.aborted = true;
     const events = await this.pushEvent(event, pipeline);
     if (event.type !== 'agent_settled') return;
+    // pi has nothing left to run: retries, compaction and queued continuations
+    // are all done. Everything the user perceives between here and the UI
+    // stopping happens *after* this line.
+    const settledAt = Date.now();
+    // The gap a host cannot see: how long pi stayed quiet after its last
+    // output / `agent_end`, and whether anything happened in between (a retry or
+    // an auto-compaction keeps `eventsAfterAgentEnd` climbing; pure silence
+    // leaves it at 0).
+    this.phase('agent_settled', {
+      aborted: this.aborted,
+      eventsAfterAgentEnd: this.eventsSinceAgentEnd,
+      sinceAgentEndMs: this.agentEndAt === undefined ? null : settledAt - this.agentEndAt,
+      sinceLastOutputMs: this.lastOutputAt === undefined ? null : settledAt - this.lastOutputAt,
+      sinceTurnEndMs: this.turnEndAt === undefined ? null : settledAt - this.turnEndAt,
+    });
     const error = events.find((item) => item.type === 'error');
     if (error) this.failRun(new Error(error.data.message ?? 'Pi run failed'));
     else this.settleRun({ aborted: this.aborted });

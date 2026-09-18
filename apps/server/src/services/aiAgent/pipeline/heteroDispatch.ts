@@ -45,6 +45,7 @@ import type { ConversationHistoryEntry } from '@/server/services/heterogeneousAg
 import { buildCloudHeteroContext } from '@/server/services/heterogeneousAgent/cloudHeteroContext';
 import { buildRemoteDeviceHeteroContext } from '@/server/services/heterogeneousAgent/remoteDeviceHeteroContext';
 import type { MarketService } from '@/server/services/market';
+import { anchorHeteroRun, heteroTrace } from '@/server/utils/heteroTraceLog';
 
 import {
   getHeterogeneousAgentTitle,
@@ -991,6 +992,21 @@ export const dispatchHeteroAgent = async (
         dispatchDeviceId,
         dispatchWorkspaceId,
       );
+      const dispatchAnchor = anchorHeteroRun(heteroParams.operationId);
+      heteroTrace(
+        'server',
+        heteroParams.operationId,
+        'dispatch:start',
+        {
+          agentType: heteroParams.agentType,
+          cwd: deviceCwd,
+          deviceId: dispatchDeviceId,
+          resume: resumeSessionId ?? null,
+          topicId,
+        },
+        dispatchAnchor,
+      );
+      const dispatchStartedAt = Date.now();
       const result = authorizationError
         ? { error: 'DEVICE_NOT_FOUND', errorData: authorizationError, success: false }
         : await deviceGateway.dispatchAgentRun({
@@ -1008,6 +1024,14 @@ export const dispatchHeteroAgent = async (
             // device still has to write back under `deps.workspaceId`.
             ingestWorkspaceId: deps.workspaceId,
           });
+      // The ack round-trip isolates the gateway leg: from here on, any delay
+      // belongs to the device/agent or to the ingest stream coming back.
+      heteroTrace('server', heteroParams.operationId, 'dispatch:ack', {
+        ackMs: Date.now() - dispatchStartedAt,
+        deviceId: dispatchDeviceId,
+        error: result.error ?? null,
+        success: result.success,
+      });
       if (!result.success) {
         log('execAgent: hetero device dispatch failed: %s', result.error);
         await finalizeHeteroDispatchError(deps, {

@@ -23,6 +23,7 @@ import { CompletionLifecycle } from '@/server/services/agentRuntime/CompletionLi
 import type { SerializedHook } from '@/server/services/agentRuntime/hooks/types';
 import { createDefaultSnapshotStore } from '@/server/services/agentRuntime/snapshotStore';
 import { instantiateVerifyPlanOnStart } from '@/server/services/verify';
+import { anchorHeteroRun, heteroTrace } from '@/server/utils/heteroTraceLog';
 
 import {
   HeterogeneousPersistenceHandler,
@@ -210,6 +211,30 @@ export class HeterogeneousAgentService {
 
   async heteroIngest(params: HeterogeneousIngestParams): Promise<HeterogeneousIngestResult> {
     const { agentType, assistantMessageId, events, operationId, topicId } = params;
+    const ingestAnchor = anchorHeteroRun(operationId);
+    const terminalEvent = events.find(
+      (event) => event.type === 'agent_runtime_end' || event.type === 'error',
+    );
+    heteroTrace(
+      'server',
+      operationId,
+      'ingest:received',
+      {
+        agentType,
+        count: events.length,
+        firstEventAgeMs: events[0] === undefined ? null : Date.now() - events[0].timestamp,
+        firstType: events[0]?.type ?? null,
+        lastType: events.at(-1)?.type ?? null,
+        ...(terminalEvent
+          ? {
+              terminalAgeMs: Date.now() - terminalEvent.timestamp,
+              terminalType: terminalEvent.type,
+            }
+          : {}),
+        topicId,
+      },
+      ingestAnchor,
+    );
 
     log(
       'heteroIngest: user=%s topic=%s op=%s type=%s count=%d',
@@ -220,18 +245,27 @@ export class HeterogeneousAgentService {
       events.length,
     );
 
+    const touchStartedAt = Date.now();
     const leaseRefreshed = await this.agentOperationModel.touchRunning(operationId);
+    const touchMs = Date.now() - touchStartedAt;
     if (!leaseRefreshed) {
       log('heteroIngest: ignore terminal or missing operation op=%s', operationId);
       return this.rejectIngest(operationId, 'operation-not-running', events.length);
     }
-
     // Persist FIRST, then publish — the renderer's gateway handler triggers
     // `fetchAndReplaceMessages` on stream_start / tool_end / step_complete,
     // so DB must already reflect the latest writes when the WS event lands.
     // Persistence failures throw so the CLI BatchIngester retries the batch;
     // events that already landed are skipped via the handler's idempotency
     // map keyed on (stepIndex, type, timestamp).
+    // Sub-phase timers: a 2-12s ingest round trip has to be attributable, and
+    // the client only sees the total. `ingest:done` reports where the server
+    // spent it (lease touch / persistence / per-event stream publish / trace).
+    const ingestStartedAt = Date.now();
+    let publishMs = 0;
+    let publishCount = 0;
+    let traceMs = 0;
+    const persistStartedAt = Date.now();
     try {
       await this.persistenceHandler.ingest({ assistantMessageId, events, operationId, topicId });
     } catch (err) {
@@ -246,6 +280,7 @@ export class HeterogeneousAgentService {
       }
       throw err;
     }
+    const persistMs = Date.now() - persistStartedAt;
 
     // Publish only events not yet delivered to the stream. The publish gate
     // (`publishedKeys`, peer of the persistence dedupe) makes a BatchIngester
@@ -267,12 +302,26 @@ export class HeterogeneousAgentService {
     for (const event of unpublished) {
       // Each event already carries operationId; pass through unchanged so the
       // wire shape on the WS side is identical to gateway-driven runs.
+      const publishStartedAt = Date.now();
       await this.streamEventManager.publishStreamEvent(operationId, {
         data: event.data,
         stepIndex: event.stepIndex,
         type: event.type,
       });
+      publishMs += Date.now() - publishStartedAt;
+      publishCount += 1;
       this.persistenceHandler.markEventPublished(operationId, event);
+      // The terminal publish is the earliest moment the web UI *can* stop:
+      // after this line the renderer holds a terminal event for the run.
+      if (event.type === 'agent_runtime_end' || event.type === 'error') {
+        heteroTrace(
+          'server',
+          operationId,
+          'stream:terminal:published',
+          { ageMs: Date.now() - event.timestamp, type: event.type },
+          ingestAnchor,
+        );
+      }
     }
 
     // Accumulate the execution-trace snapshot LAST. The recorder has no
@@ -282,8 +331,30 @@ export class HeterogeneousAgentService {
     // Gating on the publish gate also skips the pure-redelivery batch (full
     // success whose response was lost), which would otherwise double-fold here.
     if (unpublished.length > 0) {
+      const traceStartedAt = Date.now();
       await this.traceRecorder.appendBatch(operationId, events);
+      traceMs = Date.now() - traceStartedAt;
     }
+
+    // One line per batch: `total` is what the CLI measures as its round trip,
+    // so `total - (persistMs + publishMs + traceMs)` is the transport/auth
+    // overhead the server cannot see.
+    heteroTrace(
+      'server',
+      operationId,
+      'ingest:done',
+      {
+        count: events.length,
+        deduped: events.length - unpublished.length,
+        persistMs,
+        publishCount,
+        publishMs,
+        totalMs: Date.now() - ingestStartedAt,
+        traceMs,
+        touchMs,
+      },
+      ingestAnchor,
+    );
 
     return { accepted: true };
   }
@@ -361,9 +432,14 @@ export class HeterogeneousAgentService {
     const rejection =
       reportedResult === 'success' ? await this.readIngestRejection(operationId) : undefined;
     const result: HeterogeneousFinishResult = rejection ? 'error' : reportedResult;
-    const error = rejection
-      ? buildIngestRejectionError(rejection)
-      : normalizeHeterogeneousFinishError(agentType, params.error);
+    const finishAnchor = anchorHeteroRun(operationId);
+    heteroTrace(
+      'server',
+      operationId,
+      'finish:begin',
+      { agentType, result, sessionId: sessionId ?? null, topicId },
+      finishAnchor,
+    );
 
     if (rejection) {
       log(
@@ -374,6 +450,10 @@ export class HeterogeneousAgentService {
         rejection.droppedEvents,
       );
     }
+
+    const error = rejection
+      ? buildIngestRejectionError(rejection)
+      : normalizeHeterogeneousFinishError(agentType, params.error);
 
     log(
       'heteroFinish: user=%s topic=%s op=%s type=%s result=%s sessionId=%s',
@@ -400,6 +480,7 @@ export class HeterogeneousAgentService {
     // Zero-event failures bootstrap their assistant message from that marker,
     // so settlement must happen afterwards. Topic-level session binding is
     // deferred until ownership has been checked below.
+    const persistStartedAt = Date.now();
     await this.persistenceHandler.finish({
       assistantMessageId: seedAssistantMessageId,
       error,
@@ -407,6 +488,13 @@ export class HeterogeneousAgentService {
       result,
       topicId,
     });
+    heteroTrace(
+      'server',
+      operationId,
+      'finish:persisted',
+      { ms: Date.now() - persistStartedAt },
+      finishAnchor,
+    );
 
     let serializedHooks: SerializedHook[] | undefined;
     let assistantMessageId = seedAssistantMessageId;
@@ -513,6 +601,13 @@ export class HeterogeneousAgentService {
       stepIndex: 0,
       type: 'agent_runtime_end',
     });
+    heteroTrace(
+      'server',
+      operationId,
+      'finish:terminal:published',
+      { reason: result },
+      finishAnchor,
+    );
 
     // Drive the run's lifecycle hooks (onComplete / onError) through the same
     // `hookDispatcher` the normal LLM runtime uses, so the task lifecycle
@@ -528,7 +623,10 @@ export class HeterogeneousAgentService {
     // no-op for the task lifecycle anyway — onTopicComplete has no interrupted
     // branch — and suppresses a spurious bot "stopped" message before the real
     // result lands.)
-    if (result === 'cancelled') return;
+    if (result === 'cancelled') {
+      heteroTrace('server', operationId, 'finish:cancelled', {}, finishAnchor);
+      return;
+    }
 
     // The owning agentId is authoritatively encoded in the operationId
     // (op_<ts>_agt_<id>_tpc_<id>_<suffix>, built at dispatch from the resolved
@@ -594,6 +692,7 @@ export class HeterogeneousAgentService {
     // `result` is narrowed to 'success' | 'error' here — 'cancelled' returned above.
     const completionReason = result === 'success' ? ('done' as const) : ('error' as const);
     let totals: Awaited<ReturnType<HeteroTraceRecorder['finalize']>> | undefined;
+    const traceStartedAt = Date.now();
     try {
       totals = await this.traceRecorder.finalize(operationId, {
         agentId,
@@ -602,8 +701,25 @@ export class HeterogeneousAgentService {
         topicId,
         userId: this.userId,
       });
+      heteroTrace(
+        'server',
+        operationId,
+        'finish:trace:end',
+        { ms: Date.now() - traceStartedAt },
+        finishAnchor,
+      );
     } catch (err) {
       log('heteroFinish: trace finalize failed (non-fatal): %O', err);
+      heteroTrace(
+        'server',
+        operationId,
+        'finish:trace:error',
+        {
+          error: err instanceof Error ? err.message : String(err),
+          ms: Date.now() - traceStartedAt,
+        },
+        finishAnchor,
+      );
     }
 
     let goalContent: unknown = '';
@@ -654,6 +770,14 @@ export class HeterogeneousAgentService {
     // and on success the delivery-checker card + verify gate run against the task's
     // plan. `completeOperation` owns the (formerly hand-rolled) synthetic-state
     // build, so the goal+reply turns and trace aggregates are mapped in ONE place.
+    const lifecycleStartedAt = Date.now();
+    heteroTrace(
+      'server',
+      operationId,
+      'finish:lifecycle:start',
+      { reason: completionReason },
+      finishAnchor,
+    );
     await new CompletionLifecycle(this.db, this.userId, this.workspaceId).completeOperation(
       {
         agentId,
@@ -684,6 +808,13 @@ export class HeterogeneousAgentService {
         userId: this.userId,
       },
       completionReason,
+    );
+    heteroTrace(
+      'server',
+      operationId,
+      'finish:end',
+      { lifecycleMs: Date.now() - lifecycleStartedAt },
+      finishAnchor,
     );
     log('heteroFinish: dispatched completion lifecycle for op=%s result=%s', operationId, result);
   }

@@ -93,6 +93,7 @@ import {
   HeteroOperationPrincipalError,
   resolveActiveHeteroOperationPrincipal,
 } from '@/server/services/heterogeneousAgent/operationPrincipal';
+import { heteroTrace } from '@/server/utils/heteroTraceLog';
 
 const log = debug('lobe-server:ai-agent-router');
 
@@ -3117,8 +3118,16 @@ export const aiAgentRouter = router({
    * unchanged. Phase 2a: pub/sub only — no DB persistence (phase 2b adds it).
    */
   heteroIngest: heteroAgentProcedure.input(HeteroIngestSchema).mutation(async ({ input, ctx }) => {
+    // Per-request fixed costs (auth + workspace resolution + service) are the
+    // difference between a ~200ms ingest and the multi-second round trips the
+    // CLI sees; each phase is reported separately so the slow one is obvious.
+    const handlerStartedAt = Date.now();
+    // An object (not three `let`s) so each phase is assigned exactly once and
+    // lint does not flag the zero-initialization as dead.
+    const phases = { authorizeMs: 0, resolveWorkspaceMs: 0, serviceMs: 0 };
     const { agentType, assistantMessageId, events, operationId, topicId } = input;
 
+    const authorizeStartedAt = Date.now();
     // "The operation already ended" is one of the two refusals this procedure
     // exists to report, so it has to survive the door check — rejecting it here
     // would make the producer retry a permanent refusal through its whole
@@ -3127,6 +3136,7 @@ export const aiAgentRouter = router({
     await authorizeOperationCallback(ctx, operationId, 'hetero:ingest', {
       allowTerminalOperation: true,
     });
+    phases.authorizeMs = Date.now() - authorizeStartedAt;
 
     log(
       'heteroIngest: topic=%s op=%s type=%s count=%d',
@@ -3137,12 +3147,14 @@ export const aiAgentRouter = router({
     );
 
     try {
+      const resolveStartedAt = Date.now();
       const wsId = await resolveHeteroTopicWorkspace({
         db: ctx.serverDB,
         requestedWorkspaceId: ctx.workspaceId,
         topicId,
         userId: ctx.userId,
       });
+      phases.resolveWorkspaceMs = Date.now() - resolveStartedAt;
       const heteroService = new HeterogeneousAgentService(ctx.serverDB, ctx.userId, {
         workspaceId: wsId,
       });
@@ -3150,12 +3162,19 @@ export const aiAgentRouter = router({
       // Zod's z.any() infers `data?: any`, but the wire shape always includes
       // a `data` field (may be null). Cast at the boundary instead of widening
       // the shared `AgentStreamEvent` type or the service signature.
+      const serviceStartedAt = Date.now();
       const outcome = await heteroService.heteroIngest({
         agentType,
         assistantMessageId,
         events: events as AgentStreamEvent[],
         operationId,
         topicId,
+      });
+      phases.serviceMs = Date.now() - serviceStartedAt;
+      heteroTrace('server-router', operationId, 'ingest:router', {
+        ...phases,
+        count: events.length,
+        totalMs: Date.now() - handlerStartedAt,
       });
 
       // A refused batch is reported in the ack, not as a transport error: it is

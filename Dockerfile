@@ -73,9 +73,13 @@ COPY apps/workbench/package.json ./apps/workbench/package.json
 # @neondatabase/serverless is required at load time by drizzle-orm/neon-serverless, which the
 # bundled Elasticsearch sync CLI imports through the shared server DB factory even when
 # DATABASE_DRIVER=node selects the pg driver; without it the sync container crash-loops.
+# ffmpeg-static's postinstall fetches a binary from GitHub releases — no npm mirror
+# reaches it, and its downloader has no timeout, so a stalled connection hangs the
+# whole build. It honours FFMPEG_BINARIES_URL, and npmmirror mirrors those assets.
 RUN set -e && \
     if [ "${USE_CN_MIRROR:-false}" = "true" ]; then \
         export SENTRYCLI_CDNURL="https://npmmirror.com/mirrors/sentry-cli"; \
+        export FFMPEG_BINARIES_URL="https://registry.npmmirror.com/-/binary/ffmpeg-static"; \
         npm config set registry "https://registry.npmmirror.com/"; \
         echo 'canvas_binary_host_mirror=https://npmmirror.com/mirrors/canvas' >> .npmrc; \
     fi && \

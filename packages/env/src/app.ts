@@ -93,6 +93,19 @@ export const getAppConfig = () => {
        * one of them when it connects.
        */
       PRIVATE_APP_URLS: z.string().optional(),
+      /**
+       * Agent gateway address devices reach more directly than the public one, e.g.
+       * a Docker Compose service name or a private network address. Advertised to
+       * devices (as the first of `agentGatewayUrls`) so a run streams through the
+       * fast path; the public `AGENT_GATEWAY_URL` stays the fallback.
+       */
+      PRIVATE_AGENT_GATEWAY_URL: z.string().optional(),
+      /**
+       * Device gateway address for devices, reserved: the server does not advertise
+       * a device gateway yet (a device configures `--gateway` itself). Declared so
+       * the deployment can set it once advertising is added.
+       */
+      PRIVATE_DEVICE_GATEWAY_URL: z.string().optional(),
       AGENT_GATEWAY_INTERNAL_URL: z.string().url().optional(),
       /**
        * Which Agent Gateway wire protocol this deployment's gateway can serve.
@@ -157,6 +170,8 @@ export const getAppConfig = () => {
       AGENT_GATEWAY_PROTOCOL: process.env.AGENT_GATEWAY_PROTOCOL || undefined,
       AGENT_GATEWAY_INTERNAL_URL: process.env.AGENT_GATEWAY_INTERNAL_URL || undefined,
       PRIVATE_APP_URLS: process.env.PRIVATE_APP_URLS || undefined,
+      PRIVATE_AGENT_GATEWAY_URL: process.env.PRIVATE_AGENT_GATEWAY_URL || undefined,
+      PRIVATE_DEVICE_GATEWAY_URL: process.env.PRIVATE_DEVICE_GATEWAY_URL || undefined,
       enableQueueAgentRuntime: process.env.AGENT_RUNTIME_MODE === 'queue',
       TELEMETRY_DISABLED: process.env.TELEMETRY_DISABLED === '1',
     },

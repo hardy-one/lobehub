@@ -83,6 +83,14 @@ export const getAppConfig = () => {
        */
       AGENT_GATEWAY_INTERNAL_URL: z.string().url().optional(),
       AGENT_GATEWAY_URL: z.string().url().optional(),
+      /**
+       * Addresses this deployment offers its devices for their own traffic, as a
+       * comma-separated list (`aiAgent.heteroRuntimeEndpoints`). The app cannot
+       * discover its own external address — inside a container it only sees its
+       * bridge IP — so the operator states it once here, and each device verifies
+       * one of them when it connects.
+       */
+      PRIVATE_APP_URLS: z.string().optional(),
       AGENT_GATEWAY_INTERNAL_URL: z.string().url().optional(),
       /**
        * Enable Queue-based Agent Runtime
@@ -131,6 +139,7 @@ export const getAppConfig = () => {
       ENABLE_AGENT_GATEWAY: process.env.ENABLE_AGENT_GATEWAY === '1',
       AGENT_GATEWAY_URL: process.env.AGENT_GATEWAY_URL,
       AGENT_GATEWAY_INTERNAL_URL: process.env.AGENT_GATEWAY_INTERNAL_URL || undefined,
+      PRIVATE_APP_URLS: process.env.PRIVATE_APP_URLS || undefined,
       enableQueueAgentRuntime: process.env.AGENT_RUNTIME_MODE === 'queue',
       TELEMETRY_DISABLED: process.env.TELEMETRY_DISABLED === '1',
     },

@@ -59,6 +59,7 @@ import { UserModel } from '@/database/models/user';
 import { agentOperations, topics, workspaceMembers } from '@/database/schemas';
 import type { LobeChatDatabase } from '@/database/type';
 import { notShareVisitorTopicRef } from '@/database/utils/shareVisitor';
+import { appEnv } from '@/envs/app';
 import { heteroAuthedProcedure, router } from '@/libs/trpc/lambda';
 import { serverDatabase } from '@/libs/trpc/lambda/middleware';
 import { signHeteroOperationJWT, signUserJWT } from '@/libs/trpc/utils/internalJwt';
@@ -3211,6 +3212,21 @@ export const aiAgentRouter = router({
 
       return { jwt };
     }),
+
+  /**
+   * Addresses this deployment offers its devices for their own traffic
+   * (`PRIVATE_APP_URLS`), in the order the operator listed them.
+   *
+   * A device asks once, while connecting, and verifies whichever address it can
+   * reach; asking the server is the point, because a container cannot discover
+   * the address by which devices reach it (it only sees its own bridge IP).
+   */
+  heteroRuntimeEndpoints: heteroAgentProcedure.query(() => ({
+    serverUrls: (appEnv.PRIVATE_APP_URLS ?? '')
+      .split(',')
+      .map((url) => url.trim().replace(/\/+$/, ''))
+      .filter(Boolean),
+  })),
 
   /**
    * Terminal handshake from a `lh hetero exec` producer: signals process exit

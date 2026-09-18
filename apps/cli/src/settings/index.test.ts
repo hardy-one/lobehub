@@ -87,6 +87,22 @@ describe('settings', () => {
     expect(resolveServerUrl()).toBe('https://env.example.com');
   });
 
+  it('should ignore an unknown persisted key, like any other stray field', () => {
+    // The address a deployment offers is decided per connection and never
+    // stored: a deployment that moves it must be picked up by the next connect
+    // rather than remembered stale.
+    fs.mkdirSync(settingsDir, { recursive: true });
+    fs.writeFileSync(
+      settingsFile,
+      JSON.stringify({
+        privateServerUrl: 'http://stale:3210',
+        serverUrl: 'https://lobe.example.com',
+      }),
+    );
+
+    expect(resolveServerUrl()).toBe('https://lobe.example.com');
+  });
+
   it('should fall back to settings then official server', () => {
     saveSettings({ serverUrl: 'https://settings.example.com/' });
 

@@ -31,7 +31,8 @@ export default class CliCtr extends ControllerModule {
     if (remoteCtr) {
       const [token, serverUrl] = await Promise.all([
         remoteCtr.getAccessToken(),
-        remoteCtr.getRemoteServerUrl(),
+        // A CLI command is device traffic: it talks to the same endpoints a run does.
+        remoteCtr.getDeviceServerUrl(),
       ]);
 
       if (token && serverUrl) {

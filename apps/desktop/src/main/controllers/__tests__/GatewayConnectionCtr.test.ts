@@ -288,6 +288,11 @@ const mockMcpCtr = {
 const mockRemoteServerConfigCtr = {
   getAccessToken: vi.fn().mockResolvedValue('mock-access-token'),
   getRemoteServerUrl: vi.fn().mockResolvedValue('https://server.example.com'),
+  // Device traffic resolves its own address; delegating keeps a test that changes
+  // the configured URL in charge of the outcome.
+  getDeviceServerUrl: vi
+    .fn()
+    .mockImplementation(async () => mockRemoteServerConfigCtr.getRemoteServerUrl()),
   isRemoteServerConfigured: vi.fn().mockResolvedValue(true),
   refreshAccessToken: vi.fn().mockResolvedValue({ success: true }),
 } as unknown as RemoteServerConfigCtr;

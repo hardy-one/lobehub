@@ -5,6 +5,7 @@ import type { DataSyncConfig, DesktopBootstrapIdentity } from '@lobechat/electro
 import { safeStorage, session as electronSession } from 'electron';
 
 import { OFFICIAL_CLOUD_SERVER } from '@/const/env';
+import { pickDeviceServerUrl } from '@/modules/heterogeneousAgent/deviceServerUrl';
 import GatewayConnectionService from '@/services/gatewayConnectionSrv';
 import { appendVercelCookie } from '@/utils/http-headers';
 import { createLogger } from '@/utils/logger';
@@ -547,6 +548,12 @@ export default class RemoteServerConfigCtr extends ControllerModule {
     return this.lastRefreshAt;
   }
 
+  /** Resolved device address for this session, when the deployment offers one. */
+  private deviceServerUrl?: string;
+
+  /** In-flight lookup, so concurrent callers do not each start one. */
+  private deviceServerUrlLookup?: Promise<void>;
+
   // Initialize by loading tokens from store when the controller is ready
   // We might need a dedicated lifecycle method if constructor is too early for storeManager
   afterAppReady() {
@@ -557,6 +564,89 @@ export default class RemoteServerConfigCtr extends ControllerModule {
     const dataConfig = this.normalizeConfig(config ?? (await this.getRemoteServerConfig()));
 
     return dataConfig.storageMode === 'cloud' ? OFFICIAL_CLOUD_SERVER : dataConfig.remoteServerUrl;
+  }
+
+  /**
+   * The address this app should use for **device traffic** — agent runs and the
+   * events they stream back — as opposed to the configured server URL used for
+   * account and config calls.
+   *
+   * A self-hosted deployment can offer its devices an address they reach more
+   * directly than the public entry (`PRIVATE_APP_URLS`), and only the deployment
+   * knows it. Resolved once per session, never persisted: a deployment that moves
+   * the address is picked up by the next resolution instead of being remembered
+   * stale.
+   *
+   * Never blocks: the first call answers with the configured URL and starts the
+   * lookup, so connecting a gateway or spawning a run is not held up by it. Later
+   * calls — the spawns that follow — use the resolved address.
+   */
+  async getDeviceServerUrl(): Promise<string | undefined> {
+    const configuredUrl = await this.getRemoteServerUrl();
+
+    if (!configuredUrl) return configuredUrl;
+    if (this.deviceServerUrl) return this.deviceServerUrl;
+
+    if (!this.deviceServerUrlLookup) {
+      this.deviceServerUrlLookup = this.resolveDeviceServerUrl(configuredUrl);
+      void this.deviceServerUrlLookup;
+    }
+
+    return configuredUrl;
+  }
+
+  /** Test seam: forget the session's resolved address. */
+  resetDeviceServerUrl(): void {
+    this.deviceServerUrl = undefined;
+    this.deviceServerUrlLookup = undefined;
+  }
+
+  private async resolveDeviceServerUrl(configuredUrl: string): Promise<void> {
+    try {
+      const advertised = await this.fetchAdvertisedServerUrls(configuredUrl);
+      if (advertised.length === 0) return;
+
+      const picked = await pickDeviceServerUrl({ advertised, configuredUrl });
+      if (picked && picked !== configuredUrl) {
+        this.deviceServerUrl = picked;
+        logger.info('Using the address this server provides for devices: %s', picked);
+      }
+    } catch (error) {
+      // Best-effort: an unreachable or silent server simply keeps the configured
+      // URL, which is what every caller already has.
+      logger.debug('Could not read the addresses this server provides for devices: %O', error);
+    } finally {
+      this.deviceServerUrlLookup = undefined;
+    }
+  }
+
+  /** Addresses the deployment offers its devices, or none when it has nothing to say. */
+  private async fetchAdvertisedServerUrls(configuredUrl: string): Promise<string[]> {
+    const token = await this.getAccessToken();
+    if (!token) return [];
+
+    const headers: Record<string, string> = { 'Oidc-Auth': token };
+    setDesktopUserAgentHeader(headers);
+
+    // A query, so a bare GET — same shape the gateway controller uses for
+    // `device.listDevices`. Bounded: this crosses the public entry, the very path
+    // the advertised address exists to avoid.
+    const response = await netFetch(
+      `${configuredUrl.replace(/\/+$/, '')}/trpc/lambda/aiAgent.heteroRuntimeEndpoints`,
+      {
+        headers,
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+    if (!response.ok) return [];
+
+    const payload = (await response.json().catch(() => undefined)) as
+      { result?: { data?: { json?: { serverUrls?: unknown } } } } | undefined;
+    const urls = payload?.result?.data?.json?.serverUrls;
+
+    return Array.isArray(urls)
+      ? urls.filter((url): url is string => typeof url === 'string' && url.length > 0)
+      : [];
   }
 
   /**

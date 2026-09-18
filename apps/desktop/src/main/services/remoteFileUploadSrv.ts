@@ -37,7 +37,8 @@ export default class RemoteFileUploadService extends ServiceModule {
     if (remoteCtr) {
       const [token, serverUrl] = await Promise.all([
         remoteCtr.getAccessToken(),
-        remoteCtr.getRemoteServerUrl(),
+        // Uploaded bytes are device traffic, like agent-run events.
+        remoteCtr.getDeviceServerUrl(),
       ]);
       if (token && serverUrl) {
         env.LOBEHUB_JWT = token;

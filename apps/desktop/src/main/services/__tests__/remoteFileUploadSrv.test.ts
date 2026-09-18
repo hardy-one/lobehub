@@ -25,6 +25,9 @@ vi.mock('@/modules/cliEmbedding', () => ({
 const mockRemoteServerConfigCtr = {
   getAccessToken: vi.fn(),
   getRemoteServerUrl: vi.fn(),
+  // Device traffic resolves its own address; tests that change the configured URL
+  // expect the uploaded bytes to follow it.
+  getDeviceServerUrl: vi.fn(),
 };
 
 const mockApp = {
@@ -37,6 +40,9 @@ describe('RemoteFileUploadService.uploadLocalFile', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRemoteServerConfigCtr.getRemoteServerUrl.mockResolvedValue('https://server.example.com/');
+    mockRemoteServerConfigCtr.getDeviceServerUrl.mockImplementation(async () =>
+      mockRemoteServerConfigCtr.getRemoteServerUrl(),
+    );
     mockRemoteServerConfigCtr.getAccessToken.mockResolvedValue('token-abc');
     service = new RemoteFileUploadService(mockApp);
   });

@@ -590,7 +590,10 @@ export default class HeterogeneousAgentCtr {
   ) {
     this.remoteServerAuth = remoteServerAuth ?? {
       getAccessToken: async () => (await this.remoteServerConfigCtr?.getAccessToken()) ?? null,
-      getServerUrl: async () => (await this.remoteServerConfigCtr?.getRemoteServerUrl()) ?? null,
+      // Device traffic (agent runs and their event streams) prefers the address
+      // the deployment provides for its devices; `getRemoteServerUrl` stays the
+      // configured server, used for account/config calls.
+      getServerUrl: async () => (await this.remoteServerConfigCtr?.getDeviceServerUrl()) ?? null,
     };
     this.piRpcPool = new PiRpcPool({
       // Read per-construction so tests can inject a tiny idle window.

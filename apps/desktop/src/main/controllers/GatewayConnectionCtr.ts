@@ -333,7 +333,7 @@ export default class GatewayConnectionCtr extends ControllerModule {
     request: AgentRunRequestMessage,
   ): Promise<{ reason?: string; status: 'accepted' | 'rejected' }> {
     try {
-      const serverUrl = await this.remoteServerConfigCtr.getRemoteServerUrl();
+      const serverUrl = await this.remoteServerConfigCtr.getDeviceServerUrl();
       if (!serverUrl) {
         return { reason: 'Remote server URL not configured', status: 'rejected' };
       }
@@ -865,7 +865,7 @@ export default class GatewayConnectionCtr extends ControllerModule {
     const workDir = cwd || process.cwd();
 
     const [serverUrl, accessToken] = await Promise.all([
-      this.remoteServerConfigCtr.getRemoteServerUrl(),
+      this.remoteServerConfigCtr.getDeviceServerUrl(),
       this.remoteServerConfigCtr.getAccessToken(),
     ]);
 
@@ -1294,7 +1294,7 @@ export default class GatewayConnectionCtr extends ControllerModule {
   }): Promise<void> {
     try {
       const [serverUrl, token] = await Promise.all([
-        this.remoteServerConfigCtr.getRemoteServerUrl(),
+        this.remoteServerConfigCtr.getDeviceServerUrl(),
         this.remoteServerConfigCtr.getAccessToken(),
       ]);
       if (!serverUrl || !token) return;
@@ -1330,7 +1330,7 @@ export default class GatewayConnectionCtr extends ControllerModule {
     platform: string;
   }): Promise<void> {
     const [serverUrl, token] = await Promise.all([
-      this.remoteServerConfigCtr.getRemoteServerUrl(),
+      this.remoteServerConfigCtr.getDeviceServerUrl(),
       this.remoteServerConfigCtr.getAccessToken(),
     ]);
     if (!serverUrl || !token) return;
@@ -1357,7 +1357,7 @@ export default class GatewayConnectionCtr extends ControllerModule {
     workspaceId: string,
   ): Promise<{ headers: Record<string, string>; serverUrl: string } | null> {
     const [serverUrl, token] = await Promise.all([
-      this.remoteServerConfigCtr.getRemoteServerUrl(),
+      this.remoteServerConfigCtr.getDeviceServerUrl(),
       this.remoteServerConfigCtr.getAccessToken(),
     ]);
     if (!serverUrl || !token) return null;

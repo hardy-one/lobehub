@@ -14,6 +14,10 @@ vi.mock('@/utils/net-fetch', () => ({
   netFetch: mockFetch,
 }));
 
+vi.mock('@/modules/heterogeneousAgent/deviceServerUrl', () => ({
+  pickDeviceServerUrl: vi.fn(async ({ advertised }: { advertised: string[] }) => advertised[0]),
+}));
+
 // Mock electron
 vi.mock('electron', () => ({
   app: {
@@ -67,6 +71,41 @@ describe('RemoteServerConfigCtr', () => {
       storageMode: 'cloud',
     });
     controller = new RemoteServerConfigCtr(mockApp);
+  });
+
+  describe('device server address isolation', () => {
+    it('does not reuse a resolved address after configuration or credentials change', async () => {
+      vi.spyOn(controller, 'getRemoteServerUrl').mockResolvedValue('https://new.example.com');
+      vi.spyOn(controller, 'getAccessToken').mockResolvedValue('token');
+      const internal = controller as any;
+      internal.deviceServerUrl = 'http://old-private.example.com';
+      vi.spyOn(internal, 'fetchAdvertisedServerUrls').mockResolvedValue([]);
+
+      await controller.setRemoteServerConfig({ remoteServerUrl: 'https://new.example.com' });
+      expect(await controller.getDeviceServerUrl()).toBe('https://new.example.com');
+
+      internal.deviceServerUrl = 'http://old-private.example.com';
+      await controller.saveTokens('new-token', 'refresh-token');
+      expect(await controller.getDeviceServerUrl()).toBe('https://new.example.com');
+    });
+
+    it('ignores a lookup that finishes after the configuration is reset', async () => {
+      vi.spyOn(controller, 'getRemoteServerUrl').mockResolvedValue('https://server.example.com');
+      let finishLookup!: (urls: string[]) => void;
+      vi.spyOn(controller as any, 'fetchAdvertisedServerUrls').mockReturnValue(
+        new Promise<string[]>((resolve) => {
+          finishLookup = resolve;
+        }),
+      );
+
+      await controller.getDeviceServerUrl();
+      const lookup = (controller as any).deviceServerUrlLookup;
+      controller.resetDeviceServerUrl();
+      finishLookup(['http://old-private.example.com']);
+      await lookup;
+
+      expect((controller as any).deviceServerUrl).toBeUndefined();
+    });
   });
 
   describe('getRemoteServerConfig', () => {

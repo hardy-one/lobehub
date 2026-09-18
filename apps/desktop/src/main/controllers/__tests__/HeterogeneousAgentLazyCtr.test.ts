@@ -54,6 +54,8 @@ describe('HeterogeneousAgentCtr lazy implementation', () => {
     const remoteServerConfigCtr = {
       getAccessToken: vi.fn(async () => 'token-1'),
       getRemoteServerUrl: vi.fn(async () => 'https://cloud.lobehub.com'),
+      // Device traffic resolves its own address; the stub just mirrors the URL.
+      getDeviceServerUrl: vi.fn(async () => 'https://cloud.lobehub.com'),
     };
     const getController = vi.fn(() => remoteServerConfigCtr as any);
     const app = { getController } as unknown as App;

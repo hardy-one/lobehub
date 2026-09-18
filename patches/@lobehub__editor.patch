@@ -1,0 +1,14 @@
+diff --git a/es/plugins/markdown/plugin/index.js b/es/plugins/markdown/plugin/index.js
+--- a/es/plugins/markdown/plugin/index.js
++++ b/es/plugins/markdown/plugin/index.js
+@@ -206,6 +206,10 @@
+ 		this.register(registerMarkdownCommand(editor, this.kernel, this.service));
+ 		this.register(editor.registerCommand(COPY_COMMAND, (event) => {
+ 			if (!(event instanceof ClipboardEvent)) return false;
++			// Plain-text editors (autoFormatMarkdown / enablePasteMarkdown disabled) keep
++			// Lexical's default copy: `text/plain` must stay plain text, not
++			// remark-formatted Markdown, which escapes `_`/`<` and leaks into plain targets.
++			if (!this.shouldHandlePasteMarkdown()) return false;
+ 			const clipboardData = event.clipboardData;
+ 			if (!clipboardData) return false;
+ 			const selection = $getSelection();

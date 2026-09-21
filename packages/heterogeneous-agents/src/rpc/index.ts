@@ -33,6 +33,7 @@ export {
   type PiStreamingBehavior,
 } from './piRpcProtocol';
 export {
+  type PiRpcBackgroundTaskWait,
   type PiRpcPromptInput,
   PiRpcSession,
   type PiRpcSessionCallbacks,

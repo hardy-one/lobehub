@@ -37,6 +37,7 @@ import { isRecord } from '@lobechat/utils/object';
 import type { Command } from 'commander';
 
 import { getTrpcClient } from '../api/client';
+import { waitForPiBackgroundTasks } from '../device/piBackgroundTaskWaiter';
 import { CoalescingBatchIngester } from '../utils/CoalescingBatchIngester';
 import { HeteroTraceRecorder } from '../utils/HeteroTraceRecorder';
 import { log } from '../utils/logger';
@@ -113,6 +114,8 @@ const spawnRuntimeRegistry: Partial<
       resumeSessionId: spawnOpts.resumeSessionId,
       initialThinkingLevel: spawnOpts.initialThinkingLevel,
       uploadImage: spawnOpts.uploadImage,
+      waitForBackgroundTasks: (pid, sessionId) =>
+        waitForPiBackgroundTasks(spawnOpts.cwd ?? process.cwd(), pid, sessionId),
     }),
 };
 

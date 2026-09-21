@@ -74,6 +74,16 @@ const emit = (session: PiRpcSession, event: PiRpcEvent) => {
   return client.onEvent!(event);
 };
 
+const deferred = <T>() => {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+};
+
 beforeEach(() => {
   mocks.start.mockResolvedValue(undefined);
   mocks.close.mockResolvedValue(undefined);
@@ -560,5 +570,158 @@ describe('PiRpcSession', () => {
     await emit(session, { type: 'agent_settled' });
     await runPromise;
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('holds agent_settled until an owned background task reaches terminal state', async () => {
+    mocks.command.mockResolvedValue({ success: true });
+    const task = deferred<void>();
+    const waitForBackgroundTasks = vi.fn().mockResolvedValue({
+      cancel: vi.fn(),
+      completion: task.promise,
+    });
+    const { events, session } = createSession({ waitForBackgroundTasks });
+    const run = session.run({ text: 'start a task' });
+    await vi.waitFor(() => expect(mocks.command).toHaveBeenCalled());
+
+    await emit(session, { type: 'agent_settled' });
+    expect(waitForBackgroundTasks).toHaveBeenCalledWith(123_456, undefined);
+    expect(events.some((event) => event.type === 'agent_runtime_end')).toBe(false);
+    expect(mocks.close).not.toHaveBeenCalled();
+
+    await emit(session, { type: 'agent_settled' });
+    expect(waitForBackgroundTasks).toHaveBeenCalledOnce();
+    expect(events.some((event) => event.type === 'agent_runtime_end')).toBe(false);
+
+    task.resolve();
+    await Promise.resolve();
+    await emit(session, { type: 'agent_settled' });
+    await expect(run).resolves.toEqual({ aborted: false });
+    expect(events.filter((event) => event.type === 'agent_runtime_end')).toHaveLength(1);
+    expect(mocks.close).toHaveBeenCalled();
+  });
+
+  it('retains a real follow-up settlement that arrives before the background wait resolves', async () => {
+    mocks.command.mockResolvedValue({ success: true });
+    const task = deferred<void>();
+    const waitForBackgroundTasks = vi
+      .fn()
+      .mockResolvedValue({ cancel: vi.fn(), completion: task.promise });
+    const { session } = createSession({ waitForBackgroundTasks });
+    const run = session.run({ text: 'background task' });
+    await vi.waitFor(() => expect(mocks.command).toHaveBeenCalled());
+    await emit(session, { type: 'agent_settled' });
+    await emit(session, { type: 'turn_start' });
+    await emit(session, { type: 'agent_settled' });
+    expect(mocks.close).not.toHaveBeenCalled();
+    task.resolve();
+    await expect(run).resolves.toEqual({ aborted: false });
+    expect(mocks.close).toHaveBeenCalledOnce();
+  });
+
+  it('fails an announced follow-up without activity instead of synthesizing success', async () => {
+    mocks.command.mockResolvedValue({ success: true });
+    const waitForBackgroundTasks = vi
+      .fn()
+      .mockResolvedValue({ cancel: vi.fn(), completion: Promise.resolve() });
+    const { session } = createSession({ waitForBackgroundTasks, inactivityTimeoutMs: 1_000 });
+    const run = session.run({ text: 'background task' });
+    await vi.waitFor(() => expect(mocks.command).toHaveBeenCalled());
+    vi.useFakeTimers();
+    await emit(session, { type: 'agent_settled' });
+    await emit(session, {
+      type: 'message_end',
+      message: {
+        role: 'custom',
+        customType: 'background-task-notification',
+        details: { triggerOnCompletion: true },
+      },
+    } as PiRpcEvent);
+    const rejection = expect(run).rejects.toThrow('Pi RPC produced no events');
+    await vi.advanceTimersByTimeAsync(1_001);
+    await rejection;
+    expect(mocks.close).toHaveBeenCalled();
+  });
+
+  it('closes and aborts the run when cancelled during background-task wait', async () => {
+    mocks.command.mockResolvedValue({ success: true });
+    const task = deferred<void>();
+    const cancel = vi.fn();
+    const waitForBackgroundTasks = vi.fn().mockResolvedValue({
+      cancel,
+      completion: task.promise,
+    });
+    const { session } = createSession({ waitForBackgroundTasks });
+    const run = session.run({ text: 'start a cancellable task' });
+    await vi.waitFor(() => expect(mocks.command).toHaveBeenCalled());
+    await emit(session, { type: 'agent_settled' });
+
+    await session.abort();
+    await expect(run).resolves.toEqual({ aborted: true });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(mocks.close).toHaveBeenCalled();
+  });
+
+  it('keeps the session alive for a triggered background-task follow-up turn', async () => {
+    mocks.command.mockResolvedValue({ success: true });
+    const waitForBackgroundTasks = vi.fn().mockResolvedValue({
+      cancel: vi.fn(),
+      completion: Promise.resolve(),
+    });
+    const { events, session } = createSession({ waitForBackgroundTasks });
+    const run = session.run({ text: 'start a follow-up task' });
+    await vi.waitFor(() => expect(mocks.command).toHaveBeenCalled());
+
+    await emit(session, { type: 'agent_settled' });
+    await Promise.resolve();
+    await Promise.resolve();
+    await emit(session, {
+      message: {
+        customType: 'background-task-notification',
+        details: { name: 'follow-up task', status: 'completed', triggerOnCompletion: true },
+        role: 'custom',
+      },
+      type: 'message_end',
+    });
+    expect(mocks.close).not.toHaveBeenCalled();
+
+    await emit(session, { type: 'turn_start' });
+    await emit(session, { type: 'agent_settled' });
+    await expect(run).resolves.toEqual({ aborted: false });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          content: 'Background task "follow-up task" completed.',
+        }),
+        type: 'stream_chunk',
+      }),
+    );
+    expect(mocks.close).toHaveBeenCalled();
+  });
+  it('does not synthesize success while a background follow-up is still running', async () => {
+    mocks.command.mockResolvedValue({ success: true });
+    const waitForBackgroundTasks = vi.fn().mockResolvedValue({
+      cancel: vi.fn(),
+      completion: Promise.resolve(),
+    });
+    const { session } = createSession({ waitForBackgroundTasks });
+    const run = session.run({ text: 'follow up' });
+    await vi.waitFor(() => expect(mocks.command).toHaveBeenCalled());
+    vi.useFakeTimers();
+
+    await emit(session, { type: 'agent_settled' });
+    await Promise.resolve();
+    await Promise.resolve();
+    await emit(session, { type: 'turn_start' });
+    await vi.advanceTimersByTimeAsync(31_000);
+    await emit(session, {
+      type: 'message_update',
+      assistantMessageEvent: { type: 'text_delta', delta: 'working' },
+    } as PiRpcEvent);
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    expect(mocks.close).not.toHaveBeenCalled();
+    await emit(session, { type: 'agent_settled' });
+    await expect(run).resolves.toEqual({ aborted: false });
+    vi.useRealTimers();
   });
 });

@@ -22,6 +22,12 @@ export interface PiRpcPromptInput {
   text: string;
 }
 
+/** A host-side wait for tasks started by the current Pi turn. */
+export interface PiRpcBackgroundTaskWait {
+  cancel: () => void;
+  completion: Promise<void>;
+}
+
 export interface PiRpcSessionOptions {
   /** Extra CLI args (user/provider-configured), e.g. `--provider`, `--model`. */
   args: string[];
@@ -60,6 +66,11 @@ export interface PiRpcSessionOptions {
   shellOperationId?: string | null;
   /** Uploader for base64 tool_result images (see `AgentStreamPipelineOptions`). */
   uploadImage?: UploadHeterogeneousImage;
+  /** Keep Pi alive until tasks started by this turn reach terminal metadata. */
+  waitForBackgroundTasks?: (
+    pid: number | undefined,
+    sessionId?: string,
+  ) => Promise<PiRpcBackgroundTaskWait | undefined>;
 }
 
 /** Host callbacks a pooled process can be rebound to between runs. */
@@ -74,6 +85,7 @@ export interface PiRpcSessionCallbacks {
 }
 
 const DEFAULT_INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
+const BACKGROUND_NOTIFICATION_GRACE_MS = 2_000;
 const ABORTED_REASON = 'aborted';
 
 const isTerminalAbortedEvent = (event: PiRpcEvent): boolean => {
@@ -87,6 +99,27 @@ const isTerminalAbortedEvent = (event: PiRpcEvent): boolean => {
     return message?.stopReason === ABORTED_REASON;
   }
   return false;
+};
+
+const isBackgroundTaskFollowUpEvent = (event: PiRpcEvent): boolean => {
+  if (
+    [
+      'turn_start',
+      'message_start',
+      'message_update',
+      'tool_execution_start',
+      'tool_execution_update',
+      'tool_execution_end',
+    ].includes(event.type)
+  )
+    return true;
+  if (event.type !== 'message_end') return false;
+  const message = (event as PiMessageEndEvent).message;
+  return (
+    message?.role === 'custom' &&
+    message?.customType === 'background-task-notification' &&
+    message?.details?.triggerOnCompletion === true
+  );
 };
 
 /**
@@ -111,6 +144,13 @@ export class PiRpcSession {
   private closePromise?: Promise<void>;
   private closed = false;
   private reuseDisabled = false;
+  private backgroundTaskWait?: PiRpcBackgroundTaskWait;
+  private backgroundTaskCompleted = false;
+  private backgroundFollowUpStarted = false;
+  private pendingBackgroundSettlement?: PiRpcEvent;
+  private backgroundFinishTimer?: NodeJS.Timeout;
+  private runSettled = false;
+  private settlementInProgress = false;
 
   constructor(private readonly options: PiRpcSessionOptions) {
     this.callbacks = options;
@@ -228,6 +268,13 @@ export class PiRpcSession {
     if (this.runStarted) return Promise.reject(new Error('PiRpcSession already has an active run'));
     if (this.closed) return Promise.reject(new PiRpcConnectionError('Pi RPC session is closed'));
     this.runStarted = true;
+    this.runSettled = false;
+    this.settlementInProgress = false;
+    this.backgroundTaskWait = undefined;
+    this.backgroundTaskCompleted = false;
+    this.pendingBackgroundSettlement = undefined;
+    this.backgroundFollowUpStarted = false;
+    this.clearBackgroundFinishTimer();
     this.abortPromise = undefined;
     this.runPromise = this.runPrompt(prompt);
     return this.runPromise;
@@ -307,6 +354,10 @@ export class PiRpcSession {
     if (this.abortPromise) return this.abortPromise;
     if (!this.runStarted || !this.runPromise) return this.closePromise ?? Promise.resolve();
     this.aborted = true;
+    if (this.backgroundTaskWait) {
+      this.abortPromise = this.close();
+      return this.abortPromise;
+    }
     this.abortPromise = this.abortRun(this.runPromise);
     return this.abortPromise;
   }
@@ -348,6 +399,13 @@ export class PiRpcSession {
     }
     this.closed = true;
     this.clearInactivityTimer();
+    this.clearBackgroundFinishTimer();
+    this.backgroundTaskWait?.cancel();
+    this.backgroundTaskWait = undefined;
+    this.backgroundTaskCompleted = false;
+    this.pendingBackgroundSettlement = undefined;
+    this.runSettled = true;
+    this.settlementInProgress = false;
     this.closePromise = this.client.close(options).finally(() => {
       this.settleRun({ aborted: true });
       this.emitStatus('closed');
@@ -393,14 +451,117 @@ export class PiRpcSession {
       return;
     }
 
-    if (!this.runStarted) return;
+    if (!this.runStarted || this.runSettled || this.settlementInProgress) return;
     this.armInactivityTimer();
     if (isTerminalAbortedEvent(event)) this.aborted = true;
+
+    if (this.backgroundTaskWait && isBackgroundTaskFollowUpEvent(event)) {
+      this.backgroundFollowUpStarted = true;
+      this.clearBackgroundFinishTimer();
+    }
+
+    if (event.type === 'agent_settled' && !this.backgroundTaskCompleted && !this.aborted) {
+      if (this.backgroundTaskWait) {
+        if (this.backgroundFollowUpStarted) this.pendingBackgroundSettlement = event;
+        return;
+      }
+      const backgroundWait = await this.options.waitForBackgroundTasks?.(
+        this.pid,
+        this.client.sessionId,
+      );
+      if (this.closed || !this.runStarted || this.runSettled) {
+        if (backgroundWait) {
+          void backgroundWait.completion.catch(() => {});
+          backgroundWait.cancel();
+        }
+        return;
+      }
+      if (this.aborted && backgroundWait) {
+        void backgroundWait.completion.catch(() => {});
+        backgroundWait.cancel();
+      }
+      if (!this.aborted && backgroundWait) {
+        this.backgroundTaskWait = backgroundWait;
+        this.clearInactivityTimer();
+        void backgroundWait.completion.then(
+          () => {
+            if (this.closed || !this.runStarted || this.runSettled) return;
+            this.backgroundTaskCompleted = true;
+            if (this.pendingBackgroundSettlement) {
+              const settlement = this.pendingBackgroundSettlement;
+              this.pendingBackgroundSettlement = undefined;
+              void this.handleEvent(settlement);
+              return;
+            }
+            this.scheduleBackgroundFinish();
+          },
+          (error) => {
+            if (this.closed || !this.runStarted || this.runSettled) return;
+            this.failRun(error instanceof Error ? error : new Error(String(error)));
+          },
+        );
+        return;
+      }
+    }
+
     const events = await this.pushEvent(event, pipeline);
     if (event.type !== 'agent_settled') return;
+    await this.finishSettledRun(events);
+  }
+
+  private async finishSettledRun(events: AgentStreamEvent[]): Promise<void> {
+    if (this.runSettled) return;
+    this.settlementInProgress = false;
+    this.clearBackgroundFinishTimer();
+    this.backgroundTaskWait = undefined;
+    this.backgroundTaskCompleted = false;
+    this.pendingBackgroundSettlement = undefined;
+    this.runSettled = true;
     const error = events.find((item) => item.type === 'error');
     if (error) this.failRun(new Error(error.data.message ?? 'Pi run failed'));
     else this.settleRun({ aborted: this.aborted });
+  }
+
+  private finishBackgroundTask(): void {
+    if (
+      !this.backgroundTaskWait ||
+      !this.backgroundTaskCompleted ||
+      this.runSettled ||
+      this.settlementInProgress
+    )
+      return;
+    this.clearBackgroundFinishTimer();
+    this.settlementInProgress = true;
+    void this.pushEvent({ type: 'agent_settled' }, this.pipeline)
+      .then((events) => this.finishSettledRun(events))
+      .catch((error) => {
+        if (this.closed || this.runSettled) return;
+        this.settlementInProgress = false;
+        this.failRun(error instanceof Error ? error : new Error(String(error)));
+      });
+  }
+
+  private scheduleBackgroundFinish(delayMs = BACKGROUND_NOTIFICATION_GRACE_MS): void {
+    if (
+      !this.backgroundTaskWait ||
+      !this.backgroundTaskCompleted ||
+      this.backgroundFollowUpStarted ||
+      this.backgroundFinishTimer !== undefined ||
+      this.runSettled ||
+      this.settlementInProgress
+    )
+      return;
+    this.backgroundFinishTimer = setTimeout(() => {
+      this.backgroundFinishTimer = undefined;
+      this.finishBackgroundTask();
+    }, delayMs);
+    this.backgroundFinishTimer.unref?.();
+  }
+
+  private clearBackgroundFinishTimer(): void {
+    if (this.backgroundFinishTimer === undefined) return;
+    clearTimeout(this.backgroundFinishTimer);
+    this.backgroundFinishTimer = undefined;
   }
 
   private async pushEvent(

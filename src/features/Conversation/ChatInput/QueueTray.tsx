@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 
 import FileIcon from '@/components/FileIcon';
 import { useSingleton } from '@/hooks/useSingleton';
+import { heterogeneousAgentService } from '@/services/electron/heterogeneousAgent';
 import { useChatStore } from '@/store/chat';
 import { operationSelectors } from '@/store/chat/selectors';
 import {
@@ -234,6 +235,10 @@ const QueueTray = memo(() => {
       await sendNowGate
         .run(async () => {
           const chat = useChatStore.getState();
+          if (msg.heterogeneousPiSessionId) {
+            await heterogeneousAgentService.executePiSteerQueue(msg.heterogeneousPiSessionId);
+            return;
+          }
           // Cancel EVERY running blocker the item could be queued behind, not just the
           // first: matching one op would miss an interim blocker or the second of the
           // two concurrent `regenerate` ops a delAndRegenerate/delAndResendThread

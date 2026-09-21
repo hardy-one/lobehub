@@ -6,7 +6,7 @@ import type { AgentPromptInput } from '../protocol';
 import type { UploadHeterogeneousImage } from '../spawn/agentStreamPipeline';
 import { normalizeImage } from '../spawn/input/normalizeImage';
 import type { PiRpcImage } from './piRpcProtocol';
-import { PiRpcSession } from './piRpcSession';
+import { type PiRpcBackgroundTaskWait, PiRpcSession } from './piRpcSession';
 
 /** Options mirroring the `spawnAgent` shape the CLI passes for one agent run. */
 export interface PiRpcAgentHandleOptions {
@@ -24,6 +24,11 @@ export interface PiRpcAgentHandleOptions {
   prompt: { text: string; images?: PiRpcImage[] };
   resumeSessionId?: string;
   uploadImage?: UploadHeterogeneousImage;
+  /** Keep Pi alive until tasks started by this turn reach terminal metadata. */
+  waitForBackgroundTasks?: (
+    pid: number | undefined,
+    sessionId?: string,
+  ) => Promise<PiRpcBackgroundTaskWait | undefined>;
 }
 
 export interface PiRpcStartupControl {
@@ -140,6 +145,7 @@ export const createPiRpcAgentHandle = async (
     sessionId: options.operationId,
     uploadImage: options.uploadImage,
     onEvents: (events: AgentStreamEvent[]) => queue.push(events),
+    waitForBackgroundTasks: options.waitForBackgroundTasks,
     onRawStdout: options.onRawStdout,
     onRuntimeStatus: () => {
       /* no-op — the CLI surfaces state via events */

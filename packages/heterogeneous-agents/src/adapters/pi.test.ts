@@ -74,6 +74,38 @@ describe('PiAdapter', () => {
     expect(adapter.flush()).toEqual([]);
   });
 
+  it('maps background-task notifications into the existing stream', () => {
+    const adapter = new PiAdapter();
+    const events = adapter.adapt({
+      message: {
+        content: '<background-task-notification>raw</background-task-notification>',
+        customType: 'background-task-notification',
+        details: {
+          error: 'command failed',
+          name: 'build image',
+          outputPath: '.pi/tasks/session/b123.output',
+          status: 'failed',
+        },
+        display: true,
+        role: 'custom',
+      },
+      type: 'message_end',
+    });
+
+    expect(dataFor(events, 'stream_chunk')).toEqual([
+      {
+        chunkType: 'text',
+        content:
+          'Background task "build image" failed.\nError: command failed\nOutput: .pi/tasks/session/b123.output',
+      },
+    ]);
+    expect(events.map((event) => event.type)).toEqual([
+      'stream_start',
+      'stream_chunk',
+      'stream_end',
+    ]);
+  });
+
   it('emits only unstreamed suffixes from final assistant snapshots', () => {
     const adapter = new PiAdapter();
     const events = [

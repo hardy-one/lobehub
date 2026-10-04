@@ -2,6 +2,7 @@ import { KEY_ESCAPE_COMMAND } from 'lexical';
 import { type StateCreator } from 'zustand/vanilla';
 
 import { useAgentStore } from '@/store/agent';
+import { unescapeMarkdown } from '@/store/chat/utils/unescapeMarkdown';
 import { useUserStore } from '@/store/user';
 import { systemAgentSelectors, userProfileSelectors } from '@/store/user/selectors';
 
@@ -57,7 +58,10 @@ export const store: CreateStore = (publicState) => (set, get) => ({
     return readDocument(get().editor, 'json') as Record<string, any> | undefined;
   },
   getMarkdownContent: () => {
-    return String(readDocument(get().editor, 'markdown') || '').trimEnd();
+    const editor = get().editor;
+    const textContent = readDocument(editor, 'text');
+    if (typeof textContent === 'string') return textContent.trimEnd();
+    return unescapeMarkdown(String(readDocument(editor, 'markdown') || '')).trimEnd();
   },
   handleSendButton: () => {
     const editor = get().editor;

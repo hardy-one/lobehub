@@ -153,6 +153,57 @@ describe('ChatInput store actions', () => {
     expect(editor.cleanDocument).toHaveBeenCalledOnce();
   });
 
+  it('sends plain text instead of Markdown-escaped editor output', () => {
+    const editor = {
+      cleanDocument: vi.fn(),
+      focus: vi.fn(),
+      getLexicalEditor: () => ({}),
+      getDocument: vi.fn((type: string) => {
+        if (type === 'text') return 'literal_underscore';
+        if (type === 'markdown') return 'literal\\_underscore';
+        return { root: {} };
+      }),
+    };
+    const onSend = vi.fn(({ getMarkdownContent }) => {
+      expect(getMarkdownContent()).toBe('literal_underscore');
+    });
+    const store = createStore({ editor: editor as unknown as IEditor, onSend });
+
+    store.getState().handleSendButton();
+
+    expect(onSend).toHaveBeenCalledOnce();
+  });
+
+  it.each(['missing', 'unsupported'])(
+    'normalizes only the Markdown fallback when text is %s',
+    (mode) => {
+      const editor = {
+        getLexicalEditor: () => ({}),
+        getDocument: vi.fn((type: string) => {
+          if (type === 'text') {
+            if (mode === 'unsupported') throw new Error('Text data source is not registered');
+            return undefined;
+          }
+          return String.raw`literal\_underscore and regex \\\.`;
+        }),
+      };
+      const store = createStore({ editor: editor as unknown as IEditor });
+      expect(store.getState().getMarkdownContent()).toBe(
+        String.raw`literal_underscore and regex \.`,
+      );
+    },
+  );
+
+  it('preserves literal punctuation escapes when a text serializer is available', () => {
+    const text = String.raw`Regex \. and LaTeX \(x\)`;
+    const editor = {
+      getLexicalEditor: () => ({}),
+      getDocument: vi.fn(() => text),
+    };
+    const store = createStore({ editor: editor as unknown as IEditor });
+    expect(store.getState().getMarkdownContent()).toBe(text);
+  });
+
   it('does not record history when the input history feature is disabled', () => {
     const editor = {
       cleanDocument: vi.fn(),

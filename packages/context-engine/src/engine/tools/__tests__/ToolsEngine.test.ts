@@ -143,6 +143,26 @@ describe('ToolsEngine', () => {
       ]);
     });
 
+    it('does not mutate shared manifest schemas when tools are enriched per run', () => {
+      const engine = new ToolsEngine({
+        manifestSchemas: [mockWebBrowsingManifest],
+        enableChecker: () => true,
+        functionCallChecker: () => true,
+      });
+      const tools = engine.generateTools({
+        toolIds: ['lobe-web-browsing'],
+        model: 'gpt-4',
+        provider: 'openai',
+      });
+
+      const parameters = tools?.[0]?.function.parameters as any;
+      parameters.properties.query.description = 'per-run enrichment';
+
+      expect(mockWebBrowsingManifest.api[0].parameters.properties.query.description).toBe(
+        'Search query',
+      );
+    });
+
     it('should pass context to enable checker', () => {
       const mockEnableChecker = vi.fn().mockReturnValue(true);
       const engine = new ToolsEngine({

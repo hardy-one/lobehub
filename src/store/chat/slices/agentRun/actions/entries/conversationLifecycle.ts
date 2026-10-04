@@ -52,6 +52,7 @@ import { aiChatService } from '@/services/aiChat';
 import { chatService } from '@/services/chat';
 import { resolveSelectedSkillsWithContent } from '@/services/chat/mecha/skillPreload';
 import { resolveSelectedToolsWithContent } from '@/services/chat/mecha/toolPreload';
+import { heterogeneousAgentService } from '@/services/electron/heterogeneousAgent';
 import { messageService } from '@/services/message';
 import { projectWorkingDirectoryService } from '@/services/projectWorkingDirectory';
 import { topicService } from '@/services/topic';
@@ -785,21 +786,39 @@ export class ConversationLifecycleActionImpl {
         url: f.fileUrl || f.base64Url || f.previewUrl || '',
       }));
 
-      this.#get().enqueueMessage(
-        queueTargetKey,
-        {
-          id: nanoid(),
-          content: message,
-          editorData: editorData ?? undefined,
-          files: fileIdList,
-          filesPreview: filesPreview.length > 0 ? filesPreview : undefined,
-          ...(forceRuntime ? { forceRuntime } : {}),
-          interruptMode: 'soft',
-          metadata: userMessageMetadata,
-          createdAt: Date.now(),
-        },
-        runningQueueBlockingOp?.id,
-      );
+      const piSessionId =
+        runningQueueBlockingOp?.metadata.heterogeneousAgentType === 'pi'
+          ? runningQueueBlockingOp.metadata.heterogeneousAgentSessionId
+          : undefined;
+      const queuedMessage = {
+        id: nanoid(),
+        content: message,
+        editorData: editorData ?? undefined,
+        files: fileIdList,
+        filesPreview: filesPreview.length > 0 ? filesPreview : undefined,
+        ...(forceRuntime ? { forceRuntime } : {}),
+        interruptMode: 'soft' as const,
+        metadata: userMessageMetadata,
+        createdAt: Date.now(),
+        ...(piSessionId ? { heterogeneousPiSessionId: piSessionId } : {}),
+      };
+      this.#get().enqueueMessage(queueTargetKey, queuedMessage, runningQueueBlockingOp?.id);
+      if (piSessionId) {
+        const imageList = filesPreview
+          .filter((file) => file.mimeType.startsWith('image/'))
+          .map(({ id, url }) => ({ id, url }));
+        void heterogeneousAgentService
+          .steerPiSession(piSessionId, message, imageList)
+          .catch((error) => {
+            console.error(
+              '[sendMessage] Pi RPC steer failed; retaining message for normal queue drain:',
+              error,
+            );
+            this.#get().removeQueuedMessage(queueTargetKey, queuedMessage.id);
+            const { heterogeneousPiSessionId: _sessionId, ...fallbackMessage } = queuedMessage;
+            this.#get().enqueueMessage(queueTargetKey, fallbackMessage, runningQueueBlockingOp?.id);
+          });
+      }
       notifyMessageAccepted();
       return;
     }

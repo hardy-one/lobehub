@@ -279,6 +279,8 @@ export interface QueuedMessage {
   /** Mirrors SendMessageParams.forceRuntime so a queued task-topic follow-up
    *  keeps its gateway pin when the queue drains. */
   forceRuntime?: 'client' | 'gateway' | 'hetero';
+  /** Active Pi RPC session that already owns this queued steering message. */
+  heterogeneousPiSessionId?: string;
   id: string;
   interruptMode: 'soft' | 'hard';
   metadata?: MessageMetadata;

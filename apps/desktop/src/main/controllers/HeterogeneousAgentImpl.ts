@@ -2929,6 +2929,13 @@ export default class HeterogeneousAgentCtr {
           });
         }
       },
+      onQueueUpdate: (event) => {
+        this.broadcast('heteroAgentPiQueueUpdate', {
+          followUp: event.followUp ?? [],
+          sessionId: session.sessionId,
+          steering: event.steering ?? [],
+        });
+      },
       onRuntimeStatus: (status) => {
         this.broadcast('heteroAgentRuntimeStatus', status);
       },
@@ -3956,6 +3963,42 @@ export default class HeterogeneousAgentCtr {
    * Throws:
    * - When a CLI process remains active after the bounded SIGKILL escalation.
    */
+  async steerPiSession(params: {
+    imageList?: Array<{ id: string; url: string }>;
+    message: string;
+    sessionId: string;
+  }): Promise<void> {
+    const session = this.sessions.get(params.sessionId);
+    if (session?.agentType !== 'pi' || !session.piRpcSession?.isRunning) {
+      throw new Error('Pi session is not actively running');
+    }
+    const images = await Promise.all(
+      (params.imageList ?? []).map(async ({ id, url }) => {
+        const image = await normalizeImage(
+          { id, type: 'url', url },
+          { cacheDir: this.fileCacheDir },
+        );
+        return {
+          data: image.buffer.toString('base64'),
+          mimeType: image.mediaType,
+          type: 'image' as const,
+        };
+      }),
+    );
+    await session.piRpcSession.steer(params.message, images);
+  }
+
+  /** Abort the current Pi work while preserving its queued steering messages. */
+  async executePiSteerQueue(params: { sessionId: string }): Promise<void> {
+    const session = this.sessions.get(params.sessionId);
+    if (session?.agentType !== 'pi' || !session.piRpcSession?.isRunning) {
+      throw new Error('Pi session is not actively running');
+    }
+    // Unlike cancelSession, this deliberately does not set cancelledByUs: Pi
+    // continues processing messages already held in its steering queue.
+    await session.piRpcSession.abort();
+  }
+
   async cancelSession(params: CancelSessionParams): Promise<void> {
     const session = this.sessions.get(params.sessionId);
     if (!session) return;

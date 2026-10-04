@@ -133,6 +133,45 @@ describe('PiRpcSession', () => {
     await session.close();
   });
 
+  it('sends steering messages to Pi without aborting the active run', async () => {
+    const { session } = createSession();
+    mocks.command.mockResolvedValue({ success: true });
+    const run = session.run({ text: 'work' });
+    await vi.waitFor(() =>
+      expect(mocks.command).toHaveBeenCalledWith({ type: 'prompt', message: 'work' }),
+    );
+
+    await session.steer('change direction');
+
+    expect(mocks.command).toHaveBeenCalledWith({ type: 'steer', message: 'change direction' });
+    await emit(session, { type: 'agent_settled' });
+    await run;
+    await session.close();
+  });
+
+  it('forwards Pi queue snapshots to the host without mapping them as chat events', async () => {
+    const queueUpdates: Array<{ followUp: string[]; steering: string[] }> = [];
+    const { session, events } = createSession({
+      onQueueUpdate: (event) => queueUpdates.push(event),
+    });
+    mocks.command.mockResolvedValue({ success: true });
+
+    const run = session.run({ text: 'work' });
+    await vi.waitFor(() =>
+      expect(mocks.command).toHaveBeenCalledWith({ type: 'prompt', message: 'work' }),
+    );
+    await emit(session, { type: 'queue_update', steering: ['change direction'], followUp: [] });
+
+    expect(queueUpdates).toEqual([
+      { type: 'queue_update', steering: ['change direction'], followUp: [] },
+    ]);
+    expect(events).toEqual([]);
+
+    await emit(session, { type: 'agent_settled' });
+    await run;
+    await session.close();
+  });
+
   it('never prompts when identity installation fails and never reuses failed cleanup', async () => {
     const { session } = createSession({ autoCloseOnSettle: false });
     mocks.setOperationContext.mockRejectedValue(new Error('missing context acknowledgment'));

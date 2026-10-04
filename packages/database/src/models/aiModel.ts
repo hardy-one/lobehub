@@ -325,7 +325,8 @@ export class AiModelModel {
     // non-chat model (e.g. a speech-to-text card) into a `chat` row, which would leak it into
     // chat pickers. Only the inserted row takes the builtin type; an existing row keeps its own.
     const type =
-      value.type ?? (await this.#resolveDefaultModelTypes(value.providerId, [value.id])).get(value.id);
+      value.type ??
+      (await this.#resolveDefaultModelTypes(value.providerId, [value.id])).get(value.id);
     if (type) insertValues.type = normalizeAiModelType(type);
 
     const updateValues: Partial<typeof aiModels.$inferInsert> = {
@@ -448,8 +449,18 @@ export class AiModelModel {
       .values(records)
       .onConflictDoUpdate({
         set: {
-          // User-editable fields: keep existing DB value; only fill when NULL
-          displayName: sql`COALESCE(ai_models.display_name, excluded.display_name)`,
+          // Refresh generated remote names, but preserve names explicitly edited by users.
+          displayName: sql`CASE
+            WHEN (ai_models.source = 'remote' OR ai_models.source = 'custom' OR ai_models.source IS NULL)
+              AND excluded.display_name IS NOT NULL
+              AND (
+                ai_models.display_name IS NULL OR
+                ai_models.display_name = '' OR
+                ai_models.display_name = ai_models.id
+              )
+            THEN excluded.display_name
+            ELSE ai_models.display_name
+          END`,
           // Provider-sourced fields: allow remote data to update remote/custom/new models
           // For custom models, users can add a model ID before the provider supports it;
           // when the provider later adds that model, we should fill in pricing/abilities/etc.
@@ -503,6 +514,13 @@ export class AiModelModel {
           // synced metadata stays clearable; clearRemoteModels then demotes
           // rows carrying a chatConfig instead of deleting them, so the
           // personal preference survives either way.
+          // Refresh provider defaults without overriding explicitly saved user preferences.
+          settings: sql`CASE
+            WHEN (ai_models.source = 'remote' OR ai_models.source = 'custom' OR ai_models.source IS NULL)
+              AND excluded.settings IS NOT NULL
+            THEN excluded.settings || COALESCE(ai_models.settings, '{}'::jsonb)
+            ELSE ai_models.settings
+          END`,
           source: sql`COALESCE(ai_models.source, excluded.source)`,
           updatedAt: sql`excluded.updated_at`,
           // Note: enabled is intentionally omitted to preserve user toggle state

@@ -1406,6 +1406,8 @@ export class GatewayActionImpl {
               ...desktopDeviceHints,
               clientOperations,
               fileIds,
+              contextSelections: metadata?.contextSelections,
+              pageSelections: metadata?.pageSelections,
               replacesOperationId,
               mentionedAgents,
               parentMessageId,

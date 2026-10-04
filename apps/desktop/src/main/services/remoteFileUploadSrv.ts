@@ -153,6 +153,10 @@ export default class RemoteFileUploadService extends ServiceModule {
 
     const env = withProxyEnv(process.env, proxyEnv);
     env.ELECTRON_RUN_AS_NODE = '1';
+    // Do not forward conversation-scoped credentials from the host process to the embedded CLI.
+    // The CLI should use the signed-in desktop session below, or fall back to its own login.
+    delete env.LOBEHUB_JWT;
+    delete env.LOBEHUB_SERVER;
 
     try {
       return await this.uploadWithEnv(filePath, env, deadline);

@@ -22,6 +22,7 @@ vi.mock('../RemoteServerConfigCtr', () => ({
 const mockRemoteCtr = {
   getAccessToken: vi.fn(),
   getRemoteServerUrl: vi.fn(),
+  getDeviceServerUrl: vi.fn(),
 };
 
 const mockApp = {
@@ -35,6 +36,9 @@ describe('CliCtr.buildCliEnv', () => {
     vi.clearAllMocks();
     mockRemoteCtr.getAccessToken.mockResolvedValue('jwt-token');
     mockRemoteCtr.getRemoteServerUrl.mockResolvedValue('https://app.example.com/');
+    mockRemoteCtr.getDeviceServerUrl.mockImplementation(async () =>
+      mockRemoteCtr.getRemoteServerUrl(),
+    );
     ctr = new CliCtr(mockApp);
   });
 
@@ -57,7 +61,9 @@ describe('CliCtr.buildCliEnv', () => {
 
     const env = await ctr.buildCliEnv();
 
-    expect(env.PATH).toBe(`/app/userData/bin${path.delimiter}/usr/local/bin${path.delimiter}/usr/bin`);
+    expect(env.PATH).toBe(
+      `/app/userData/bin${path.delimiter}/usr/local/bin${path.delimiter}/usr/bin`,
+    );
   });
 
   it('prepends to a PATH the caller overrode instead of discarding it', async () => {

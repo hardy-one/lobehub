@@ -21,11 +21,13 @@ describe('fetchAdvertisedRuntimeEndpoints', () => {
   it('returns the addresses the deployment offers, normalized', async () => {
     queryMock.mockResolvedValue({
       agentGatewayUrls: ['http://100.76.35.114:8787/', 'https://agent-gateway.example.com'],
+      deviceGatewayUrls: ['wss://device-gateway.internal/'],
       serverUrls: ['http://100.76.35.114:3210/'],
     });
 
     await expect(fetchAdvertisedRuntimeEndpoints()).resolves.toEqual({
       agentGatewayUrls: ['http://100.76.35.114:8787', 'https://agent-gateway.example.com'],
+      deviceGatewayUrls: ['wss://device-gateway.internal'],
       serverUrls: ['http://100.76.35.114:3210'],
     });
   });
@@ -35,6 +37,7 @@ describe('fetchAdvertisedRuntimeEndpoints', () => {
 
     await expect(fetchAdvertisedRuntimeEndpoints()).resolves.toEqual({
       agentGatewayUrls: [],
+      deviceGatewayUrls: [],
       serverUrls: [],
     });
   });
@@ -46,6 +49,7 @@ describe('fetchAdvertisedRuntimeEndpoints', () => {
 
     await expect(fetchAdvertisedRuntimeEndpoints()).resolves.toEqual({
       agentGatewayUrls: [],
+      deviceGatewayUrls: [],
       serverUrls: [],
     });
   });
@@ -55,6 +59,7 @@ describe('fetchAdvertisedRuntimeEndpoints', () => {
 
     await expect(fetchAdvertisedRuntimeEndpoints({ timeoutMs: 10 })).resolves.toEqual({
       agentGatewayUrls: [],
+      deviceGatewayUrls: [],
       serverUrls: [],
     });
   });

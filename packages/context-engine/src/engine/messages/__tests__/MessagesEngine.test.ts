@@ -31,6 +31,40 @@ describe('MessagesEngine', () => {
     ...overrides,
   });
 
+  it('injects changing plan context after the latest user turn', async () => {
+    const result = await new MessagesEngine(
+      createBasicParams({
+        planTodo: {
+          enabled: true,
+          plan: {
+            completed: false,
+            context: 'Keep the migration reversible.',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            description: 'Ship the migration safely.',
+            goal: 'Migrate the database',
+            id: 'plan-1',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        },
+      }),
+    ).process();
+
+    const userIndex = result.messages.findIndex(
+      (message) => message.role === 'user' && message.content === 'Hello',
+    );
+    const assistantToolCall = result.messages[userIndex + 1];
+    const toolResult = result.messages[userIndex + 2];
+
+    expect(assistantToolCall?.role).toBe('assistant');
+    expect(assistantToolCall?.tool_calls?.[0]?.function?.name).toBe('getPlanContext');
+    expect(toolResult?.role).toBe('tool');
+    expect(toolResult?.content).toContain('<plan>');
+    expect(toolResult?.content).toContain('<goal>Migrate the database</goal>');
+    expect(result.messages.some((message) => message.meta?.systemInjection)).toBe(false);
+    expect(result.metadata.planInjected).toBe(true);
+    expect(result.metadata.planId).toBe('plan-1');
+  });
+
   describe('constructor', () => {
     it('should initialize with required parameters', () => {
       const params = createBasicParams();

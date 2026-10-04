@@ -1981,13 +1981,19 @@ describe('GatewayActionImpl', () => {
       await action.executeGatewayAgent({
         context: { agentId: 'agent-1', topicId: 'topic-1', threadId: null, scope: 'main' },
         message: 'Hello',
-        metadata: { trigger: RequestTrigger.Onboarding },
+        metadata: {
+          contextSelections: [{ content: 'Selected text', id: 'selection-1', source: 'text' }],
+          pageSelections: [{ content: 'Page excerpt', id: 'page-selection-1', pageId: 'page-1' }],
+          trigger: RequestTrigger.Onboarding,
+        },
       });
 
       expect(aiAgentService.execAgentTask).toHaveBeenCalledWith(
         expect.objectContaining({
           prompt: 'Hello',
           trigger: 'onboarding',
+          contextSelections: [{ content: 'Selected text', id: 'selection-1', source: 'text' }],
+          pageSelections: [{ content: 'Page excerpt', id: 'page-selection-1', pageId: 'page-1' }],
         }),
         expect.anything(),
       );

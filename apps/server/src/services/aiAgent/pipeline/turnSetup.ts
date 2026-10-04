@@ -332,6 +332,7 @@ export interface TurnSetupInput {
   botContext?: InternalExecAgentParams['botContext'];
   botSender?: InternalExecAgentParams['botSender'];
   clientIds?: InternalExecAgentParams['clientIds'];
+  contextSelections?: InternalExecAgentParams['contextSelections'];
   /** Stable assistant id for a generic intervention continuation. */
   continuationAssistantId?: string;
   conversationAgentId: string;
@@ -341,6 +342,7 @@ export interface TurnSetupInput {
   files?: InternalExecAgentParams['files'];
   modelOverride?: string;
   operationTaskId?: string;
+  pageSelections?: InternalExecAgentParams['pageSelections'];
   parentMessageId?: string;
   prompt: string;
   providerOverride?: string;
@@ -422,6 +424,7 @@ export const setupTurn = async (
     botContext,
     botSender,
     clientIds,
+    contextSelections,
     continuationAssistantId,
     conversationAgentId,
     createdThreadId,
@@ -431,6 +434,7 @@ export const setupTurn = async (
     modelOverride,
     operationTaskId,
     parentMessageId,
+    pageSelections,
     prompt,
     providerOverride,
     requestedDeviceId,
@@ -850,7 +854,11 @@ export const setupTurn = async (
         // branch), so a group turn must stamp groupId or the message never
         // shows when the topic is reopened (group topic sidebar + ownership fix).
         groupId: appContext?.groupId ?? undefined,
-        metadata: requestTriggerMetadata,
+        metadata: {
+          ...requestTriggerMetadata,
+          ...(contextSelections?.length ? { contextSelections } : undefined),
+          ...(pageSelections?.length ? { pageSelections } : undefined),
+        },
         parentId: userMessageParentId,
         role: 'user' as const,
         threadId: appContext?.threadId ?? undefined,

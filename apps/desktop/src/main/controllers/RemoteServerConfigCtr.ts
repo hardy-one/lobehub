@@ -581,6 +581,48 @@ export default class RemoteServerConfigCtr extends ControllerModule {
     return this.getRemoteServerUrl();
   }
 
+  /** Resolve a private Device Gateway for the Desktop's persistent socket. */
+  async getPrivateDeviceGatewayUrl(): Promise<string | undefined> {
+    const configuredUrl = await this.getRemoteServerUrl();
+    const token = await this.getAccessToken();
+    if (!configuredUrl || !token) return undefined;
+
+    try {
+      const headers: Record<string, string> = { 'Oidc-Auth': token };
+      setDesktopUserAgentHeader(headers);
+      const response = await netFetch(
+        `${configuredUrl.replace(/\/+$/, '')}/trpc/lambda/aiAgent.heteroRuntimeEndpoints`,
+        { headers, signal: AbortSignal.timeout(3_000) },
+      );
+      if (!response.ok) return undefined;
+
+      const payload = (await response.json().catch(() => undefined)) as
+        { result?: { data?: { json?: { deviceGatewayUrls?: unknown } } } } | undefined;
+      const urls = payload?.result?.data?.json?.deviceGatewayUrls;
+      if (!Array.isArray(urls)) return undefined;
+
+      for (const value of urls) {
+        if (typeof value !== 'string') continue;
+        try {
+          const gatewayUrl = new URL(value);
+          if (!['https:', 'http:', 'wss:', 'ws:'].includes(gatewayUrl.protocol)) continue;
+          if (gatewayUrl.username || gatewayUrl.password) continue;
+          if (
+            new URL(configuredUrl).protocol === 'https:' &&
+            !['https:', 'wss:'].includes(gatewayUrl.protocol)
+          )
+            continue;
+          return gatewayUrl.href;
+        } catch {
+          // Try the next advertised address; the public gateway remains the fallback.
+        }
+      }
+    } catch (error) {
+      logger.debug('Could not resolve a private Device Gateway endpoint: %O', error);
+    }
+
+    return undefined;
+  }
 
   /**
    * Setup subscription webview session with OIDC token injection

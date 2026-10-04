@@ -99,6 +99,8 @@ const getGatewayServerConfig = () =>
     ? window.global_serverConfigStore?.getState()?.serverConfig
     : undefined) ?? getServerConfigStoreState()?.serverConfig;
 
+const PRIVATE_GATEWAY_CONNECT_TIMEOUT_MS = 3_000;
+
 /**
  * Interrupts a gateway operation and rejects when its physical shutdown is unconfirmed.
  *
@@ -390,6 +392,16 @@ interface ReconnectToGatewayOperationParams {
 export class GatewayActionImpl {
   readonly #get: () => ChatStore;
   readonly #set: Setter;
+  readonly #unavailablePrivateGateways = new Set<string>();
+  readonly #privateGatewayAttempts = new Map<string, () => void>();
+
+  #preferredGatewayUrl = (): string | undefined => {
+    const config = getGatewayServerConfig();
+    const privateUrl = config?.privateAgentGatewayUrl;
+    return privateUrl && !this.#unavailablePrivateGateways.has(privateUrl)
+      ? privateUrl
+      : config?.agentGatewayUrl;
+  };
 
   /** Overridable factory for testing (v1: one socket per operation). */
   createClient: (options: AgentStreamClientOptions) => GatewayConnection['client'] = (options) =>
@@ -638,9 +650,59 @@ export class GatewayActionImpl {
       'connectToGateway',
     );
 
+    const config = getGatewayServerConfig();
+    const fallbackUrl =
+      gatewayUrl === config?.privateAgentGatewayUrl && gatewayUrl !== config.agentGatewayUrl
+        ? config.agentGatewayUrl
+        : undefined;
+    let connected = false;
+    let retired = false;
+    let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
+    const isCurrentConnection = () =>
+      !retired && this.#get().gatewayConnections[operationId]?.client === client;
+    const clearFallbackTimer = () => {
+      if (fallbackTimer !== undefined) clearTimeout(fallbackTimer);
+    };
+    const fallBackToPublicGateway = (): boolean => {
+      if (!fallbackUrl || connected || !isCurrentConnection()) return false;
+      retired = true;
+      clearFallbackTimer();
+      this.#unavailablePrivateGateways.add(gatewayUrl);
+      // Retry only the transport with the same operation and auth, not the task.
+      queueMicrotask(() => {
+        if (this.#get().gatewayConnections[operationId]?.client !== client) return;
+        this.connectToGateway({
+          ...params,
+          gatewayUrl: fallbackUrl,
+          lastEventId: muxClient?.lastEventId || lastEventId,
+          resumeOnConnect: true,
+        });
+      });
+      return true;
+    };
+    if (fallbackUrl) {
+      this.#privateGatewayAttempts.set(operationId, () => {
+        retired = true;
+        clearFallbackTimer();
+      });
+      fallbackTimer = setTimeout(fallBackToPublicGateway, PRIVATE_GATEWAY_CONNECT_TIMEOUT_MS);
+    }
+    client.on('connected', () => {
+      connected = true;
+      clearFallbackTimer();
+    });
+    client.on('error', () => {
+      fallBackToPublicGateway();
+    });
+
     // Wire up status changes
     client.on('status_changed', (status) => {
-      if (superseded) return;
+      if (superseded || !isCurrentConnection()) return;
+      if (status === 'connected') {
+        connected = true;
+        clearFallbackTimer();
+      }
+      if (status === 'reconnecting' && fallBackToPublicGateway()) return;
       this.#set(
         (state) => {
           const conn = state.gatewayConnections[operationId];
@@ -684,7 +746,7 @@ export class GatewayActionImpl {
     // status. Match on the event's operationId (absent ⇒ legacy single-op WS,
     // treat as this op's to preserve prior behavior).
     client.on('agent_event', (event) => {
-      if (superseded) return;
+      if (superseded || !isCurrentConnection()) return;
       const isOwnOp = !event.operationId || event.operationId === operationId;
       // Same rule the transport ends the session by: a parked LLM call's error
       // is not the run's end.
@@ -712,7 +774,7 @@ export class GatewayActionImpl {
     // so it lands in the handler's sequential queue after the replayed events
     // and under its snapshot-generation guard.
     muxClient?.on('resume_complete', ({ gap }) => {
-      if (superseded || !gap) return;
+      if (superseded || !isCurrentConnection() || !gap) return;
       eventBuffer.push({
         data: { reason: 'resume_gap' },
         operationId,
@@ -724,7 +786,7 @@ export class GatewayActionImpl {
 
     // Handle session completion
     client.on('session_complete', (completion) => {
-      if (superseded) return;
+      if (superseded || !isCurrentConnection()) return;
       this.internal_cleanupGatewayConnection(operationId);
       fireSessionComplete({ completion });
     });
@@ -814,7 +876,8 @@ export class GatewayActionImpl {
     // lifecycle to complete the op, so the close is pure cleanup.
     // (auth_failed is handled separately below — it's also session-terminal.)
     client.on('disconnected', () => {
-      if (superseded) return;
+      if (superseded || retired) return;
+      if (fallBackToPublicGateway()) return;
       cleanupOwnConnection();
       if (receivedTerminalEvent) {
         fireSessionComplete();
@@ -856,7 +919,7 @@ export class GatewayActionImpl {
     // never gets cleared either, so each revisit re-triggers the same broken
     // reconnect.
     client.on('auth_failed', (reason) => {
-      if (superseded) return;
+      if (superseded || retired || fallBackToPublicGateway()) return;
       console.error(`[Gateway] Auth failed for operation ${operationId}: ${reason}`);
       this.internal_cleanupGatewayConnection(operationId);
       fireSessionComplete({ authFailed: true });
@@ -871,7 +934,7 @@ export class GatewayActionImpl {
     // explicitly `disconnect()` before completing — otherwise heartbeat and
     // autoReconnect would keep running past the local op's lifetime.
     client.on('auth_expired', async () => {
-      if (superseded) return;
+      if (superseded || !isCurrentConnection()) return;
       try {
         const { token: fresh } = agentShareId
           ? await shareChatService.refreshGatewayToken(agentShareId, topicId)
@@ -900,6 +963,7 @@ export class GatewayActionImpl {
     const conn = this.#get().gatewayConnections[operationId];
     if (!conn) return;
 
+    this.#privateGatewayAttempts.get(operationId)?.();
     conn.client.disconnect();
     this.internal_cleanupGatewayConnection(operationId);
   };
@@ -937,15 +1001,16 @@ export class GatewayActionImpl {
     const serverConfig = getGatewayServerConfig();
     if (!serverConfig?.agentGatewayUrl || !serverConfig.enableGatewayMode) return;
 
-    const identity: GatewayMuxIdentity = { gatewayUrl: serverConfig.agentGatewayUrl };
+    const gatewayUrl = this.#preferredGatewayUrl();
+    if (!gatewayUrl) return;
+    const identity: GatewayMuxIdentity = { gatewayUrl };
     if (isGatewayMuxUnavailable(identity)) return;
 
     const mux = this.resolveGatewayMux(identity);
     this.#attachGatewayFeed(mux);
     this.#attachMuxFallback(mux, identity);
-    mux.connect().catch(() => {
-      // The mux keeps retrying with backoff; failures surface on its own
-      // `error` / `reconnecting` listeners.
+    mux.connect().catch((error) => {
+      console.error('[Gateway] Mux warmup failed:', error);
     });
   };
 
@@ -1099,10 +1164,12 @@ export class GatewayActionImpl {
       tempMessageIds,
     } = params;
 
-    const agentGatewayUrl = getGatewayServerConfig()?.agentGatewayUrl;
-    if (!agentGatewayUrl) {
+    const serverConfig = getGatewayServerConfig();
+    const configuredAgentGatewayUrl = serverConfig?.agentGatewayUrl;
+    if (!configuredAgentGatewayUrl) {
       throw new Error('[Gateway] Cannot execute agent: serverConfig.agentGatewayUrl is missing');
     }
+    const agentGatewayUrl = this.#preferredGatewayUrl() ?? configuredAgentGatewayUrl;
 
     // The EXECUTION context decides whether the server creates a topic. The
     // message context can already carry the client-minted topic id (the send
@@ -1842,9 +1909,10 @@ export class GatewayActionImpl {
     const { agentShareId, assistantMessageId, heteroType, operationId, topicId, scope, threadId } =
       params;
 
-    const agentGatewayUrl = getGatewayServerConfig()?.agentGatewayUrl;
-    if (!agentGatewayUrl) return;
-
+    const serverConfig = getGatewayServerConfig();
+    const configuredAgentGatewayUrl = serverConfig?.agentGatewayUrl;
+    if (!configuredAgentGatewayUrl) return;
+    const agentGatewayUrl = this.#preferredGatewayUrl() ?? configuredAgentGatewayUrl;
     // Skip reconnect if the gateway action already established (or is establishing)
     // a fresh connection for this operation. This prevents a race on new-topic creation
     // where switchTopic loads runningOperation → useGatewayReconnect fires → overwrites
@@ -2731,6 +2799,8 @@ export class GatewayActionImpl {
   };
 
   private internal_cleanupGatewayConnection = (operationId: string): void => {
+    this.#privateGatewayAttempts.get(operationId)?.();
+    this.#privateGatewayAttempts.delete(operationId);
     this.#muxFallbacks.delete(operationId);
     this.#set(
       (state) => {

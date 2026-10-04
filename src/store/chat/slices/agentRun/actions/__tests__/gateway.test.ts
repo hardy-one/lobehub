@@ -275,6 +275,100 @@ describe('GatewayActionImpl', () => {
   });
 
   describe('connectToGateway', () => {
+    describe('private gateway fallback', () => {
+      const privateUrl = 'wss://private-gateway.test.com';
+      const publicUrl = 'https://gateway.test.com';
+
+      beforeEach(() => {
+        vi.useFakeTimers();
+        Reflect.set(globalThis, 'window', {
+          global_serverConfigStore: {
+            getState: () => ({
+              serverConfig: { agentGatewayUrl: publicUrl, privateAgentGatewayUrl: privateUrl },
+            }),
+          },
+        });
+      });
+
+      afterEach(() => vi.useRealTimers());
+
+      it.each(['error', 'reconnecting', 'auth_failed', 'disconnected', 'timeout'])(
+        'retries the same operation on the public gateway after private %s',
+        async (failure) => {
+          const { action, state } = createTestAction();
+          const privateClient = createMockClient();
+          const publicClient = createMockClient();
+          const onSessionComplete = vi.fn();
+          action.createClient = vi
+            .fn()
+            .mockReturnValueOnce(privateClient)
+            .mockReturnValueOnce(publicClient);
+          action.connectToGateway({
+            gatewayUrl: privateUrl,
+            operationId: 'op-1',
+            token: 'test-token',
+            topicId: TEST_TOPIC_ID,
+            onSessionComplete,
+          });
+
+          if (failure === 'timeout') vi.advanceTimersByTime(3_001);
+          else if (failure === 'reconnecting') privateClient.emitEvent('status_changed', failure);
+          else privateClient.emitEvent(failure, new Error('private gateway unavailable'));
+          await Promise.resolve();
+
+          expect(action.createClient).toHaveBeenLastCalledWith({
+            gatewayUrl: publicUrl,
+            operationId: 'op-1',
+            token: 'test-token',
+            resumeOnConnect: true,
+          });
+          expect(privateClient.disconnect).toHaveBeenCalledOnce();
+          expect(publicClient.connect).toHaveBeenCalledOnce();
+          expect(state.gatewayConnections['op-1'].client).toBe(publicClient);
+          expect(onSessionComplete).not.toHaveBeenCalled();
+
+          // The abandoned socket can still deliver late close/auth events.
+          privateClient.emitEvent('disconnected');
+          privateClient.emitEvent('auth_failed', 'late auth failure');
+          vi.advanceTimersByTime(10_000);
+          expect(action.createClient).toHaveBeenCalledTimes(2);
+          expect(state.gatewayConnections['op-1'].client).toBe(publicClient);
+          expect(onSessionComplete).not.toHaveBeenCalled();
+          publicClient.emitEvent('auth_failed', 'invalid token');
+          expect(onSessionComplete).toHaveBeenCalledOnce();
+        },
+      );
+
+      it('keeps the private connection once authenticated', () => {
+        const { action, mockClient } = createTestAction();
+        action.connectToGateway({
+          gatewayUrl: privateUrl,
+          operationId: 'op-1',
+          token: 'test-token',
+          topicId: TEST_TOPIC_ID,
+        });
+        mockClient.emitEvent('status_changed', 'connected');
+        mockClient.emitEvent('connected');
+        vi.advanceTimersByTime(10_000);
+        expect(action.createClient).toHaveBeenCalledOnce();
+        action.disconnectFromGateway('op-1');
+      });
+
+      it('does not fall back after an intentional disconnect', () => {
+        const { action, state } = createTestAction();
+        action.connectToGateway({
+          gatewayUrl: privateUrl,
+          operationId: 'op-1',
+          token: 'test-token',
+          topicId: TEST_TOPIC_ID,
+        });
+        action.disconnectFromGateway('op-1');
+        vi.advanceTimersByTime(10_000);
+        expect(action.createClient).toHaveBeenCalledOnce();
+        expect(state.gatewayConnections['op-1']).toBeUndefined();
+      });
+    });
+
     it('should create client and add to store', () => {
       const { action, mockClient, state } = createTestAction();
 
@@ -1198,6 +1292,18 @@ describe('GatewayActionImpl', () => {
     it.each([
       {
         expectedEnabled: true,
+        expectedUrl: 'wss://private-gateway.test.com',
+        hasWindow: true,
+        moduleEnabled: true,
+        name: 'private gateway from the existing window config',
+        windowConfig: {
+          agentGatewayUrl: 'https://window-gateway.test.com',
+          enableGatewayMode: true,
+          privateAgentGatewayUrl: 'wss://private-gateway.test.com',
+        },
+      },
+      {
+        expectedEnabled: true,
         expectedUrl: 'https://module-gateway.test.com',
         hasWindow: true,
         moduleEnabled: true,
@@ -1327,6 +1433,7 @@ describe('GatewayActionImpl', () => {
           token: 'resume-token',
         });
         expect(mockClient.connect).toHaveBeenCalledTimes(2);
+        action.disconnectFromGateway('server-op-1');
       },
     );
 

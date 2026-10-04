@@ -93,8 +93,8 @@ export const createStreamEventManager = (
   const { inner, ...notifierOptions } = options ?? {};
   const manager = inner ?? createDefaultStreamEventManager();
 
-  // Wrap with Gateway notifier when configured. Server pushes prefer the internal
-  // URL: the public one is what browsers open, which a container may not reach.
+  // Server-side pushes prefer the internal route; device clients receive a
+  // separate PRIVATE_AGENT_GATEWAY_URL through heteroRuntimeEndpoints.
   const gatewayUrl = appEnv.AGENT_GATEWAY_INTERNAL_URL || appEnv.AGENT_GATEWAY_URL;
   if (gatewayUrl && appEnv.AGENT_GATEWAY_SERVICE_TOKEN) {
     log(

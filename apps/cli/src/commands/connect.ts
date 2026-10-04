@@ -339,6 +339,7 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   const settings = loadSettings();
   let settingsToPersist = settings;
   // Prefer advertised WebSocket endpoints; keep the configured addresses for fallback.
+  let privateDeviceGatewayUrl: string | undefined;
   if (!process.env.LOBEHUB_SERVER) {
     const advertised = await fetchAdvertisedRuntimeEndpoints();
 
@@ -369,9 +370,25 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
         agentGatewayFallbackUrl: fallbackUrl,
       };
     }
+    // The persistent device socket has its own gateway, distinct from the
+    // Agent Gateway used by `lh agent`. Prefer the deployment's reachable private
+    // endpoint for this process only; explicit --gateway remains authoritative.
+    if (!options.gateway && advertised.deviceGatewayUrls.length > 0) {
+      const chosenDeviceGateway = await chooseAgentGatewayUrl({
+        advertised: advertised.deviceGatewayUrls,
+        configuredUrl: settingsToPersist?.gatewayUrl || OFFICIAL_GATEWAY_URL,
+      });
+      if (chosenDeviceGateway.source === 'advertised') {
+        privateDeviceGatewayUrl = chosenDeviceGateway.url;
+        log.info(
+          `Using the private device gateway this server provides: ${privateDeviceGatewayUrl}`,
+        );
+      }
+    }
   }
 
-  const gatewayUrl = normalizeUrl(options.gateway) || settingsToPersist?.gatewayUrl;
+  const gatewayUrl =
+    normalizeUrl(options.gateway) || privateDeviceGatewayUrl || settingsToPersist?.gatewayUrl;
 
   if (!gatewayUrl && settings?.serverUrl) {
     log.error(
@@ -434,6 +451,9 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     channel,
     connectionId: loadOrCreateConnectionId(),
     deviceId: identity?.deviceId ?? options.deviceId,
+    fallbackGatewayUrl: privateDeviceGatewayUrl
+      ? settingsToPersist?.gatewayUrl || OFFICIAL_GATEWAY_URL
+      : undefined,
     gatewayUrl: resolvedGatewayUrl,
     logger: isDaemonChild ? createDaemonLogger() : log,
     serverUrl: auth.serverUrl,
@@ -471,7 +491,7 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     writeStatus({
       connectionStatus,
       deviceId: client.currentDeviceId,
-      gatewayUrl: resolvedGatewayUrl,
+      gatewayUrl: client.currentGatewayUrl,
       lastRequestAt,
       // Runtime state, rewritten on every start: which server address this
       // session actually settled on (the deployment's own, or the configured one).
@@ -630,6 +650,9 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
       channel,
       connectionId: loadOrCreateConnectionId(),
       deviceId: wsIdentity.deviceId,
+      fallbackGatewayUrl: privateDeviceGatewayUrl
+        ? settingsToPersist?.gatewayUrl || OFFICIAL_GATEWAY_URL
+        : undefined,
       gatewayUrl: resolvedGatewayUrl,
       logger: isDaemonChild ? createDaemonLogger() : log,
       serverUrl: auth.serverUrl,

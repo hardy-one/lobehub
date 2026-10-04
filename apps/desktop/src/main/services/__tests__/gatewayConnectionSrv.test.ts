@@ -387,5 +387,35 @@ describe('GatewayConnectionService auth recovery', () => {
       expect(client.reconnect).not.toHaveBeenCalled();
       expect((service as any).workspaceClients.has('ws-1')).toBe(false);
     });
+    });
+  });
+});
+
+describe('GatewayConnectionService gateway URL selection', () => {
+  const createService = (gatewayUrl: string) => {
+    const app = {
+      browserManager: { broadcastToAllWindows: vi.fn() },
+      storeManager: {
+        get: vi.fn((key: string) => (key === 'gatewayUrl' ? gatewayUrl : undefined)),
+        set: vi.fn(),
+      },
+    } as unknown as App;
+    return new GatewayConnectionService(app);
+  };
+
+  it('prefers an advertised private URL over the built-in store default', () => {
+    const service = createService('https://device-gateway.lobehub.com');
+    service.setAdvertisedGatewayUrl('https://private-gateway.example');
+
+    expect((service as any).getGatewayUrl()).toBe('https://private-gateway.example');
+    expect((service as any).getFallbackGatewayUrl()).toBe('https://device-gateway.lobehub.com');
+  });
+
+  it('preserves an explicit custom store URL over an advertised private URL', () => {
+    const service = createService('http://localhost:8787');
+    service.setAdvertisedGatewayUrl('https://private-gateway.example');
+
+    expect((service as any).getGatewayUrl()).toBe('http://localhost:8787');
+    expect((service as any).getFallbackGatewayUrl()).toBeUndefined();
   });
 });

@@ -17,7 +17,7 @@ import { registerConnectCommand } from './connect';
 vi.mock('../api/runtimeEndpoints', () => ({
   fetchAdvertisedRuntimeEndpoints: vi
     .fn()
-    .mockResolvedValue({ serverUrls: [], agentGatewayUrls: [] }),
+    .mockResolvedValue({ serverUrls: [], agentGatewayUrls: [], deviceGatewayUrls: [] }),
 }));
 vi.mock('../api/chooseAgentGatewayUrl', () => ({
   chooseAgentGatewayUrl: vi.fn(async ({ advertised, configuredUrl }) => ({
@@ -306,6 +306,22 @@ describe('connect command', () => {
       }),
     );
   });
+  it('uses a reachable advertised private Device Gateway for this connection without persisting it', async () => {
+    vi.mocked(loadSettings).mockReturnValueOnce({ serverUrl: 'https://self-hosted.example.com' });
+    vi.mocked(fetchAdvertisedRuntimeEndpoints).mockResolvedValueOnce({
+      agentGatewayUrls: [],
+      deviceGatewayUrls: ['wss://device-gateway.private.example'],
+      serverUrls: [],
+    });
+
+    await createProgram().parseAsync(['node', 'test', 'connect']);
+
+    expect(clientOptions.gatewayUrl).toBe('wss://device-gateway.private.example');
+    expect(clientOptions.fallbackGatewayUrl).toBe('https://device-gateway.lobehub.com');
+    expect(saveSettings).not.toHaveBeenCalledWith(
+      expect.objectContaining({ gatewayUrl: 'wss://device-gateway.private.example' }),
+    );
+  });
   it.each([{ agentGatewayUrls: ['https://new-agent.example.com'] }, { agentGatewayUrls: [] }])(
     'saves device and advertised agent gateways together (%j)',
     async ({ agentGatewayUrls }) => {
@@ -316,6 +332,7 @@ describe('connect command', () => {
       vi.mocked(fetchAdvertisedRuntimeEndpoints).mockResolvedValueOnce({
         agentGatewayUrls,
         serverUrls: [],
+        deviceGatewayUrls: [],
       });
       await createProgram().parseAsync([
         'node',

@@ -125,6 +125,27 @@ LobeHub 在部署时提供了一些额外的配置项，你可以使用环境变
 - 默认值：-
 - 示例：`https://agent-gateway.example.com`
 
+### `PRIVATE_AGENT_GATEWAY_URL`
+
+- 类型：可选
+- 描述：可选私网 Agent Gateway 地址。网页通过与 `AGENT_GATEWAY_URL` 相同的全局配置获取地址，优先复用原有 WebSocket 流程连接它；连接失败或超时后，使用 `AGENT_GATEWAY_URL` 重新连接同一个任务。Desktop/CLI 设备客户端也会在可达时优先使用该地址。如果应用入口使用 HTTPS，请配置带有效证书的 `wss://` 地址。
+- 默认值：-
+- 示例：`wss://agent-gateway.lan.example.com`
+
+### `PRIVATE_APP_URLS`
+
+- 类型：可选
+- 描述：以逗号分隔、向设备客户端公布的服务端地址。Desktop 和 CLI 当前仍使用已配置的服务端地址发送 HTTP 请求，避免响应丢失后跨地址重放写请求造成重复操作。需要使用私网 HTTP 地址时，请显式配置客户端服务端地址。自动私网 WebSocket 连接及公网回退请使用 `PRIVATE_DEVICE_GATEWAY_URL` 或 `PRIVATE_AGENT_GATEWAY_URL`。
+- 默认值：-
+- 示例：`https://lobehub.lan.example.com,https://192.168.1.10:3210`
+
+### `PRIVATE_DEVICE_GATEWAY_URL`
+
+- 类型：可选
+- 描述：供 Desktop/CLI 设备建立持久连接的私网 Device Gateway 地址。客户端直接尝试现有 WebSocket 连接，连接失败或超时后切换到已配置或默认的公网 Device Gateway，无需 HTTP 探测；显式配置的客户端地址优先级更高。生产环境请使用设备信任的 `wss://` 证书。
+- 默认值：-
+- 示例：`wss://device-gateway.lan.example.com`
+
 ### `AGENT_GATEWAY_PROTOCOL`
 
 - 类型：可选

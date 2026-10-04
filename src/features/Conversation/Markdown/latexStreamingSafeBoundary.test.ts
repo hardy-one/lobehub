@@ -1,6 +1,7 @@
 // @ts-expect-error -- the helper is exported by our local @lobehub/ui patch for focused unit coverage.
-import { findSafeBoundary } from '@lobehub/ui/es/hooks/useMarkdown/useMarkdownContent.mjs';
 import { describe, expect, it } from 'vitest';
+
+import { findSafeBoundary } from '../../../../node_modules/@lobehub/ui/es/hooks/useMarkdown/useMarkdownContent.mjs';
 
 describe('findSafeBoundary', () => {
   it('stops before an unfinished inline formula in a markdown table', () => {

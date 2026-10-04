@@ -403,7 +403,8 @@ describe('UpdaterManager', () => {
       expect(autoUpdater.allowDowngrade).toBe(true);
     });
 
-    it('should configure the GitHub provider for the HARDY channel', () => {
+    it('should configure the GitHub provider for the HARDY channel', async () => {
+      await updaterManager.initialize();
       updaterManager.switchChannel('HARDY');
 
       expect(autoUpdater.setFeedURL).toHaveBeenCalledWith({

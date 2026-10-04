@@ -10,6 +10,7 @@ import {
   type PiExtensionUiResponse,
   type PiMessageEndEvent,
   type PiMessageUpdateEvent,
+  type PiQueueUpdateEvent,
   type PiRpcCommand,
   type PiRpcEvent,
   type PiRpcImage,
@@ -51,6 +52,8 @@ export interface PiRpcSessionOptions {
   onExtensionUiRequest?: (
     request: PiExtensionUiRequest,
   ) => Promise<PiExtensionUiResponse | undefined> | PiExtensionUiResponse | undefined;
+  /** Pi's authoritative steering/follow-up queue snapshot. */
+  onQueueUpdate?: (event: PiQueueUpdateEvent) => void;
   onRawStdout?: (chunk: Buffer) => void;
   onRuntimeStatus: (status: HeterogeneousAgentRuntimeStatus) => void;
   /** Freshest native pi session id (RPC mode: from the get_state handshake). */
@@ -76,6 +79,7 @@ export interface PiRpcSessionOptions {
 /** Host callbacks a pooled process can be rebound to between runs. */
 export interface PiRpcSessionCallbacks {
   onEvents: (events: AgentStreamEvent[]) => void | Promise<void>;
+  onQueueUpdate?: (event: PiQueueUpdateEvent) => void;
   onRuntimeStatus: (status: HeterogeneousAgentRuntimeStatus) => void;
   onSessionId: (sessionId: string) => void;
   onStderr: (data: string) => void | Promise<void>;
@@ -434,6 +438,10 @@ export class PiRpcSession {
       return;
     }
 
+    if (event.type === 'queue_update') {
+      this.callbacks.onQueueUpdate?.(event as PiQueueUpdateEvent);
+      return;
+    }
     if (!this.runStarted || this.runSettled || this.settlementInProgress) return;
     this.armInactivityTimer();
     if (isTerminalAbortedEvent(event)) this.aborted = true;

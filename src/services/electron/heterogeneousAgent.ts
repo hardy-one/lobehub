@@ -67,6 +67,18 @@ class HeterogeneousAgentService {
     return this.ipc.heterogeneousAgent.sendPrompt(params);
   }
 
+  async steerPiSession(
+    sessionId: string,
+    message: string,
+    imageList?: Array<{ id: string; url: string }>,
+  ) {
+    return this.ipc.heterogeneousAgent.steerPiSession({ imageList, sessionId, message });
+  }
+
+  async executePiSteerQueue(sessionId: string) {
+    return this.ipc.heterogeneousAgent.executePiSteerQueue({ sessionId });
+  }
+
   async cancelSession(sessionId: string) {
     return this.ipc.heterogeneousAgent.cancelSession({ sessionId });
   }

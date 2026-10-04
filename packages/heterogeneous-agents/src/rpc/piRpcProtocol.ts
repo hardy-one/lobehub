@@ -128,6 +128,13 @@ export interface PiRpcEvent {
   type: string;
 }
 
+/** Authoritative queue snapshot emitted whenever Pi's steering/follow-up queues change. */
+export interface PiQueueUpdateEvent extends PiRpcEvent {
+  followUp: string[];
+  steering: string[];
+  type: 'queue_update';
+}
+
 /** The `session` event that reports the native pi session id at startup. */
 export interface PiSessionEvent extends PiRpcEvent {
   id: string;

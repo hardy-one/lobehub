@@ -165,6 +165,11 @@ export interface GlobalServerConfig {
    * reverse proxy or on desktop.
    */
   oidcIssuer?: string;
+  /**
+   * Optional private Agent Gateway URL the browser can try before falling back
+   * to the public URL.
+   */
+  privateAgentGatewayUrl?: string;
   systemAgent?: PartialDeep<UserServiceModelConfig>;
   telemetry: {
     langfuse?: boolean;

@@ -2,8 +2,8 @@ import { getTrpcClient } from './client';
 
 /**
  * Addresses this deployment offers its devices (`aiAgent.heteroRuntimeEndpoints`):
- * app origins to stream events to (`PRIVATE_APP_URLS`) and agent gateways to stream
- * a run through (private first, public as the fallback).
+ * app origins to stream events to (`PRIVATE_APP_URLS`), Agent Gateway run-stream
+ * endpoints, and private Device Gateway endpoints.
  *
  * Asked **once, at connect** — never per run. A run must not depend on a lookup,
  * so nothing here is cached, refreshed or re-checked: connect decides, and
@@ -11,10 +11,15 @@ import { getTrpcClient } from './client';
  */
 export interface AdvertisedRuntimeEndpoints {
   agentGatewayUrls: string[];
+  deviceGatewayUrls: string[];
   serverUrls: string[];
 }
 
-const EMPTY: AdvertisedRuntimeEndpoints = { agentGatewayUrls: [], serverUrls: [] };
+const EMPTY: AdvertisedRuntimeEndpoints = {
+  agentGatewayUrls: [],
+  deviceGatewayUrls: [],
+  serverUrls: [],
+};
 
 const normalize = (urls: unknown): string[] =>
   Array.isArray(urls)
@@ -41,6 +46,7 @@ export const fetchAdvertisedRuntimeEndpoints = async (options?: {
 
     return {
       agentGatewayUrls: normalize(result?.agentGatewayUrls),
+      deviceGatewayUrls: normalize(result?.deviceGatewayUrls),
       serverUrls: normalize(result?.serverUrls),
     };
   } catch {

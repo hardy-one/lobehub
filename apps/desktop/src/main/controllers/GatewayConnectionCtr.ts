@@ -160,6 +160,12 @@ export default class GatewayConnectionCtr extends ControllerModule {
     return this.app.getService(GatewayConnectionService);
   }
 
+  private async connectWithAdvertisedDeviceGateway() {
+    const privateGatewayUrl = await this.remoteServerConfigCtr.getPrivateDeviceGatewayUrl?.();
+    this.service.setAdvertisedGatewayUrl(privateGatewayUrl);
+    return this.service.connect();
+  }
+
   private get auvService() {
     return this.app.getService(AuvService);
   }
@@ -241,7 +247,7 @@ export default class GatewayConnectionCtr extends ControllerModule {
   @IpcMethod()
   async connect(): Promise<{ error?: string; success: boolean }> {
     this.app.storeManager.set('gatewayEnabled', true);
-    return this.service.connect();
+    return this.connectWithAdvertisedDeviceGateway();
   }
 
   @IpcMethod()
@@ -308,7 +314,7 @@ export default class GatewayConnectionCtr extends ControllerModule {
     if (!(await this.service.matchesDeviceId(deviceId))) return false;
 
     this.app.storeManager.set('gatewayEnabled', true);
-    const result = await this.service.connect();
+    const result = await this.connectWithAdvertisedDeviceGateway();
     return result.success;
   }
 
@@ -324,7 +330,7 @@ export default class GatewayConnectionCtr extends ControllerModule {
     const token = await this.remoteServerConfigCtr.getAccessToken();
     if (!token) return;
 
-    await this.service.connect();
+    await this.connectWithAdvertisedDeviceGateway();
   }
 
   // ─── Agent Run Routing ───

@@ -99,13 +99,13 @@ export const getAppConfig = () => {
        * devices (as the first of `agentGatewayUrls`) so a run streams through the
        * fast path; the public `AGENT_GATEWAY_URL` stays the fallback.
        */
-      PRIVATE_AGENT_GATEWAY_URL: z.string().optional(),
+      PRIVATE_AGENT_GATEWAY_URL: z.string().url().optional(),
       /**
-       * Device gateway address for devices, reserved: the server does not advertise
-       * a device gateway yet (a device configures `--gateway` itself). Declared so
-       * the deployment can set it once advertising is added.
+       * Device Gateway address offered to Desktop/CLI device clients for their
+       * persistent device connection. Clients authenticate with their normal
+       * device connect token and fall back to their configured/public gateway.
        */
-      PRIVATE_DEVICE_GATEWAY_URL: z.string().optional(),
+      PRIVATE_DEVICE_GATEWAY_URL: z.string().url().optional(),
       /**
        * Which Agent Gateway wire protocol this deployment's gateway can serve.
        *

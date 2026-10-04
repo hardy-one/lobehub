@@ -217,6 +217,53 @@ describe('GatewayActionImpl (multiplexed gateway transport)', () => {
   });
 
   describe('connectToGateway', () => {
+    it('falls back from a private mux to the public mux with the same operation', async () => {
+      const privateUrl = 'wss://private-gateway.test.com';
+      Reflect.set(globalThis, 'window', {
+        global_serverConfigStore: {
+          getState: () => ({
+            featureFlags: { enableGatewayMux: true },
+            serverConfig: {
+              agentGatewayProtocol: 2,
+              agentGatewayUrl: GATEWAY_URL,
+              privateAgentGatewayUrl: privateUrl,
+            },
+          }),
+        },
+      });
+      const { action, muxClient, state } = createTestAction();
+      const publicClient = createMockOperationClient();
+      action.createMuxClient = vi
+        .fn()
+        .mockReturnValueOnce(muxClient)
+        .mockReturnValueOnce(publicClient);
+      const onSessionComplete = vi.fn();
+      action.connectToGateway({
+        gatewayUrl: privateUrl,
+        operationId: 'op-1',
+        token: 'tok',
+        topicId: 'topic-1',
+        executor: true,
+        onSessionComplete,
+      });
+      muxClient.emit('status_changed', 'reconnecting');
+      await Promise.resolve();
+      expect(action.resolveGatewayMux).toHaveBeenLastCalledWith({
+        agentShareId: undefined,
+        gatewayUrl: GATEWAY_URL,
+      });
+      expect(action.createMuxClient).toHaveBeenLastCalledWith(expect.anything(), 'op-1', {
+        executor: true,
+        resumeOnConnect: true,
+      });
+      expect(publicClient.connect).toHaveBeenCalledOnce();
+      muxClient.emit('disconnected');
+      muxClient.emit('auth_failed', 'late failure');
+      expect(state.gatewayConnections['op-1'].client).toBe(publicClient);
+      expect(onSessionComplete).not.toHaveBeenCalled();
+      action.disconnectFromGateway('op-1');
+    });
+
     it('adapts the operation on the identity mux instead of dialing a v1 socket', () => {
       const { action, mux, muxClient, state, v1Client } = createTestAction();
 

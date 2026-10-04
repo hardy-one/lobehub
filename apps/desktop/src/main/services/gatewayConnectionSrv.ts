@@ -151,6 +151,7 @@ interface WorkspaceDeviceChecker {
  */
 export default class GatewayConnectionService extends ServiceModule {
   private client: GatewayClient | null = null;
+  private advertisedGatewayUrl?: string;
   private status: GatewayConnectionStatus = 'disconnected';
   private deviceId: string | null = null;
   private powerSaveBlockerId: number | null = null;
@@ -196,6 +197,10 @@ export default class GatewayConnectionService extends ServiceModule {
 
   // ─── Configuration ───
 
+  /** Set the deployment-advertised private endpoint for device connections. */
+  setAdvertisedGatewayUrl(url?: string) {
+    this.advertisedGatewayUrl = url;
+  }
   /**
    * Set token provider function (to decouple from RemoteServerConfigCtr)
    */
@@ -464,6 +469,7 @@ export default class GatewayConnectionService extends ServiceModule {
       channel: isDev ? 'desktop-dev' : 'desktop',
       connectionId: this.getConnectionId(),
       deviceId: this.getDeviceId(),
+      fallbackGatewayUrl: this.getFallbackGatewayUrl(),
       gatewayUrl,
       logger,
       token,
@@ -642,6 +648,7 @@ export default class GatewayConnectionService extends ServiceModule {
       // predecessor, never the personal socket.
       connectionId: this.getConnectionId(),
       deviceId: identity.deviceId,
+      fallbackGatewayUrl: this.getFallbackGatewayUrl(),
       gatewayUrl: this.getGatewayUrl(),
       logger,
       token,
@@ -1191,13 +1198,32 @@ export default class GatewayConnectionService extends ServiceModule {
   // ─── Gateway URL ───
 
   private getGatewayUrl(): string {
-    // Env override wins (dev: point at a local `wrangler dev` gateway), then the
-    // user-configured store value, then the production default.
+    // Explicit environment/store settings win over the server-advertised private
+    // route. Otherwise use the private route for this session, then the public default.
     return (
       getDesktopEnv().DEVICE_GATEWAY_URL ||
+      this.getConfiguredGatewayUrl() ||
+      this.advertisedGatewayUrl ||
       this.app.storeManager.get('gatewayUrl') ||
       DEFAULT_GATEWAY_URL
     );
+  }
+
+  private getFallbackGatewayUrl(): string | undefined {
+    if (
+      !this.advertisedGatewayUrl ||
+      getDesktopEnv().DEVICE_GATEWAY_URL ||
+      this.getConfiguredGatewayUrl()
+    )
+      return undefined;
+    return this.app.storeManager.get('gatewayUrl') || DEFAULT_GATEWAY_URL;
+  }
+
+  private getConfiguredGatewayUrl(): string | undefined {
+    const url = this.app.storeManager.get('gatewayUrl');
+    // The store default is a fallback, not a user override; let a discovered
+    // deployment-private URL take precedence over it.
+    return url && url !== DEFAULT_GATEWAY_URL ? url : undefined;
   }
 
   // ─── Token Helpers ───

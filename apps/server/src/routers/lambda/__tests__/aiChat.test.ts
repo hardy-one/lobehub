@@ -13,6 +13,11 @@ import { AiChatService } from '@/server/services/aiChat';
 
 import { aiChatRouter } from '../aiChat';
 
+const tracingServiceState = vi.hoisted(() => ({ enabled: true }));
+vi.mock('@/server/services/llmGenerationTracing', () => ({
+  getLLMGenerationTracingService: () => ({ isEnabled: () => tracingServiceState.enabled }),
+}));
+
 const flushAsyncTasks = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 vi.mock('@/database/models/agent');
@@ -1208,9 +1213,11 @@ describe('aiChatRouter', () => {
           model: 'gpt-4o',
           schema: input.schema,
           tools: undefined,
+          thinking: undefined,
         },
         {
           metadata: { trigger: 'chat' },
+          signal: undefined,
           tracing: { tracingId: expect.stringMatching(/^[0-9a-f-]{36}$/) },
         },
       );
@@ -1562,9 +1569,11 @@ describe('aiChatRouter', () => {
           model: 'gpt-4o',
           schema: undefined,
           tools: mockTools,
+          thinking: undefined,
         },
         {
           metadata: { trigger: 'chat' },
+          signal: undefined,
           tracing: { tracingId: expect.stringMatching(/^[0-9a-f-]{36}$/) },
         },
       );
@@ -1632,6 +1641,7 @@ describe('aiChatRouter', () => {
 
       expect(mockGenerateObject.mock.calls[0][1]).toEqual({
         metadata: { correlationId: 'cid-1', trigger: 'chat' },
+        signal: undefined,
         tracing: {
           promptVersion: 'v2.0',
           scenario: 'input_completion',
@@ -1681,6 +1691,29 @@ describe('aiChatRouter', () => {
 
       expect(result.tracingId).toBe(callerSuppliedId);
       expect(mockGenerateObject.mock.calls[0][1].tracing.tracingId).toBe(callerSuppliedId);
+    });
+    it('does not expose a tracing ID when tracing is disabled', async () => {
+      tracingServiceState.enabled = false;
+      try {
+        const { initModelRuntimeFromDB } = await import('@/server/modules/ModelRuntime');
+        const mockGenerateObject = vi.fn().mockResolvedValue({ completion: 'ok' });
+        vi.mocked(initModelRuntimeFromDB).mockResolvedValue({
+          generateObject: mockGenerateObject,
+        } as any);
+
+        const caller = aiChatRouter.createCaller({ ...mockCtx, serverDB: {} } as any);
+        const result = await caller.outputJSON({
+          messages: [],
+          model: 'gpt-4o-mini',
+          provider: 'openai',
+          tracing: { tracingId: '00000000-0000-4000-8000-000000000001' },
+        });
+
+        expect(result).not.toHaveProperty('tracingId');
+        expect(mockGenerateObject.mock.calls[0]![1].tracing).not.toHaveProperty('tracingId');
+      } finally {
+        tracingServiceState.enabled = true;
+      }
     });
   });
 });

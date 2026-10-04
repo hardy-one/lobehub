@@ -85,7 +85,7 @@ export class MessageTransformer {
       }
     });
 
-    const performanceFields = ['duration', 'latency', 'tps', 'ttft'] as const;
+    const performanceFields = ['duration', 'latency', 'speedOutputTokens', 'tps', 'ttft'] as const;
     performanceFields.forEach((field) => {
       if (metadata?.[field] !== undefined && (performance as any)[field] === undefined) {
         (performance as any)[field] = metadata[field];
@@ -117,6 +117,7 @@ export class MessageTransformer {
     let measuredOutputTokens = 0;
     let generationDuration = 0;
 
+    let hasSpeedOutputTokens = false;
     children.forEach((child) => {
       if (child.usage) {
         const tokenFields = [
@@ -169,7 +170,14 @@ export class MessageTransformer {
 
         // Pair tokens with their measured duration so incomplete calls cannot skew either sum.
         // Averaging per-call rates would give short bursts the same weight as long generations.
-        const outputTokens = child.usage?.totalOutputTokens;
+        const speedOutputTokens = child.performance.speedOutputTokens;
+        const hasValidSpeedOutputTokens =
+          typeof speedOutputTokens === 'number' &&
+          Number.isFinite(speedOutputTokens) &&
+          speedOutputTokens >= 0;
+        const outputTokens = hasValidSpeedOutputTokens
+          ? speedOutputTokens
+          : child.usage?.totalOutputTokens;
         const duration = child.performance.duration;
         if (
           typeof outputTokens === 'number' &&
@@ -181,6 +189,7 @@ export class MessageTransformer {
         ) {
           measuredOutputTokens += outputTokens;
           generationDuration += duration;
+          if (hasValidSpeedOutputTokens) hasSpeedOutputTokens = true;
         }
 
         // Sum duration
@@ -201,6 +210,9 @@ export class MessageTransformer {
       performance.tps = (measuredOutputTokens / generationDuration) * 1000;
     }
 
+    if (hasSpeedOutputTokens) {
+      performance.speedOutputTokens = measuredOutputTokens;
+    }
     return {
       performance: hasPerformanceData ? performance : undefined,
       usage: hasUsageData ? usage : undefined,

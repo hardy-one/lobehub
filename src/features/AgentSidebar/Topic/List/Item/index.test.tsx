@@ -364,7 +364,7 @@ describe('TopicItem active state', () => {
     expect(screen.queryByText('02:37')).not.toBeInTheDocument();
   });
 
-  it('shows hash placeholder for idle topics', () => {
+  it('shows a circle placeholder for idle topics', () => {
     useTopicNavigationMock.mockReturnValue({
       isInAgentSubRoute: false,
       isInTopicContextRoute: false,
@@ -374,7 +374,7 @@ describe('TopicItem active state', () => {
 
     render(<TopicItem id="tpc_test" title="Topic" />);
 
-    expect(screen.getByTestId('topic-item-icon')).toHaveAttribute('data-icon', 'Hash');
+    expect(screen.getByTestId('topic-item-icon')).toHaveAttribute('data-icon', 'Circle');
   });
 
   it('prefetches messages when a topic is an unread completion', async () => {

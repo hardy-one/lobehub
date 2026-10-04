@@ -342,6 +342,30 @@ describe('AI Agent Router Integration Tests', () => {
       expect(createdTopics[0].title).toBe('Hello, how are you?');
     });
 
+    it('persists context selections sent through execAgent', async () => {
+      const caller = aiAgentRouter.createCaller(createTestContext());
+      const contextSelections = [
+        { content: 'Selected source text', id: 'selection-1', source: 'text' as const },
+      ];
+      const pageSelections = [
+        { content: 'Selected page text', id: 'page-selection-1', pageId: 'page-1' },
+      ];
+
+      const result = await caller.execAgent({
+        agentId: testAgentId,
+        contextSelections,
+        pageSelections,
+        prompt: 'Explain this selection',
+      });
+      const persistedMessages = await serverDB
+        .select()
+        .from(messages)
+        .where(eq(messages.topicId, result.topicId));
+      const userMessage = persistedMessages.find((message) => message.role === 'user');
+
+      expect(userMessage?.metadata).toMatchObject({ contextSelections, pageSelections });
+    });
+
     it('should truncate long prompt for topic title', async () => {
       const caller = aiAgentRouter.createCaller(createTestContext());
       const longPrompt =

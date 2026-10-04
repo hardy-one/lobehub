@@ -14,11 +14,13 @@ import type {
   UserToolConfig,
 } from '@lobechat/types';
 import {
+  ContextSelectionSchema,
   CreateThreadWithMessageSchema,
   entityIdPattern,
   initialTopicMetadataSchema,
   isServerDefaultHeterogeneousRelayInvocation,
   LocalExecutionHeterogeneousAgentTypeSchema,
+  PageSelectionSchema,
   RequestTrigger,
   ThreadStatus,
   ThreadType,
@@ -1270,6 +1272,10 @@ const ExecAgentSchema = z
     existingMessageIds: z.array(z.string()).optional().default([]),
     /** File IDs of already-uploaded attachments to attach to the new user message */
     fileIds: z.array(z.string()).optional(),
+    /** Context selections attached to the new user message by the composer. */
+    contextSelections: z.array(ContextSelectionSchema).optional(),
+    /** Legacy page selections attached to the new user message. */
+    pageSelections: z.array(PageSelectionSchema).optional(),
     /** Parent message ID for regeneration/continue (skip user message creation, branch from this message) */
     parentMessageId: z.string().optional(),
     /** Existing gateway operation this fresh turn atomically supersedes. */
@@ -2647,6 +2653,8 @@ export const aiAgentRouter = router({
           },
         }),
         fileIds,
+        contextSelections: input.contextSelections,
+        pageSelections: input.pageSelections,
         mentionedAgents,
         parentMessageId,
         prompt,

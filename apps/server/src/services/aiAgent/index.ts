@@ -1233,6 +1233,8 @@ export class AiAgentService {
           botContext,
           botSender,
           clientIds,
+          contextSelections: params.contextSelections,
+          pageSelections: params.pageSelections,
           continuationAssistantId,
           conversationAgentId,
           createdThreadId,

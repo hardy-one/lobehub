@@ -368,8 +368,6 @@ export class MessagesEngine {
       }),
       // Discord context (channel/guild info)
       new DiscordContextProvider({ context: discordContext, enabled: !!discordContext }),
-      // Plan (high-level plan document)
-      new PlanInjector({ enabled: !!isPlanEnabled, plan: planTodo?.plan }),
       // Knowledge (agent files + knowledge bases)
       new KnowledgeInjector({
         canReadAttachment,
@@ -468,6 +466,9 @@ export class MessagesEngine {
         enabled: !!initialContext?.goalOverview,
         overview: initialContext?.goalOverview,
       }),
+      // Plan state changes frequently, so keep it beside other virtual-tail context
+      // rather than in the stable prefix built before the current user turn.
+      new PlanInjector({ enabled: !!isPlanEnabled, plan: planTodo?.plan }),
       // Onboarding synthetic state (fake getOnboardingState tool call pair to drive action loop)
       new OnboardingSyntheticStateInjector({
         enabled: !!onboardingContext?.phaseGuidance,

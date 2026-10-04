@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LobeToolManifest } from '../types';
-import { filterValidManifests, normalizeToolParameters, validateManifest } from '../utils';
+import {
+  filterValidManifests,
+  generateToolsFromManifest,
+  normalizeToolParameters,
+  validateManifest,
+} from '../utils';
 
 // Mock manifest schemas
 const mockBuiltinManifest: LobeToolManifest = {
@@ -114,6 +119,31 @@ describe('utils', () => {
 
     it('should pass through undefined', () => {
       expect(normalizeToolParameters(undefined)).toBeUndefined();
+    });
+  });
+
+  describe('generateToolsFromManifest', () => {
+    it('clones normalized parameters so per-run enrichment cannot mutate the manifest', () => {
+      const manifest: LobeToolManifest = {
+        ...mockBuiltinManifest,
+        api: [
+          {
+            description: 'Do something',
+            name: 'action',
+            parameters: {
+              type: 'object',
+              required: ['q'],
+              properties: { q: { description: 'Original description', type: 'string' } },
+            },
+          },
+        ],
+      };
+      const sourceParameters = manifest.api[0]!.parameters!;
+
+      const [tool] = generateToolsFromManifest(manifest);
+
+      expect(tool!.function.parameters).not.toBe(sourceParameters);
+      expect(tool!.function.parameters?.properties).not.toBe(sourceParameters.properties);
     });
   });
 });

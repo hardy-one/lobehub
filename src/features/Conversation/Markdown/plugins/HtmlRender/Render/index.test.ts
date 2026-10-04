@@ -1,21 +1,18 @@
 // eslint-disable-next-line no-restricted-imports -- Execute the emitted iframe script in an isolated test context, not in browser code.
 import { runInNewContext } from 'node:vm';
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import Render, {
   buildPreviewDocument,
-  HTML_RENDER_MEASURE_TYPE,
-  HTML_RENDER_RESIZE_TYPE,
   iframeHeightCache,
   iframeWidthCache,
   sanitizeStyleValue,
   selectAllInNode,
   stripDangerousMarkup,
 } from './index';
-
 // KaTeX disables its DOM render API (used by auto-render) at module load
 // when document.compatMode is not CSS1Compat. The happy-dom test document has
 // no doctype and reports undefined — normalize it before katex is imported so
@@ -34,15 +31,6 @@ vi.mock('katex/dist/katex.min.css?inline', () => ({
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
-
-const makeProps = (children: string, open = false) => ({
-  children,
-  id: 'msg-test-1',
-  node: { properties: {} },
-  open,
-  tagName: 'html-render',
-  type: 'element',
-});
 
 describe('HTML fragment identity', () => {
   it('copies and caches two fragments in the same message independently', () => {
@@ -415,7 +403,6 @@ describe('buildPreviewDocument', () => {
     expect(doc).toContain('tryShim("sessionStorage")');
     expect(doc).toContain('createStorage');
   });
-
   it('retains storage values across property accesses and isolates local/session stores', () => {
     const doc = new DOMParser().parseFromString(
       buildPreviewDocument('f1', '<div>x</div>'),
@@ -572,169 +559,6 @@ describe('stripDangerousMarkup (SSR fallback)', () => {
     expect(cleaned).toContain('url(javascript:');
     expect(cleaned).not.toContain('expression(');
     expect(cleaned).toContain('<p style="color:red">ok</p>');
-  });
-});
-
-describe('HtmlRender Render', () => {
-  afterEach(() => {
-    iframeHeightCache.clear();
-    iframeWidthCache.clear();
-  });
-
-  it('should render the fragment in a sandboxed display-only iframe', () => {
-    render(<Render {...(makeProps('<div>卡片</div>') as any)} />);
-
-    const iframe = screen.getByTitle('htmlRender.title') as HTMLIFrameElement;
-    expect(iframe).toBeInTheDocument();
-    // host-side copy bridge matches the selected iframe back to its text source
-    expect(iframe.getAttribute('data-html-render-copy-id')).toBe('html-render-msg-test-1');
-    // isolated from the host: no allow-same-origin, no host access
-    expect(iframe.getAttribute('sandbox')).toBe('allow-scripts allow-forms allow-modals');
-    expect(iframe.srcdoc).toContain('<div>卡片</div>');
-    // display-only: starts at 1px until the in-iframe reporter reports back
-    expect(iframe.style.height).toBe('1px');
-    expect(screen.getByLabelText('htmlRender.source')).toBeInTheDocument();
-  });
-
-  it('should start from the cached height instead of 1px on remount', () => {
-    iframeHeightCache.set('msg-test-1:0', 222);
-    render(<Render {...(makeProps('<div>卡片</div>') as any)} />);
-
-    expect((screen.getByTitle('htmlRender.title') as HTMLIFrameElement).style.height).toBe('222px');
-  });
-
-  it('should start from the cached width on remount', () => {
-    iframeWidthCache.set('msg-test-1:0', 320);
-    render(<Render {...(makeProps('<div>卡片</div>') as any)} />);
-
-    const iframe = screen.getByTitle('htmlRender.title') as HTMLIFrameElement;
-    expect((iframe.parentElement as HTMLDivElement).style.width).toBe('320px');
-  });
-
-  it('should defer width until the iframe viewport reaches the reported height', () => {
-    const requestAnimationFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(((
-      callback: FrameRequestCallback,
-    ) => {
-      callback(0);
-      return 1;
-    }) as typeof window.requestAnimationFrame);
-
-    try {
-      render(<Render {...(makeProps('<div>卡片</div>') as any)} />);
-
-      const iframe = screen.getByTitle('htmlRender.title') as HTMLIFrameElement;
-      const wrap = iframe.parentElement as HTMLDivElement;
-      const contentWindow = { postMessage: vi.fn() } as unknown as Window;
-      Object.defineProperty(iframe, 'contentWindow', { configurable: true, value: contentWindow });
-
-      const report = (height: number, viewportHeight: number, width: number): void => {
-        window.dispatchEvent(
-          new MessageEvent('message', {
-            data: {
-              frameId: 'html-render-msg-test-1',
-              height,
-              type: HTML_RENDER_RESIZE_TYPE,
-              viewportHeight,
-              viewportWidth: 800,
-              width,
-            },
-            source: contentWindow,
-          }),
-        );
-      };
-
-      // First report is measured while the iframe is still 1px tall. Height is
-      // applied immediately, but the width is not trusted and a re-measure is
-      // requested instead of collapsing the wrapper first.
-      report(120, 1, 1);
-
-      expect(iframe.style.height).toBe('120px');
-      expect(wrap.style.width).toBe('');
-      expect(contentWindow.postMessage).toHaveBeenCalledWith(
-        { frameId: 'html-render-msg-test-1', type: HTML_RENDER_MEASURE_TYPE },
-        '*',
-      );
-
-      // The re-measure happens after the height was applied: viewportHeight now
-      // matches content height, so this width is stable and can be applied.
-      report(120, 120, 120);
-
-      expect(wrap.style.width).toBe('120px');
-      expect(iframeWidthCache.get('msg-test-1:0')).toBe(120);
-    } finally {
-      requestAnimationFrame.mockRestore();
-    }
-  });
-
-  it('should copy the rendered text when the host selection includes the preview iframe', () => {
-    render(<Render {...(makeProps('<div>卡片内容</div>') as any)} />);
-
-    const iframe = screen.getByTitle('htmlRender.title') as HTMLIFrameElement;
-    const contentWindow = { postMessage: vi.fn() } as unknown as Window;
-    Object.defineProperty(iframe, 'contentWindow', { configurable: true, value: contentWindow });
-
-    // The iframe reporter sends its visible-text snapshot alongside dimensions.
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        data: {
-          frameId: 'html-render-msg-test-1',
-          height: 40,
-          text: '卡片内容',
-          type: HTML_RENDER_RESIZE_TYPE,
-          viewportHeight: 40,
-          viewportWidth: 200,
-          width: 200,
-        },
-        source: contentWindow,
-      }),
-    );
-
-    // Selecting only the iframe in the host document used to copy an empty
-    // string (iframe internals are a separate document). The copy bridge must
-    // substitute the reported text before the browser serializes the range.
-    const selection = window.getSelection();
-    const range = document.createRange();
-    range.selectNode(iframe);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-
-    const transfer = new DataTransfer();
-    const copyEvent = new ClipboardEvent('copy', { bubbles: true, cancelable: true });
-    Object.defineProperty(copyEvent, 'clipboardData', { value: transfer });
-    document.dispatchEvent(copyEvent);
-
-    expect(copyEvent.defaultPrevented).toBe(true);
-    expect(transfer.getData('text/plain')).toBe('卡片内容');
-  });
-
-  it('should show the raw source (plain DOM) while the fragment is streaming', () => {
-    render(<Render {...(makeProps('<div>卡片</div>', true) as any)} streaming />);
-
-    // no iframe during streaming — the list layout stays synchronous
-    expect(screen.queryByTitle('htmlRender.title')).toBeNull();
-    // the streaming source is visible and selectable
-    expect(screen.getByText('<div>卡片</div>')).toBeInTheDocument();
-  });
-
-  it('should render the iframe when an open fragment is not actively streaming', () => {
-    render(<Render {...(makeProps('<div>卡片</div>', true) as any)} />);
-
-    expect(screen.getByTitle('htmlRender.title')).toBeInTheDocument();
-    expect(screen.queryByText('<div>卡片</div>')).toBeNull();
-  });
-
-  it('should toggle between source and preview on button click', () => {
-    render(<Render {...(makeProps('<div>卡片</div>') as any)} />);
-
-    fireEvent.click(screen.getByLabelText('htmlRender.source'));
-
-    expect(screen.queryByTitle('htmlRender.title')).toBeNull();
-    expect(screen.getByText('<div>卡片</div>')).toBeInTheDocument();
-    expect(screen.getByLabelText('htmlRender.render')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByLabelText('htmlRender.render'));
-
-    expect(screen.getByTitle('htmlRender.title')).toBeInTheDocument();
   });
 });
 

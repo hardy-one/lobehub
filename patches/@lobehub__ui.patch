@@ -106,3 +106,6 @@ diff --git a/es/hooks/useMarkdown/useMarkdownContent.mjs b/es/hooks/useMarkdown/
  		addToCache(cacheKey, processedContent);
  		return processedContent;
  	}, [
+@@ -33,1 +114,1 @@
+-export { useMarkdownContent };
++export { findSafeBoundary, useMarkdownContent };

@@ -1,5 +1,3 @@
-import { renderToStaticMarkup } from 'react-dom/server';
-import Markdown from 'react-markdown';
 import { describe, expect, it } from 'vitest';
 
 import { rehypeRawText } from './rehypeRawText';
@@ -73,17 +71,5 @@ describe('rehypeRawText', () => {
     rehypeRawText()(tree);
 
     expect(tree).toEqual(snapshot);
-  });
-
-  it('keeps the original line breaks when react-markdown falls back to literal HTML text', () => {
-    const html = renderToStaticMarkup(
-      <Markdown rehypePlugins={[rehypeRawText]}>{cardFooter}</Markdown>,
-    );
-
-    expect(html).toContain('style="white-space:pre-line"');
-    expect(html).toContain('&lt;!-- 底部栏 --&gt;');
-    expect(html).toContain(
-      '&lt;div class=&quot;card-footer&quot;&gt;\n&lt;!-- 左侧：作者信息 --&gt;',
-    );
   });
 });

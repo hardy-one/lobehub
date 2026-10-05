@@ -10,7 +10,7 @@ import { Skeleton, Tag, Text } from '@lobehub/ui/base-ui';
 import { createStaticStyles, cssVar, useTheme } from 'antd-style';
 import dayjs from 'dayjs';
 import isEqual from 'fast-deep-equal';
-import { Circle, MessageSquareDashed } from 'lucide-react';
+import { Hash, MessageSquareDashed } from 'lucide-react';
 import type { CSSProperties, DragEvent, RefObject } from 'react';
 import { memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -558,7 +558,7 @@ const TopicItemRow = memo<TopicItemRowProps>(
       ) : (
         <Icon
           color={cssVar.colorTextQuaternary}
-          icon={Circle}
+          icon={Hash}
           size={'small'}
           style={{ opacity: 0.7 }}
         />

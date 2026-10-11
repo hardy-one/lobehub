@@ -10,6 +10,7 @@ import { OFFICIAL_AGENT_GATEWAY_URL, OFFICIAL_SERVER_URL } from '../constants/ur
 import { log } from '../utils/logger';
 
 export interface StoredSettings {
+  agentGatewayFallbackUrl?: string;
   agentGatewayUrl?: string;
   gatewayUrl?: string;
   serverUrl?: string;
@@ -49,17 +50,29 @@ export function resolveAgentGatewayUrl(): string | undefined {
   return envUrl || settingsUrl || OFFICIAL_AGENT_GATEWAY_URL;
 }
 
+export function resolveAgentGatewayFallbackUrl(): string | undefined {
+  const envFallback = normalizeUrl(process.env.AGENT_GATEWAY_FALLBACK_URL);
+  if (process.env.AGENT_GATEWAY_URL) return envFallback;
+  return envFallback || normalizeUrl(loadSettings()?.agentGatewayFallbackUrl);
+}
+
 export function saveSettings(settings: StoredSettings): void {
   const agentGatewayUrl = normalizeUrl(settings.agentGatewayUrl);
   const gatewayUrl = normalizeUrl(settings.gatewayUrl);
   const serverUrl = normalizeUrl(settings.serverUrl);
   const normalized: StoredSettings = {
     agentGatewayUrl: agentGatewayUrl === OFFICIAL_AGENT_GATEWAY_URL ? undefined : agentGatewayUrl,
+    agentGatewayFallbackUrl: normalizeUrl(settings.agentGatewayFallbackUrl),
     gatewayUrl,
     serverUrl: serverUrl === OFFICIAL_SERVER_URL ? undefined : serverUrl,
   };
 
-  if (!normalized.serverUrl && !normalized.gatewayUrl && !normalized.agentGatewayUrl) {
+  if (
+    !normalized.serverUrl &&
+    !normalized.gatewayUrl &&
+    !normalized.agentGatewayUrl &&
+    !normalized.agentGatewayFallbackUrl
+  ) {
     try {
       fs.unlinkSync(SETTINGS_FILE);
     } catch (error) {
@@ -213,11 +226,18 @@ export function loadSettings(): StoredSettings | null {
     const serverUrl = normalizeUrl(parsed.serverUrl);
     const normalized: StoredSettings = {
       agentGatewayUrl: agentGatewayUrl === OFFICIAL_AGENT_GATEWAY_URL ? undefined : agentGatewayUrl,
+      agentGatewayFallbackUrl: normalizeUrl(parsed.agentGatewayFallbackUrl),
       gatewayUrl,
       serverUrl: serverUrl === OFFICIAL_SERVER_URL ? undefined : serverUrl,
     };
 
-    if (!normalized.serverUrl && !normalized.gatewayUrl && !normalized.agentGatewayUrl) return null;
+    if (
+      !normalized.serverUrl &&
+      !normalized.gatewayUrl &&
+      !normalized.agentGatewayUrl &&
+      !normalized.agentGatewayFallbackUrl
+    )
+      return null;
 
     return normalized;
   } catch {

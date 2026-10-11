@@ -26,7 +26,9 @@ import {
 } from '@lobechat/heterogeneous-agents/runtimeProbeCache';
 import type { Command } from 'commander';
 
+import { chooseAgentGatewayUrl } from '../api/chooseAgentGatewayUrl';
 import { createLambdaClient } from '../api/client';
+import { fetchAdvertisedRuntimeEndpoints } from '../api/runtimeEndpoints';
 import { scheduleProactiveRefresh } from '../auth/proactiveRefresh';
 import { resolveToken } from '../auth/resolveToken';
 import { CLI_API_KEY_ENV } from '../constants/auth';
@@ -74,6 +76,7 @@ import {
   loadWorkspaceEnrollments,
   normalizeUrl,
   removeWorkspaceEnrollment,
+  resolveAgentGatewayUrl,
   resolveDeviceMetricsBacklogPath,
   saveSettings,
 } from '../settings';
@@ -164,6 +167,7 @@ export function registerConnectCommand(program: Command) {
         log.info(`  Started at       : ${status.startedAt}`);
         log.info(`  Connection       : ${status.connectionStatus}`);
         log.info(`  Gateway          : ${status.gatewayUrl}`);
+        log.info(`  Server           : ${status.serverUrl ?? 'unknown'}`);
         const uptime = formatUptime(new Date(status.startedAt));
         log.info(`  Uptime           : ${uptime}`);
       }
@@ -293,6 +297,7 @@ export function registerConnectCommand(program: Command) {
       if (status) {
         log.info(`  Connection       : ${status.connectionStatus}`);
         log.info(`  Gateway          : ${status.gatewayUrl}`);
+        log.info(`  Server           : ${status.serverUrl ?? 'unknown'}`);
         const uptime = formatUptime(new Date(status.startedAt));
         log.info(`  Uptime           : ${uptime}`);
       }
@@ -357,7 +362,41 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   const unavailableExitCode = options.workspace ? CONNECT_RETRYABLE_EXIT_CODE : undefined;
   let auth = await resolveToken({ ...options, unavailableExitCode });
   const settings = loadSettings();
-  const gatewayUrl = normalizeUrl(options.gateway) || settings?.gatewayUrl;
+  let settingsToPersist = settings;
+  // Prefer advertised WebSocket endpoints; keep the configured addresses for fallback.
+  if (!process.env.LOBEHUB_SERVER) {
+    const advertised = await fetchAdvertisedRuntimeEndpoints();
+
+    // HTTP writes keep their configured origin; a failed response is not safe to replay.
+
+    // Unlike the app origin, this one is persisted: `lh agent` is a separate
+    // invocation that cannot see this process' memory, and `settings.agentGatewayUrl`
+    // is the field `resolveAgentGatewayUrl()` already reads. Each connect overwrites
+    // it, so a deployment that moves the gateway is picked up rather than sticking.
+    const configuredAgentGateway =
+      normalizeUrl(settings?.agentGatewayFallbackUrl) || resolveAgentGatewayUrl();
+    const chosenAgentGateway = await chooseAgentGatewayUrl({
+      advertised: advertised.agentGatewayUrls,
+      configuredUrl: configuredAgentGateway,
+    });
+    if (chosenAgentGateway.url !== configuredAgentGateway) {
+      log.info(
+        `Using the agent gateway this server provides for devices: ${chosenAgentGateway.url}`,
+      );
+    }
+    if (!process.env.AGENT_GATEWAY_URL) {
+      const selectedUrl = chosenAgentGateway.url;
+      const fallbackUrl =
+        selectedUrl !== configuredAgentGateway ? configuredAgentGateway : undefined;
+      settingsToPersist = {
+        ...settings,
+        agentGatewayUrl: selectedUrl,
+        agentGatewayFallbackUrl: fallbackUrl,
+      };
+    }
+  }
+
+  const gatewayUrl = normalizeUrl(options.gateway) || settingsToPersist?.gatewayUrl;
 
   if (!gatewayUrl && settings?.serverUrl) {
     log.error(
@@ -368,8 +407,9 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   }
 
   if (options.gateway && gatewayUrl) {
-    saveSettings({ ...settings, gatewayUrl });
+    settingsToPersist = { ...settingsToPersist, gatewayUrl };
   }
+  if (settingsToPersist !== settings && settingsToPersist) saveSettings(settingsToPersist);
 
   const resolvedGatewayUrl = gatewayUrl || OFFICIAL_GATEWAY_URL;
 
@@ -471,6 +511,9 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
       deviceId: client.currentDeviceId,
       gatewayUrl: resolvedGatewayUrl,
       lastRequestAt,
+      // Runtime state, rewritten on every start: which server address this
+      // session actually settled on (the deployment's own, or the configured one).
+      serverUrl: auth.serverUrl,
       pid: process.pid,
       startedAt: startedAt.toISOString(),
     });

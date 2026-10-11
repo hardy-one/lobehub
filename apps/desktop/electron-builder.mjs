@@ -89,6 +89,7 @@ console.info(`🏗️ Building for architecture: ${arch}`);
 const isStable = !channel || channel === 'stable';
 const isNightly = channel === 'nightly';
 const isCanary = channel === 'canary';
+const isHardy = ['hardy', 'Hardy', 'HARDY'].includes(channel);
 
 // HARDY 发布在 `hardy-one/lobe-release` 仓库 CI（`.github/workflows/build-all.yml`，Windows + Docker）完成，
 // 本仓库 HARDY 路径仅供本地构建/调试
@@ -101,6 +102,10 @@ const stripChannelSuffix = (url) => url.replace(/\/(stable|nightly|canary|beta)\
 // - 所有渠道 + UPDATE_SERVER_URL: 使用 generic (S3)
 // - 无 UPDATE_SERVER_URL: 回退到 GitHub (本地开发)
 const getPublishConfig = () => {
+  if (isHardy) {
+    console.info('📦 Hardy channel: Using hardy-one/lobe-release GitHub provider');
+    return [{ owner: 'hardy-one', provider: 'github', repo: 'lobe-release' }];
+  }
   const channelPath = isStable ? 'stable' : isNightly ? 'nightly' : channel || 'stable';
 
   if (updateServerUrl) {
@@ -135,6 +140,7 @@ if (!hasAppleCertificate) {
 
 // 根据版本类型确定协议 scheme
 const getProtocolScheme = () => {
+  if (isHardy) return 'lobehub-hardy';
   if (isCanary) return 'lobehub-canary';
   if (isNightly) return 'lobehub-nightly';
   return 'lobehub';
@@ -230,8 +236,12 @@ const config = {
     const corePlatform =
       context.electronPlatformName === 'mas' ? 'darwin' : context.electronPlatformName;
     execSync('node scripts/assembleCore.mjs', { stdio: 'inherit', cwd: __dirname });
+    // Hardy ships full installers from GitHub Releases and does not participate in Core OTA.
+    // Keep the embedded manifest schema-valid; CoreUpdateManager disables external Core OTA
+    // for Hardy at runtime.
+    const coreChannel = isHardy ? 'stable' : channel || 'stable';
     execSync(
-      `node scripts/buildCoreManifest.mjs --core=core-dist --platform=${corePlatform} --channel=${channel || 'stable'} --version=${packageJSON.version} --seq=${process.env.CORE_SEQ || 0} --shell-abi=${shellAbi}`,
+      `node scripts/buildCoreManifest.mjs --core=core-dist --platform=${corePlatform} --channel=${coreChannel} --version=${packageJSON.version} --seq=${process.env.CORE_SEQ || 0} --shell-abi=${shellAbi}`,
       { stdio: 'inherit', cwd: __dirname },
     );
     await packBuiltinCore(__dirname);

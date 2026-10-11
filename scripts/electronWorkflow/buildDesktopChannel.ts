@@ -95,7 +95,7 @@ const main = async () => {
 
   if (!validateChannel(channel)) {
     console.error(
-      'Missing or invalid channel. Usage: npm run desktop:build-channel -- <stable|beta|nightly|canary> [version] [--keep-changes]',
+      'Missing or invalid channel. Usage: npm run desktop:build-channel -- <stable|beta|nightly|canary|HARDY> [version] [--keep-changes]',
     );
     process.exit(1);
   }

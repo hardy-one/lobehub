@@ -66,10 +66,11 @@ vi.mock('@/modules/updater/configs', () => ({
   BUILD_CHANNEL: 'stable',
   UPDATE_CHANNEL: 'stable',
   UPDATE_SERVER_URL: 'https://updates.test/stable',
-  coerceStoredUpdateChannel: (channel?: string) => (channel === 'canary' ? 'canary' : 'stable'),
+  coerceStoredUpdateChannel: (channel?: string) =>
+    channel === 'canary' ? 'canary' : channel === 'HARDY' ? 'HARDY' : 'stable',
 }));
 
-const makeApp = () => ({
+const makeApp = (channel = 'stable') => ({
   browserManager: {
     broadcastToAllWindows: vi.fn(),
     browsers: new Map([
@@ -100,7 +101,7 @@ const makeApp = () => ({
       this.activeRenderer = source;
     }),
   },
-  storeManager: { get: vi.fn(() => 'stable') },
+  storeManager: { get: vi.fn(() => channel) },
   updaterManager: { captureRestoreRoute: vi.fn() },
 });
 
@@ -240,6 +241,14 @@ const mainChanged = (version: string, seq: number) =>
   buildManifest(version, seq, { ...BASE_FILES, 'dist/main/index.js': `main-${version}` });
 
 describe('CoreUpdateManager initialize', () => {
+  it('disables Core OTA for Hardy full-install updates on every platform', async () => {
+    const { manager } = await loadManager(makeApp('HARDY'));
+    await manager.checkForUpdates({ manual: true });
+    expect(manager.enabled).toBe(false);
+    expect(manager.disabledReasons).toContain('hardy-full-updates-only');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it('disables manual and scheduled OTA on macOS Stable', async () => {
     Object.defineProperty(process, 'platform', { value: 'darwin' });
     const { manager } = await loadManager();

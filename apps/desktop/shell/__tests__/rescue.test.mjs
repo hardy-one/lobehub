@@ -147,6 +147,7 @@ describe('rescue config', () => {
   })();
 
   it.each([
+    ['HARDY', undefined, 'HARDY'],
     ['canary', undefined, 'canary'],
     ['stable', 'canary', 'stable'],
     ['nightly', undefined, 'stable'],
@@ -189,6 +190,17 @@ describe('rescue config', () => {
     expect(updater.setFeedURL).toHaveBeenCalledWith({
       provider: 'generic',
       url: 'https://f/canary',
+    });
+  });
+
+  it('configures Hardy with the private GitHub Releases provider', () => {
+    const updater = fakeUpdater();
+    configureUpdater(updater, { channel: 'HARDY', logger: {} });
+    expect(updater.channel).toBe('HARDY');
+    expect(updater.setFeedURL).toHaveBeenCalledWith({
+      owner: 'hardy-one',
+      provider: 'github',
+      repo: 'lobe-release',
     });
   });
 });

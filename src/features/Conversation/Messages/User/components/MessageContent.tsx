@@ -2,14 +2,12 @@ import { Flexbox } from '@lobehub/ui';
 import { memo, useMemo } from 'react';
 
 import CollapsibleContent from '@/components/CollapsibleContent';
-import MarkdownMessage from '@/features/Conversation/Markdown';
 import { StartTopicConversationContext } from '@/features/LocalFile';
 import { cleanSpeakerTag } from '@/store/chat/utils/cleanSpeakerTag';
 import { splitReferencedMessage } from '@/store/chat/utils/parseReferencedMessage';
 import { type UIChatMessage } from '@/types/index';
 
 import { useStartTopicConversation } from '../../../hooks/useStartTopicConversation';
-import { useMarkdown } from '../useMarkdown';
 import AudioFileListViewer from './AudioFileListViewer';
 import FileListViewer from './FileListViewer';
 import ImageFileListViewer from './ImageFileListViewer';
@@ -20,7 +18,6 @@ import VideoFileListViewer from './VideoFileListViewer';
 
 const UserMessageContent = memo<UIChatMessage>(
   ({ id, content, editorData, imageList, videoList, audioList, fileList, metadata }) => {
-    const markdownProps = useMarkdown(id);
     const startTopicConversation = useStartTopicConversation();
     const selections = metadata?.contextSelections?.length
       ? metadata.contextSelections
@@ -44,7 +41,9 @@ const UserMessageContent = memo<UIChatMessage>(
         <RichTextMessage editorState={editorData} />
       </StartTopicConversationContext>
     ) : (
-      displayContent && <MarkdownMessage {...markdownProps}>{displayContent}</MarkdownMessage>
+      displayContent && (
+        <div style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{displayContent}</div>
+      )
     );
 
     return (

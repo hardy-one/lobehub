@@ -53,7 +53,7 @@ import InputHistoryPopup, { getHistoryPreviewText } from './InputHistoryPopup';
 import { INSERT_LOCAL_FILE_TAG_COMMAND } from './LocalFileTag';
 import { mentionPlainClassName } from './mentionStyle';
 import Placeholder, { type PlaceholderVariant } from './Placeholder';
-import { CHAT_INPUT_EMBED_PLUGINS, createChatInputRichPlugins } from './plugins';
+import { createChatInputRichPlugins } from './plugins';
 import { INSERT_REFER_TOPIC_COMMAND } from './ReferTopic';
 import { useLocalFileTag } from './useLocalFileTag';
 import { useMentionCategories } from './useMentionCategories';
@@ -66,6 +66,28 @@ const className = cx(
   `,
   mentionPlainClassName,
 );
+
+// `markdownOption={false}` intentionally disables Markdown shortcuts, but the
+// editor must still be able to render formats applied through the toolbar.
+// The editor package uses the same option for both concerns, so provide the
+// rich-text theme explicitly for the plain-Markdown mode.
+const plainMarkdownRichTextTheme = {
+  textBold: cx(css`
+    font-weight: bold;
+  `),
+  textItalic: cx(css`
+    font-style: italic;
+  `),
+  textStrikethrough: cx(css`
+    text-decoration: line-through;
+  `),
+  textUnderline: cx(css`
+    text-decoration: underline;
+  `),
+  textUnderlineStrikethrough: cx(css`
+    text-decoration: underline line-through;
+  `),
+};
 
 // Single-line dimmed preview of the highlighted history entry, shown through the
 // editor's placeholder slot while the input is empty (history popup open).
@@ -508,14 +530,18 @@ const InputEditor = memo<{
   );
 
   const richRenderProps = useMemo(() => {
-    const basePlugins = !enableRichRender
-      ? CHAT_INPUT_EMBED_PLUGINS
-      : createChatInputRichPlugins({ linkPlugin: false });
+    const basePlugins = createChatInputRichPlugins({ linkPlugin: false });
 
     const plugins = autoCompletePlugin ? [...basePlugins, autoCompletePlugin] : basePlugins;
 
     return !enableRichRender
-      ? { enablePasteMarkdown: false, markdownOption: false, plugins }
+      ? {
+          enablePasteMarkdown: false,
+          markdownOption: false,
+          markdownShortcuts: false,
+          plugins,
+          theme: plainMarkdownRichTextTheme,
+        }
       : { plugins };
   }, [enableRichRender, autoCompletePlugin]);
 
@@ -633,6 +659,8 @@ const InputEditor = memo<{
             return true;
           }
           if (e.shiftKey || isComposingRef.current) return;
+          // Mobile keyboards need Enter to insert a newline; the send button is the explicit submit control.
+          if (mobile) return;
           // when user like alt + enter to add ai message
           if (e.altKey && hotkey === combineKeys([KeyEnum.Alt, KeyEnum.Enter])) return true;
           // In fullscreen mode, Enter inserts newline; only Cmd/Ctrl+Enter sends

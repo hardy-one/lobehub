@@ -3,16 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import MessageContent from './MessageContent';
 
-vi.mock('@/features/Conversation/Markdown', () => ({
-  default: ({ children }: any) => <div data-testid="markdown-message">{children}</div>,
-}));
-
 vi.mock('../../../hooks/useStartTopicConversation', () => ({
   useStartTopicConversation: () => undefined,
-}));
-
-vi.mock('../useMarkdown', () => ({
-  useMarkdown: () => ({}),
 }));
 
 vi.mock('./RichTextMessage', () => ({
@@ -55,7 +47,7 @@ describe('User MessageContent', () => {
     const quote = screen.getByTestId('referenced-message');
     expect(quote).toHaveTextContent('Bob');
     expect(quote).toHaveTextContent('@Lobo 帮 @Shadow Arvin 查一下明天的天气');
-    expect(screen.getByTestId('markdown-message')).toHaveTextContent('你怎么看');
+    expect(screen.getByText('你怎么看')).toBeInTheDocument();
     expect(document.body.textContent).not.toContain('<referenced_message');
     expect(document.body.textContent).not.toContain('<speaker');
   });
@@ -76,10 +68,10 @@ describe('User MessageContent', () => {
     expect(screen.queryByTestId('markdown-message')).not.toBeInTheDocument();
   });
 
-  it('should render markdown when editorData is missing', () => {
+  it('should render missing editorData as plain text instead of Markdown', () => {
     render(
       <MessageContent
-        content={'markdown-content'}
+        content={'# title\n\n**bold**'}
         createdAt={Date.now()}
         id={'msg-2'}
         role={'user'}
@@ -87,7 +79,9 @@ describe('User MessageContent', () => {
       />,
     );
 
-    expect(screen.getByTestId('markdown-message')).toBeInTheDocument();
+    const content = screen.getByText('# title\n\n**bold**');
+    expect(content).toBeInTheDocument();
+    expect(content).toHaveStyle({ whiteSpace: 'pre-wrap' });
     expect(screen.queryByTestId('rich-message')).not.toBeInTheDocument();
   });
 

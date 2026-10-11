@@ -1,0 +1,142 @@
+diff --git a/es/plugins/common/plugin/index.d.ts b/es/plugins/common/plugin/index.d.ts
+--- a/es/plugins/common/plugin/index.d.ts
++++ b/es/plugins/common/plugin/index.d.ts
+@@ -4,6 +4,8 @@
+ //#region src/plugins/common/plugin/index.d.ts
+ interface CommonPluginOptions extends PasteHandlerConfig {
+   enableHotkey?: boolean;
++  /** Enable typed Markdown shortcuts without disabling rich-text formatting. */
++  markdownShortcuts?: boolean;
+   /**
+    * Enable/disable markdown shortcuts
+    * @default true - most formats enabled, but subscript/superscript are disabled by default
+@@ -40,4 +42,4 @@
+ }
+ declare const CommonPlugin: IEditorPluginConstructor<CommonPluginOptions>;
+ //#endregion
+-export { CommonPlugin, CommonPluginOptions };
+\ No newline at end of file
++export { CommonPlugin, CommonPluginOptions };
+diff --git a/es/plugins/common/plugin/index.js b/es/plugins/common/plugin/index.js
+--- a/es/plugins/common/plugin/index.js
++++ b/es/plugins/common/plugin/index.js
+@@ -34,6 +34,7 @@
+ 		super();
+ 		this.kernel = kernel;
+ 		this.config = config;
++		const markdownShortcuts = config.markdownShortcuts ?? config.markdownOption !== false;
+ 		this.identityService = new NodeIdentityService();
+ 		this.formats = {
+ 			bold: true,
+@@ -54,15 +55,8 @@
+ 			this.formats.strikethrough = markdownOption.strikethrough ?? true;
+ 			this.formats.subscript = markdownOption.subscript ?? false;
+ 			this.formats.superscript = markdownOption.superscript ?? false;
+-		} else if (markdownOption === false) {
+-			this.formats.bold = false;
+-			this.formats.header = false;
+-			this.formats.italic = false;
+-			this.formats.quote = false;
+-			this.formats.strikethrough = false;
+-			this.formats.subscript = false;
+-			this.formats.superscript = false;
+ 		}
++		this.markdownShortcuts = markdownShortcuts;
+ 		kernel.registerDataSource(new JSONDataSource("json"));
+ 		kernel.registerDataSource(new TextDataSource("text"));
+ 		kernel.registerNodes([
+@@ -90,7 +84,7 @@
+ 		if (!markdownService) return;
+ 		const breakMark = (this.config?.markdownOption ?? true) !== false ? "\n\n" : "\n";
+ 		const formats = this.formats;
+-		if (formats.quote) markdownService.registerMarkdownShortCut({
++		if (this.markdownShortcuts && formats.quote) markdownService.registerMarkdownShortCut({
+ 			regExp: /^(>|》)\s/,
+ 			replace: (parentNode, children, _match, isImport) => {
+ 				if (isImport) {
+@@ -108,7 +102,7 @@
+ 			},
+ 			type: "element"
+ 		});
+-		if (formats.header) markdownService.registerMarkdownShortCut({
++		if (this.markdownShortcuts && formats.header) markdownService.registerMarkdownShortCut({
+ 			regExp: /^(#{1,6})\s/,
+ 			replace: createBlockNode((match, parentNode) => {
+ 				const tag = "h" + match[1].length;
+@@ -153,7 +147,7 @@
+ 			tag: "~",
+ 			type: "text-format"
+ 		});
+-		if (textFormatShortcuts.length > 0) markdownService.registerMarkdownShortCuts(textFormatShortcuts);
++		if (this.markdownShortcuts && textFormatShortcuts.length > 0) markdownService.registerMarkdownShortCuts(textFormatShortcuts);
+ 		markdownService.registerMarkdownWriter("paragraph", (ctx) => {
+ 			ctx.wrap("", breakMark);
+ 		});
+diff --git a/es/plugins/common/react/ReactPlainText.js b/es/plugins/common/react/ReactPlainText.js
+--- a/es/plugins/common/react/ReactPlainText.js
++++ b/es/plugins/common/react/ReactPlainText.js
+@@ -11,7 +11,7 @@
+ import { cx } from "antd-style";
+ import { COMMAND_PRIORITY_EDITOR, KEY_DOWN_COMMAND } from "lexical";
+ //#region src/plugins/common/react/ReactPlainText.tsx
+-const ReactPlainText = memo(({ style, children, theme = {}, onChange, editable, className, variant, enableHotkey = true, enablePasteMarkdown = true, autoFormatMarkdown = true, markdownOption = true, pasteAsPlainText = false, pasteMarkdownAutoConvertThreshold, pasteVSCodeAsCodeBlock = true, onKeyDown, onFocus, onBlur, autoFocus, onPressEnter, onCompositionStart, onCompositionEnd, onContextMenu, onTextChange }) => {
++const ReactPlainText = memo(({ style, children, theme = {}, onChange, editable, className, variant, enableHotkey = true, enablePasteMarkdown = true, autoFormatMarkdown = true, markdownOption = true, markdownShortcuts, pasteAsPlainText = false, pasteMarkdownAutoConvertThreshold, pasteVSCodeAsCodeBlock = true, onKeyDown, onFocus, onBlur, autoFocus, onPressEnter, onCompositionStart, onCompositionEnd, onContextMenu, onTextChange }) => {
+ 	const isChat = variant === "chat";
+ 	const { fontSize = isChat ? 14 : 16, headerMultiple = isChat ? .25 : .6, lineHeight = isChat ? 1.4 : 1.6, marginMultiple = isChat ? 1 : 2, ...restTheme } = theme;
+ 	const editorContainerRef = useRef(null);
+@@ -61,6 +61,7 @@
+ 		editor.registerPlugin(CommonPlugin, {
+ 			enableHotkey,
+ 			markdownOption,
++			markdownShortcuts,
+ 			pasteAsPlainText,
+ 			pasteVSCodeAsCodeBlock,
+ 			theme: restTheme ? {
+@@ -74,6 +75,7 @@
+ 		enablePasteMarkdown,
+ 		autoFormatMarkdown,
+ 		markdownOption,
++		markdownShortcuts,
+ 		pasteAsPlainText,
+ 		pasteMarkdownAutoConvertThreshold,
+ 		pasteVSCodeAsCodeBlock,
+diff --git a/es/plugins/common/react/type.d.ts b/es/plugins/common/react/type.d.ts
+--- a/es/plugins/common/react/type.d.ts
++++ b/es/plugins/common/react/type.d.ts
+@@ -26,6 +26,8 @@
+    * @default true
+    */
+   enablePasteMarkdown?: boolean;
++  /** Enable typed Markdown shortcuts such as **bold** and # headings. */
++  markdownShortcuts?: boolean;
+   /**
+    * Enable/disable markdown shortcuts
+    * @default true - all formats enabled
+@@ -92,4 +94,4 @@
+   variant?: 'default' | 'chat';
+ }
+ //#endregion
+-export { ReactEditorContentProps, ReactPlainTextProps };
+\ No newline at end of file
++export { ReactEditorContentProps, ReactPlainTextProps };
+diff --git a/es/react/Editor/Editor.js b/es/react/Editor/Editor.js
+--- a/es/react/Editor/Editor.js
++++ b/es/react/Editor/Editor.js
+@@ -12,7 +12,7 @@
+ import { jsx, jsxs } from "react/jsx-runtime";
+ import { debounce } from "es-toolkit";
+ //#region src/react/Editor/Editor.tsx
+-const Editor = memo(({ content, style, className, collaboration, debounceWait = 100, editable, editor, onInit, onChange, placeholder, lineEmptyPlaceholder, plugins = [], slashOption = {}, slashPlacement, getPopupContainer, mentionOption = {}, variant, onKeyDown, children, type = "json", onPressEnter, onFocus, onBlur, autoFocus, enablePasteMarkdown = true, autoFormatMarkdown = true, markdownOption = true, pasteMarkdownAutoConvertThreshold, pasteAsPlainText = false, pasteVSCodeAsCodeBlock = true, onCompositionStart, onCompositionEnd, onContextMenu, onTextChange }) => {
++const Editor = memo(({ content, style, className, theme, collaboration, debounceWait = 100, editable, editor, onInit, onChange, placeholder, lineEmptyPlaceholder, plugins = [], slashOption = {}, slashPlacement, getPopupContainer, mentionOption = {}, variant, onKeyDown, children, type = "json", onPressEnter, onFocus, onBlur, autoFocus, enablePasteMarkdown = true, autoFormatMarkdown = true, markdownOption = true, markdownShortcuts, pasteMarkdownAutoConvertThreshold, pasteAsPlainText = false, pasteVSCodeAsCodeBlock = true, onCompositionStart, onCompositionEnd, onContextMenu, onTextChange }) => {
+ 	const { config } = useEditorContent();
+ 	const enableSlash = Boolean(slashOption?.items && slashOption.items.length > 0);
+ 	const enableMention = Boolean(mentionOption?.items && mentionOption.items.length > 0);
+@@ -85,6 +85,8 @@
+ 				editable,
+ 				enablePasteMarkdown,
+ 				markdownOption,
++				markdownShortcuts,
++				theme,
+ 				onBlur,
+ 				onChange: debouncedOnChange,
+ 				onCompositionEnd,

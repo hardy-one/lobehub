@@ -10,6 +10,20 @@ import { getInputHistory } from '../inputHistoryStorage';
 import { createStore, selectors } from '.';
 
 describe('ChatInput store actions', () => {
+  it('uses the plain-text document for model input when available', () => {
+    const editor = {
+      getLexicalEditor: () => ({}),
+      getDocument: vi.fn((type: string) => {
+        if (type === 'text') return '# title\n\n**bold**';
+        return 'serialized markdown';
+      }),
+    };
+    const store = createStore({ editor: editor as unknown as IEditor });
+
+    expect(store.getState().getMarkdownContent()).toBe('# title\n\n**bold**');
+    expect(editor.getDocument).toHaveBeenCalledWith('text');
+  });
+
   beforeEach(() => {
     localStorage.clear();
     useAgentStore.setState({ activeAgentId: undefined });

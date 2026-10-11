@@ -77,6 +77,23 @@ const getEditorStyle = async () => {
   return props!.style;
 };
 
+const getEditorProps = async () => {
+  const { Editor } = await import('@lobehub/editor/react');
+  const props = vi.mocked(Editor).mock.lastCall?.[0] as
+    | {
+        enablePasteMarkdown?: boolean;
+        markdownShortcuts?: boolean;
+        markdownOption?: boolean;
+        plugins?: unknown[];
+        theme?: { textBold?: unknown };
+      }
+    | undefined;
+
+  expect(props).toBeDefined();
+
+  return props!;
+};
+
 vi.mock('@lobechat/const', () => ({
   isDesktop: false,
   TRACING_SCENARIOS: { InputCompletion: 'input_completion' },
@@ -299,6 +316,20 @@ describe('ChatInput InputEditor', () => {
     render(<InputEditor />);
 
     expect((await getEditorStyle())?.fontSize).toBeUndefined();
+  });
+
+  it('keeps rich-text formatting available while treating typed Markdown as plain text', async () => {
+    permission.allowed = true;
+
+    render(<InputEditor />);
+
+    const props = await getEditorProps();
+
+    expect(props.enablePasteMarkdown).toBe(false);
+    expect(props.markdownShortcuts).toBe(false);
+    expect(props.markdownOption).toBe(false);
+    expect(props.plugins).toBeDefined();
+    expect(props.theme?.textBold).toBeDefined();
   });
 
   it('tags autocomplete requests with the input completion trigger', async () => {

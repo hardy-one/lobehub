@@ -660,6 +660,8 @@ const InputEditor = memo<{
             return true;
           }
           if (e.shiftKey || isComposingRef.current) return;
+          // Mobile keyboards need Enter to insert a newline; the send button is the explicit submit control.
+          if (mobile) return;
           // when user like alt + enter to add ai message
           if (e.altKey && hotkey === combineKeys([KeyEnum.Alt, KeyEnum.Enter])) return true;
           // In fullscreen mode, Enter inserts newline; only Cmd/Ctrl+Enter sends

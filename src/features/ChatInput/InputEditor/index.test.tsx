@@ -34,6 +34,8 @@ const mocks = vi.hoisted(() => {
     chainInputCompletion: vi.fn(),
     chatInputState,
     generateJSON: vi.fn(),
+    send: vi.fn(),
+    shouldSendOnEnter: vi.fn(() => true),
     inputCompletionConfig: {
       enabled: false,
       model: 'gpt-4o-mini',
@@ -84,6 +86,7 @@ const getEditorProps = async () => {
         enablePasteMarkdown?: boolean;
         markdownShortcuts?: boolean;
         markdownOption?: boolean;
+        onPressEnter?: unknown;
         plugins?: unknown[];
         theme?: { textBold?: unknown };
       }
@@ -155,7 +158,9 @@ vi.mock('@/components/DragUploadZone', () => ({
   usePasteFile: vi.fn(),
   useUploadFiles: () => ({ handleUploadFiles: vi.fn() }),
 }));
-vi.mock('@/hooks/useEnterToSend', () => ({ useEnterToSend: () => vi.fn(() => false) }));
+vi.mock('@/hooks/useEnterToSend', () => ({
+  useEnterToSend: () => mocks.shouldSendOnEnter,
+}));
 vi.mock('@/hooks/useIMECompositionEvent', () => ({
   useIMECompositionEvent: () => ({
     compositionProps: {
@@ -229,7 +234,7 @@ vi.mock('../store', () => {
     disableSlash: true,
     editor,
     expand: false,
-    handleSendButton: vi.fn(),
+    handleSendButton: mocks.send,
     slashMenuRef: { current: null },
     slashPlacement: 'top',
     updateMarkdownContent: vi.fn(),
@@ -316,6 +321,38 @@ describe('ChatInput InputEditor', () => {
     render(<InputEditor />);
 
     expect((await getEditorStyle())?.fontSize).toBeUndefined();
+  });
+
+  it('inserts a newline instead of sending when Enter is pressed on mobile', async () => {
+    permission.allowed = true;
+    platform.isMobile = true;
+
+    render(<InputEditor />);
+
+    const props = await getEditorProps();
+    const onPressEnter = props.onPressEnter as
+      ((params: { event: KeyboardEvent }) => boolean | undefined) | undefined;
+
+    expect(onPressEnter).toBeDefined();
+    expect(
+      onPressEnter!({ event: new KeyboardEvent('keydown', { key: 'Enter' }) }),
+    ).toBeUndefined();
+    expect(mocks.shouldSendOnEnter).not.toHaveBeenCalled();
+    expect(mocks.send).not.toHaveBeenCalled();
+  });
+
+  it('keeps Enter-to-send behavior on desktop', async () => {
+    permission.allowed = true;
+
+    render(<InputEditor />);
+
+    const props = await getEditorProps();
+    const onPressEnter = props.onPressEnter as
+      ((params: { event: KeyboardEvent }) => boolean | undefined) | undefined;
+
+    expect(onPressEnter).toBeDefined();
+    expect(onPressEnter!({ event: new KeyboardEvent('keydown', { key: 'Enter' }) })).toBe(true);
+    expect(mocks.send).toHaveBeenCalledOnce();
   });
 
   it('keeps rich-text formatting available while treating typed Markdown as plain text', async () => {

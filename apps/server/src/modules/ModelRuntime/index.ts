@@ -35,6 +35,7 @@ import { DEFAULT_MODEL_PROVIDER_LIST } from 'model-bank/modelProviders';
 
 import { loadModels } from '@/business/client/model-bank/loadModels';
 import { getBusinessModelRuntimeHooks } from '@/business/server/model-runtime';
+import { AiModelModel } from '@/database/models/aiModel';
 import { AiProviderModel } from '@/database/models/aiProvider';
 import { type LobeChatDatabase } from '@/database/type';
 import { getLLMConfig } from '@/envs/llm';
@@ -526,8 +527,27 @@ export const initModelRuntimeFromDB = async (
   const tracingHooks = createLLMGenerationTracingHook(userId, provider, workspaceId);
   const hooks = mergeModelRuntimeHooks(businessHooks, tracingHooks);
 
-  // 6. Initialize ModelRuntime with the payload and hooks
-  return initModelRuntimeWithUserPayload(provider, payload, { userId, workspaceId }, hooks);
+  // 6. Initialize ModelRuntime with the payload and hooks.
+  // Providers whose models speak different protocols need the per-model sdk
+  // type (provider-sourced) plus any explicit user override to route correctly.
+  const routingOptions: Record<string, unknown> = {};
+  if (provider === ModelProvider.OpenCodeCodingPlan) {
+    const models = await new AiModelModel(db, userId, workspaceId).getModelListByProviderId(
+      provider,
+    );
+    routingOptions.modelSdkTypes = Object.fromEntries(
+      models.filter((m) => m.settings?.sdkType).map((m) => [m.id, m.settings!.sdkType]),
+    );
+    routingOptions.modelSdkOverrides = Object.fromEntries(
+      models.filter((m) => m.config?.sdkType).map((m) => [m.id, m.config!.sdkType]),
+    );
+  }
+  return initModelRuntimeWithUserPayload(
+    provider,
+    payload,
+    { userId, workspaceId, ...routingOptions },
+    hooks,
+  );
 };
 
 export interface ServerDefaultHeterogeneousModelReference {

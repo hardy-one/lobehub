@@ -673,6 +673,7 @@ const processModelCard = (
   };
 
   return {
+    ...(model.sdkType ? { sdkType: model.sdkType } : {}),
     contextWindowTokens: model.contextWindowTokens ?? knownModel?.contextWindowTokens ?? undefined,
     description: model.description ?? knownModel?.description ?? '',
     displayName: processDisplayName(model.displayName ?? knownModel?.displayName ?? model.id),
@@ -725,7 +726,7 @@ const processModelCard = (
  * @returns Processed model card list
  */
 export const processModelList = async (
-  modelList: Array<{ id: string }>,
+  modelList: Array<{ id: string; sdkType?: ChatModelCard['sdkType'] }>,
   config: ModelProcessorConfig,
   provider?: ModelProviderKey,
 ): Promise<ChatModelCard[]> => {
@@ -771,7 +772,7 @@ export const processModelList = async (
  * @returns Processed model card list
  */
 export const processMultiProviderModelList = async (
-  modelList: Array<{ id: string }>,
+  modelList: Array<{ id: string; sdkType?: ChatModelCard['sdkType'] }>,
   providerid?: ModelProviderKey,
 ): Promise<ChatModelCard[]> => {
   const { loadModels } =

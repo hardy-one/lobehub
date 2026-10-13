@@ -1,4 +1,5 @@
 // @vitest-environment node
+import Anthropic from '@anthropic-ai/sdk';
 import { ModelProvider } from 'model-bank';
 import OpenAI from 'openai';
 import { Stream } from 'openai/core/streaming';
@@ -15,6 +16,7 @@ import {
 
 const provider = ModelProvider.OpenCodeCodingPlan;
 const defaultBaseURL = 'https://opencode.ai/zen/go/v1';
+const stripV1 = (url: string) => url.replace(/\/v1$/, '');
 
 // Avoid a real models.dev fetch during router resolution; the failure path falls
 // back to the hardcoded interleaved snapshot, which is what these tests assert on.
@@ -41,19 +43,32 @@ describe('LobeOpenCodeCodingPlanAI', () => {
       [undefined, defaultBaseURL],
       ['https://proxy.example.com/go/v1', 'https://proxy.example.com/go/v1'],
       ['https://proxy.example.com/v1/gateway', 'https://proxy.example.com/v1/gateway'],
-    ])('configures the single Responses route with baseURL=%s', (baseURL, expectedURL) => {
+    ])('configures one route per protocol with baseURL=%s', (baseURL, expectedURL) => {
       const routers = params.routers({ apiKey: 'test', baseURL });
 
       expect(routers).toEqual([
+        // The Anthropic SDK appends /v1/messages itself, so its baseURL loses the suffix.
+        expect.objectContaining({
+          apiType: 'anthropic',
+          options: { apiKey: 'test', baseURL: stripV1(expectedURL) },
+        }),
+        expect.objectContaining({
+          apiType: 'google',
+          options: { apiKey: 'test', baseURL: expectedURL },
+        }),
         expect.objectContaining({
           apiType: 'openai',
-          options: { apiKey: 'test', baseURL: expectedURL },
+          options: { apiKey: 'test', baseURL: expectedURL, modelSdkType: 'openai-responses' },
+        }),
+        expect.objectContaining({
+          apiType: 'openai',
+          options: { apiKey: 'test', baseURL: expectedURL, modelSdkType: 'openai' },
         }),
       ]);
     });
 
     it('identifies OpenCode Coding Plan and its default endpoint in API errors', async () => {
-      vi.spyOn(OpenAI.Responses.prototype, 'create').mockRejectedValue(
+      vi.spyOn(OpenAI.Chat.Completions.prototype, 'create').mockRejectedValue(
         new OpenAI.APIError(401, { message: 'Unauthorized' }, 'Unauthorized', new Headers()),
       );
       const instance = new LobeOpenCodeCodingPlanAI({ apiKey: 'test' });
@@ -73,8 +88,8 @@ describe('LobeOpenCodeCodingPlanAI', () => {
         vi.stubEnv('DEBUG_OPENCODE_GO_CHAT_COMPLETION', value);
         const debugStream = vi.spyOn(debugStreamModule, 'debugStream').mockResolvedValue();
         vi.spyOn(debugStreamModule, 'debugPayload').mockImplementation(() => {});
-        vi.spyOn(OpenAI.Responses.prototype, 'create').mockResolvedValue(
-          Stream.fromReadableStream<OpenAI.Responses.ResponseStreamEvent>(
+        vi.spyOn(OpenAI.Chat.Completions.prototype, 'create').mockResolvedValue(
+          Stream.fromReadableStream<OpenAI.ChatCompletionChunk>(
             new ReadableStream({ start: (controller) => controller.close() }),
             new AbortController(),
           ),
@@ -94,11 +109,17 @@ describe('LobeOpenCodeCodingPlanAI', () => {
     );
   });
 
-  describe('Responses API routing', () => {
+  describe('per-model protocol routing', () => {
+    let anthropicSpy: Mock;
     let chatCreateSpy: Mock;
     let responsesCreateSpy: Mock;
 
+    const messages = [{ content: 'Hello', role: 'user' as const }];
+
     beforeEach(() => {
+      anthropicSpy = vi
+        .spyOn(Anthropic.Messages.prototype, 'create')
+        .mockResolvedValue(new ReadableStream() as any) as unknown as Mock;
       chatCreateSpy = vi
         .spyOn(OpenAI.Chat.Completions.prototype, 'create')
         .mockResolvedValue(new ReadableStream() as any) as unknown as Mock;
@@ -111,58 +132,79 @@ describe('LobeOpenCodeCodingPlanAI', () => {
       vi.restoreAllMocks();
     });
 
-    it.each(['glm-5.3', 'kimi-k3', 'qwen3.8-max', 'deepseek-v4-pro', 'claude-haiku-5-5'])(
-      'routes %s chat through the Responses endpoint',
+    it.each(['gpt-6-luna', 'grok-4.7', 'muse-spark-1.3-contributor'])(
+      'routes %s (@ai-sdk/openai) to the Responses endpoint',
       async (model) => {
-        const instance = new LobeOpenCodeCodingPlanAI({ apiKey: 'test' });
-
-        await instance.chat({ messages: [{ content: 'Hello', role: 'user' }], model });
+        await new LobeOpenCodeCodingPlanAI({ apiKey: 'test' }).chat({ messages, model });
 
         expect(responsesCreateSpy).toHaveBeenCalledOnce();
         expect(chatCreateSpy).not.toHaveBeenCalled();
+        expect(anthropicSpy).not.toHaveBeenCalled();
       },
     );
 
-    it.each(['qwen3.8-max', 'minimax-m3'])(
-      'overrides a saved Chat Completions preference for %s',
+    it.each(['glm-5.3', 'kimi-k3', 'deepseek-v4-pro', 'mimo-v2.6-pro'])(
+      'keeps %s (openai-compatible) on Chat Completions',
       async (model) => {
-        const instance = new LobeOpenCodeCodingPlanAI({ apiKey: 'test' });
+        await new LobeOpenCodeCodingPlanAI({ apiKey: 'test' }).chat({ messages, model });
 
-        await instance.chat({
-          apiMode: 'chatCompletion',
-          messages: [{ content: 'Hello', role: 'user' }],
-          model,
-        });
-
-        expect(responsesCreateSpy).toHaveBeenCalledOnce();
-        expect(chatCreateSpy).not.toHaveBeenCalled();
+        expect(chatCreateSpy).toHaveBeenCalledOnce();
+        expect(responsesCreateSpy).not.toHaveBeenCalled();
+        expect(anthropicSpy).not.toHaveBeenCalled();
       },
     );
+
+    it.each(['qwen3.8-max', 'claude-haiku-5-5', 'minimax-m3'])(
+      'routes %s (@ai-sdk/anthropic) through the Anthropic SDK',
+      async (model) => {
+        await new LobeOpenCodeCodingPlanAI({ apiKey: 'test' }).chat({ messages, model });
+
+        expect(anthropicSpy).toHaveBeenCalledOnce();
+        expect(chatCreateSpy).not.toHaveBeenCalled();
+        expect(responsesCreateSpy).not.toHaveBeenCalled();
+      },
+    );
+
+    it('lets an explicit per-model sdk override move the model to another protocol', async () => {
+      // glm-5.3 ships as an openai-compatible model; the user pinned it to Responses.
+      await new LobeOpenCodeCodingPlanAI({
+        apiKey: 'test',
+        modelSdkOverrides: { 'glm-5.3': 'openai-responses' },
+      }).chat({ messages, model: 'glm-5.3' });
+
+      expect(responsesCreateSpy).toHaveBeenCalledOnce();
+      expect(chatCreateSpy).not.toHaveBeenCalled();
+    });
+
+    it('routes a saved provider sdk type without a user override', async () => {
+      await new LobeOpenCodeCodingPlanAI({
+        apiKey: 'test',
+        modelSdkTypes: { 'glm-5.3': 'anthropic' },
+      }).chat({ messages, model: 'glm-5.3' });
+
+      expect(anthropicSpy).toHaveBeenCalledOnce();
+    });
 
     it.each([
       ['none', 'none'],
       ['medium', 'medium'],
-    ])('forwards MiMo thinking effort %s as reasoning.effort', async (effort, expected) => {
-      const instance = new LobeOpenCodeCodingPlanAI({ apiKey: 'test' });
-
-      await instance.chat({
-        messages: [{ content: 'Hello', role: 'user' }],
+    ])('forwards MiMo thinking effort %s on the wire payload', async (effort, expected) => {
+      await new LobeOpenCodeCodingPlanAI({ apiKey: 'test' }).chat({
+        messages,
         model: 'mimo-v2.6-pro',
         reasoning_effort: effort as any,
       });
 
-      expect(responsesCreateSpy.mock.calls.at(-1)?.[0]).toMatchObject({
-        reasoning: { effort: expected },
-      });
+      expect(chatCreateSpy.mock.calls.at(-1)?.[0]).toMatchObject({ reasoning_effort: expected });
     });
 
-    it('generates structured output through the Responses endpoint', async () => {
+    it('generates structured output on the protocol the model is routed to', async () => {
       responsesCreateSpy.mockResolvedValue({ output_text: '{"answer":"Hello"}' });
       const instance = new LobeOpenCodeCodingPlanAI({ apiKey: 'test' });
 
       const result = await instance.generateObject({
-        messages: [{ content: 'Hello', role: 'user' }],
-        model: 'glm-5.3',
+        messages,
+        model: 'gpt-6-luna',
         schema: {
           name: 'answer',
           schema: { properties: { answer: { type: 'string' } }, type: 'object' },

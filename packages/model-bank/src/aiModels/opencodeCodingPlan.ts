@@ -7,6 +7,9 @@ import { type AIChatModelCard } from '../types/aiModel';
 //   - { type: 'effort', values: ['max'] } → no switch (native always-on)
 //   - { type: 'toggle' } → enableReasoning
 //   - { type: 'budget_tokens', max } → reasoningBudgetToken / reasoningBudgetToken80k
+// `sdkType` mirrors models.dev's `provider.npm`: @ai-sdk/anthropic → anthropic,
+// @ai-sdk/google → google, @ai-sdk/openai → openai-responses, and the provider-level
+// @ai-sdk/openai-compatible default → openai (Chat Completions).
 // MiMo entries also expose `mimoReasoningEffort`, from the vendor Responses API docs:
 //   reasoning.effort — `none` disables thinking, every other level enables it.
 // Entries models.dev no longer lists are kept disabled so existing selections keep resolving.
@@ -38,6 +41,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['enableReasoning', 'reasoningEffort'],
     },
+    sdkType: 'anthropic',
     type: 'chat',
   },
   {
@@ -65,6 +69,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['deepseekV4ReasoningEffort'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -91,6 +96,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['enableReasoning', 'deepseekV4ReasoningEffort'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -117,6 +123,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['deepseekV4ReasoningEffort'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -143,6 +150,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['deepseekV4ReasoningEffort'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -168,6 +176,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['glm5_2ReasoningEffort'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -193,6 +202,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['glm5_3ReasoningEffort'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -224,6 +234,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['glm5_3ReasoningEffort'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -251,6 +262,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['gpt5_6ReasoningEffort'],
     },
+    sdkType: 'openai-responses',
     type: 'chat',
   },
   {
@@ -278,6 +290,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['gpt6ReasoningEffort'],
     },
+    sdkType: 'openai-responses',
     type: 'chat',
   },
   {
@@ -303,6 +316,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['grok4_5ReasoningEffort'],
     },
+    sdkType: 'openai-responses',
     type: 'chat',
   },
   {
@@ -330,6 +344,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['grok4_6ReasoningEffort'],
     },
+    sdkType: 'openai-responses',
     type: 'chat',
   },
   {
@@ -357,6 +372,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['grok4_7ReasoningEffort'],
     },
+    sdkType: 'openai-responses',
     type: 'chat',
   },
   {
@@ -382,6 +398,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['hy3ReasoningEffort'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -408,6 +425,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['reasoningEffort'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -431,6 +449,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-04-21',
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -461,6 +480,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-06-12',
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -490,6 +510,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-07-16',
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -516,6 +537,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['enableReasoning'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -542,6 +564,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['enableReasoning'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -568,6 +591,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['mimoReasoningEffort'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -594,6 +618,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['mimoReasoningEffort'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -619,6 +644,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['mimoReasoningEffort'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -644,6 +670,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['mimoReasoningEffort'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -668,6 +695,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-03-18',
+    sdkType: 'anthropic',
     type: 'chat',
   },
   {
@@ -694,6 +722,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['enableReasoning'],
     },
+    sdkType: 'anthropic',
     type: 'chat',
   },
   {
@@ -727,6 +756,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['reasoningEffort'],
     },
+    sdkType: 'openai-responses',
     type: 'chat',
   },
   {
@@ -760,6 +790,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['reasoningEffort'],
     },
+    sdkType: 'openai-responses',
     type: 'chat',
   },
   {
@@ -787,6 +818,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['enableReasoning', 'reasoningBudgetToken80k'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -813,6 +845,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['enableReasoning', 'reasoningBudgetToken'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -839,6 +872,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['enableReasoning', 'reasoningBudgetToken'],
     },
+    sdkType: 'anthropic',
     type: 'chat',
   },
   {
@@ -871,6 +905,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['enableReasoning', 'reasoningBudgetToken', 'qwen38ReasoningEffort'],
     },
+    sdkType: 'anthropic',
     type: 'chat',
   },
   {
@@ -904,6 +939,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['enableReasoning', 'reasoningBudgetToken', 'qwen38ReasoningEffort'],
     },
+    sdkType: 'anthropic',
     type: 'chat',
   },
   {
@@ -929,6 +965,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['reasoningEffort'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -954,6 +991,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['reasoningEffort'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -986,6 +1024,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['reasoningEffort'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -1012,6 +1051,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['reasoningEffort'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -1038,6 +1078,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['reasoningEffort'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -1064,6 +1105,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['reasoningEffort'],
     },
+    sdkType: 'openai',
     type: 'chat',
   },
   {
@@ -1090,6 +1132,7 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
     settings: {
       extendParams: ['reasoningBudgetToken32k'],
     },
+    sdkType: 'anthropic',
     type: 'chat',
   },
 ];

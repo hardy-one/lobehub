@@ -77,33 +77,21 @@ describe('FollowUpActionService.extract', () => {
         if (String(url) === 'https://models.dev/api.json') {
           return Response.json({ 'opencode-go': { models: {} } });
         }
-        expect(String(url)).toBe('https://opencode.ai/zen/go/v1/responses');
+        expect(String(url)).toBe('https://opencode.ai/zen/go/v1/chat/completions');
         sessions.push(new Headers(init?.headers).get('x-opencode-session'));
         return Response.json({
-          created_at: 0,
-          id: 'resp-test',
-          model: 'test',
-          object: 'response',
-          output: [
+          choices: [
             {
-              content: [{ annotations: [], text: '{"chips":[]}', type: 'output_text' }],
-              id: 'msg-1',
-              role: 'assistant',
-              status: 'completed',
-              type: 'message',
+              finish_reason: 'stop',
+              index: 0,
+              message: { content: '{"chips":[]}', role: 'assistant' },
             },
           ],
-          parallel_tool_calls: false,
-          status: 'completed',
-          tool_choice: 'auto',
-          tools: [],
-          usage: {
-            input_tokens: 1,
-            input_tokens_details: { cached_tokens: 0 },
-            output_tokens: 1,
-            output_tokens_details: { reasoning_tokens: 0 },
-            total_tokens: 2,
-          },
+          created: 0,
+          id: 'chatcmpl-test',
+          model: 'test',
+          object: 'chat.completion',
+          usage: { completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 },
         });
       }),
     );

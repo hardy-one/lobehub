@@ -42,6 +42,7 @@ import type {
 } from '../../types';
 import { AgentRuntimeError } from '../../utils/createError';
 import type { ModelIdMappingOptions } from '../../utils/modelIdMapping';
+import type { ModelSdkRoutingOptions } from '../../utils/modelSdkRouting';
 import { postProcessModelList } from '../../utils/postProcessModelList';
 import { isImageDecodingRequestError, shouldStopFallbackForError } from '../../utils/routeFallback';
 import { safeParseJSON } from '../../utils/safeParseJSON';
@@ -74,6 +75,9 @@ interface ProviderIniOptions extends Record<string, any> {
   baseURLOrAccountID?: string;
   dangerouslyAllowBrowser?: boolean;
   modelIdMapping?: Record<string, string>;
+  modelSdkOverrides?: ModelSdkRoutingOptions['modelSdkOverrides'];
+  modelSdkTypes?: ModelSdkRoutingOptions['modelSdkTypes'];
+  providerSdkType?: ModelSdkRoutingOptions['providerSdkType'];
   region?: string;
   sdkType?: string;
   sessionToken?: string;

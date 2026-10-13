@@ -210,6 +210,26 @@ describe('modelParse', () => {
   });
 
   describe('processModelList', () => {
+    it('does not copy a protocol from a global family or another provider card', async () => {
+      const result = await processModelList(
+        [{ id: 'qwen3.8-flash' }],
+        MODEL_LIST_CONFIGS.openai,
+        'openai',
+      );
+      expect(result[0].sdkType).toBeUndefined();
+    });
+
+    it('preserves exact provider/model SDK metadata through normalization', async () => {
+      const result = await processModelList(
+        [
+          { id: 'same-model', sdkType: 'anthropic' },
+          { id: 'responses-model', sdkType: 'openai-responses' },
+        ],
+        MODEL_LIST_CONFIGS.openai,
+      );
+      expect(result.map((model) => model.sdkType)).toEqual(['anthropic', 'openai-responses']);
+    });
+
     it('should process a list of models with the given provider config', async () => {
       const modelList = [{ id: 'gpt-4o' }, { id: 'gpt-3.5-turbo' }];
 

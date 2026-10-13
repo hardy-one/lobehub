@@ -1,14 +1,21 @@
 import { type MarkdownProps } from '@lobehub/ui';
 import { Markdown } from '@lobehub/ui';
-import { memo } from 'react';
+import { memo, useEffect } from 'react';
 
 import { useUserStore } from '@/store/user';
 import { userGeneralSettingsSelectors } from '@/store/user/selectors';
+
+import { enableKatexCopyTex } from './latexCopy';
 
 const MarkdownMessage = memo<MarkdownProps>(({ children, componentProps, ...rest }) => {
   const { highlighterTheme, mermaidTheme, fontSize } = useUserStore(
     userGeneralSettingsSelectors.config,
   );
+
+  useEffect(() => {
+    // Copying a rendered formula should yield its LaTeX source, not the visual text.
+    void enableKatexCopyTex();
+  }, []);
 
   return (
     <Markdown

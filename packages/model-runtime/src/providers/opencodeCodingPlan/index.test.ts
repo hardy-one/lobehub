@@ -6,15 +6,12 @@ import type { Mock } from 'vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as debugStreamModule from '../../utils/debugStream';
-import { LobeOpenCodeCodingPlanAI, params, sanitizeJsonSchema } from './index';
-
-// The router pulls the cloud model-bank config for deepseek route resolution,
-// which transitively imports server-only modules (e.g. redis-client). Stub it
-// so the OpenAI-compatible chat route can be exercised in the node test env.
-const { loadModelsMock } = vi.hoisted(() => ({ loadModelsMock: vi.fn() }));
-vi.mock('@lobechat/business-model-bank/model-config', () => ({
-  loadModels: loadModelsMock,
-}));
+import {
+  buildResponsesPayload,
+  LobeOpenCodeCodingPlanAI,
+  params,
+  sanitizeJsonSchema,
+} from './index';
 
 const provider = ModelProvider.OpenCodeCodingPlan;
 const defaultBaseURL = 'https://opencode.ai/zen/go/v1';
@@ -35,58 +32,34 @@ describe('LobeOpenCodeCodingPlanAI', () => {
   });
 
   describe('provider configuration', () => {
-    beforeEach(() => {
-      loadModelsMock.mockResolvedValue([]);
-      vi.spyOn(console, 'error').mockImplementation(() => {});
-    });
-
     afterEach(() => {
       vi.restoreAllMocks();
       vi.unstubAllEnvs();
     });
 
     it.each([
-      [undefined, defaultBaseURL, 'https://opencode.ai/zen/go'],
-      [
-        'https://proxy.example.com/go/v1',
-        'https://proxy.example.com/go/v1',
-        'https://proxy.example.com/go',
-      ],
-      [
-        'https://proxy.example.com/v1/gateway',
-        'https://proxy.example.com/v1/gateway',
-        'https://proxy.example.com/v1/gateway',
-      ],
-    ])(
-      'configures all route endpoints with baseURL=%s',
-      async (baseURL, openaiURL, anthropicURL) => {
-        const routers = await params.routers({ apiKey: 'test', baseURL });
+      [undefined, defaultBaseURL],
+      ['https://proxy.example.com/go/v1', 'https://proxy.example.com/go/v1'],
+      ['https://proxy.example.com/v1/gateway', 'https://proxy.example.com/v1/gateway'],
+    ])('configures the single Responses route with baseURL=%s', (baseURL, expectedURL) => {
+      const routers = params.routers({ apiKey: 'test', baseURL });
 
-        expect(routers).toEqual([
-          expect.objectContaining({
-            apiType: 'anthropic',
-            options: { apiKey: 'test', baseURL: anthropicURL },
-          }),
-          expect.objectContaining({
-            apiType: 'deepseek',
-            options: { apiKey: 'test', baseURL: openaiURL, sdkType: 'openai' },
-          }),
-          expect.objectContaining({
-            apiType: 'openai',
-            options: { apiKey: 'test', baseURL: openaiURL },
-          }),
-        ]);
-      },
-    );
+      expect(routers).toEqual([
+        expect.objectContaining({
+          apiType: 'openai',
+          options: { apiKey: 'test', baseURL: expectedURL },
+        }),
+      ]);
+    });
 
     it('identifies OpenCode Coding Plan and its default endpoint in API errors', async () => {
-      vi.spyOn(OpenAI.Chat.Completions.prototype, 'create').mockRejectedValue(
+      vi.spyOn(OpenAI.Responses.prototype, 'create').mockRejectedValue(
         new OpenAI.APIError(401, { message: 'Unauthorized' }, 'Unauthorized', new Headers()),
       );
       const instance = new LobeOpenCodeCodingPlanAI({ apiKey: 'test' });
 
       await expect(
-        instance.chat({ messages: [{ content: 'Hello', role: 'user' }], model: 'glm-5' }),
+        instance.chat({ messages: [{ content: 'Hello', role: 'user' }], model: 'glm-5.3' }),
       ).rejects.toMatchObject({
         endpoint: defaultBaseURL,
         errorType: 'InvalidProviderAPIKey',
@@ -100,8 +73,8 @@ describe('LobeOpenCodeCodingPlanAI', () => {
         vi.stubEnv('DEBUG_OPENCODE_GO_CHAT_COMPLETION', value);
         const debugStream = vi.spyOn(debugStreamModule, 'debugStream').mockResolvedValue();
         vi.spyOn(debugStreamModule, 'debugPayload').mockImplementation(() => {});
-        vi.spyOn(OpenAI.Chat.Completions.prototype, 'create').mockResolvedValue(
-          Stream.fromReadableStream<OpenAI.ChatCompletionChunk>(
+        vi.spyOn(OpenAI.Responses.prototype, 'create').mockResolvedValue(
+          Stream.fromReadableStream<OpenAI.Responses.ResponseStreamEvent>(
             new ReadableStream({ start: (controller) => controller.close() }),
             new AbortController(),
           ),
@@ -110,7 +83,7 @@ describe('LobeOpenCodeCodingPlanAI', () => {
 
         const response = await instance.chat({
           messages: [{ content: 'Hello', role: 'user' }],
-          model: 'glm-5',
+          model: 'glm-5.3',
           stream: true,
         });
         await response.text();
@@ -119,6 +92,102 @@ describe('LobeOpenCodeCodingPlanAI', () => {
         expect(debugStream).toHaveBeenCalledTimes(value === '1' ? 1 : 0);
       },
     );
+  });
+
+  describe('Responses API routing', () => {
+    let chatCreateSpy: Mock;
+    let responsesCreateSpy: Mock;
+
+    beforeEach(() => {
+      chatCreateSpy = vi
+        .spyOn(OpenAI.Chat.Completions.prototype, 'create')
+        .mockResolvedValue(new ReadableStream() as any) as unknown as Mock;
+      responsesCreateSpy = vi
+        .spyOn(OpenAI.Responses.prototype, 'create')
+        .mockResolvedValue(new ReadableStream() as any) as unknown as Mock;
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it.each(['glm-5.3', 'kimi-k3', 'qwen3.8-max', 'deepseek-v4-pro', 'claude-haiku-5-5'])(
+      'routes %s chat through the Responses endpoint',
+      async (model) => {
+        const instance = new LobeOpenCodeCodingPlanAI({ apiKey: 'test' });
+
+        await instance.chat({ messages: [{ content: 'Hello', role: 'user' }], model });
+
+        expect(responsesCreateSpy).toHaveBeenCalledOnce();
+        expect(chatCreateSpy).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(['qwen3.8-max', 'minimax-m3'])(
+      'overrides a saved Chat Completions preference for %s',
+      async (model) => {
+        const instance = new LobeOpenCodeCodingPlanAI({ apiKey: 'test' });
+
+        await instance.chat({
+          apiMode: 'chatCompletion',
+          messages: [{ content: 'Hello', role: 'user' }],
+          model,
+        });
+
+        expect(responsesCreateSpy).toHaveBeenCalledOnce();
+        expect(chatCreateSpy).not.toHaveBeenCalled();
+      },
+    );
+
+    it('generates structured output through the Responses endpoint', async () => {
+      responsesCreateSpy.mockResolvedValue({ output_text: '{"answer":"Hello"}' });
+      const instance = new LobeOpenCodeCodingPlanAI({ apiKey: 'test' });
+
+      const result = await instance.generateObject({
+        messages: [{ content: 'Hello', role: 'user' }],
+        model: 'glm-5.3',
+        schema: {
+          name: 'answer',
+          schema: { properties: { answer: { type: 'string' } }, type: 'object' },
+        },
+      });
+
+      expect(result).toEqual({ answer: 'Hello' });
+      expect(responsesCreateSpy).toHaveBeenCalledOnce();
+      expect(chatCreateSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('buildResponsesPayload output limits', () => {
+    // The models.dev cache stays cold in this file (the global fetch rejects), so the
+    // static model-bank card is the output-limit source.
+    it('tops up max_tokens from the model card output limit', () => {
+      const payload = buildResponsesPayload({
+        messages: [{ content: 'Hello', role: 'user' }],
+        model: 'glm-5.3',
+      } as any);
+
+      expect(payload.max_tokens).toBe(131_072);
+    });
+
+    it('keeps an explicit max_tokens', () => {
+      const payload = buildResponsesPayload({
+        max_tokens: 4096,
+        messages: [{ content: 'Hello', role: 'user' }],
+        model: 'glm-5.3',
+      } as any);
+
+      expect(payload.max_tokens).toBe(4096);
+    });
+
+    it('leaves max_tokens unset for an unknown model', () => {
+      const payload = buildResponsesPayload({
+        messages: [{ content: 'Hello', role: 'user' }],
+        model: 'not-a-model',
+      } as any);
+
+      expect('max_tokens' in payload).toBe(false);
+    });
   });
 });
 
@@ -241,179 +310,26 @@ describe('sanitizeJsonSchema', () => {
   });
 });
 
-describe('Muse Spark Responses API routing', () => {
-  let chatCreateSpy: Mock;
-  let responsesCreateSpy: Mock;
-
-  beforeEach(() => {
-    loadModelsMock.mockResolvedValue([]);
-    chatCreateSpy = vi
-      .spyOn(OpenAI.Chat.Completions.prototype, 'create')
-      .mockResolvedValue(new ReadableStream() as any) as unknown as Mock;
-    responsesCreateSpy = vi
-      .spyOn(OpenAI.Responses.prototype, 'create')
-      .mockResolvedValue(new ReadableStream() as any) as unknown as Mock;
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it.each(['muse-spark-1.2-contributor', 'muse-spark-1.3-contributor'])(
-    'routes %s through Responses even when the provider-level default is Chat Completions',
-    async (model) => {
-      const instance = new LobeOpenCodeCodingPlanAI({ apiKey: 'test' });
-
-      await instance.chat({
-        apiMode: 'chatCompletion',
-        messages: [{ content: 'Hello', role: 'user' }],
-        model,
-      });
-
-      expect(responsesCreateSpy).toHaveBeenCalledOnce();
-      expect(chatCreateSpy).not.toHaveBeenCalled();
-    },
-  );
-
-  describe.each(['muse-spark-1.2-contributor', 'muse-spark-1.3-contributor'])(
-    '%s structured generation with offline model discovery',
-    (model) => {
-      it('generates JSON through Responses without an explicit API override', async () => {
-        responsesCreateSpy.mockResolvedValue({ output_text: '{"answer":"Hello"}' });
-        const instance = new LobeOpenCodeCodingPlanAI({ apiKey: 'test' });
-
-        const result = await instance.generateObject({
-          messages: [{ content: 'Hello', role: 'user' }],
-          model,
-          schema: {
-            name: 'answer',
-            schema: { properties: { answer: { type: 'string' } }, type: 'object' },
-          },
-        });
-
-        expect(result).toEqual({ answer: 'Hello' });
-        expect(responsesCreateSpy).toHaveBeenCalledOnce();
-        expect(chatCreateSpy).not.toHaveBeenCalled();
-      });
-
-      it('generates tool calls through Responses without an explicit API override', async () => {
-        responsesCreateSpy.mockResolvedValue({
-          output: [{ arguments: '{"answer":"Hello"}', name: 'answer', type: 'function_call' }],
-        });
-        const instance = new LobeOpenCodeCodingPlanAI({ apiKey: 'test' });
-
-        const result = await instance.generateObject({
-          messages: [{ content: 'Hello', role: 'user' }],
-          model,
-          tools: [
-            {
-              function: {
-                name: 'answer',
-                parameters: { properties: { answer: { type: 'string' } }, type: 'object' },
-              },
-              type: 'function',
-            },
-          ],
-        });
-
-        expect(result).toEqual([{ arguments: { answer: 'Hello' }, name: 'answer' }]);
-        expect(responsesCreateSpy).toHaveBeenCalledOnce();
-        expect(chatCreateSpy).not.toHaveBeenCalled();
-      });
-    },
-  );
-
-  it('keeps other models on Chat Completions for structured generation', async () => {
-    chatCreateSpy.mockResolvedValue({
-      choices: [{ message: { content: '{"answer":"Hello"}' } }],
-    });
-    const instance = new LobeOpenCodeCodingPlanAI({ apiKey: 'test' });
-
-    const result = await instance.generateObject({
-      messages: [{ content: 'Hello', role: 'user' }],
-      model: 'glm-5',
-      schema: {
-        name: 'answer',
-        schema: { properties: { answer: { type: 'string' } }, type: 'object' },
-      },
-    });
-
-    expect(result).toEqual({ answer: 'Hello' });
-    expect(chatCreateSpy).toHaveBeenCalledOnce();
-    expect(responsesCreateSpy).not.toHaveBeenCalled();
-  });
-
-  it('uses Responses models discovered after runtime initialization', async () => {
-    vi.resetModules();
-    const { LobeOpenCodeCodingPlanAI: Runtime } = await import('./index');
-    const model = 'discovered-responses-model';
-    vi.spyOn(global, 'fetch').mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          'opencode-go': {
-            models: { [model]: { id: model, provider: { npm: '@ai-sdk/openai' } } },
-          },
-        }),
-      ),
-    );
-    responsesCreateSpy.mockResolvedValue({ output_text: '{"answer":"Hello"}' });
-    const instance = new Runtime({ apiKey: 'test' });
-
-    const result = await instance.generateObject({
-      messages: [{ content: 'Hello', role: 'user' }],
-      model,
-      schema: {
-        name: 'answer',
-        schema: { properties: { answer: { type: 'string' } }, type: 'object' },
-      },
-    });
-
-    expect(result).toEqual({ answer: 'Hello' });
-    expect(responsesCreateSpy).toHaveBeenCalledOnce();
-    expect(chatCreateSpy).not.toHaveBeenCalled();
-  });
-});
-
-describe('buildOpenAIPayload Kimi thinking semantics', () => {
-  let instance: InstanceType<typeof LobeOpenCodeCodingPlanAI>;
-  let createSpy: Mock;
-
-  const getLastRequestPayload = () => createSpy.mock.calls.at(-1)?.[0];
-
+describe('buildResponsesPayload Kimi thinking semantics', () => {
   const findAssistantMessage = (payload: any) =>
     payload.messages.find((message: any) => message.role === 'assistant');
 
-  beforeEach(() => {
-    loadModelsMock.mockResolvedValue([]);
-    instance = new LobeOpenCodeCodingPlanAI({ apiKey: 'test' });
-    // Kimi models route to the OpenAI-compatible fallback runtime, whose client
-    // is built lazily per request; spy on the shared SDK prototype to capture
-    // the outgoing chat.completions.create params.
-    createSpy = vi
-      .spyOn(OpenAI.Chat.Completions.prototype, 'create')
-      .mockResolvedValue(new ReadableStream() as any) as unknown as Mock;
-  });
-
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
+  const conversation = [
+    { content: 'Hello', role: 'user' },
+    { content: 'Response', role: 'assistant' },
+    { content: 'Follow-up', role: 'user' },
+  ];
 
   describe('native-thinking K3 models (kimi-k3)', () => {
-    it("should drop a saved thinking:disabled and keep reasoning_effort 'max' + forced reasoning_content", async () => {
-      await instance.chat({
-        messages: [
-          { content: 'Hello', role: 'user' },
-          { content: 'Response', role: 'assistant' },
-          { content: 'Follow-up', role: 'user' },
-        ],
+    it("should drop a saved thinking:disabled and keep reasoning_effort 'max' + forced reasoning_content", () => {
+      const payload = buildResponsesPayload({
+        messages: conversation,
         model: 'kimi-k3',
         reasoning_effort: 'max',
         thinking: { type: 'disabled' },
       } as any);
 
-      const payload = getLastRequestPayload();
-
-      // K3 rejects the `thinking` param entirely: no key must be emitted.
+      // the Responses request must never carry the Chat Completions `thinking` switch
       expect('thinking' in payload).toBe(false);
       // disabled is ignored for native-thinking models; K3 accepts reasoning_effort 'max'.
       expect(payload.reasoning_effort).toBe('max');
@@ -421,84 +337,86 @@ describe('buildOpenAIPayload Kimi thinking semantics', () => {
       expect(findAssistantMessage(payload)?.reasoning_content).toBe(' ');
     });
 
-    it("should drop a non-'max' reasoning_effort for kimi-k3", async () => {
-      await instance.chat({
+    it("should drop a non-'max' reasoning_effort for kimi-k3", () => {
+      const payload = buildResponsesPayload({
         messages: [{ content: 'Hello', role: 'user' }],
         model: 'kimi-k3',
         reasoning_effort: 'high',
       } as any);
-
-      const payload = getLastRequestPayload();
 
       // K3 only accepts reasoning_effort 'max' (server default); other values are dropped
       // rather than sent and rejected.
       expect('reasoning_effort' in payload).toBe(false);
     });
 
-    it('should not emit thinking even when thinking:enabled is provided', async () => {
-      await instance.chat({
+    it('should not emit thinking even when thinking:enabled is provided', () => {
+      const payload = buildResponsesPayload({
         messages: [{ content: 'Hello', role: 'user' }],
         model: 'kimi-k3',
         thinking: { type: 'enabled' },
       } as any);
 
-      const payload = getLastRequestPayload();
-
-      // K3 configures reasoning via top-level reasoning_effort only; the K2.x
-      // `thinking` param is never emitted, enabled or disabled.
       expect('thinking' in payload).toBe(false);
     });
   });
 
   describe('native-thinking K2.7 code model (kimi-k2.7-code)', () => {
-    it('should not re-emit thinking:disabled and still force reasoning_content', async () => {
-      await instance.chat({
-        messages: [
-          { content: 'Hello', role: 'user' },
-          { content: 'Response', role: 'assistant' },
-          { content: 'Follow-up', role: 'user' },
-        ],
+    it('should not re-emit thinking:disabled and still force reasoning_content', () => {
+      const payload = buildResponsesPayload({
+        messages: conversation,
         model: 'kimi-k2.7-code',
         thinking: { type: 'disabled' },
       } as any);
-
-      const payload = getLastRequestPayload();
 
       // Native-thinking models cannot turn reasoning off; disabled must not be re-emitted.
       expect('thinking' in payload).toBe(false);
       expect(findAssistantMessage(payload)?.reasoning_content).toBe(' ');
     });
 
-    it("should pass through a non-'max' reasoning_effort unchanged (non-K3 model)", async () => {
-      await instance.chat({
+    it("should pass through a non-'max' reasoning_effort unchanged (non-K3 model)", () => {
+      const payload = buildResponsesPayload({
         messages: [{ content: 'Hello', role: 'user' }],
         model: 'kimi-k2.7-code',
         reasoning_effort: 'high',
       } as any);
-
-      const payload = getLastRequestPayload();
 
       // Only K3+ (isKimiReasoningEffortModel) drops non-'max' efforts; k2.7-code keeps full passthrough.
       expect(payload.reasoning_effort).toBe('high');
     });
   });
 
-  describe('toggleable K2.x model (kimi-k2.6)', () => {
-    it('should re-emit thinking:disabled and not force reasoning_content', async () => {
-      await instance.chat({
+  describe('non-Kimi models', () => {
+    it('keeps the structured reasoning block so Responses can replay it', () => {
+      const payload = buildResponsesPayload({
         messages: [
           { content: 'Hello', role: 'user' },
-          { content: 'Response', role: 'assistant' },
-          { content: 'Follow-up', role: 'user' },
+          {
+            content: 'Response',
+            reasoning: { content: 'thinking out loud', signature: 'sig-1' },
+            role: 'assistant',
+          },
         ],
+        model: 'qwen3.8-flash',
+      } as any);
+
+      expect(payload.messages[1]).toMatchObject({
+        content: 'Response',
+        reasoning: { content: 'thinking out loud', signature: 'sig-1' },
+      });
+      expect('reasoning_content' in payload.messages[1]).toBe(false);
+    });
+  });
+
+  describe('toggleable K2.x model (kimi-k2.6)', () => {
+    it('should drop thinking:disabled and not force reasoning_content', () => {
+      const payload = buildResponsesPayload({
+        messages: conversation,
         model: 'kimi-k2.6',
         thinking: { type: 'disabled' },
       } as any);
 
-      const payload = getLastRequestPayload();
-
-      // Toggleable K2.x models keep the old behavior: disabled is honored and re-emitted.
-      expect(payload.thinking).toEqual({ type: 'disabled' });
+      // `thinking` is Chat Completions only; the Responses endpoint rejects it.
+      expect('thinking' in payload).toBe(false);
       // With thinking explicitly disabled, assistant messages are not forced to carry reasoning_content.
       expect(findAssistantMessage(payload)?.reasoning_content).toBeUndefined();
     });

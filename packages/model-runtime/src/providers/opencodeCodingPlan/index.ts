@@ -1,6 +1,5 @@
 import { pickNonEmptyString } from '@lobechat/utils/object';
-import { LOBE_DEFAULT_MODEL_LIST, ModelProvider } from 'model-bank';
-import type OpenAI from 'openai';
+import { ModelProvider, opencodecodingplan } from 'model-bank';
 
 import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
 import { createRouterRuntime } from '../../core/RouterRuntime';
@@ -17,7 +16,6 @@ import {
   isKimiReasoningEffortModel,
   isKimiReasoningModel,
 } from '../moonshot/modelId';
-import { resolveProviderRouteModels } from '../utils/resolveProviderRouteModels';
 
 // ============================================================================
 // Constants
@@ -59,40 +57,37 @@ interface ModelsDevData {
 }
 
 interface ModelsCache {
-  anthropicModels: string[];
   /**
    * Model IDs whose `interleaved.field` is set in models.dev. These need
-   * special reasoning_content handling in the OpenAI-compatible payload.
+   * special reasoning_content handling in the request payload.
    * Populated by `fetchModelsDevData` so it stays in sync with models.dev.
    */
   interleavedIds: Set<string>;
   modelsDev: Record<string, ModelsDevModel>;
-  responsesIds: Set<string>;
 }
-
-// Fallback: models that need Anthropic SDK (used when models.dev is unavailable)
-const ANTHROPIC_MODEL_PREFIXES = ['minimax', 'qwen'];
 
 // Fallback: models with interleaved reasoning_content (used when models.dev
 // is unreachable). Mirrors the last-known state of models.dev.
 const FALLBACK_INTERLEAVED_IDS: ReadonlySet<string> = new Set([
   'deepseek-v4-flash',
+  'deepseek-v4-flash-vision-exp',
   'deepseek-v4-pro',
-  'glm-5',
-  'glm-5.1',
-  'kimi-k2.5',
+  'deepseek-v4.1-flash',
+  'glm-5.2',
+  'glm-5.3',
+  'glm-5.3-flash',
   'kimi-k2.6',
-  'mimo-v2-omni',
-  'mimo-v2-pro',
+  'kimi-k2.7-code',
+  'kimi-k3',
+  'longcat-2.0',
+  'longcat-2.5-preview-free',
   'mimo-v2.5',
   'mimo-v2.5-pro',
-]);
-
-// Fallback: models that require OpenAI's Responses API when models.dev is
-// unreachable. Mirrors OpenCode Go's documented endpoint matrix.
-const FALLBACK_RESPONSES_IDS: ReadonlySet<string> = new Set([
-  'muse-spark-1.2-contributor',
-  'muse-spark-1.3-contributor',
+  'mimo-v2.6-flash',
+  'mimo-v2.6-pro',
+  'space-bunny',
+  'space-bunny-free',
+  'step-5-preview-free',
 ]);
 
 let cachedModelsData: ModelsCache | null = null;
@@ -102,12 +97,10 @@ let cachedModelsData: ModelsCache | null = null;
 // ============================================================================
 
 /**
- * Fetch models.dev data and derive all per-provider fields from it:
- *   - `anthropicModels`  (models whose `provider.npm` is the Anthropic SDK)
- *   - `responsesIds`     (models whose `provider.npm` is the OpenAI SDK)
+ * Fetch models.dev data and derive the fields this provider needs:
  *   - `interleavedIds`   (models with `interleaved.field` set, needing
  *                         special reasoning_content handling)
- *   - `modelsDev`        (raw model map for enrichment)
+ *   - `modelsDev`        (raw model map for enrichment and output limits)
  *
  * The result is cached for the process lifetime, so a single successful
  * fetch keeps every derived field in sync with models.dev.
@@ -125,29 +118,15 @@ const fetchModelsDevData = async (): Promise<ModelsCache> => {
       throw new Error('opencode-go provider not found in models.dev');
     }
 
-    const anthropicModels = Object.values(models)
-      .filter((m) => m.provider?.npm === '@ai-sdk/anthropic')
-      .map((m) => m.id);
-    const responsesIds = new Set(
-      Object.values(models)
-        .filter((m) => m.provider?.npm === '@ai-sdk/openai')
-        .map((m) => m.id),
-    );
-
     const interleavedIds = new Set<string>();
     for (const m of Object.values(models)) {
       if (m?.interleaved?.field) interleavedIds.add(m.id);
     }
 
-    cachedModelsData = { anthropicModels, interleavedIds, modelsDev: models, responsesIds };
+    cachedModelsData = { interleavedIds, modelsDev: models };
     return cachedModelsData;
   } catch {
-    cachedModelsData = {
-      anthropicModels: [],
-      interleavedIds: new Set(),
-      modelsDev: {},
-      responsesIds: new Set(),
-    };
+    cachedModelsData = { interleavedIds: new Set(), modelsDev: {} };
     return cachedModelsData;
   }
 };
@@ -165,39 +144,18 @@ const getInterleavedModelIds = (): ReadonlySet<string> => {
   return FALLBACK_INTERLEAVED_IDS;
 };
 
-const getResponsesModelIds = (): ReadonlySet<string> => {
-  if (cachedModelsData && cachedModelsData.responsesIds.size > 0) {
-    return cachedModelsData.responsesIds;
-  }
-  return FALLBACK_RESPONSES_IDS;
-};
-
 /**
- * Get anthropic models with self-contained fallback chain:
- *   1. models.dev (authoritative `provider.npm` field)
- *   2. static model-bank prefix match (used when models.dev is unreachable)
- *
- * Self-contained: does not depend on a runtime `client` object, so it's safe
- * to call from `routers` (which receives `ClientOptions` only and has no
- * `client` property during normal chat routing).
+ * Output limit for a model: the models.dev value fetched by the model-list path
+ * wins, falling back to the static model-bank card so a cold cache still gets a
+ * limit on the first request.
  */
-const getAnthropicModels = async (): Promise<string[]> => {
-  const { anthropicModels, modelsDev } = await fetchModelsDevData();
+const getModelMaxOutput = (model?: string): number | undefined => {
+  if (!model) return undefined;
 
-  if (Object.keys(modelsDev).length > 0) {
-    return anthropicModels;
-  }
-
-  // Fallback: prefix-match the static model-bank list. Equivalent to the
-  // pre-refactor hard-coded behavior when models.dev is unreachable.
-  try {
-    const { opencodecodingplan } = await import('model-bank');
-    return opencodecodingplan
-      .map((m) => m.id)
-      .filter((id) => ANTHROPIC_MODEL_PREFIXES.some((p) => id.startsWith(p)));
-  } catch {
-    return [];
-  }
+  return (
+    cachedModelsData?.modelsDev?.[model]?.limit?.output ??
+    opencodecodingplan.find((item) => item.id === model)?.maxOutput
+  );
 };
 
 // ============================================================================
@@ -335,31 +293,34 @@ export const sanitizeJsonSchema = (schema: any): any => {
 // ============================================================================
 
 /**
- * Select Responses-only models and build OpenAI-compatible payloads with
- * reasoning_content handling for interleaved and Kimi K2.x models.
+ * Build the Responses API payload. Every OpenCode Go model is served through the
+ * Responses endpoint, so this only normalizes model-family behaviour:
+ *   - top up `max_tokens` from the model output limit when the caller left it open
+ *   - drop the Chat Completions–only `thinking` switch, which Responses rejects
+ *   - keep the interleaved / Kimi `reasoning_content` round-trip and the Kimi
+ *     schema sanitizing the gateway requires
  */
-const buildOpenAIPayload = (
-  payload: ChatStreamPayload,
-): OpenAI.ChatCompletionCreateParamsStreaming => {
+export const buildResponsesPayload = (payload: ChatStreamPayload): ChatStreamPayload => {
   const model = payload.model;
-  if (getResponsesModelIds().has(model)) {
-    return { ...payload, apiMode: 'responses' } as OpenAI.ChatCompletionCreateParamsStreaming;
-  }
-
   const isKimi = isKimiThinkingToggleModel(model);
   const interleaved = isInterleavedModel(model);
 
-  if (!isKimi && !interleaved) return payload as any;
+  // `thinking` only exists on the Chat Completions payload; Responses rejects it.
+  const { max_tokens, reasoning_effort, thinking, ...restPayload } = payload;
 
   // Native-thinking Kimi models (k2.7-code, k3+) cannot turn reasoning off, so a
-  // saved disabled-thinking setting must be ignored: they still require
-  // reasoning_content round-trip and reject a `thinking: disabled` payload.
+  // saved disabled-thinking setting is ignored: they still require the
+  // reasoning_content round-trip.
   const nativeThinking = isKimiNativeThinkingModel(model);
-  const thinkingExplicitlyDisabled =
-    !nativeThinking && (payload as any).thinking?.type === 'disabled';
+  const thinkingExplicitlyDisabled = !nativeThinking && thinking?.type === 'disabled';
   const shouldForceReasoning = (interleaved || isKimi) && !thinkingExplicitlyDisabled;
 
-  const messages = payload.messages.map((message: any) => {
+  const messages = restPayload.messages.map((message: any) => {
+    // Only the interleaved / Kimi families exchange the structured `reasoning` block for the
+    // flat `reasoning_content` field. Every other model keeps `reasoning` untouched so the
+    // Responses converter can replay its reasoning items.
+    if (!isKimi && !interleaved) return message;
+
     const { reasoning, ...rest } = message;
     const normalized = isKimi && isEmptyContent(message.content) ? { ...rest, content: ' ' } : rest;
 
@@ -380,8 +341,6 @@ const buildOpenAIPayload = (
 
     return normalized;
   });
-
-  const { reasoning_effort, thinking, ...restPayload } = payload;
 
   // Sanitize response_format for Kimi models
   const response_format =
@@ -412,50 +371,41 @@ const buildOpenAIPayload = (
         }))
       : restPayload.tools;
 
+  const resolvedMaxTokens = max_tokens ?? getModelMaxOutput(model);
+
   return {
     ...restPayload,
     messages,
     response_format,
     tools,
+    // Top up the output limit from the model metadata when the caller left it open.
+    ...(resolvedMaxTokens === undefined ? {} : { max_tokens: resolvedMaxTokens }),
     // Kimi K3+ only accepts reasoning_effort 'max' (also the server default) — drop
     // any other saved effort instead of sending a value the API rejects
-    ...(!thinkingExplicitlyDisabled &&
-    reasoning_effort &&
+    ...(reasoning_effort &&
+    !thinkingExplicitlyDisabled &&
     (!isKimiReasoningEffortModel(model) || reasoning_effort === 'max')
       ? { reasoning_effort }
       : {}),
-    // K3+ models configure reasoning via top-level reasoning_effort only and
-    // reject the K2.x-only `thinking` param; native-thinking models never get
-    // `disabled` re-emitted (the toggle does not exist for them).
-    ...(!isKimiReasoningEffortModel(model) &&
-    (thinking?.type === 'enabled' || (thinking?.type === 'disabled' && !nativeThinking))
-      ? { thinking: { type: thinking.type } }
-      : {}),
     stream: payload.stream ?? true,
-  } as OpenAI.ChatCompletionCreateParamsStreaming;
+  } as ChatStreamPayload;
 };
 
 // ============================================================================
 // Runtime Instances
 // ============================================================================
 
-// OpenAI-compatible runtime for non-Anthropic models
+// OpenCode Go serves every model through the OpenAI-compatible Responses endpoint.
 const LobeOpenCodeCodingPlanOpenAI = createOpenAICompatibleRuntime({
   provider: ModelProvider.OpenCodeCodingPlan,
   baseURL: GO_BASE_URL,
-  chatCompletion: { handlePayload: buildOpenAIPayload },
   debug: {
     chatCompletion: () => process.env.DEBUG_OPENCODE_GO_CHAT_COMPLETION === '1',
+    responses: () => process.env.DEBUG_OPENCODE_GO_CHAT_COMPLETION === '1',
   },
-  generateObject: {
-    get useResponseModels() {
-      return [...getResponsesModelIds()];
-    },
-  },
+  generateObject: { useResponse: true },
+  responses: { handlePayload: buildResponsesPayload },
 });
-
-// Anthropic SDK auto-appends /v1/messages to baseURL, so strip trailing /v1
-const stripV1 = (url?: string) => url?.replace(/\/v1$/, '');
 
 // ============================================================================
 // Provider Export
@@ -489,43 +439,20 @@ export const params = {
       }
 
       // 3. Final fallback: static model bank.
-      const { opencodecodingplan } = await import('model-bank');
       return processMultiProviderModelList(
         opencodecodingplan.map((m) => ({ id: m.id })),
         'opencodecodingplan',
       );
     }
   },
-  routers: async (options, runtimeContext?: { model?: string }) => {
-    const baseURL = options.baseURL || GO_BASE_URL;
-
-    const anthropicModels = await getAnthropicModels();
-
-    return [
-      // Anthropic SDK for models with provider.npm === '@ai-sdk/anthropic'
-      {
-        apiType: 'anthropic',
-        models: anthropicModels,
-        options: { ...options, baseURL: stripV1(baseURL) },
-      },
-      // DeepSeek models via the deepseek runtime (OpenAI-compatible endpoint)
-      {
-        apiType: 'deepseek',
-        models: resolveProviderRouteModels(
-          'deepseek',
-          LOBE_DEFAULT_MODEL_LIST,
-          runtimeContext?.model,
-        ),
-        options: { ...options, baseURL, sdkType: 'openai' },
-      },
-      // OpenAI-compatible fallback for all other models
-      {
-        apiType: 'openai',
-        runtime: LobeOpenCodeCodingPlanOpenAI as any,
-        options: { ...options, baseURL },
-      },
-    ];
-  },
+  routers: (options) => [
+    // Every model goes through the Responses endpoint, so there is no per-model route.
+    {
+      apiType: 'openai',
+      runtime: LobeOpenCodeCodingPlanOpenAI as any,
+      options: { ...options, baseURL: options.baseURL || GO_BASE_URL },
+    },
+  ],
 } satisfies CreateRouterRuntimeOptions;
 
 export class LobeOpenCodeCodingPlanAI extends createRouterRuntime(params) {
@@ -543,13 +470,18 @@ export class LobeOpenCodeCodingPlanAI extends createRouterRuntime(params) {
   }
 
   override async chat(payload: ChatStreamPayload, options?: ChatMethodOptions) {
-    return super.chat(payload, {
-      ...options,
-      requestHeaders: {
-        ...this.getSessionHeaders(options?.metadata),
-        ...options?.requestHeaders,
+    return super.chat(
+      // The gateway is addressed through its Responses endpoint only; forcing the mode
+      // here keeps a saved Chat Completions preference from switching the provider back.
+      { ...payload, apiMode: 'responses' },
+      {
+        ...options,
+        requestHeaders: {
+          ...this.getSessionHeaders(options?.metadata),
+          ...options?.requestHeaders,
+        },
       },
-    });
+    );
   }
 
   override async generateObject(payload: GenerateObjectPayload, options?: GenerateObjectOptions) {

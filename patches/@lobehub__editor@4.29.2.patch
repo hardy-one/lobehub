@@ -140,3 +140,32 @@ diff --git a/es/react/Editor/Editor.js b/es/react/Editor/Editor.js
  				onBlur,
  				onChange: debouncedOnChange,
  				onCompositionEnd,
+diff --git a/es/plugins/markdown/data-source/markdown-data-source.js b/es/plugins/markdown/data-source/markdown-data-source.js
+--- a/es/plugins/markdown/data-source/markdown-data-source.js
++++ b/es/plugins/markdown/data-source/markdown-data-source.js
+@@ -36,7 +36,11 @@
+ 		this.getService = getService;
+ 	}
+ 	read(editor, data) {
+-		const inode = { root: parseMarkdownToLexical(data, this.markdownService.markdownReaders) };
++		const root = parseMarkdownToLexical(data, this.markdownService.markdownReaders);
++		if (!root.children || root.children.length === 0) {
++			root.children = [INodeHelper.createParagraph()];
++		}
++		const inode = { root };
+ 		this.getService?.(INodeService)?.processNodeTree(inode);
+ 		logger.debug("Parsed Lexical State:", inode);
+ 		const editorState = editor.parseEditorState(inode, () => {
+diff --git a/es/plugins/markdown/data-source/markdown/parse.js b/es/plugins/markdown/data-source/markdown/parse.js
+--- a/es/plugins/markdown/data-source/markdown/parse.js
++++ b/es/plugins/markdown/data-source/markdown/parse.js
+@@ -188,7 +188,7 @@
+ 	if (!markdownReaders["root"]) markdownReaders["root"] = (node, children) => {
+ 		return {
+ 			...INodeHelper.createRootNode(),
+-			children
++			children: children && children.length > 0 ? children : [INodeHelper.createParagraph()]
+ 		};
+ 	};
+ 	if (!markdownReaders["paragraph"]) markdownReaders["paragraph"] = (node, children) => {
+

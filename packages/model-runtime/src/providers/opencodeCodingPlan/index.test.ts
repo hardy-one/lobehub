@@ -139,6 +139,23 @@ describe('LobeOpenCodeCodingPlanAI', () => {
       },
     );
 
+    it.each([
+      ['none', 'none'],
+      ['medium', 'medium'],
+    ])('forwards MiMo thinking effort %s as reasoning.effort', async (effort, expected) => {
+      const instance = new LobeOpenCodeCodingPlanAI({ apiKey: 'test' });
+
+      await instance.chat({
+        messages: [{ content: 'Hello', role: 'user' }],
+        model: 'mimo-v2.6-pro',
+        reasoning_effort: effort as any,
+      });
+
+      expect(responsesCreateSpy.mock.calls.at(-1)?.[0]).toMatchObject({
+        reasoning: { effort: expected },
+      });
+    });
+
     it('generates structured output through the Responses endpoint', async () => {
       responsesCreateSpy.mockResolvedValue({ output_text: '{"answer":"Hello"}' });
       const instance = new LobeOpenCodeCodingPlanAI({ apiKey: 'test' });
@@ -382,6 +399,19 @@ describe('buildResponsesPayload Kimi thinking semantics', () => {
 
       // Only K3+ (isKimiReasoningEffortModel) drops non-'max' efforts; k2.7-code keeps full passthrough.
       expect(payload.reasoning_effort).toBe('high');
+    });
+  });
+
+  describe('MiMo effort routing', () => {
+    it('keeps reasoning_effort none for MiMo models so thinking can be turned off', () => {
+      const payload = buildResponsesPayload({
+        messages: [{ content: 'Hello', role: 'user' }],
+        model: 'mimo-v2.6-pro',
+        reasoning_effort: 'none',
+      } as any);
+
+      expect(payload.reasoning_effort).toBe('none');
+      expect('thinking' in payload).toBe(false);
     });
   });
 

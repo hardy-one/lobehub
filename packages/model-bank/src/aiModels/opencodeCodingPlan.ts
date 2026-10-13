@@ -7,6 +7,8 @@ import { type AIChatModelCard } from '../types/aiModel';
 //   - { type: 'effort', values: ['max'] } → no switch (native always-on)
 //   - { type: 'toggle' } → enableReasoning
 //   - { type: 'budget_tokens', max } → reasoningBudgetToken / reasoningBudgetToken80k
+// MiMo entries also expose `mimoReasoningEffort`, from the vendor Responses API docs:
+//   reasoning.effort — `none` disables thinking, every other level enables it.
 // Entries models.dev no longer lists are kept disabled so existing selections keep resolving.
 
 const opencodeCodingPlanChatModels: AIChatModelCard[] = [
@@ -563,6 +565,9 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-04-22',
+    settings: {
+      extendParams: ['mimoReasoningEffort'],
+    },
     type: 'chat',
   },
   {
@@ -586,6 +591,9 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-04-22',
+    settings: {
+      extendParams: ['mimoReasoningEffort'],
+    },
     type: 'chat',
   },
   {
@@ -608,6 +616,9 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-09-22',
+    settings: {
+      extendParams: ['mimoReasoningEffort'],
+    },
     type: 'chat',
   },
   {
@@ -630,6 +641,9 @@ const opencodeCodingPlanChatModels: AIChatModelCard[] = [
       ],
     },
     releasedAt: '2026-09-22',
+    settings: {
+      extendParams: ['mimoReasoningEffort'],
+    },
     type: 'chat',
   },
   {

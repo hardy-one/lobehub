@@ -29,6 +29,7 @@ import ImageAspectRatioSelect from '@/features/ModelSwitchPanel/components/Contr
 import ImageResolution2Slider from '@/features/ModelSwitchPanel/components/ControlsForm/ImageResolution2Slider';
 import ImageResolutionSlider from '@/features/ModelSwitchPanel/components/ControlsForm/ImageResolutionSlider';
 import { KimiK3ReasoningEffortSlider } from '@/features/ModelSwitchPanel/components/ControlsForm/KimiK3ReasoningEffortSlider';
+import MimoReasoningEffortSlider from '@/features/ModelSwitchPanel/components/ControlsForm/MimoReasoningEffortSlider';
 import Opus47EffortSlider from '@/features/ModelSwitchPanel/components/ControlsForm/Opus47EffortSlider';
 import Qwen38ReasoningEffortSlider from '@/features/ModelSwitchPanel/components/ControlsForm/Qwen38ReasoningEffortSlider';
 import ReasoningEffortSlider from '@/features/ModelSwitchPanel/components/ControlsForm/ReasoningEffortSlider';
@@ -170,6 +171,10 @@ const EXTEND_PARAMS_OPTIONS: ExtendParamsOption[] = [
     key: 'kimiK3ReasoningEffort',
   },
   {
+    hintKey: 'providerModels.item.modelConfig.extendParams.options.mimoReasoningEffort.hint',
+    key: 'mimoReasoningEffort',
+  },
+  {
     hintKey: 'providerModels.item.modelConfig.extendParams.options.ring2_6ReasoningEffort.hint',
     key: 'ring2_6ReasoningEffort',
   },
@@ -252,6 +257,7 @@ const TITLE_KEY_ALIASES: Partial<Record<ExtendParamsType, ExtendParamsType>> = {
   grok4_7ReasoningEffort: 'reasoningEffort',
   hy3ReasoningEffort: 'reasoningEffort',
   kimiK3ReasoningEffort: 'reasoningEffort',
+  mimoReasoningEffort: 'reasoningEffort',
   qwen38ReasoningEffort: 'reasoningEffort',
   ring2_6ReasoningEffort: 'reasoningEffort',
   imageAspectRatio2: 'imageAspectRatio',
@@ -348,6 +354,7 @@ const PREVIEW_META: Partial<Record<ExtendParamsType, PreviewMeta>> = {
     previewWidth: 260,
     tag: 'reasoning_effort',
   },
+  mimoReasoningEffort: { labelSuffix: ' (MiMo)', previewWidth: 260, tag: 'reasoning.effort' },
   ring2_6ReasoningEffort: {
     labelSuffix: ' (Ring 2.6)',
     previewWidth: 300,
@@ -523,6 +530,7 @@ const ExtendParamsSelect = memo<ExtendParamsSelectProps>(({ value, onChange }) =
       grok4_7ReasoningEffort: <Grok47ReasoningEffortSlider value="high" />,
       hy3ReasoningEffort: <Hy3ReasoningEffortSlider value="high" />,
       kimiK3ReasoningEffort: <KimiK3ReasoningEffortSlider value="max" />,
+      mimoReasoningEffort: <MimoReasoningEffortSlider value="high" />,
       ring2_6ReasoningEffort: <Ring26ReasoningEffortSlider value="high" />,
       imageAspectRatio: <ImageAspectRatioSelect value="1:1" />,
       imageAspectRatio2: <ImageAspectRatio2Select value="1:1" />,

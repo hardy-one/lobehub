@@ -38,6 +38,7 @@ describe('ExtendParamsSelect', () => {
       gpt5_6ReasoningEffort: 'reasoningEffort',
       glm5_2ReasoningEffort: 'reasoningEffort',
       glm5_3ReasoningEffort: 'reasoningEffort',
+      mimoReasoningEffort: 'reasoningEffort',
       qwen38ReasoningEffort: 'reasoningEffort',
       thinkingLevel2: 'thinkingLevel',
     };
@@ -60,6 +61,10 @@ describe('ExtendParamsSelect', () => {
 
     it('should map Qwen3.8 Max variant to reasoningEffort', () => {
       expect(TITLE_KEY_ALIASES['qwen38ReasoningEffort']).toBe('reasoningEffort');
+    });
+
+    it('should map MiMo variant to reasoningEffort', () => {
+      expect(TITLE_KEY_ALIASES['mimoReasoningEffort']).toBe('reasoningEffort');
     });
 
     it('should map thinkingLevel2 to thinkingLevel', () => {

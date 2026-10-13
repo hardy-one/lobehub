@@ -44,6 +44,7 @@ import ImageAspectRatioSelect from './ImageAspectRatioSelect';
 import ImageResolution2Slider from './ImageResolution2Slider';
 import ImageResolutionSlider from './ImageResolutionSlider';
 import { KimiK3ReasoningEffortSlider } from './KimiK3ReasoningEffortSlider';
+import MimoReasoningEffortSlider from './MimoReasoningEffortSlider';
 import Opus47EffortSlider from './Opus47EffortSlider';
 import Qwen38ReasoningEffortSlider from './Qwen38ReasoningEffortSlider';
 import ReasoningEffortSlider from './ReasoningEffortSlider';
@@ -484,6 +485,16 @@ const ControlsForm = memo<ControlsFormProps>(
         layout: 'vertical',
         minWidth: undefined,
         name: 'kimiK3ReasoningEffort',
+        style: {
+          paddingBottom: 0,
+        },
+      },
+      {
+        children: <MimoReasoningEffortSlider />,
+        label: t('extendParams.reasoningEffort.title'),
+        layout: 'vertical',
+        minWidth: undefined,
+        name: 'mimoReasoningEffort',
         style: {
           paddingBottom: 0,
         },

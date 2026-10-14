@@ -101,6 +101,7 @@ export default {
   'betterAuth.errors.emailNotVerified': 'Email not verified, please verify your email first',
   'betterAuth.errors.emailRequired': 'Please enter your email address or username',
   'betterAuth.errors.firstNameRequired': 'Please enter your first name',
+  'betterAuth.errors.invitationCodeRequired': 'Please enter an invitation code',
   'betterAuth.errors.lastNameRequired': 'Please enter your last name',
   'betterAuth.errors.loginFailed': 'Sign in failed, please check your email and password',
   'betterAuth.errors.passwordFormat': 'Password must contain both letters and numbers',
@@ -165,6 +166,9 @@ export default {
   'betterAuth.signin.invalidReferralCodeContent':
     'The referral code "{{code}}" you used is invalid or expired. Do you want to continue signing in?',
   'betterAuth.signin.invalidReferralCodeTitle': 'Invalid Referral Code',
+  'betterAuth.signin.invitationCodeHint':
+    'Signing up with a provider? Enter the invitation code first.',
+  'betterAuth.signin.invitationCodePlaceholder': 'Invitation code (new accounts)',
   'betterAuth.signin.magicLinkButton': 'Send sign-in link',
   'betterAuth.signin.magicLinkError': 'Failed to send sign-in link, please try again later',
   'betterAuth.signin.magicLinkSent': 'Sign-in link sent, please check your email',
@@ -192,6 +196,7 @@ export default {
   'betterAuth.signup.invalidReferralCodeContent':
     'The referral code "{{code}}" you entered is invalid or expired. Do you want to continue signing up?',
   'betterAuth.signup.invalidReferralCodeTitle': 'Invalid Referral Code',
+  'betterAuth.signup.invitationCodePlaceholder': 'Invitation code',
   'betterAuth.signup.lastNamePlaceholder': 'Last Name',
   'betterAuth.signup.passwordPlaceholder': 'Enter your password',
   'betterAuth.signup.referralCodePlaceholder': 'Referral code (optional)',

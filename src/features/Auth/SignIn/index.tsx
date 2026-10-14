@@ -12,6 +12,7 @@ const SignIn = () => {
     continueWithAgreement,
     disableEmailPassword,
     email,
+    enableInvitationCode,
     form,
     handleBackFromSent,
     handleBackToEmail,
@@ -19,6 +20,7 @@ const SignIn = () => {
     handleGoToSignup,
     handleResendEmail,
     handleSocialSignIn,
+    invitationCode,
     isSocialOnly,
     lastAuthProvider,
     loading,
@@ -28,6 +30,7 @@ const SignIn = () => {
     sentInfo,
     serverConfigInit,
     setAgreementChecked,
+    setInvitationCode,
     socialLoading,
     step,
   } = useSignIn();
@@ -61,7 +64,9 @@ const SignIn = () => {
         agreementChecked={agreementChecked}
         continueWithAgreement={continueWithAgreement}
         disableEmailPassword={disableEmailPassword}
+        enableInvitationCode={enableInvitationCode}
         form={form as any}
+        invitationCode={invitationCode}
         isSocialOnly={isSocialOnly}
         lastAuthProvider={lastAuthProvider}
         loading={loading}
@@ -71,6 +76,7 @@ const SignIn = () => {
         setAgreementChecked={setAgreementChecked}
         socialLoading={socialLoading}
         onGoToSignup={handleGoToSignup}
+        onInvitationCodeChange={setInvitationCode}
         onResetEmail={handleBackToEmail}
         onSetPassword={handleForgotPassword}
         onSocialSignIn={handleSocialSignIn}

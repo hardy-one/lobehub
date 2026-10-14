@@ -7,6 +7,7 @@ import { useNavigate, useSearchParams } from 'react-router';
 import type { CheckUserResponseData } from '@/app/(backend)/api/auth/check-user/route';
 import type { ResolveUsernameResponseData } from '@/app/(backend)/api/auth/resolve-username/route';
 import { useBusinessSignin } from '@/business/client/hooks/useBusinessSignin';
+import { withInvitationCode } from '@/features/Auth/utils/authFetchOptions';
 import { useAuthAgreement } from '@/features/AuthShell/AuthAgreement';
 import { useAuthServerConfigStore } from '@/features/AuthShell/AuthServerConfigProvider';
 import { trackLoginOrSignupClicked } from '@/features/User/UserLoginOrSignup/trackLoginOrSignupClicked';
@@ -53,6 +54,9 @@ export const useSignIn = () => {
   const enableBusinessFeatures = useAuthServerConfigStore(
     (s) => s.serverConfig.enableBusinessFeatures || false,
   );
+  const enableInvitationCode = useAuthServerConfigStore(
+    (s) => s.serverConfig.enableInvitationCode || false,
+  );
   const { agreementChecked, continueWithAgreement, setAgreementChecked } = useAuthAgreement();
   const form = useForm<SignInFormValues>({
     initialValues: { email: '', password: '' },
@@ -75,6 +79,9 @@ export const useSignIn = () => {
   const [email, setEmail] = useState('');
   const [sentInfo, setSentInfo] = useState<SentEmailInfo | null>(null);
   const [isSocialOnly, setIsSocialOnly] = useState(false);
+  // Only travels with the social sign-in call: an existing account signs in
+  // without it, a new one needs it to be created.
+  const [invitationCode, setInvitationCode] = useState('');
   // Read after mount, not during render: this page is prerendered, and a stored
   // provider would make the first client render disagree with the document.
   const [lastAuthProvider, setLastAuthProvider] = useState<string | null>(null);
@@ -294,17 +301,20 @@ export const useSignIn = () => {
         authOrigin,
       );
       const additionalData = await getAdditionalData();
+      const fetchOptions = withInvitationCode(undefined, invitationCode);
       const signInWithAdditionalData = async () =>
         isBuiltinProvider(normalizedProvider)
           ? await signIn.social({
               additionalData,
               callbackURL,
+              fetchOptions,
               newUserCallbackURL,
               provider: normalizedProvider,
             })
           : await signIn.oauth2({
               additionalData,
               callbackURL,
+              fetchOptions,
               newUserCallbackURL,
               providerId: normalizedProvider,
             });
@@ -408,6 +418,7 @@ export const useSignIn = () => {
     continueWithAgreement,
     disableEmailPassword,
     email,
+    enableInvitationCode,
     form,
     handleBackFromSent,
     handleBackToEmail,
@@ -417,6 +428,7 @@ export const useSignIn = () => {
     handleResendEmail,
     handleSignIn,
     handleSocialSignIn,
+    invitationCode,
     isSocialOnly,
     lastAuthProvider,
     loading,
@@ -426,6 +438,7 @@ export const useSignIn = () => {
     sentInfo,
     serverConfigInit: enableBusinessFeatures ? true : serverConfigInit,
     setAgreementChecked,
+    setInvitationCode,
     socialLoading,
     step,
   };

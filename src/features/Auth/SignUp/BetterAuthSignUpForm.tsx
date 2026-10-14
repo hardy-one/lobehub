@@ -4,7 +4,7 @@ import { BRANDING_NAME } from '@lobechat/business-const';
 import { Icon } from '@lobehub/ui';
 import { Button, Input, InputPassword, Text } from '@lobehub/ui/base-ui';
 import { Form } from '@lobehub/ui/base-ui/form';
-import { Lock, Mail } from 'lucide-react';
+import { Lock, Mail, Ticket } from 'lucide-react';
 import { type CSSProperties, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useSearchParams } from 'react-router';
@@ -19,7 +19,14 @@ import { useSignUp } from './useSignUp';
 const FIELD_STYLE: CSSProperties = { gap: 0, paddingBlock: '0 24px' };
 
 const BetterAuthSignUpForm = () => {
-  const { agreementChecked, businessElement, form, loading, setAgreementChecked } = useSignUp();
+  const {
+    agreementChecked,
+    businessElement,
+    enableInvitationCode,
+    form,
+    loading,
+    setAgreementChecked,
+  } = useSignUp();
 
   const { t } = useTranslation('auth');
   const navigate = useNavigate();
@@ -132,6 +139,30 @@ const BetterAuthSignUpForm = () => {
             }
           />
         </Form.Field>
+
+        {enableInvitationCode && (
+          <Form.Field
+            name="invitationCode"
+            style={FIELD_STYLE}
+            validate={(value: string) => {
+              if (!value) return t('betterAuth.errors.invitationCodeRequired');
+            }}
+          >
+            <Input
+              autoComplete="off"
+              placeholder={t('betterAuth.signup.invitationCodePlaceholder')}
+              size="large"
+              prefix={
+                <Icon
+                  icon={Ticket}
+                  style={{
+                    marginInline: 6,
+                  }}
+                />
+              }
+            />
+          </Form.Field>
+        )}
 
         {businessElement && <div style={{ paddingBlockEnd: 24 }}>{businessElement}</div>}
 

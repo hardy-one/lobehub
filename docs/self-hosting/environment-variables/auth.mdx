@@ -67,6 +67,13 @@ LobeHub provides a complete authentication service capability when deployed. The
 - Default: `-`
 - Example: `example.com,admin@other.com`
 
+#### `AUTH_INVITATION_CODES`
+
+- Type: Optional
+- Description: Comma-separated list of invitation codes. When set, creating an account requires one of them, no matter which way the account is created — email/password, magic link, verification code, passkey or a first sign-in with an SSO provider. Leave empty to let anyone register.
+- Default: `-`
+- Example: `team-2026,friend-invite`
+
 #### `AUTH_DISABLE_EMAIL_PASSWORD`
 
 - Type: Optional

@@ -144,6 +144,8 @@ export interface GlobalServerConfig {
    * Whether Gateway mode is available for app-level agent execution.
    */
   enableGatewayMode?: boolean;
+  /** Whether `AUTH_INVITATION_CODES` is set, so sign-up asks for the code. */
+  enableInvitationCode?: boolean;
   enableLobehubSkill?: boolean;
   enableMagicLink?: boolean;
   enableMarketTrustedClient?: boolean;

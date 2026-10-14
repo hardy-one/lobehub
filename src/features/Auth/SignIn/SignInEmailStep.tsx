@@ -3,7 +3,7 @@ import { Flexbox, Icon } from '@lobehub/ui';
 import { Alert, Badge, Button, Divider, Input, Text } from '@lobehub/ui/base-ui';
 import { Form, type FormInstance } from '@lobehub/ui/base-ui/form';
 import { createStaticStyles } from 'antd-style';
-import { Mail } from 'lucide-react';
+import { Mail, Ticket } from 'lucide-react';
 import { type CSSProperties, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -39,12 +39,16 @@ export interface SignInEmailStepProps {
   agreementChecked: boolean;
   continueWithAgreement: (continueAction: () => void) => void;
   disableEmailPassword?: boolean;
+  /** Asks for the code that a brand new account must carry when signing up. */
+  enableInvitationCode?: boolean;
   form: FormInstance<{ email: string }>;
+  invitationCode?: string;
   isSocialOnly: boolean;
   lastAuthProvider?: string | null;
   loading: boolean;
   oAuthSSOProviders: string[];
   onGoToSignup: () => void;
+  onInvitationCodeChange?: (value: string) => void;
   onResetEmail: () => void;
   onSetPassword: () => void;
   onSocialSignIn: (provider: string) => void;
@@ -58,7 +62,9 @@ export const SignInEmailStep = ({
   agreementChecked,
   continueWithAgreement,
   disableEmailPassword,
+  enableInvitationCode,
   form,
+  invitationCode,
   isSocialOnly,
   lastAuthProvider,
   loading,
@@ -68,6 +74,7 @@ export const SignInEmailStep = ({
   setAgreementChecked,
   socialLoading,
   onGoToSignup,
+  onInvitationCodeChange,
   onResetEmail,
   onSetPassword,
   onSocialSignIn,
@@ -148,6 +155,22 @@ export const SignInEmailStep = ({
               button
             );
           })}
+          {enableInvitationCode && (
+            <Flexbox gap={6}>
+              <Input
+                autoComplete="off"
+                placeholder={t('betterAuth.signin.invitationCodePlaceholder')}
+                prefix={<Icon icon={Ticket} style={{ marginInline: 6 }} />}
+                size="large"
+                style={{ padding: 6 }}
+                value={invitationCode}
+                onChange={(e) => onInvitationCodeChange?.(e.target.value)}
+              />
+              <Text fontSize={12} type={'secondary'}>
+                {t('betterAuth.signin.invitationCodeHint')}
+              </Text>
+            </Flexbox>
+          )}
           {showEmailForm && divider}
         </Flexbox>
       )}

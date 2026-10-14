@@ -11,6 +11,7 @@ import type { AgentSignalSourceType } from '@lobechat/agent-signal/source';
 import { createSourceEvent } from '@lobechat/agent-signal/source';
 
 import { ExpertiseIngestionService } from '@/server/services/expertise/ingestion';
+import { resolveExpertiseModelConfig } from '@/server/services/expertise/modelConfig';
 
 import { acquireAgentSignalDailyBudget } from './budget';
 import type {
@@ -97,14 +98,23 @@ const buildRuntimeOrchestrationResult = (
   };
 };
 
-const createPolicyOptions = (
+const createPolicyOptions = async (
   context: AgentSignalExecutionContext,
   options: ExecuteAgentSignalSourceEventOptions,
   procedurePolicyOptions: NonNullable<CreateDefaultAgentSignalPoliciesOptions['procedure']>,
-): CreateDefaultAgentSignalPoliciesOptions => {
+): Promise<CreateDefaultAgentSignalPoliciesOptions> => {
   // Nightly review writes proposal Daily Briefs in-run via the builtin review
   // serverRuntime primitive; the completion handler only writes the ideas brief.
   const policyOptions = options.policyOptions;
+
+  let expertiseModelConfig: { model: string; provider: string } | undefined;
+  if (context.db && context.userId) {
+    try {
+      expertiseModelConfig = await resolveExpertiseModelConfig(context.db, context.userId);
+    } catch {
+      // Fallback silently if settings cannot be read
+    }
+  }
 
   return {
     completion: {
@@ -137,6 +147,8 @@ const createPolicyOptions = (
     },
     feedbackDomainJudge: {
       db: context.db,
+      model: expertiseModelConfig?.model,
+      provider: expertiseModelConfig?.provider,
       ...policyOptions?.feedbackDomainJudge,
       userId: context.userId,
       workspaceId: context.workspaceId,
@@ -154,6 +166,8 @@ const createPolicyOptions = (
               }),
           }),
       db: context.db,
+      model: expertiseModelConfig?.model,
+      provider: expertiseModelConfig?.provider,
       ...policyOptions?.feedbackSatisfactionJudge,
       userId: context.userId,
       workspaceId: context.workspaceId,
@@ -178,6 +192,8 @@ const createPolicyOptions = (
     },
     skillIntentClassifier: {
       db: context.db,
+      model: expertiseModelConfig?.model,
+      provider: expertiseModelConfig?.provider,
       ...policyOptions?.skillIntentClassifier,
       userId: context.userId,
       workspaceId: context.workspaceId,
@@ -206,11 +222,11 @@ const executeAgentSignalSourceEventCore = async <TSourceType extends AgentSignal
         ttlSeconds: 7 * 24 * 60 * 60,
       });
 
+    const policyOptions = await createPolicyOptions(context, options, procedurePolicyOptions);
+
     const runtime = await createAgentSignalRuntime({
       guardBackend: options.runtimeGuardBackend,
-      policies: createDefaultAgentSignalPolicies(
-        createPolicyOptions(context, options, procedurePolicyOptions),
-      ),
+      policies: createDefaultAgentSignalPolicies(policyOptions),
     });
     const runtimeResult = await runtime.emitNormalized(emission.source);
     const orchestration = buildRuntimeOrchestrationResult(emission.source, runtimeResult);

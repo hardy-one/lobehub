@@ -89,6 +89,7 @@ describe('useSignUp', () => {
     const validValues = {
       confirmPassword: 'Password123!',
       email: 'new@example.com',
+      invitationCode: '',
       password: 'Password123!',
     };
 
@@ -122,6 +123,39 @@ describe('useSignUp', () => {
 
       expect(mockPreSocialSignupCheck).toHaveBeenCalledWith(validValues);
       expect(mockSignUpEmail).not.toHaveBeenCalled();
+    });
+
+    it('should send the invitation code as a header', async () => {
+      mockSignUpEmail.mockResolvedValue({ error: null });
+
+      const { result } = renderHook(() => useSignUp());
+
+      await act(async () => {
+        await result.current.onSubmit({ ...validValues, invitationCode: '  INVITE-1  ' });
+      });
+
+      expect(mockSignUpEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fetchOptions: { headers: { 'x-invitation-code': 'INVITE-1' } },
+        }),
+      );
+    });
+
+    it('should pin a rejected invitation code on the field instead of a toast', async () => {
+      mockSignUpEmail.mockResolvedValue({
+        error: { code: 'INVALID_INVITATION_CODE', message: 'The invitation code is invalid' },
+      });
+
+      const { result } = renderHook(() => useSignUp());
+
+      await act(async () => {
+        await result.current.onSubmit({ ...validValues, invitationCode: 'WRONG' });
+      });
+
+      const { errors } = await result.current.form.validate(['invitationCode']);
+      expect(errors.invitationCode).toBeTruthy();
+      expect(mockMessageError).not.toHaveBeenCalled();
+      expect(window.location.href).toBe('');
     });
 
     it('should redirect to onboarding on success', async () => {

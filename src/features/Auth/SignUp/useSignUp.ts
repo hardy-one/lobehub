@@ -7,11 +7,15 @@ import { useNavigate, useSearchParams } from 'react-router';
 import type { BusinessSignupFomData } from '@/business/client/hooks/useBusinessSignup';
 import { useBusinessSignup } from '@/business/client/hooks/useBusinessSignup';
 import type { AuthFetchOptions } from '@/features/Auth/utils/authFetchOptions';
-import { withCaptchaToken } from '@/features/Auth/utils/authFetchOptions';
+import { withCaptchaToken, withInvitationCode } from '@/features/Auth/utils/authFetchOptions';
 import { useAuthAgreement } from '@/features/AuthShell/AuthAgreement';
 import { useAuthServerConfigStore } from '@/features/AuthShell/AuthServerConfigProvider';
 import { trackLoginOrSignupClicked } from '@/features/User/UserLoginOrSignup/trackLoginOrSignupClicked';
 import { signUp } from '@/libs/better-auth/auth-client';
+import {
+  INVITATION_CODE_INVALID_CODE,
+  INVITATION_CODE_REQUIRED_CODE,
+} from '@/libs/better-auth/invitation-code';
 import { buildOnboardingRedirectUrl, toAbsoluteAuthCallbackUrl } from '@/utils/onboardingRedirect';
 
 import type { BaseSignUpFormValues } from './types';
@@ -34,7 +38,7 @@ export const useSignUp = () => {
   const [searchParams] = useSearchParams();
   const { agreementChecked, continueWithAgreement, setAgreementChecked } = useAuthAgreement();
   const form = useForm<SignUpFormValues>({
-    initialValues: { confirmPassword: '', email: '', password: '' },
+    initialValues: { confirmPassword: '', email: '', invitationCode: '', password: '' },
     onSubmit: (values) =>
       continueWithAgreement(() => {
         void handleSignUp(values);
@@ -45,6 +49,9 @@ export const useSignUp = () => {
     useBusinessSignup(form);
   const enableEmailVerification = useAuthServerConfigStore(
     (s) => s.serverConfig.enableEmailVerification || false,
+  );
+  const enableInvitationCode = useAuthServerConfigStore(
+    (s) => s.serverConfig.enableInvitationCode || false,
   );
   const enableBusinessFeatures = useAuthServerConfigStore(
     (s) => s.serverConfig.enableBusinessFeatures || false,
@@ -65,7 +72,7 @@ export const useSignUp = () => {
       // threaded via the `callbackUrl` query param and restored on finish.
       const redirectUrl = buildOnboardingRedirectUrl(callbackUrl);
       const username = values.email.split('@')[0];
-      const fetchOptions = await getFetchOptions();
+      const fetchOptions = withInvitationCode(await getFetchOptions(), values.invitationCode);
 
       const submit = async (nextFetchOptions?: AuthFetchOptions) =>
         signUp.email({
@@ -105,6 +112,19 @@ export const useSignUp = () => {
         const translated = signUpError.code
           ? t(`authError:codes.${signUpError.code}`, { defaultValue: '' })
           : '';
+
+        // A rejected code is fixed in the field itself, so pin the error there
+        // instead of a toast that disappears while the user hunts for it.
+        if (
+          signUpError.code === INVITATION_CODE_REQUIRED_CODE ||
+          signUpError.code === INVITATION_CODE_INVALID_CODE
+        ) {
+          form.setErrors({
+            invitationCode: translated || signUpError.message || t('betterAuth.signup.error'),
+          });
+          return;
+        }
+
         toast.error(translated || signUpError.message || t('betterAuth.signup.error'));
         return;
       }
@@ -127,6 +147,7 @@ export const useSignUp = () => {
   return {
     agreementChecked,
     businessElement,
+    enableInvitationCode,
     form,
     loading,
     onSubmit: handleSignUp,

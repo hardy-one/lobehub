@@ -4,6 +4,9 @@ import { ChevronDownIcon, ZapIcon } from 'lucide-react';
 import type { ComponentPropsWithRef } from 'react';
 import { memo } from 'react';
 
+import { ModelIcon } from '@/components/LobeIcons';
+import { useIsMobile } from '@/hooks/useIsMobile';
+
 const styles = createStaticStyles(({ css }) => ({
   label: css`
     overflow: hidden;
@@ -13,6 +16,11 @@ const styles = createStaticStyles(({ css }) => ({
 
     text-overflow: ellipsis;
     white-space: nowrap;
+  `,
+  mobileTrigger: css`
+    flex: none;
+    gap: 3px;
+    padding-inline: 4px;
   `,
   secondary: css`
     flex: none;
@@ -70,23 +78,41 @@ const styles = createStaticStyles(({ css }) => ({
 interface TriggerProps extends ComponentPropsWithRef<'div'> {
   ariaLabel: string;
   fast?: boolean;
+  modelId?: string;
   secondaryText?: string;
   text: string;
 }
 
 const SelectorTrigger = memo<TriggerProps>(
-  ({ ariaLabel, className, fast, secondaryText, text, ...rest }) => (
-    <div {...rest} aria-label={ariaLabel} className={cx(styles.trigger, className)}>
-      {fast && <Icon icon={ZapIcon} size={12} />}
-      <span className={styles.label}>{text}</span>
-      {secondaryText && (
-        <span data-secondary className={styles.secondary}>
-          {secondaryText}
-        </span>
-      )}
-      <Icon icon={ChevronDownIcon} size={12} />
-    </div>
-  ),
+  ({ ariaLabel, className, fast, modelId, secondaryText, text, ...rest }) => {
+    const isMobile = useIsMobile();
+
+    if (isMobile && modelId) {
+      return (
+        <div
+          {...rest}
+          aria-label={ariaLabel}
+          className={cx(styles.trigger, styles.mobileTrigger, className)}
+        >
+          <ModelIcon model={modelId} size={18} />
+          <Icon icon={ChevronDownIcon} size={12} />
+        </div>
+      );
+    }
+
+    return (
+      <div {...rest} aria-label={ariaLabel} className={cx(styles.trigger, className)}>
+        {fast && <Icon icon={ZapIcon} size={12} />}
+        <span className={styles.label}>{text}</span>
+        {secondaryText && (
+          <span data-secondary className={styles.secondary}>
+            {secondaryText}
+          </span>
+        )}
+        <Icon icon={ChevronDownIcon} size={12} />
+      </div>
+    );
+  },
 );
 
 SelectorTrigger.displayName = 'SelectorTrigger';

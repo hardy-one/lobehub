@@ -38,11 +38,13 @@ import {
 import { memo, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { ModelIcon } from '@/components/LobeIcons';
 import { isDesktop } from '@/const/version';
 import { resolveTargetDeviceId } from '@/helpers/agentWorkingDirectory';
 import { resolveExecutionTarget } from '@/helpers/executionTarget';
 import { useEffectiveAgencyConfig } from '@/hooks/useEffectiveAgencyConfig';
 import { useEffectiveWorkingDirectory } from '@/hooks/useEffectiveWorkingDirectory';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useDeviceStore } from '@/store/device';
 import { useElectronStore } from '@/store/electron';
 import { useUserStore } from '@/store/user';
@@ -126,6 +128,10 @@ const styles = createStaticStyles(({ css }) => ({
       color: ${cssVar.colorText};
       background: ${cssVar.colorFillSecondary};
     }
+  `,
+  triggerMobile: css`
+    gap: 3px;
+    padding-inline: 4px;
   `,
   triggerDisabled: css`
     cursor: not-allowed;
@@ -249,9 +255,11 @@ export const ModelCatalogSelector = memo<ModelCatalogSelectorProps>(
       [completeOpenChange],
     );
 
+    const isMobile = useIsMobile();
+    const isNamedModel = currentModel !== HETEROGENEOUS_AGENT_DEFAULT_SELECTION;
+
     const trigger = (
       <div
-        className={cx(styles.trigger, disabled && styles.triggerDisabled)}
         aria-label={t('heteroAgent.cliModel.ariaLabel', {
           name: agentName,
           model:
@@ -259,12 +267,21 @@ export const ModelCatalogSelector = memo<ModelCatalogSelectorProps>(
               ? t('heteroAgent.modelSelector.default')
               : currentModel,
         })}
+        className={cx(
+          styles.trigger,
+          isMobile && isNamedModel && styles.triggerMobile,
+          disabled && styles.triggerDisabled,
+        )}
       >
-        <span className={styles.triggerLabel}>
-          {currentModel === HETEROGENEOUS_AGENT_DEFAULT_SELECTION
-            ? t('heteroAgent.modelSelector.default')
-            : currentModel}
-        </span>
+        {isMobile && isNamedModel ? (
+          <ModelIcon model={currentModel} size={18} />
+        ) : (
+          <span className={styles.triggerLabel}>
+            {currentModel === HETEROGENEOUS_AGENT_DEFAULT_SELECTION
+              ? t('heteroAgent.modelSelector.default')
+              : currentModel}
+          </span>
+        )}
         <Icon icon={ChevronDownIcon} size={12} />
       </div>
     );

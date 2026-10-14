@@ -87,6 +87,7 @@ const ModelSwitch = memo(() => {
     <SelectorTrigger
       aria-disabled={!interactive}
       ariaLabel={triggerText}
+      modelId={model}
       secondaryText={effortLabel}
       text={displayName}
       {...(interactive ? {} : { style: { cursor: 'default' } })}

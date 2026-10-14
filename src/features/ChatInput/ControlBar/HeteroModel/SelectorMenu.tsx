@@ -102,6 +102,7 @@ const SelectorMenu = memo<SelectorMenuProps>(
           <Trigger
             ariaLabel={view.ariaLabel}
             fast={view.isFastSpeed}
+            modelId={view.model}
             secondaryText={view.triggerLabel.secondaryText}
             text={view.triggerLabel.text}
           />

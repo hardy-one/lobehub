@@ -37,6 +37,7 @@ import { getLLMConfig } from '@/envs/llm';
 import { getServerAiProviderConfig } from '@/server/globalConfig';
 import { createLLMGenerationTracingHook } from '@/server/services/llmGenerationTracing/hook';
 import { ensureFreshOAuthToken } from '@/server/services/oauthDeviceFlow/refresh';
+import { createPromptDumpHook } from '@/server/services/promptDump/hook';
 
 import { KeyVaultsGateKeeper } from '../KeyVaultsEncrypt';
 import apiKeyManager from './apiKeyManager';
@@ -520,9 +521,13 @@ export const initModelRuntimeFromDB = async (
   // 5. Compose with the per-call llm_generation_tracing hook (no-op when the
   //    service is unconfigured, so OSS / self-hosted setups pay nothing for it).
   const tracingHooks = createLLMGenerationTracingHook(userId, provider, workspaceId);
-  const hooks = mergeModelRuntimeHooks(businessHooks, tracingHooks);
 
-  // 6. Initialize ModelRuntime with the payload and hooks.
+  // 6. Mirror every assembled request for offline prompt-cache analysis
+  //    (no-op unless the deployment opts in with PROMPT_DUMP_ENABLED).
+  const dumpHooks = createPromptDumpHook({ provider, runtimeProvider, userId, workspaceId });
+  const hooks = mergeModelRuntimeHooks(businessHooks, tracingHooks, dumpHooks);
+
+  // 7. Initialize ModelRuntime with the payload and hooks.
   // Providers whose models speak different protocols need the per-model sdk
   // type (provider-sourced) plus any explicit user override to route correctly.
   const routingOptions: Record<string, unknown> = {};
@@ -690,9 +695,14 @@ export const initModelRuntimeFromServerConfig = async (params: {
     ModelProvider.LobeHub,
     params.workspaceId,
   );
+  const dumpHooks = createPromptDumpHook({
+    provider: ModelProvider.LobeHub,
+    userId: params.actorUserId,
+    workspaceId: params.workspaceId,
+  });
   return ModelRuntime.initializeWithProvider(
     ModelProvider.LobeHub,
     { userId: params.actorUserId, workspaceId: params.workspaceId },
-    mergeModelRuntimeHooks(businessHooks, tracingHooks),
+    mergeModelRuntimeHooks(businessHooks, tracingHooks, dumpHooks),
   );
 };

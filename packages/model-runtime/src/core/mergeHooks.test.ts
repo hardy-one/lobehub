@@ -57,6 +57,23 @@ describe('mergeModelRuntimeHooks', () => {
     expect(bSpy).not.toHaveBeenCalled();
   });
 
+  it('chains every layer in argument order', async () => {
+    const order: string[] = [];
+    const layer = (name: string): ModelRuntimeHooks => ({
+      onGenerateObjectComplete: async () => {
+        order.push(name);
+      },
+    });
+
+    const merged = mergeModelRuntimeHooks(layer('a'), undefined, layer('b'), layer('c'));
+    await merged?.onGenerateObjectComplete?.(
+      { latencyMs: 0, success: true },
+      {} as Parameters<NonNullable<ModelRuntimeHooks['onGenerateObjectComplete']>>[1],
+    );
+
+    expect(order).toEqual(['a', 'b', 'c']);
+  });
+
   it('keeps hooks that exist in only one side without wrapping', () => {
     const onlyInA = vi.fn();
     const onlyInB = vi.fn();

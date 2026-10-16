@@ -162,16 +162,25 @@ export function formatDocument(
 }
 
 /**
- * Format the size of a document content as a short human-readable token string.
+ * Bucket the document size instead of printing the exact count.
+ *
+ * This column sits in the shared prompt prefix, so a size that moves on every
+ * edit invalidates the provider-side cache for the whole conversation — the
+ * same trap `formatUpdatedDate` below avoids. Buckets keep the signal the
+ * model triages on (is this document worth reading?) and only move when a
+ * document crosses an order of magnitude. Measured on real traffic: eight
+ * consecutive edits of one document used to produce seven distinct values.
+ *
  * Empty content is rendered as "empty" so the LLM does not retry reading it.
  */
 function formatSize(doc: Pick<AgentContextDocument, 'content' | 'contentCharCount'>): string {
   const len = doc.contentCharCount ?? doc.content?.length ?? 0;
   if (len === 0) return 'empty';
-  if (len < 1000) return String(len);
-  if (len < 10_000) return `${(len / 1000).toFixed(1)}k`;
-  if (len < 1_000_000) return `${Math.round(len / 1000)}k`;
-  return `${(len / 1_000_000).toFixed(1)}M`;
+  if (len < 1_000) return '<1k';
+  if (len < 10_000) return '~1k';
+  if (len < 100_000) return '~10k';
+  if (len < 1_000_000) return '~100k';
+  return '~1M';
 }
 
 /**
@@ -191,6 +200,13 @@ function formatUpdatedDate(at: Date | string | undefined): string {
 }
 
 const TITLE_MAX_WIDTH = 60;
+
+/**
+ * Width of the SIZE column. Every bucket label from `formatSize` fits, so the
+ * column never re-pads: one row changing length would otherwise rewrite the
+ * padding of every other row in the table.
+ */
+const SIZE_COLUMN_WIDTH = 'empty'.length;
 
 function pickRowTitle(doc: AgentContextDocument): string {
   return doc.title || doc.filename || '(untitled)';
@@ -216,7 +232,7 @@ function isNewSinceUserMessage(doc: AgentContextDocument, context: AgentDocument
  * Render a list of progressive docs as a fixed-width table:
  *
  *   TITLE                ID                                    SIZE    UPDATED
- *   daily-brief.txt      2af6eb88-8bdb-468f-887f-620baa394efa  1.4k    2026-04-27
+ *   daily-brief.txt      2af6eb88-8bdb-468f-887f-620baa394efa  ~1k     2026-04-27
  */
 function buildIndexTable(
   docs: AgentContextDocument[],
@@ -234,7 +250,7 @@ function buildIndexTable(
 
   const titleWidth = Math.max('TITLE'.length, ...rows.map((r) => r.title.length));
   const idWidth = Math.max('ID'.length, ...rows.map((r) => r.id.length));
-  const sizeWidth = Math.max('SIZE'.length, ...rows.map((r) => r.size.length));
+  const sizeWidth = SIZE_COLUMN_WIDTH;
 
   const sep = '  ';
   const headerLine = [
@@ -312,7 +328,7 @@ function partitionFolders(docs: AgentContextDocument[]): {
 }
 
 /**
- * "18 docs, 4.3k–20k" — count plus a size range when the folder's docs differ
+ * "18 docs, ~1k–~10k" — count plus a size range when the folder's docs differ
  * meaningfully in size; just the count when they're uniform or all empty.
  */
 function formatFolderSummary(docs: AgentContextDocument[]): string {
@@ -329,7 +345,7 @@ function formatFolderSummary(docs: AgentContextDocument[]): string {
 /**
  * Render collapsed folders as a fixed-width table, newest folder first:
  *
- *   📁 dailyBrief  2af6…394efa  18 docs, 4.3k–20k  2026-03-29
+ *   📁 dailyBrief  2af6…394efa  18 docs, ~1k–~10k  2026-03-29
  *   📁 周报         6b1c…07d21  9 docs             2026-03-27
  *
  * The ID column is the folder's `documentId` — the value the model passes to

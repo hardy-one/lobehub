@@ -42,16 +42,15 @@ const MODELS_DEV_NPM_BY_SDK = {
 } as const satisfies Partial<Record<ModelSdkType, string>>;
 
 // Fallback: models with interleaved reasoning_content (used when models.dev
-// is unreachable). Mirrors the last-known state of models.dev.
+// is unreachable). Mirrors the last-known state of models.dev for the ids the
+// provider currently serves.
 const FALLBACK_INTERLEAVED_IDS: ReadonlySet<string> = new Set([
-  'deepseek-v4-flash',
-  'deepseek-v4-flash-vision-exp',
+  'cat-jam-free',
   'deepseek-v4-pro',
   'deepseek-v4.1-flash',
   'glm-5.2',
   'glm-5.3',
   'glm-5.3-flash',
-  'kimi-k2.6',
   'kimi-k2.7-code',
   'kimi-k3',
   'longcat-2.0',
@@ -61,8 +60,7 @@ const FALLBACK_INTERLEAVED_IDS: ReadonlySet<string> = new Set([
   'mimo-v2.6-flash',
   'mimo-v2.6-pro',
   'space-bunny',
-  'space-bunny-free',
-  'step-5-preview-free',
+  'step-5-preview',
 ]);
 
 let cachedInterleavedIds: ReadonlySet<string> = FALLBACK_INTERLEAVED_IDS;

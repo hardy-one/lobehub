@@ -19,7 +19,7 @@ import { buildGrokAcpPrompt, GrokAcpSession } from './grokAcpSession';
 import type { AgentPromptInput, BuildAgentInputOptions } from './input';
 import { buildAgentInput } from './input';
 import { buildTraeAcpPrompt, TraeAcpSession } from './traeAcpSession';
-import { assertSpawnableWorkingDirectory } from './workingDirectory';
+import { assertSpawnableWorkingDirectory, withWorkingDirectoryEnv } from './workingDirectory';
 
 export interface SpawnAgentOptions {
   /** Registered local heterogeneous-agent type key. */
@@ -556,7 +556,7 @@ const spawnGrokAcpAgent = async (
     commandPath: command,
     cwd,
     detached: options.detached,
-    env: { ...process.env, ...options.env },
+    env: withWorkingDirectoryEnv({ ...process.env, ...options.env }, cwd),
     onEvents: bridge.onEvents,
     onRawMessage: teeAcpRawStdout(options.onRawStdout),
     onRuntimeStatus: () => {},
@@ -584,7 +584,7 @@ const spawnCursorAcpAgent = async (
     commandPath: command,
     cwd,
     detached: options.detached,
-    env: { ...process.env, ...options.env },
+    env: withWorkingDirectoryEnv({ ...process.env, ...options.env }, cwd),
     onEvents: bridge.onEvents,
     onRawMessage: teeAcpRawStdout(options.onRawStdout),
     onRuntimeStatus: () => {},
@@ -611,7 +611,7 @@ const spawnDroidAcpAgent = async (
     clientVersion: 'lobehub-cli',
     commandPath: command,
     cwd,
-    env: { ...process.env, ...options.env },
+    env: withWorkingDirectoryEnv({ ...process.env, ...options.env }, cwd),
     initialModel: options.initialModel,
     onEvents: bridge.onEvents,
     onRawMessage: teeAcpRawStdout(options.onRawStdout),
@@ -654,7 +654,7 @@ const spawnDevinAcpAgent = async (
     commandPath: command,
     cwd,
     detached: options.detached,
-    env: { ...process.env, ...options.env },
+    env: withWorkingDirectoryEnv({ ...process.env, ...options.env }, cwd),
     initialModel: options.initialModel,
     onEvents: bridge.onEvents,
     permissionMode: options.permissionMode,
@@ -744,7 +744,7 @@ export const spawnAgent = async (options: SpawnAgentOptions): Promise<SpawnAgent
   const proc = spawnManaged(cliSpawnPlan.command, cliSpawnPlan.args, {
     cwd,
     detached,
-    env: childEnv,
+    env: withWorkingDirectoryEnv(childEnv, cwd),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 
@@ -919,7 +919,7 @@ export const spawnTraeAcpAgent = async (options: SpawnAgentOptions): Promise<Spa
     isPathLikeCommand(requestedCommand) && !path.isAbsolute(requestedCommand)
       ? path.resolve(cwd, requestedCommand)
       : requestedCommand;
-  const childEnv = { ...process.env, ...options.env };
+  const childEnv = withWorkingDirectoryEnv({ ...process.env, ...options.env }, cwd);
   const { detectHeterogeneousCliCommand } = await import('./resolveCliCommand');
   const commandStatus = await detectHeterogeneousCliCommand('trae', command, childEnv);
   if (!commandStatus.available || !commandStatus.path) {

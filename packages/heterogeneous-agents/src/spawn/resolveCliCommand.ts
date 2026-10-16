@@ -704,9 +704,9 @@ const HETEROGENEOUS_CLI_AGENT_OPTIONS = {
     validatePattern: /^v?\d+\.\d+\.\d+(?:[-+][\dA-Za-z.-]+)?$/,
   },
   'opencode': {
-    // OpenCode prints only a bare version (for example `1.18.3`) for
-    // `--version`, without a product-name prefix.
-    validatePattern: /^v?\d+\.\d+\.\d+(?:[-+][\dA-Za-z.-]+)?$/,
+    // Newer releases prefix the version with the product name
+    // (`opencode v2.0.27`); older ones print a bare semver.
+    validatePattern: /^(?:opencode\s+)?v?\d+\.\d+\.\d+(?:[-+][\dA-Z.-]+)?$/i,
   },
   'pi': {
     // Pi prints a bare semantic version for `--version`.

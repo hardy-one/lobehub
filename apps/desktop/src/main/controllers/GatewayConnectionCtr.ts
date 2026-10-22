@@ -171,6 +171,12 @@ export default class GatewayConnectionCtr extends ControllerModule {
     return this.app.getService(GatewayConnectionService);
   }
 
+  private async connectWithAdvertisedDeviceGateway() {
+    const privateGatewayUrl = await this.remoteServerConfigCtr.getPrivateDeviceGatewayUrl?.();
+    this.service.setAdvertisedGatewayUrl(privateGatewayUrl);
+    return this.service.connect();
+  }
+
   private get auvService() {
     return this.app.getService(AuvService);
   }
@@ -255,7 +261,7 @@ export default class GatewayConnectionCtr extends ControllerModule {
   @IpcMethod()
   async connect(): Promise<GatewayConnectResult> {
     this.app.storeManager.set('gatewayEnabled', true);
-    return this.service.connect();
+    return this.connectWithAdvertisedDeviceGateway();
   }
 
   @IpcMethod()
@@ -335,7 +341,7 @@ export default class GatewayConnectionCtr extends ControllerModule {
     if (!(await this.service.matchesDeviceId(deviceId))) return false;
 
     this.app.storeManager.set('gatewayEnabled', true);
-    const result = await this.service.connect();
+    const result = await this.connectWithAdvertisedDeviceGateway();
     return result.success;
   }
 
@@ -358,7 +364,7 @@ export default class GatewayConnectionCtr extends ControllerModule {
     const token = await this.remoteServerConfigCtr.getAccessToken();
     if (!token) return;
 
-    await this.service.connect();
+    await this.connectWithAdvertisedDeviceGateway();
   }
 
   // ─── Agent Run Routing ───
@@ -367,7 +373,7 @@ export default class GatewayConnectionCtr extends ControllerModule {
     request: AgentRunRequestMessage,
   ): Promise<{ reason?: string; status: 'accepted' | 'rejected' }> {
     try {
-      const serverUrl = await this.remoteServerConfigCtr.getRemoteServerUrl();
+      const serverUrl = await this.remoteServerConfigCtr.getDeviceServerUrl();
       if (!serverUrl) {
         return { reason: 'Remote server URL not configured', status: 'rejected' };
       }
@@ -494,6 +500,8 @@ export default class GatewayConnectionCtr extends ControllerModule {
       copyAssetForPublish: (params) => this.localFileCtr.copyAssetForPublish(params),
       getProjectFileIndex: (params) => this.localFileCtr.getProjectFileIndex(params),
       listHeterogeneousAgentModels: (params) => this.heterogeneousAgentCtr.listModels(params),
+      probeHeterogeneousThinkingLevels: (params) =>
+        this.heterogeneousAgentCtr.getThinkingLevels(params),
       searchProjectFiles: (params) => this.localFileCtr.searchProjectFiles(params),
       // Remote "delete" goes to this machine's trash (`shell.trashItem`), same
       // as the local Files tree, so it stays recoverable.
@@ -883,7 +891,7 @@ export default class GatewayConnectionCtr extends ControllerModule {
     const workDir = cwd || process.cwd();
 
     const [serverUrl, accessToken] = await Promise.all([
-      this.remoteServerConfigCtr.getRemoteServerUrl(),
+      this.remoteServerConfigCtr.getDeviceServerUrl(),
       this.remoteServerConfigCtr.getAccessToken(),
     ]);
 
@@ -1316,7 +1324,7 @@ export default class GatewayConnectionCtr extends ControllerModule {
   }): Promise<void> {
     try {
       const [serverUrl, token] = await Promise.all([
-        this.remoteServerConfigCtr.getRemoteServerUrl(),
+        this.remoteServerConfigCtr.getDeviceServerUrl(),
         this.remoteServerConfigCtr.getAccessToken(),
       ]);
       if (!serverUrl || !token) return;

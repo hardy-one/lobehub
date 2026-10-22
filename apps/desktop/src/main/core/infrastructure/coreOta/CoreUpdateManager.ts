@@ -94,6 +94,7 @@ export class CoreUpdateManager {
   private idleTimer: NodeJS.Timeout | null = null;
   private gcTask: Promise<void> = Promise.resolve();
   private checkTask: Promise<void> = Promise.resolve();
+  private fullUpdatesOnly = false;
 
   constructor(app: App, options: Options = {}) {
     this.app = app;
@@ -106,9 +107,11 @@ export class CoreUpdateManager {
       this.fetchImpl(url, { ...init, signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT) }),
     );
     this.builtinManifest = this.shell ? readBuiltinManifest(this.shell) : null;
-    this.activeChannel = this.coreChannel(
-      coerceStoredUpdateChannel(this.app.storeManager.get('updateChannel') ?? UPDATE_CHANNEL),
+    const updateChannel = coerceStoredUpdateChannel(
+      this.app.storeManager.get('updateChannel') ?? UPDATE_CHANNEL,
     );
+    this.fullUpdatesOnly = updateChannel === 'HARDY';
+    this.activeChannel = this.coreChannel(updateChannel);
     this.pointer = emptyPointer(this.shell?.abi ?? '');
     this.baseDisabledReasons = [
       !this.shell && 'missing-shell',
@@ -120,9 +123,13 @@ export class CoreUpdateManager {
   }
 
   get disabledReasons() {
-    return process.platform === 'darwin' && this.activeChannel === 'stable'
-      ? [...this.baseDisabledReasons, 'macos-stable-full-updates-only']
-      : this.baseDisabledReasons;
+    return [
+      ...this.baseDisabledReasons,
+      ...(this.fullUpdatesOnly ? ['hardy-full-updates-only'] : []),
+      ...(process.platform === 'darwin' && this.activeChannel === 'stable'
+        ? ['macos-stable-full-updates-only']
+        : []),
+    ];
   }
 
   get enabled() {
@@ -206,9 +213,11 @@ export class CoreUpdateManager {
 
   switchChannel = (channel: UpdateChannel) => {
     const next = this.coreChannel(channel);
-    if (next === this.activeChannel) return;
+    const nextFullUpdatesOnly = channel === 'HARDY';
+    if (next === this.activeChannel && nextFullUpdatesOnly === this.fullUpdatesOnly) return;
     logger.info('Core OTA channel changed', { from: this.activeChannel, to: next });
     this.activeChannel = next;
+    this.fullUpdatesOnly = nextFullUpdatesOnly;
     if (this.baseDisabledReasons.length) return;
     this.checkGeneration += 1;
     this.busy = false;
@@ -538,6 +547,7 @@ export class CoreUpdateManager {
   }
 
   private coreChannel(channel: UpdateChannel): CoreChannel {
+    if (channel === 'HARDY') return 'stable';
     return BUILD_CHANNEL === 'beta' && channel === 'canary' ? 'beta' : channel;
   }
 

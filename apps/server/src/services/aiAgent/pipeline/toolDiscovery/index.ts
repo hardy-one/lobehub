@@ -1,5 +1,6 @@
 import { CredsIdentifier } from '@lobechat/builtin-tool-creds';
 import { GoalIdentifier, isGoalPrompt } from '@lobechat/builtin-tool-goal';
+import { LobeAgentManifest } from '@lobechat/builtin-tool-lobe-agent';
 import type { DeviceAttachment } from '@lobechat/builtin-tool-remote-device';
 import { generateSystemPrompt, RemoteDeviceManifest } from '@lobechat/builtin-tool-remote-device';
 import {
@@ -35,6 +36,7 @@ import { createServerAgentToolsEngine } from '@/server/modules/Mecha';
 import { isAgentSignalEnabledForUser } from '@/server/services/agentSignal/featureGate';
 import { resolveUnsupportedMessageApis } from '@/server/services/bot/platforms/messageCapabilities';
 import { deviceGateway } from '@/server/services/deviceGateway';
+import { resolveSubAgentModelGuidance } from '@/server/utils/subAgentModelGuidance';
 
 import { buildAllowedBuiltinTools } from '../../deviceToolRegistry';
 import {
@@ -674,6 +676,29 @@ export const discoverTools = async (
       ...toolManifestMap[RemoteDeviceManifest.identifier],
       systemRole: generateSystemPrompt(onlineDevices),
     };
+  }
+
+  // Append enabled model guidance to the always-on lobe-agent manifest. Dynamic
+  // activations receive the same guidance from the activator runtime; this covers
+  // the manifest that is present from the first turn. Skip trimmed sub-agent/group
+  // manifests, whose system role intentionally has no nested-agent section.
+  const lobeAgentManifest = toolManifestMap[LobeAgentManifest.identifier];
+  if (
+    lobeAgentManifest &&
+    typeof lobeAgentManifest.systemRole === 'string' &&
+    lobeAgentManifest.systemRole.includes('<sub_agents>')
+  ) {
+    const subAgentModelGuidance = await resolveSubAgentModelGuidance(
+      deps.db,
+      deps.userId,
+      deps.workspaceId,
+    );
+    if (subAgentModelGuidance) {
+      toolManifestMap[LobeAgentManifest.identifier] = {
+        ...lobeAgentManifest,
+        systemRole: `${lobeAgentManifest.systemRole}\n\n${subAgentModelGuidance}`,
+      };
+    }
   }
 
   return {

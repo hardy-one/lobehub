@@ -40,7 +40,7 @@ export const fixture = {} as {
   userDataDir: string;
 };
 
-export const makeApp = () => ({
+export const makeApp = (channel = 'stable') => ({
   browserManager: {
     broadcastToAllWindows: vi.fn(),
     browsers: new Map([
@@ -71,7 +71,7 @@ export const makeApp = () => ({
       this.activeRenderer = source;
     }),
   },
-  storeManager: { get: vi.fn(() => 'stable') },
+  storeManager: { get: vi.fn(() => channel) },
   updaterManager: { captureRestoreRoute: vi.fn() },
 });
 

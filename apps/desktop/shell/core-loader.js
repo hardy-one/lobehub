@@ -85,6 +85,7 @@ function resolveCore({
   publicKey,
   deferBoot = false,
   platform = process.platform,
+  resourcesPath = process.resourcesPath,
 }) {
   const otaRoot = path.join(userData, 'core-ota');
   const bootFile = path.join(otaRoot, 'boot.json');
@@ -116,8 +117,25 @@ function resolveCore({
   const updateChannel =
     readJson(path.join(userData, 'lobehub-settings.json'))?.updateChannel ??
     builtinManifest?.channel;
-  if (platform === 'darwin' && updateChannel !== 'canary' && updateChannel !== 'beta') {
-    log.push('macOS Stable uses full updates only; ignoring external core');
+  let isHardy = updateChannel === 'HARDY' || updateChannel === 'hardy' || updateChannel === 'Hardy';
+  if (!isHardy && resourcesPath) {
+    try {
+      isHardy = /owner:\s*['"]?hardy-one\b/.test(
+        fs.readFileSync(path.join(resourcesPath, 'app-update.yml'), 'utf8'),
+      );
+    } catch {
+      // A missing app-update.yml cannot identify a Hardy build; use the stored channel.
+    }
+  }
+  if (
+    isHardy ||
+    (platform === 'darwin' && updateChannel !== 'canary' && updateChannel !== 'beta')
+  ) {
+    log.push(
+      isHardy
+        ? 'Hardy uses full updates only; ignoring external core'
+        : 'macOS Stable uses full updates only; ignoring external core',
+    );
     savePointer({ channel: 'stable', current: null, previous: null, staged: null });
   }
   const builtinSeq = typeof builtinManifest?.seq === 'number' ? builtinManifest.seq : null;

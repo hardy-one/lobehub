@@ -105,6 +105,25 @@ beforeEach(() => {
   });
 });
 
+describe('buildServerCallLlmContext - ordinary agent run', () => {
+  it('builds the LLM messages without requiring a separate discovery-tool binding', async () => {
+    const messages = [{ role: 'user' as const, content: 'Hello' }];
+    serverMessagesEngineMock.mockResolvedValue({ messages, metadata: {} });
+
+    const result = await buildServerCallLlmContext({
+      ctx: createCtx(),
+      llmPayload,
+      model: 'gpt-4',
+      provider: 'openai',
+      state,
+      tooling,
+    });
+
+    expect(result.processedMessages).toEqual(messages);
+    expect(serverMessagesEngineMock).toHaveBeenCalledOnce();
+  });
+});
+
 /**
  * Covers the executor-context to engine-input link. Every failure this feature
  * has had was a name dropped from an explicit field list rather than broken

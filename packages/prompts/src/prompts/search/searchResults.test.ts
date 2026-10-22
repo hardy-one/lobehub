@@ -44,19 +44,21 @@ describe('searchResultsPrompt', () => {
   it('should include optional fields as attributes when present', () => {
     const results = [
       {
+        authority: 3,
+        content: 'Deep reinforcement learning survey',
+        imgSrc: 'https://example.com/image.jpg',
+        publishedDate: '2021-08-25T23:01:48',
+        score: 2.85,
+        thumbnail: 'https://example.com/thumb.jpg',
         title: 'Research Paper',
         url: 'http://arxiv.org/abs/2108.11510v1',
-        content: 'Deep reinforcement learning survey',
-        publishedDate: '2021-08-25T23:01:48',
-        imgSrc: 'https://example.com/image.jpg',
-        thumbnail: 'https://example.com/thumb.jpg',
       },
     ];
 
     const xml = searchResultsPrompt(results);
 
     expect(xml).toEqual(`<searchResults>
-  <item title="Research Paper" url="http://arxiv.org/abs/2108.11510v1" publishedDate="2021-08-25T23:01:48" imgSrc="https://example.com/image.jpg" thumbnail="https://example.com/thumb.jpg">Deep reinforcement learning survey</item>
+  <item title="Research Paper" url="http://arxiv.org/abs/2108.11510v1" publishedDate="2021-08-25T23:01:48" score="2.85" authority="3" imgSrc="https://example.com/image.jpg" thumbnail="https://example.com/thumb.jpg">Deep reinforcement learning survey</item>
 </searchResults>`);
   });
 

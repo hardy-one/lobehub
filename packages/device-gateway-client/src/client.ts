@@ -5,7 +5,6 @@ import os from 'node:os';
 import type { DeviceMetricSample } from '@lobechat/types';
 import WebSocket from 'ws';
 
-import { toDeviceGatewayWebSocketUrl } from './endpoint';
 import { DeviceTunnelHost } from './tunnel';
 import type {
   AgentRunAckMessage,
@@ -86,6 +85,8 @@ export interface GatewayClientOptions {
    */
   connectTimeoutMs?: number;
   deviceId?: string;
+  /** Optional public endpoint used once when a preferred endpoint cannot connect. */
+  fallbackGatewayUrl?: string;
   gatewayUrl?: string;
   logger?: GatewayClientLogger;
   serverUrl?: string;
@@ -137,6 +138,8 @@ export class GatewayClient extends EventEmitter {
   private connectionId: string;
   private channel?: string;
   private gatewayUrl: string;
+  private readonly fallbackGatewayUrl?: string;
+  private hasUsedFallback = false;
   private token: string;
   private tokenType?: 'apiKey' | 'jwt' | 'serviceToken';
   private userAgent?: string;
@@ -153,6 +156,7 @@ export class GatewayClient extends EventEmitter {
     this.tokenType = options.tokenType;
     this.userAgent = options.userAgent;
     this.gatewayUrl = options.gatewayUrl || DEFAULT_GATEWAY_URL;
+    this.fallbackGatewayUrl = options.fallbackGatewayUrl;
     this.deviceId = options.deviceId || randomUUID();
     this.connectionId = options.connectionId || randomUUID();
     this.channel = options.channel;
@@ -175,6 +179,10 @@ export class GatewayClient extends EventEmitter {
 
   get connectionStatus(): ConnectionStatus {
     return this.status;
+  }
+
+  get currentGatewayUrl(): string {
+    return this.gatewayUrl;
   }
 
   get currentDeviceId(): string {
@@ -342,9 +350,14 @@ export class GatewayClient extends EventEmitter {
   }
 
   private buildWsUrl(): string {
-    // Keeps a path prefix (`https://host/gw` → `wss://host/gw/ws`) and tolerates
-    // a trailing slash in a hand-entered address.
-    const url = toDeviceGatewayWebSocketUrl(this.gatewayUrl);
+    const url = new URL(this.gatewayUrl);
+    if (url.protocol === 'https:') url.protocol = 'wss:';
+    else if (url.protocol === 'http:') url.protocol = 'ws:';
+    if (url.protocol !== 'wss:' && url.protocol !== 'ws:') {
+      throw new Error('Unsupported gateway URL protocol');
+    }
+    url.pathname = `${url.pathname.replace(/\/+$/, '')}/ws`;
+    url.hash = '';
     const params = new URLSearchParams({
       connectionId: this.connectionId,
       deviceId: this.deviceId,
@@ -611,8 +624,25 @@ export class GatewayClient extends EventEmitter {
 
   // ─── Reconnection (exponential backoff) ───
 
+  private useFallbackGateway() {
+    if (
+      this.intentionalDisconnect ||
+      this.hasUsedFallback ||
+      !this.fallbackGatewayUrl ||
+      this.fallbackGatewayUrl === this.gatewayUrl
+    )
+      return;
+    this.hasUsedFallback = true;
+    this.gatewayUrl = this.fallbackGatewayUrl;
+    this.reconnectDelay = INITIAL_RECONNECT_DELAY;
+    this.logger.warn(
+      'Preferred device gateway unavailable; reconnecting through the configured gateway',
+    );
+  }
+
   private scheduleReconnect() {
     this.clearReconnectTimer();
+    this.useFallbackGateway();
 
     const delay = this.reconnectDelay;
     this.logger.info(`Scheduling reconnect in ${delay}ms`);

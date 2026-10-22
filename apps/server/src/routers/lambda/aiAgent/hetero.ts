@@ -15,6 +15,7 @@ import {
 } from '@/business/server/agent-run/heteroInterventionReview';
 import { agentOperations } from '@/database/schemas';
 import type { LobeChatDatabase } from '@/database/type';
+import { appEnv } from '@/envs/app';
 import { router } from '@/libs/trpc/lambda';
 import { signHeteroOperationJWT } from '@/libs/trpc/utils/internalJwt';
 import { createStreamEventManager } from '@/server/modules/AgentRuntime/factory';
@@ -263,6 +264,31 @@ const authorizeOperationCallback = async (
 };
 
 export const heteroRouter = router({
+  /**
+   * Addresses this deployment offers its devices, in the order to try them.
+   *
+   * A device asks once, while connecting, and verifies whichever address it can
+   * reach; asking the server is the point, because a container cannot discover
+   * its externally reachable address.
+   *
+   * - `serverUrls`: app origins for native device traffic (`PRIVATE_APP_URLS`).
+   * - `agentGatewayUrls`: run-stream gateways, private first and public fallback.
+   * - `deviceGatewayUrls`: persistent device-connection gateways, private only;
+   *   clients retain their configured/public endpoint as the fallback.
+   */
+  heteroRuntimeEndpoints: heteroAgentProcedure.query(() => ({
+    agentGatewayUrls: [appEnv.PRIVATE_AGENT_GATEWAY_URL, appEnv.AGENT_GATEWAY_URL]
+      .map((url) => (url ?? '').trim().replace(/\/+$/, ''))
+      .filter((url, index, urls) => Boolean(url) && urls.indexOf(url) === index),
+    deviceGatewayUrls: [appEnv.PRIVATE_DEVICE_GATEWAY_URL]
+      .map((url) => (url ?? '').trim().replace(/\/+$/, ''))
+      .filter(Boolean),
+    serverUrls: (appEnv.PRIVATE_APP_URLS ?? '')
+      .split(',')
+      .map((url) => url.trim().replace(/\/+$/, ''))
+      .filter(Boolean),
+  })),
+
   /**
    * Ingest a batch of `AgentStreamEvent`s from a `lh hetero exec` producer
    * (CLI standalone, sandboxed CC, etc.) and republish them through the

@@ -90,6 +90,56 @@ describe('GatewayClient', () => {
     });
   });
 
+  describe('preferred endpoint fallback', () => {
+    it.each(['close', 'timeout', 'constructor'])(
+      'switches once after %s with the same identity and token',
+      async (failure) => {
+        client = new GatewayClient({
+          gatewayUrl: 'https://private.test',
+          fallbackGatewayUrl: 'https://public.test',
+          connectionId: 'same-connection',
+          deviceId: 'same-device',
+          token: 'same-token',
+          connectTimeoutMs: 100,
+        });
+        if (failure === 'constructor') mockWsShouldThrow = true;
+        await client.connect();
+        if (failure === 'close') (client as any).ws.emit('close', 1006, Buffer.from(''));
+        if (failure === 'timeout') await vi.advanceTimersByTimeAsync(100);
+        await vi.advanceTimersByTimeAsync(1001);
+        const ws = (client as any).ws;
+        expect(new URL(ws.url).hostname).toBe('public.test');
+        expect(new URL(ws.url).searchParams.get('connectionId')).toBe('same-connection');
+        expect(new URL(ws.url).searchParams.get('deviceId')).toBe('same-device');
+        expect(ws.send).toHaveBeenCalledWith(expect.stringContaining('same-token'));
+        ws.emit('message', JSON.stringify({ type: 'auth_success' }));
+        expect(client.connectionStatus).toBe('connected');
+        await client.disconnect();
+        expect(mockWsInstances.length).toBe(failure === 'constructor' ? 1 : 2);
+      },
+    );
+
+    it.each(['auth_failed', 'disconnect', 'replaced'])(
+      'does not fall back after %s',
+      async (failure) => {
+        client = new GatewayClient({
+          gatewayUrl: 'https://private.test',
+          fallbackGatewayUrl: 'https://public.test',
+          token: 'tok',
+        });
+        await client.connect();
+        const ws = (client as any).ws;
+        if (failure === 'auth_failed')
+          ws.emit('message', JSON.stringify({ type: 'auth_failed', reason: 'denied' }));
+        if (failure === 'disconnect') await client.disconnect();
+        if (failure === 'replaced')
+          ws.emit('close', 1000, Buffer.from('Replaced by new connection'));
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(mockWsInstances).toHaveLength(1);
+      },
+    );
+  });
+
   describe('connect', () => {
     it('should transition to connecting then authenticating on open', async () => {
       const statusChanges: string[] = [];
@@ -145,6 +195,19 @@ describe('GatewayClient', () => {
       expect(ws.url).toContain('deviceId=test-device-id');
       expect(ws.url).toContain('hostname=test-host');
       expect(ws.url).toContain('userId=test-user');
+    });
+
+    it.each([
+      ['wss://gateway.test.com/', 'wss://gateway.test.com/ws'],
+      ['ws://localhost:3000', 'ws://localhost:3000/ws'],
+      ['https://gateway.test.com/base/', 'wss://gateway.test.com/base/ws'],
+    ])('accepts gateway URL %s', async (gatewayUrl, expected) => {
+      const c = new GatewayClient({ autoReconnect: false, gatewayUrl, token: 'tok' });
+      await c.connect();
+      expect(
+        new URL(mockWsInstances.at(-1)!.url).origin + new URL(mockWsInstances.at(-1)!.url).pathname,
+      ).toBe(expected);
+      await c.disconnect();
     });
 
     it('should include connectionId and channel in the URL when provided', () => {

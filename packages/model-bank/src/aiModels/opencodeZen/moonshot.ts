@@ -1,0 +1,117 @@
+import { type AIChatModelCard } from '../../types/aiModel';
+
+export const moonshotChatModels: AIChatModelCard[] = [
+  {
+    abilities: { functionCall: true, reasoning: true, video: true, vision: true },
+    contextWindowTokens: 262_144,
+    description: 'Kimi multimodal agent model for visual understanding, coding, and planning',
+    displayName: 'Kimi K2.5',
+    enabled: false,
+    family: 'kimi',
+    generation: 'kimi-k2.5',
+    id: 'kimi-k2.5',
+    knowledgeCutoff: '2024-10',
+    maxOutput: 65_536,
+    organization: 'Moonshot',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 0.6, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 3, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.08, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-01-27',
+    settings: { extendParams: ['reasoningEffort'] },
+    sdkType: 'openai',
+    type: 'chat',
+  },
+  {
+    abilities: { functionCall: true, reasoning: true, video: true, vision: true },
+    contextWindowTokens: 262_144,
+    description: 'Kimi multimodal agent model for visual understanding, coding, and planning',
+    displayName: 'Kimi K2.6',
+    enabled: false,
+    family: 'kimi',
+    generation: 'kimi-k2.6',
+    id: 'kimi-k2.6',
+    knowledgeCutoff: '2024-10',
+    maxOutput: 65_536,
+    organization: 'Moonshot',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 0.95, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 4, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.16, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-04-21',
+    settings: { extendParams: ['enableReasoning'] },
+    sdkType: 'openai',
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+      structuredOutput: true,
+      video: true,
+      vision: true,
+    },
+    contextWindowTokens: 262_144,
+    description:
+      'Coding-focused Kimi model, stronger on long-horizon repo work with less overthinking',
+    displayName: 'Kimi K2.7 Code',
+    enabled: false,
+    family: 'kimi',
+    generation: 'kimi-k2.7',
+    id: 'kimi-k2.7-code',
+    knowledgeCutoff: '2025-01',
+    maxOutput: 262_144,
+    organization: 'Moonshot',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 0.95, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 4, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.19, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-06-12',
+    sdkType: 'openai',
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+      structuredOutput: true,
+      video: true,
+      vision: true,
+    },
+    contextWindowTokens: 1_048_576,
+    description:
+      'Multimodal Kimi model with 1M context and toggleable max-effort thinking for long-horizon agent work',
+    displayName: 'Kimi K3',
+    enabled: false,
+    family: 'kimi',
+    generation: 'kimi-k3',
+    id: 'kimi-k3',
+    maxOutput: 131_072,
+    organization: 'Moonshot',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 3, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 15, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.3, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-07-16',
+    sdkType: 'openai',
+    type: 'chat',
+  },
+];
+
+export default moonshotChatModels;

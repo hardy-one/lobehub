@@ -7,7 +7,8 @@ import { useTranslation } from 'react-i18next';
 
 import { pluginHelpers, useToolStore } from '@/store/tool';
 import { toolSelectors } from '@/store/tool/selectors';
-import { shinyTextStyles } from '@/styles';
+import { rowShinyText } from '@/styles';
+import { type MetaData } from '@/types/meta';
 
 import { getToolDisplayName } from '../../toolDisplayNames';
 import { extractToolKeyword } from './extractToolKeyword';
@@ -57,6 +58,11 @@ interface ToolTitleProps {
   isAborted?: boolean;
   isLoading?: boolean;
   partialArgs?: Record<string, unknown>;
+  /**
+   * Metadata for this identifier, resolved once per tool list by the parent.
+   * Omitted means resolve it here, which costs a full scan of the tool list.
+   */
+  pluginMeta?: MetaData;
   /** The settled tool result, so a failed goal command is not titled as done. */
   result?: { error?: unknown; state?: any };
 }
@@ -71,11 +77,25 @@ const isCJK = (value: string) => /[\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/.tes
  * keep the "<label> <keyword>" shape in the smaller code font.
  */
 const ToolTitle = memo<ToolTitleProps>(
-  ({ identifier, apiName, args, partialArgs, isLoading, isAborted, result }) => {
+  ({
+    identifier,
+    apiName,
+    args,
+    partialArgs,
+    isLoading,
+    isAborted,
+    pluginMeta: pluginMetaProp,
+    result,
+  }) => {
     const { t } = useTranslation('plugin');
 
-    const pluginMeta = useToolStore(toolSelectors.getMetaById(identifier), isEqual);
-    const pluginTitle = pluginHelpers.getPluginTitle(pluginMeta);
+    // The parent resolves every identifier in the list in one pass; this
+    // fallback keeps standalone callers working without that list.
+    const resolvedMeta = useToolStore(
+      pluginMetaProp === undefined ? toolSelectors.getMetaById(identifier) : () => pluginMetaProp,
+      isEqual,
+    );
+    const pluginTitle = pluginHelpers.getPluginTitle(resolvedMeta);
 
     // Builtin (and hetero-agent) tools have per-API action labels under
     // `builtins.<identifier>.apiName.<apiName>`; everything else falls back to
@@ -114,8 +134,8 @@ const ToolTitle = memo<ToolTitleProps>(
       const failed = !isLoading && isGoalCommandFailed(result);
       const status = isLoading ? 'loading' : failed ? 'failed' : 'completed';
       return (
-        <div className={cx(styles.root, isAborted && styles.aborted)}>
-          <span className={cx(styles.label, isLoading && shinyTextStyles.shinyText)}>
+        <div className={cx(styles.root, isAborted && styles.aborted, rowShinyText(isLoading))}>
+          <span className={styles.label}>
             {t(`builtins.goalCommand.${goalCommand.kind}.${status}`)}
           </span>
           {goalTitle && <span className={styles.standalone}>{goalTitle}</span>}
@@ -124,14 +144,12 @@ const ToolTitle = memo<ToolTitleProps>(
     }
 
     return (
-      <div className={cx(styles.root, isAborted && styles.aborted)}>
+      <div className={cx(styles.root, isAborted && styles.aborted, rowShinyText(isLoading))}>
         {isStandaloneDescription ? (
-          <span className={cx(styles.standalone, isLoading && shinyTextStyles.shinyText)}>
-            {keyword}
-          </span>
+          <span className={styles.standalone}>{keyword}</span>
         ) : (
           <>
-            <span className={cx(styles.label, isLoading && shinyTextStyles.shinyText)}>
+            <span className={styles.label}>
               {actionLabel || (
                 <>
                   {pluginTitle && (

@@ -7,8 +7,8 @@ import MarkdownMessage from '@/features/Conversation/Markdown';
 import ContentLoading from '@/features/Conversation/Messages/components/ContentLoading';
 import { RichContentRenderer } from '@/features/Conversation/Messages/components/RichContentRenderer';
 
+import { usePreparedMessage } from '../../../hooks/usePreparedMessage';
 import { dataSelectors, useConversationStore } from '../../../store';
-import { normalizeThinkTags, processWithArtifact } from '../../../utils/markdown';
 import { useMarkdown } from '../useMarkdown';
 
 const styles = createStaticStyles(({ css, cssVar }) => {
@@ -54,7 +54,7 @@ const MessageContent = memo<MessageContentProps>(
       (s) => dataSelectors.getBlockMetadata(id)(s)?.tempDisplayContent as string | undefined,
     );
 
-    const message = normalizeThinkTags(processWithArtifact(content ?? ''));
+    const message = usePreparedMessage(content ?? '');
     // Once a tool call exists below this block's text, the text is already
     // finalized — skip the streaming/fade-in animation so settled content above
     // a tool doesn't keep re-animating.

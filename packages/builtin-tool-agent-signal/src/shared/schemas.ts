@@ -42,7 +42,7 @@ const selfReviewProposalActionsSchema = {
       operation: {
         ...freeObj,
         description:
-          'Domain operation, e.g. { domain: "skill", operation: "create", input: { name, title, description, bodyMarkdown } }.',
+          'Executable domain operation. Every actionType except proposal_only requires the matching pair — create_skill: { domain: "skill", operation: "create", input: { name, title, description, bodyMarkdown } }; refine_skill: { domain: "skill", operation: "refine", input: { skillDocumentId, bodyMarkdown } }; consolidate_skill: { domain: "skill", operation: "consolidate", input: { canonicalSkillDocumentId, sourceSkillIds, bodyMarkdown } }; refine_prompt: { domain: "agent", operation: "refine_prompt", input: { agentId, systemRole } }; write_memory: { domain: "memory", operation: "write", input: { content, evidenceRefs } }. A proposal without its operation cannot be applied and will be rejected.',
       },
       rationale: str,
       target: {
@@ -50,7 +50,7 @@ const selfReviewProposalActionsSchema = {
         description: 'Target such as { skillName }, { skillDocumentId } or { agentId }.',
       },
     },
-    required: ['actionType'],
+    required: ['actionType', 'operation'],
     type: 'object',
   },
   minItems: 1,

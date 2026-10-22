@@ -238,6 +238,39 @@ export const normalizeSelfReviewProposalInput = (
   return { ...input, actions } as CreateSelfReviewProposalInput;
 };
 
+/**
+ * Expected `operation.domain` / `operation.operation` per executable action type.
+ *
+ * Approve-time apply dispatches on this pair, so a proposal whose operation is
+ * missing or points at a different pair can never be applied. Rejecting it here
+ * keeps the model in the loop, where it can resend a complete action, instead of
+ * persisting a pending proposal the user can only approve into a dead end.
+ */
+const PROPOSAL_OPERATION_CONTRACT = {
+  consolidate_skill: { domain: 'skill', operation: 'consolidate' },
+  create_skill: { domain: 'skill', operation: 'create' },
+  refine_prompt: { domain: 'agent', operation: 'refine_prompt' },
+  refine_skill: { domain: 'skill', operation: 'refine' },
+} as const;
+
+const assertProposalOperation = (
+  action: Record<string, unknown>,
+  actionType: keyof typeof PROPOSAL_OPERATION_CONTRACT,
+  index: number,
+) => {
+  const expected = PROPOSAL_OPERATION_CONTRACT[actionType];
+  const operation = toRecordOrEmpty(action.operation);
+  const domain = pickTrimmedString(operation.domain);
+  const name = pickTrimmedString(operation.operation);
+
+  if (domain === expected.domain && name === expected.operation) return;
+
+  const actual = domain && name ? `${domain}.${name}` : 'nothing';
+  throw new Error(
+    `actions[${index}] with actionType "${actionType}" requires operation { domain: "${expected.domain}", operation: "${expected.operation}", input: {...} }; received ${actual}.`,
+  );
+};
+
 const withCompleteProposalSnapshots = async ({
   agentId,
   input,
@@ -254,9 +287,18 @@ const withCompleteProposalSnapshots = async ({
   }
 
   const actions = await Promise.all(
-    input.actions.map(async (rawAction) => {
+    input.actions.map(async (rawAction, index) => {
       const action = toRecordOrEmpty(rawAction);
       const actionType = action.actionType;
+
+      if (
+        actionType === 'create_skill' ||
+        actionType === 'refine_skill' ||
+        actionType === 'refine_prompt' ||
+        actionType === 'consolidate_skill'
+      ) {
+        assertProposalOperation(action, actionType, index);
+      }
 
       if (actionType === 'consolidate_skill') {
         const operation = toRecordOrEmpty(action.operation);

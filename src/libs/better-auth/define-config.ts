@@ -21,6 +21,7 @@ import {
   getVerificationOTPEmailTemplate,
 } from '@/libs/better-auth/email-templates';
 import { emailWhitelist } from '@/libs/better-auth/plugins/email-whitelist';
+import { invitationCode } from '@/libs/better-auth/plugins/invitation-code';
 import { initBetterAuthSSOProviders } from '@/libs/better-auth/sso';
 import {
   createSecondaryStorage,
@@ -317,6 +318,7 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
     plugins: [
       ...customOptions.plugins,
       emailWhitelist(),
+      invitationCode(),
       expo(),
       admin(),
       // Email OTP plugin for mobile verification

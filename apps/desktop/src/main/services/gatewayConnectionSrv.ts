@@ -45,6 +45,10 @@ import { safeGetPath } from '@/utils/user-path';
 import { discoverDeviceGateway } from './gatewayDiscovery';
 import { collectBundledCliAgentRuntimes, collectGatewaySystemInfo } from './gatewaySystemInfo';
 import { ServiceModule } from './index';
+import {
+  privateDeviceGatewayDiscovery,
+  privateDeviceGatewayFallbackUrl,
+} from './privateDeviceGateway';
 
 const logger = createLogger('services:GatewayConnectionSrv');
 
@@ -237,6 +241,8 @@ export default class GatewayConnectionService extends ServiceModule {
   private discoveryAbort: AbortController | null = null;
   private pendingConnect: Promise<GatewayConnectResult> | null = null;
   private session: GatewaySession | null = null;
+  /** Deployment-private device gateway, standing in for the server's advertisement. */
+  private advertisedGatewayUrl?: string;
 
   private identitySource: IdentitySource | null = null;
   private identityCache: { identity: DeviceIdentity; userId: string } | null = null;
@@ -292,6 +298,11 @@ export default class GatewayConnectionService extends ServiceModule {
    */
   setServerUrlProvider(provider: () => Promise<string | undefined>) {
     this.serverUrlProvider = provider;
+  }
+
+  /** Hand over the deployment-private device gateway this desktop should use. */
+  setAdvertisedGatewayUrl(url?: string) {
+    this.advertisedGatewayUrl = url;
   }
 
   /**
@@ -701,6 +712,7 @@ export default class GatewayConnectionService extends ServiceModule {
       channel: isDev ? 'desktop-dev' : 'desktop',
       connectionId: this.getConnectionId(),
       deviceId: this.getDeviceId(),
+      fallbackGatewayUrl: this.fallbackGatewayUrl(endpoint.endpoint),
       gatewayUrl,
       logger,
       serverUrl: session.serverUrl,
@@ -913,6 +925,7 @@ export default class GatewayConnectionService extends ServiceModule {
       // predecessor, never the personal socket.
       connectionId: this.getConnectionId(),
       deviceId: identity.deviceId,
+      fallbackGatewayUrl: this.fallbackGatewayUrl(session.endpoint),
       gatewayUrl: session.endpoint.url,
       logger,
       serverUrl: session.serverUrl,
@@ -1571,7 +1584,8 @@ export default class GatewayConnectionService extends ServiceModule {
    *      its value
    *   2. the address saved in settings (`gatewayUrl`), unless it is the official
    *      gateway itself
-   *   3. the address this server advertises
+   *   3. the address this server advertises — the deployment-private one it
+   *      handed this desktop when it did, else its public advertisement
    *   4. the official gateway, when the server answered without one
    * The server is asked only for 3–4. A failed discovery is reported, never
    * replaced by the default: that would send this server's token elsewhere.
@@ -1581,7 +1595,7 @@ export default class GatewayConnectionService extends ServiceModule {
     this.discoveryAbort = controller;
     try {
       return await resolveDeviceGatewayEndpoint({
-        discover: () => discoverDeviceGateway(serverUrl, controller.signal),
+        discover: () => this.discoverEndpoint(serverUrl, controller.signal),
         manualUrl: this.getSavedGatewayUrl(),
         officialGatewayUrl: OFFICIAL_DEVICE_GATEWAY_URL,
         override: getDesktopEnv().DEVICE_GATEWAY_URL,
@@ -1589,6 +1603,27 @@ export default class GatewayConnectionService extends ServiceModule {
     } finally {
       if (this.discoveryAbort === controller) this.discoveryAbort = null;
     }
+  }
+
+  /**
+   * Where clients should look for this server's device gateway: the private
+   * endpoint the controller resolved for this desktop when there is one,
+   * otherwise the server itself. See `privateDeviceGateway`.
+   */
+  private discoverEndpoint(serverUrl: string, signal: AbortSignal) {
+    const privateDiscovery = privateDeviceGatewayDiscovery(this.advertisedGatewayUrl);
+    return privateDiscovery
+      ? Promise.resolve(privateDiscovery)
+      : discoverDeviceGateway(serverUrl, signal);
+  }
+
+  /** The public address the socket falls back to when it is on the private one. */
+  private fallbackGatewayUrl(endpoint: DeviceGatewayEndpoint): string | undefined {
+    return privateDeviceGatewayFallbackUrl(
+      this.advertisedGatewayUrl,
+      this.getSavedGatewayUrl(),
+      endpoint,
+    );
   }
 
   /**

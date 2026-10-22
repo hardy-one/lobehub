@@ -125,6 +125,20 @@ vi.mock('model-bank', () => ({
       abilities: { search: true, functionCall: true, reasoning: true, vision: true },
     },
   ],
+  deepseek: [
+    {
+      abilities: { functionCall: true, reasoning: true, structuredOutput: true },
+      contextWindowTokens: 1_048_576,
+      displayName: 'DeepSeek V4 Flash',
+      id: 'deepseek-v4-flash',
+      maxOutput: 393_216,
+      pricing: {
+        currency: 'CNY',
+        units: [{ name: 'textInput', rate: 1.5, strategy: 'fixed', unit: 'millionTokens' }],
+      },
+      type: 'chat',
+    },
+  ],
 }));
 
 vi.mock('@lobechat/business-model-bank/model-config', () => ({
@@ -196,6 +210,26 @@ describe('modelParse', () => {
   });
 
   describe('processModelList', () => {
+    it('does not copy a protocol from a global family or another provider card', async () => {
+      const result = await processModelList(
+        [{ id: 'qwen3.8-flash' }],
+        MODEL_LIST_CONFIGS.openai,
+        'openai',
+      );
+      expect(result[0].sdkType).toBeUndefined();
+    });
+
+    it('preserves exact provider/model SDK metadata through normalization', async () => {
+      const result = await processModelList(
+        [
+          { id: 'same-model', sdkType: 'anthropic' },
+          { id: 'responses-model', sdkType: 'openai-responses' },
+        ],
+        MODEL_LIST_CONFIGS.openai,
+      );
+      expect(result.map((model) => model.sdkType)).toEqual(['anthropic', 'openai-responses']);
+    });
+
     it('should process a list of models with the given provider config', async () => {
       const modelList = [{ id: 'gpt-4o' }, { id: 'gpt-3.5-turbo' }];
 
@@ -627,6 +661,27 @@ describe('modelParse', () => {
       expect(result[0].type).toBe('chat');
     });
 
+    it('resolves provider-qualified IDs to known model metadata', async () => {
+      const result = await processMultiProviderModelList(
+        [{ id: 'deepseek/deepseek-v4-flash' }],
+        'newapi',
+      );
+
+      expect(result).toEqual([
+        expect.objectContaining({
+          contextWindowTokens: 1_048_576,
+          displayName: 'DeepSeek V4 Flash',
+          functionCall: true,
+          id: 'deepseek/deepseek-v4-flash',
+          maxOutput: 393_216,
+          pricing: {
+            currency: 'CNY',
+            units: [{ name: 'textInput', rate: 1.5, strategy: 'fixed', unit: 'millionTokens' }],
+          },
+          reasoning: true,
+        }),
+      ]);
+    });
     it('should correctly process a model from a non-OpenAI provider not in default list, relying on keywords', async () => {
       // This model ('claude-3-haiku-unlisted') is NOT in mockDefaultModelList.
       // It should be detected as 'anthropic'.

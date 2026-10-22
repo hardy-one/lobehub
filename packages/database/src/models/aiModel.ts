@@ -162,7 +162,12 @@ export class AiModelModel {
         desc(aiModels.updatedAt),
       );
 
-    return result as AiProviderModelListItem[];
+    return result.map((model) => ({
+      ...model,
+      sdkType:
+        (model.config as { sdkType?: AiProviderModelListItem['sdkType'] } | null)?.sdkType ??
+        (model.settings as { sdkType?: AiProviderModelListItem['sdkType'] } | null)?.sdkType,
+    })) as AiProviderModelListItem[];
   };
 
   getAllModels = async () => {
@@ -186,7 +191,12 @@ export class AiModelModel {
       .from(aiModels)
       .where(this.scopeWhere());
 
-    return data as EnabledAiModel[];
+    return data.map((model) => ({
+      ...model,
+      sdkType:
+        (model.config as { sdkType?: EnabledAiModel['sdkType'] } | null)?.sdkType ??
+        (model.settings as { sdkType?: EnabledAiModel['sdkType'] } | null)?.sdkType,
+    })) as EnabledAiModel[];
   };
 
   findById = async (id: string) => {
@@ -430,7 +440,12 @@ export class AiModelModel {
       // Include other fields from model
       if (input.config !== undefined) record.config = input.config;
       if (input.enabled !== undefined) record.enabled = input.enabled;
-      if (input.settings !== undefined) record.settings = input.settings;
+      if (input.settings !== undefined || input.sdkType !== undefined) {
+        record.settings = {
+          ...input.settings,
+          ...(input.sdkType !== undefined ? { sdkType: input.sdkType } : {}),
+        };
+      }
       if (input.source !== undefined) record.source = input.source;
 
       // Include optional internal fields if present via wider caller payloads.
@@ -446,8 +461,18 @@ export class AiModelModel {
       .values(records)
       .onConflictDoUpdate({
         set: {
-          // User-editable fields: keep existing DB value; only fill when NULL
-          displayName: sql`COALESCE(ai_models.display_name, excluded.display_name)`,
+          // Refresh generated remote names, but preserve names explicitly edited by users.
+          displayName: sql`CASE
+            WHEN (ai_models.source = 'remote' OR ai_models.source = 'custom' OR ai_models.source IS NULL)
+              AND excluded.display_name IS NOT NULL
+              AND (
+                ai_models.display_name IS NULL OR
+                ai_models.display_name = '' OR
+                ai_models.display_name = ai_models.id
+              )
+            THEN excluded.display_name
+            ELSE ai_models.display_name
+          END`,
           // Provider-sourced fields: allow remote data to update remote/custom/new models
           // For custom models, users can add a model ID before the provider supports it;
           // when the provider later adds that model, we should fill in pricing/abilities/etc.
@@ -501,6 +526,15 @@ export class AiModelModel {
           // synced metadata stays clearable; clearRemoteModels then demotes
           // rows carrying a chatConfig instead of deleting them, so the
           // personal preference survives either way.
+          // Refresh provider defaults without overriding explicitly saved user preferences.
+          settings: sql`CASE
+            WHEN (ai_models.source = 'remote' OR ai_models.source = 'custom' OR ai_models.source IS NULL)
+              AND excluded.settings IS NOT NULL
+            THEN excluded.settings || COALESCE(ai_models.settings, '{}'::jsonb)
+              || CASE WHEN excluded.settings ? 'sdkType'
+                THEN jsonb_build_object('sdkType', excluded.settings->'sdkType') ELSE '{}'::jsonb END
+            ELSE ai_models.settings
+          END`,
           source: sql`COALESCE(ai_models.source, excluded.source)`,
           updatedAt: sql`excluded.updated_at`,
           // Note: enabled is intentionally omitted to preserve user toggle state

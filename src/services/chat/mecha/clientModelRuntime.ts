@@ -1,3 +1,5 @@
+import { getAiInfraStoreState } from '@/store/aiInfra/store';
+
 import { createPayloadWithKeyVaults } from '../../_auth';
 
 export interface InitializeWithClientStoreOptions {
@@ -29,6 +31,19 @@ export const initializeWithClientStore = async ({
    * @file src/services/_auth.ts
    */
   const providerAuthPayload = { ...payload, ...createPayloadWithKeyVaults(provider) };
+  // Providers whose models speak different protocols route per model, so both the
+  // provider-sourced sdk type and the explicit user override travel with the client.
+  const routingOptions: Record<string, unknown> = {};
+  if (provider === 'opencodecodingplan') {
+    const state = getAiInfraStoreState();
+    const models = state.enabledAiModels?.filter((item) => item.providerId === provider) ?? [];
+    routingOptions.modelSdkTypes = Object.fromEntries(
+      models.filter((m) => m.sdkType).map((m) => [m.id, m.sdkType]),
+    );
+    routingOptions.modelSdkOverrides = Object.fromEntries(
+      models.filter((m) => m.config?.sdkType).map((m) => [m.id, m.config!.sdkType]),
+    );
+  }
   const commonOptions = {
     // Allow OpenAI SDK and Anthropic SDK run on browser
     dangerouslyAllowBrowser: true,
@@ -42,5 +57,6 @@ export const initializeWithClientStore = async ({
     ...providerAuthPayload,
     ...payload,
     providerId: provider,
+    ...routingOptions,
   });
 };

@@ -16,7 +16,10 @@ const { getTrpcClient, historyQuery, streamAgentEvents } = vi.hoisted(() => {
 
 vi.mock('../../api/client', () => ({ getTrpcClient }));
 vi.mock('../../api/http', () => ({ getAgentStreamAuthInfo: vi.fn() }));
-vi.mock('../../settings', () => ({ resolveAgentGatewayUrl: () => 'https://gateway.test' }));
+vi.mock('../../settings', () => ({
+  resolveAgentGatewayFallbackUrl: () => undefined,
+  resolveAgentGatewayUrl: () => 'https://gateway.test',
+}));
 vi.mock('../../utils/agentStream', () => ({ streamAgentEvents }));
 vi.mock('../../utils/logger', () => ({ log: { error: vi.fn() } }));
 

@@ -1,6 +1,6 @@
 import { getTrpcClient } from '../../api/client';
 import { resolveAgentStreamAuthInfo } from '../../api/http';
-import { resolveAgentGatewayUrl } from '../../settings';
+import { resolveAgentGatewayFallbackUrl, resolveAgentGatewayUrl } from '../../settings';
 import type { AgentRunOutcome } from '../../utils/agentRunOutcome';
 import { streamAgentEvents } from '../../utils/agentStream';
 import {
@@ -39,12 +39,14 @@ export const followAgentRun = async (
   options: FollowAgentRunOptions = {},
 ): Promise<AgentRunOutcome> => {
   const gatewayUrl = resolveAgentGatewayUrl();
-  if (!gatewayUrl) throw new Error('Agent gateway URL is not configured');
+  const fallbackGatewayUrl = resolveAgentGatewayFallbackUrl();
+  if (!gatewayUrl && !fallbackGatewayUrl) throw new Error('Agent gateway URL is not configured');
 
   try {
     const outcome = await streamAgentEvents({
       ...options,
-      gatewayUrl,
+      fallbackGatewayUrl,
+      gatewayUrl: gatewayUrl || fallbackGatewayUrl!,
       getAuth: () => resolveAgentStreamAuthInfo(),
       operationId,
       // The cached client resolves stored credentials per request, so pages

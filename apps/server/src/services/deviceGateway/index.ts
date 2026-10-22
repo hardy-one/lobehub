@@ -5,7 +5,72 @@ import {
   type DeviceSystemInfo,
   GatewayHttpClient,
 } from '@lobechat/device-gateway-client';
-import type { DeviceClient, DeviceMetricSample } from '@lobechat/types';
+import type { HeterogeneousAgentType } from '@lobechat/heterogeneous-agents';
+import type {
+  ClaudeCodeQuotaSnapshot,
+  CodexQuotaSnapshot,
+  KimiCodeQuotaSnapshot,
+} from '@lobechat/heterogeneous-agents/quota';
+import type {
+  DeviceAppUpdateFailure,
+  DeviceAppUpdateInstallResult,
+  DeviceAppUpdateState,
+  DeviceAppUpdateStateResult,
+  DeviceClient,
+  DeviceCliRestartParams,
+  DeviceCliUpdateState,
+  DeviceCliUpdateStateResult,
+  DeviceCloseTerminalResult,
+  DeviceCopyAssetForPublishResult,
+  DeviceCopyProjectFileItem,
+  DeviceCopyProjectFileResultItem,
+  DeviceCreateProjectEntryResult,
+  DeviceCreateTerminalSessionResult,
+  DeviceDirectoryBrowseResult,
+  DeviceExternalAssetForPublishResult,
+  DeviceGitAddWorktreeResult,
+  DeviceGitAheadBehind,
+  DeviceGitBranchDiffPatches,
+  DeviceGitBranchInfo,
+  DeviceGitBranchListItem,
+  DeviceGitCheckoutResult,
+  DeviceGitDeleteBranchResult,
+  DeviceGitFileRevertResult,
+  DeviceGitLinkedPullRequestResult,
+  DeviceGitPullRequestAction,
+  DeviceGitPullRequestActionResult,
+  DeviceGitPullRequestActivity,
+  DeviceGitPullRequestDetailResult,
+  DeviceGitPullRequestMergeContext,
+  DeviceGitRemoteBranchListItem,
+  DeviceGitRemoveWorktreeResult,
+  DeviceGitRenameBranchResult,
+  DeviceGitSyncResult,
+  DeviceGitWorkingTreeFiles,
+  DeviceGitWorkingTreePatches,
+  DeviceGitWorkingTreeStatus,
+  DeviceGitWorktreeListItem,
+  DeviceListeningPortsResult,
+  DeviceListProjectSkillsResult,
+  DeviceLocalFilePreviewResult,
+  DeviceMetricSample,
+  DeviceMoveProjectFileItem,
+  DeviceMoveProjectFileResultItem,
+  DeviceProjectDirectoryListResult,
+  DeviceProjectFileIndexResult,
+  DeviceProjectFileSearchResult,
+  DeviceReadTerminalResult,
+  DeviceRenameProjectFileResult,
+  DeviceTrashProjectFilesResult,
+  DeviceUnavailableErrorData,
+  DeviceWriteProjectFileResult,
+  HeterogeneousAgentModelCatalog,
+  HeterogeneousThinkingLevels,
+  ProbeHeterogeneousThinkingLevelsParams,
+  ProjectSkillMeta,
+  WorkspaceInitResult,
+} from '@lobechat/types';
+import { isValidDirectoryName } from '@lobechat/utils/directoryName';
 import debug from 'debug';
 
 import { gatewayEnv } from '@/envs/gateway';
@@ -321,6 +386,55 @@ export class DeviceGateway {
 
   listGitBranches(...args: DeviceRpcArgs<typeof gitRead.listGitBranches>) {
     return gitRead.listGitBranches(this.clientGetter, ...args);
+  }
+
+  /**
+   * Ask the device which thinking levels one model serves. Pi answers this per
+   * session, so the caller passes the run's own args (including `--model`).
+   */
+  async probeHeterogeneousThinkingLevels(
+    params: ProbeHeterogeneousThinkingLevelsParams & {
+      deviceId: string;
+      timeout?: number;
+      userId: string;
+      workspaceId?: string;
+    },
+  ): Promise<HeterogeneousThinkingLevels> {
+    const { deviceId, timeout = 20_000, userId, workspaceId, ...probeParams } = params;
+    const client = this.getClient();
+    const unavailable = (message: string): HeterogeneousThinkingLevels => ({
+      error: { code: 'device_unavailable', message },
+      status: 'error',
+      updatedAt: Date.now(),
+    });
+    if (!client) return unavailable('Device gateway is not configured');
+
+    try {
+      const result = await client.invokeRpc<HeterogeneousThinkingLevels>(
+        { deviceId, timeout, userId, workspaceId },
+        { method: 'probeHeterogeneousThinkingLevels', params: probeParams },
+      );
+
+      if (!result.success || !result.data) {
+        const message = result.error || 'The device did not return thinking levels';
+        const unsupported =
+          message.includes('does not support heterogeneous agent thinking-level discovery') ||
+          message.includes('Unknown device RPC method');
+        log('probeHeterogeneousThinkingLevels: failed for deviceId=%s — %s', deviceId, message);
+        return {
+          error: { code: unsupported ? 'unsupported_client' : 'device_unavailable', message },
+          status: 'error',
+          updatedAt: Date.now(),
+        };
+      }
+
+      return result.data;
+    } catch (error) {
+      log('probeHeterogeneousThinkingLevels: error for deviceId=%s — %O', deviceId, error);
+      return unavailable(
+        error instanceof Error ? error.message : 'Device thinking-level discovery failed',
+      );
+    }
   }
 
   checkoutGitBranch(...args: DeviceRpcArgs<typeof gitWrite.checkoutGitBranch>) {

@@ -93,6 +93,26 @@ const normalizeToolResult = (result: any): Pick<ToolResultData, 'content' | 'plu
   };
 };
 
+/** Convert Pi's custom background-task message into a compact user-visible notice. */
+export const formatPiBackgroundTaskNotification = (message: any): string => {
+  const details =
+    message?.details && typeof message.details === 'object' ? message.details : undefined;
+  const name = typeof details?.name === 'string' ? details.name : undefined;
+  const status = typeof details?.status === 'string' ? details.status : undefined;
+  const summary = typeof details?.summary === 'string' ? details.summary : undefined;
+  const error = typeof details?.error === 'string' ? details.error : undefined;
+  const outputPath = typeof details?.outputPath === 'string' ? details.outputPath : undefined;
+  const rawContent =
+    typeof message?.content === 'string' ? message.content : JSON.stringify(message?.content ?? '');
+  const lines = [
+    name && status ? `Background task "${name}" ${status}.` : undefined,
+    summary,
+    error ? `Error: ${error}` : undefined,
+    outputPath ? `Output: ${outputPath}` : undefined,
+  ].filter((line): line is string => Boolean(line));
+  return lines.length > 0 ? lines.join('\n') : rawContent;
+};
+
 /** Maps Pi's `--mode json` session event stream into shared heterogeneous events. */
 export class PiAdapter implements AgentEventAdapter {
   sessionId?: string;
@@ -298,6 +318,21 @@ export class PiAdapter implements AgentEventAdapter {
   private handleMessageEnd(message: any): HeterogeneousAgentEvent[] {
     if (!message || typeof message !== 'object') return [];
 
+    if (message.role === 'custom' && message.customType === 'background-task-notification') {
+      const content = formatPiBackgroundTaskNotification(message);
+      return [
+        ...this.ensureTurn(),
+        ...(content
+          ? [
+              this.makeEvent('stream_chunk', {
+                chunkType: 'text',
+                content,
+              } satisfies StreamChunkData),
+            ]
+          : []),
+        ...this.closeStream(),
+      ];
+    }
     if (message.role === 'toolResult') {
       return this.completeTool(message.toolCallId, message, message.isError === true);
     }

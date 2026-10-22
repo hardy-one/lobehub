@@ -1,6 +1,7 @@
 import type { ModelRuntimeHooks } from '@lobechat/model-runtime';
-import { ModelRuntime } from '@lobechat/model-runtime';
+import { mergeModelRuntimeHooks, ModelRuntime } from '@lobechat/model-runtime';
 import type { AiProviderRuntimeState, UserServiceModelConfig } from '@lobechat/types';
+import { RequestTrigger } from '@lobechat/types';
 import debug from 'debug';
 
 import { getBusinessModelRuntimeHooks } from '@/business/server/model-runtime';
@@ -8,6 +9,7 @@ import { AiInfraRepos } from '@/database/repositories/aiInfra';
 import type { MemoryAgentConfig } from '@/server/globalConfig/parseMemoryExtractionConfig';
 import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
 import { getUserScopedAiProviderRuntimeState } from '@/server/services/aiProviderAccess';
+import { createPromptDumpHook } from '@/server/services/promptDump/hook';
 import type { GlobalMemoryLayer } from '@/types/serverConfig';
 import type { LayersEnum } from '@/types/userMemory';
 import { resolveEmbeddingTokenLimit } from '@/utils/tokenizer/embedding';
@@ -85,7 +87,7 @@ export const resolveRuntimeAgentConfig = (
         source: 'user-vault' as const,
       });
 
-      return ModelRuntime.initializeWithProvider(provider, { userId: options?.userId }, hooks);
+      return initMemoryRuntime(provider, { userId: options?.userId }, hooks);
     }
 
     const { apiKey: userApiKey, baseURL: userBaseURL } = extractCredentialsFromVault(
@@ -107,11 +109,15 @@ export const resolveRuntimeAgentConfig = (
 
     // Only use the user baseURL if we are also using their API key; otherwise fall back entirely
     // to system config to avoid mixing credentials.
-    return ModelRuntime.initializeWithProvider(provider, {
-      apiKey: userApiKey,
-      baseURL: userBaseURL,
-      userId: options?.userId,
-    });
+    return initMemoryRuntime(
+      provider,
+      {
+        apiKey: userApiKey,
+        baseURL: userBaseURL,
+        userId: options?.userId,
+      },
+      hooks,
+    );
   }
 
   debugRuntimeInit(agent, {
@@ -121,14 +127,44 @@ export const resolveRuntimeAgentConfig = (
     source: 'system-config' as const,
   });
 
-  return ModelRuntime.initializeWithProvider(agent.provider || 'openai', {
-    apiKey: agent.apiKey || options?.fallback?.apiKey,
-    baseURL: agent.baseURL || options?.fallback?.baseURL,
-    userId: options?.userId,
-  });
+  return initMemoryRuntime(
+    agent.provider || 'openai',
+    {
+      apiKey: agent.apiKey || options?.fallback?.apiKey,
+      baseURL: agent.baseURL || options?.fallback?.baseURL,
+      userId: options?.userId,
+    },
+    hooks,
+  );
 };
 
 const logRuntime = debug('lobe-server:memory:user-memory:runtime');
+
+/**
+ * Build a memory-extraction runtime, mirroring its requests like every other
+ * server call.
+ *
+ * The extraction path constructs its adapter directly, so it never passes
+ * through the server's own init helpers where the mirror is mounted. Composing
+ * the observer here keeps the mirror's scope a property of the runtime rather
+ * than of the helper each caller happens to use; `trigger` is stamped so these
+ * calls stay distinguishable from chat in the mirror.
+ */
+const initMemoryRuntime = (
+  provider: string,
+  params: Partial<{ apiKey?: string; baseURL?: string; userId?: string }>,
+  hooks?: ModelRuntimeHooks,
+) =>
+  ModelRuntime.initializeWithProviderHooks(provider, params, ({ provider: resolvedProvider }) =>
+    mergeModelRuntimeHooks(
+      hooks,
+      createPromptDumpHook({
+        provider: resolvedProvider,
+        trigger: RequestTrigger.Memory,
+        userId: params.userId,
+      }),
+    ),
+  );
 
 const debugRuntimeInit = (
   agent: MemoryAgentConfig,

@@ -736,4 +736,45 @@ export class ModelRuntime {
 
     return new ModelRuntime(runtimeModel, hooks);
   }
+
+  /**
+   * Create a runtime with consumer-supplied hooks for the full call.
+   *
+   * Use when:
+   * - The caller is not the server's own init helpers (memory extraction,
+   *   persona writing, benchmarks) and must still be observed like every other
+   *   call without duplicating the hook stack at each construction site
+   *
+   * Expects:
+   * - The factory decides per adapter; returning undefined keeps the runtime
+   *   unwatched rather than silently dropping a configured observer
+   *
+   * Returns:
+   * - A runtime whose hook stack is exactly what the factory returns
+   */
+  static initializeWithProviderHooks(
+    provider: string,
+    params: Partial<
+      ClientOptions &
+        LobeBedrockAIParams &
+        LobeCloudflareParams & {
+          apiKey?: string;
+          baseURL?: string;
+          userId?: string;
+          workspaceId?: string;
+        }
+    >,
+    createHooks: (context: {
+      params: Partial<ClientOptions & LobeBedrockAIParams & LobeCloudflareParams>;
+      provider: string;
+    }) => ModelRuntimeHooks | undefined,
+  ) {
+    const runtimeMap: Partial<Record<string, new (params: any) => LobeRuntimeAI>> =
+      providerRuntimeMap;
+    const providerAI = runtimeMap[provider] ?? LobeOpenAI;
+
+    const runtimeModel: LobeRuntimeAI = new providerAI(params);
+
+    return new ModelRuntime(runtimeModel, createHooks({ params, provider }));
+  }
 }

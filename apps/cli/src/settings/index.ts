@@ -11,6 +11,7 @@ import { OFFICIAL_AGENT_GATEWAY_URL, OFFICIAL_SERVER_URL } from '../constants/ur
 import { log } from '../utils/logger';
 
 export interface StoredSettings {
+  agentGatewayFallbackUrl?: string;
   agentGatewayUrl?: string;
   /**
    * Device gateway address saved per server (keyed by `deviceGatewayServerKey`)
@@ -71,12 +72,19 @@ function normalizeDeviceGatewayUrls(value: unknown): Record<string, string> | un
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
+export function resolveAgentGatewayFallbackUrl(): string | undefined {
+  const envFallback = normalizeUrl(process.env.AGENT_GATEWAY_FALLBACK_URL);
+  if (process.env.AGENT_GATEWAY_URL) return envFallback;
+  return envFallback || normalizeUrl(loadSettings()?.agentGatewayFallbackUrl);
+}
+
 function normalizeSettings(settings: StoredSettings): StoredSettings {
   const agentGatewayUrl = normalizeUrl(settings.agentGatewayUrl);
   const serverUrl = normalizeUrl(settings.serverUrl);
 
   return {
     agentGatewayUrl: agentGatewayUrl === OFFICIAL_AGENT_GATEWAY_URL ? undefined : agentGatewayUrl,
+    agentGatewayFallbackUrl: normalizeUrl(settings.agentGatewayFallbackUrl),
     deviceGatewayUrls: normalizeDeviceGatewayUrls(settings.deviceGatewayUrls),
     gatewayUrl: normalizeUrl(settings.gatewayUrl),
     serverUrl: serverUrl === OFFICIAL_SERVER_URL ? undefined : serverUrl,
@@ -87,6 +95,7 @@ const isDefaultSettings = (settings: StoredSettings) =>
   !settings.serverUrl &&
   !settings.gatewayUrl &&
   !settings.agentGatewayUrl &&
+  !settings.agentGatewayFallbackUrl &&
   !settings.deviceGatewayUrls;
 
 export function saveSettings(settings: StoredSettings): void {

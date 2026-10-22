@@ -35,6 +35,8 @@ export interface DaemonStatus {
   gatewayUrl: string;
   lastRequestAt?: string;
   pid: number;
+  /** Server address the running session settled on. Runtime state, not config. */
+  serverUrl?: string;
   startedAt: string;
 }
 

@@ -22,6 +22,7 @@ export interface AgentStreamAuth {
 }
 
 export interface AgentStreamTransportOptions {
+  fallbackGatewayUrl?: string;
   gatewayUrl: string;
   /** Called for every (re)connect so a long run picks up refreshed credentials. */
   getAuth: () => Promise<AgentStreamAuth>;
@@ -219,6 +220,8 @@ class AgentEventJournal {
  * the journal to catch up. Owns auth, heartbeat and bounded reconnects.
  */
 class GatewayWakeChannel {
+  private currentGatewayUrl: string;
+  private fallbackUsed = false;
   private gatewayCursor = '';
   private heartbeat?: ReturnType<typeof setInterval>;
   private heartbeatPending = false;
@@ -234,7 +237,9 @@ class GatewayWakeChannel {
     /** `immediate` skips the coalescing window (terminal / reconnect wakes). */
     private readonly onWake: (immediate?: boolean) => void,
     private readonly onFatal: (error: Error) => void,
-  ) {}
+  ) {
+    this.currentGatewayUrl = options.gatewayUrl;
+  }
 
   /** Real progress proves the run is reachable, so the reconnect budget starts over. */
   resetRetries() {
@@ -244,7 +249,7 @@ class GatewayWakeChannel {
   connect() {
     if (this.stopped) return;
     const url = urlJoin(
-      this.options.gatewayUrl.replace(/^http/, 'ws'),
+      this.currentGatewayUrl.replace(/^http/, 'ws'),
       `/ws?operationId=${encodeURIComponent(this.options.operationId)}`,
     );
     let socket: WebSocket;
@@ -392,6 +397,22 @@ class GatewayWakeChannel {
     this.closeSocket();
     // Recover the terminal from the server even when the Gateway is down.
     this.onWake(true);
+
+    if (
+      !this.fallbackUsed &&
+      this.options.fallbackGatewayUrl &&
+      this.options.fallbackGatewayUrl !== this.currentGatewayUrl
+    ) {
+      this.fallbackUsed = true;
+      this.currentGatewayUrl = this.options.fallbackGatewayUrl;
+      this.retries = 0;
+      log.debug(
+        `Preferred gateway unavailable (${error.message}); resuming the same operation on fallback gateway`,
+      );
+      this.connect();
+      return;
+    }
+
     if (++this.retries > this.options.maxRetries) {
       this.onFatal(
         new AgentGatewayUnavailableError(

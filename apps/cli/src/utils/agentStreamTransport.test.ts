@@ -409,4 +409,39 @@ describe('recoverable WebSocket transport', () => {
     expect(await settled).toBeInstanceOf(AgentGatewayUnavailableError);
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it('switches to fallbackGatewayUrl on connection failure before exhausting retries', async () => {
+    const attemptedUrls: string[] = [];
+    vi.stubGlobal(
+      'WebSocket',
+      class extends TestSocket {
+        constructor(url: string) {
+          attemptedUrls.push(url);
+          if (url.includes('primary.example.com')) {
+            super(url);
+            queueMicrotask(() => {
+              this.readyState = 3;
+              this.onclose?.({ code: 1006, reason: 'connection refused' });
+            });
+            return;
+          }
+          super(url);
+        }
+      },
+    );
+
+    const consumer = consumeAgentStream(
+      {
+        ...options(),
+        fallbackGatewayUrl: 'https://fallback.example.com',
+        gatewayUrl: 'https://primary.example.com',
+        maxRetries: 2,
+      },
+      () => false,
+    );
+
+    await flush();
+    expect(attemptedUrls.some((u) => u.includes('fallback.example.com'))).toBe(true);
+    consumer.close();
+  });
 });

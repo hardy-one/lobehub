@@ -44,9 +44,15 @@ describe('SystemAgentService.generateTopicTitle', () => {
           choices: [
             {
               finish_reason: 'stop',
+              index: 0,
               message: { content: '{"title":"Next steps"}', role: 'assistant' },
             },
           ],
+          created: 0,
+          id: 'chatcmpl-test',
+          model: 'test',
+          object: 'chat.completion',
+          usage: { completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 },
         });
       }),
     );

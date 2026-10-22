@@ -135,6 +135,12 @@ export interface LobeAgentChatConfig extends AgentMemoryChatConfig, AgentSelfIte
   inputTemplate?: string;
   kimiK3ReasoningEffort?: 'low' | 'high' | 'max';
   /**
+   * MiMo thinking effort (MiMo Responses API `reasoning.effort`). `none` disables
+   * thinking; every other level enables it, and MiMo currently maps low / medium /
+   * high to the same behaviour.
+   */
+  mimoReasoningEffort?: 'none' | 'low' | 'medium' | 'high';
+  /**
    * Effort level for Claude Opus 4.7 and later (adds xhigh tier between high and max)
    */
   opus47Effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -281,6 +287,7 @@ export const AgentChatConfigSchema = z
     grok4_7ReasoningEffort: z.enum(['low', 'medium', 'high', 'xhigh']).optional(),
     hy3ReasoningEffort: z.enum(['no_think', 'low', 'high']).optional(),
     kimiK3ReasoningEffort: z.enum(['low', 'high', 'max']).optional(),
+    mimoReasoningEffort: z.enum(['none', 'low', 'medium', 'high']).optional(),
     ring2_6ReasoningEffort: z.enum(['high', 'xhigh']).optional(),
     historyCount: z.number().optional(),
     imageAspectRatio: z.string().optional(),

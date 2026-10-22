@@ -10,6 +10,10 @@ import {
 // overflow: hidden;
 // ref: https://zhuanlan.zhihu.com/p/113855026
 const genGlobalStyle = ({ token }: { prefixCls: string; token: LobeTheme }) => css`
+  html {
+    text-size-adjust: 100%;
+  }
+
   html,
   body,
   #__next {
@@ -97,6 +101,28 @@ const genGlobalStyle = ({ token }: { prefixCls: string; token: LobeTheme }) => c
     .${CLASSNAMES.DropdownMenuTrigger}[data-popup-open]:not([data-no-highlight])
   ) {
     opacity: 1;
+  }
+
+  /* @lobehub/ui Button always renders its spinner ring and only collapses the
+     slot to opacity: 0 / width: 0 when not loading (Button.mjs:75), so every
+     button on the page keeps a 0.6s infinite rotation ticking — invisible, but
+     still driving style recalc and layerization. The slot carries
+     aria-hidden={!loading}, so stopping the ring inside a collapsed slot leaves
+     every genuinely loading button spinning. */
+  button > span[aria-hidden='true'] > span {
+    animation: none !important;
+  }
+
+  /* @lobehub/ui hides the text sweep on a shiny host that has children
+     (.lobe-text-shiny:not(:has(*))), because its ::after overlay would sit
+     behind opaque descendants. A row-level sweep needs the animation on the
+     host itself, so opt in explicitly and keep the overlay above the row. */
+  .lobe-text-shiny-leaf:not(:has(*)) {
+    position: relative;
+  }
+
+  .lobe-text-shiny-leaf:not(:has(*))::after {
+    z-index: 1;
   }
 `;
 

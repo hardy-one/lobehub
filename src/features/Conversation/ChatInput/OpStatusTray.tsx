@@ -1,7 +1,7 @@
 'use client';
 
 import { formatElapsedClockTime } from '@lobechat/utils';
-import { createStaticStyles, cx, Flexbox, Icon, Popover, Tooltip } from '@lobehub/ui';
+import { createStaticStyles, cx, Flexbox, Icon, keyframes, Popover, Tooltip } from '@lobehub/ui';
 import type { LucideIcon } from 'lucide-react';
 import { BrainCircuitIcon, CircleDollarSignIcon, CoinsIcon } from 'lucide-react';
 import { Fragment, memo, useEffect, useMemo, useState } from 'react';
@@ -20,6 +20,29 @@ import { parseStatusPhrases, pickRotatingStatusPhrase } from './OpStatusTray/log
 // Cycle the generating phrase like a carousel so a long-running task doesn't
 // stare back with the same line the whole time.
 const STATUS_PHRASE_ROTATION_MS = 4000;
+
+// Both loops animate the svg root, not the circle inside it: an animation on
+// an SVG child re-estyles (and re-lays out) the icon subtree every frame, and
+// the main thread pays for it — the sidebar's SMIL spinner measured ~100
+// style recalcs + layouts per second with a running topic on screen.
+const glyphSpin = keyframes`
+  to {
+    transform: rotate(360deg);
+  }
+`;
+
+const glyphCorePulse = keyframes`
+  0%,
+  100% {
+    transform: scale(0.86);
+    opacity: 0.9;
+  }
+
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+`;
 
 const styles = createStaticStyles(({ css, cssVar }) => ({
   container: css`
@@ -142,54 +165,59 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
     }
   `,
   activityGlyph: css`
-    overflow: visible;
+    position: relative;
+
     flex: none;
 
     width: 16px;
     height: 16px;
 
     color: ${cssVar.colorPrimary};
+  `,
+  // Each looping animation lives on a wrapping span, never on the svg: Blink
+  // refuses to composite transform animations on SVG elements once the
+  // effective zoom is > 1 (device pixel ratio scaling), so svg-level motion
+  // costs a whole-document style recalc every frame instead of running on the
+  // compositor. The orbit and the core pulse are separate animations, so each
+  // layer gets its own span to carry it.
+  glyphLayer: css`
+    position: absolute;
+    inset: 0;
 
-    @keyframes op-status-tray-glyph-spin {
-      to {
-        transform: rotate(360deg);
-      }
-    }
+    display: block;
 
-    @keyframes op-status-tray-glyph-core {
-      0%,
-      100% {
-        transform: scale(0.86);
-        opacity: 0.9;
-      }
-
-      50% {
-        transform: scale(1);
-        opacity: 1;
-      }
-    }
+    width: 100%;
+    height: 100%;
+  `,
+  glyphSvg: css`
+    overflow: visible;
+    display: block;
+    width: 100%;
+    height: 100%;
   `,
   glyphCore: css`
-    transform-origin: center;
-    transform-box: fill-box;
     fill: ${cssVar.colorPrimary};
-    animation: op-status-tray-glyph-core 1.5s ease-in-out infinite;
+  `,
+  glyphCoreLayer: css`
+    /* Scale from the icon's own centre, which is what the svg child used to do
+       through transform-box: fill-box. A span has no fill box, so the origin
+       is stated explicitly. */
+    transform-origin: center;
+    animation: ${glyphCorePulse} 1.5s ease-in-out infinite;
 
     @media (prefers-reduced-motion: reduce) {
       animation: none;
     }
   `,
   glyphOrbit: css`
-    transform-origin: center;
-    transform-box: fill-box;
-
     fill: none;
     stroke: color-mix(in srgb, ${cssVar.colorPrimary} 76%, transparent);
     stroke-dasharray: 9 18;
     stroke-linecap: round;
     stroke-width: 1.5;
-
-    animation: op-status-tray-glyph-spin 2s linear infinite;
+  `,
+  glyphOrbitLayer: css`
+    animation: ${glyphSpin} 2s linear infinite;
 
     @media (prefers-reduced-motion: reduce) {
       animation: none;
@@ -197,11 +225,24 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
   `,
 }));
 
+// Each loop runs on a wrapping span (HTML-level, compositable) with the svg
+// inside it — an animation directly on the svg is not composited by Blink at
+// device pixel ratios > 1 and re-runs a whole-document style recalc every frame.
+// The orbit and the core pulse are separate animations on separate layers, so
+// neither one has to fight the other for the same box.
 const ActivityGlyph = () => (
-  <svg aria-hidden className={styles.activityGlyph} viewBox="0 0 16 16">
-    <circle className={styles.glyphOrbit} cx="8" cy="8" r="6.1" />
-    <circle className={styles.glyphCore} cx="8" cy="8" r="2.7" />
-  </svg>
+  <span aria-hidden className={styles.activityGlyph}>
+    <span className={cx(styles.glyphLayer, styles.glyphOrbitLayer)}>
+      <svg className={styles.glyphSvg} viewBox="0 0 16 16">
+        <circle className={styles.glyphOrbit} cx="8" cy="8" r="6.1" />
+      </svg>
+    </span>
+    <span className={cx(styles.glyphLayer, styles.glyphCoreLayer)}>
+      <svg className={styles.glyphSvg} viewBox="0 0 16 16">
+        <circle className={styles.glyphCore} cx="8" cy="8" r="2.7" />
+      </svg>
+    </span>
+  </span>
 );
 
 const formatTokens = (n: number) => {

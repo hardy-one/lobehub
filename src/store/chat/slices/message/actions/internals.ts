@@ -11,7 +11,7 @@ import { messageMapKey } from '../../../utils/messageMapKey';
 import { type MessageDispatch } from '../reducer';
 import { messagesReducer } from '../reducer';
 import { getMessageTranscript } from '../transcript';
-import { reconcileAssistantToolLinks } from '../utils/reconcileTools';
+import { mayBreakToolLinks, reconcileAssistantToolLinks } from '../utils/reconcileTools';
 
 const log = debug('lobe-store:message-internals');
 
@@ -62,7 +62,14 @@ export class MessageInternalsActionImpl {
     // boundary can drop the link while the tool row survives, orphaning the
     // tool bubble. Reconcile on the RAW array so the SoT stays consistent (see
     // reconcileAssistantToolLinks).
-    const reconciled = reconcileAssistantToolLinks(updatedRawMessages);
+    //
+    // Only a dispatch that can touch `tools[]` or the row set can have caused
+    // that, so streamed text/reasoning chunks skip the O(n) scan outright. The
+    // compare against `rawMessages` stays unconditional: it is what stops an
+    // unchanged bucket from being written to the transcript.
+    const reconciled = mayBreakToolLinks(payload)
+      ? reconcileAssistantToolLinks(updatedRawMessages)
+      : updatedRawMessages;
 
     if (isEqual(reconciled, rawMessages)) return;
 

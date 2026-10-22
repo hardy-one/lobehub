@@ -773,3 +773,64 @@ describe('GatewayConnectionService resolveCurrentDeviceId', () => {
     expect(deriveDeviceIdMock).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('GatewayConnectionService advertised private device gateway', () => {
+  const SERVER_URL = 'https://server.example.com';
+  const OFFICIAL = 'https://device-gateway.lobehub.com';
+
+  const createService = (savedGatewayUrl?: string) => {
+    const app = {
+      browserManager: { broadcastToAllWindows: vi.fn() },
+      storeManager: {
+        get: vi.fn((key: string) => (key === 'gatewayUrl' ? savedGatewayUrl : undefined)),
+        set: vi.fn(),
+      },
+    } as unknown as App;
+    return new GatewayConnectionService(app);
+  };
+
+  it('uses the private endpoint instead of asking the server', async () => {
+    const service = createService();
+    service.setAdvertisedGatewayUrl('https://private-gateway.example/');
+
+    await expect((service as any).resolveEndpoint(SERVER_URL)).resolves.toEqual({
+      endpoint: { source: 'server', url: 'https://private-gateway.example' },
+      ok: true,
+    });
+  });
+
+  it('keeps an address saved in settings ahead of the private endpoint', async () => {
+    const service = createService('http://localhost:8787');
+    service.setAdvertisedGatewayUrl('https://private-gateway.example');
+
+    await expect((service as any).resolveEndpoint(SERVER_URL)).resolves.toEqual({
+      endpoint: { source: 'manual', url: 'http://localhost:8787' },
+      ok: true,
+    });
+  });
+
+  it('accepts a socket URL from the endpoint list as a base URL', async () => {
+    const service = createService();
+    service.setAdvertisedGatewayUrl('wss://device-gateway.private.example');
+
+    await expect((service as any).resolveEndpoint(SERVER_URL)).resolves.toEqual({
+      endpoint: { source: 'server', url: 'https://device-gateway.private.example' },
+      ok: true,
+    });
+  });
+
+  it('falls back to the public address only on the private endpoint', () => {
+    const service = createService(OFFICIAL);
+    service.setAdvertisedGatewayUrl('https://private-gateway.example');
+
+    expect(
+      (service as any).fallbackGatewayUrl({
+        source: 'server',
+        url: 'https://private-gateway.example',
+      }),
+    ).toBe(OFFICIAL);
+    expect(
+      (service as any).fallbackGatewayUrl({ source: 'server', url: 'https://gw.example.com' }),
+    ).toBeUndefined();
+  });
+});

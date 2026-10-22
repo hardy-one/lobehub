@@ -122,12 +122,42 @@ For specific content, please refer to the [Feature Flags](/docs/self-hosting/adv
 
 Business builds enable Gateway Mode automatically. Self-hosted deployments can set `ENABLE_AGENT_GATEWAY=1` together with `AGENT_GATEWAY_URL` to expose Gateway Mode to clients.
 
+### `OSS_ENABLE_ARTIFACT_DEPLOYMENT`
+
+- Type: Optional
+- Description: Hosts published Artifacts on this deployment. Turns on the publish surfaces in chat, stores the built files under the `artifacts/` prefix of the S3 bucket configured above, and serves them back through `/artifact-render/<id>/`.
+- Default: `0`
+- Example: `1`
+
+Off by default because it puts user-authored pages on the public internet. Turning it back off hides the publish surfaces **and stops published links from resolving**; the objects stay in the bucket, so switching it on again restores them. The `OSS_` prefix marks it as an open-source-only switch — LobeHub Cloud ships the capability instead of offering a switch for it.
+
 ### `AGENT_GATEWAY_URL`
 
 - Type: Optional
 - Description: Agent Gateway endpoint used by Gateway Mode to run supported agent tasks through the backend. Browsers open their WebSocket connection to this address, so it must be reachable from the browser.
 - Default: -
 - Example: `https://agent-gateway.example.com`
+
+### `PRIVATE_AGENT_GATEWAY_URL`
+
+- Type: Optional
+- Description: Optional private Agent Gateway endpoint. Browsers receive it through the same global config as `AGENT_GATEWAY_URL` and try the existing WebSocket connection on this address first; if the connection fails or times out, they retry the same operation on `AGENT_GATEWAY_URL`. Desktop/CLI device clients also prefer this endpoint when reachable. For an HTTPS app, configure this as `wss://` with a certificate trusted by clients.
+- Default: -
+- Example: `wss://agent-gateway.lan.example.com`
+
+### `PRIVATE_APP_URLS`
+
+- Type: Optional
+- Description: Comma-separated app origins advertised to device clients. Desktop and CLI currently keep HTTP traffic on their configured server URL, because retrying a write after a lost response could duplicate it. To use a private app origin, configure the client server URL explicitly. Use `PRIVATE_DEVICE_GATEWAY_URL` or `PRIVATE_AGENT_GATEWAY_URL` for automatic private WebSocket connections with public fallback.
+- Default: -
+- Example: `https://lobehub.lan.example.com,https://192.168.1.10:3210`
+
+### `PRIVATE_DEVICE_GATEWAY_URL`
+
+- Type: Optional
+- Description: Device-reachable private endpoint for Desktop/CLI persistent device connections. Clients try the existing WebSocket connection here first, then reconnect once through their configured/default public gateway on transport failure or timeout. No HTTP reachability probe is required; explicit client gateway configuration still wins. Use `wss://` for production deployments and a certificate trusted by the device.
+- Default: -
+- Example: `wss://device-gateway.lan.example.com`
 
 ### `AGENT_GATEWAY_PROTOCOL`
 

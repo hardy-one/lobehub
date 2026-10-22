@@ -156,6 +156,7 @@ export const getServerGlobalConfig = async () => {
       ? { deviceGatewayUrl: gatewayEnv.DEVICE_GATEWAY_PUBLIC_URL }
       : undefined),
     disableEmailPassword: authEnv.AUTH_DISABLE_EMAIL_PASSWORD,
+    enableArtifactDeployment: !!appEnv.OSS_ENABLE_ARTIFACT_DEPLOYMENT,
     enableBusinessFeatures: ENABLE_BUSINESS_FEATURES,
     enableEmailVerification: authEnv.AUTH_EMAIL_VERIFICATION,
     enableComposio: !!composioEnv.COMPOSIO_API_KEY,
@@ -181,6 +182,9 @@ export const getServerGlobalConfig = async () => {
 
     // Expose Agent Gateway URL to client (used by hetero agents; also required for queue mode)
     ...(appEnv.AGENT_GATEWAY_URL ? { agentGatewayUrl: appEnv.AGENT_GATEWAY_URL } : undefined),
+    ...(appEnv.PRIVATE_AGENT_GATEWAY_URL
+      ? { privateAgentGatewayUrl: appEnv.PRIVATE_AGENT_GATEWAY_URL }
+      : undefined),
     agentGatewayProtocol: resolveAgentGatewayProtocol(),
     // Whether the server can relay an LLM call to a tab (gateway + Redis): only
     // then does the browser drop its own provider fallback for the one-shot relay.

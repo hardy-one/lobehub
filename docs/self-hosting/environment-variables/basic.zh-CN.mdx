@@ -118,12 +118,42 @@ LobeHub 在部署时提供了一些额外的配置项，你可以使用环境变
 
 商业版本会自动启用 Gateway Mode。自托管部署可以同时设置 `ENABLE_AGENT_GATEWAY=1` 和 `AGENT_GATEWAY_URL`，让客户端显示 Gateway Mode。
 
+### `OSS_ENABLE_ARTIFACT_DEPLOYMENT`
+
+- 类型：可选
+- 描述：在本部署上托管已发布的 Artifact。开启后会话里出现发布入口，构建产物存放在上面配置的 S3 存储桶的 `artifacts/` 前缀下，并通过 `/artifact-render/<id>/` 对外提供访问。
+- 默认值：`0`
+- 示例：`1`
+
+默认关闭，因为它会把用户自己写出的页面放到公网上。关闭后发布入口消失，**已发布的链接也不再解析**；对象仍留在存储桶里，重新开启即可恢复。`OSS_` 前缀表示这是开源版专属开关 ——LobeHub Cloud 直接提供该能力，不设开关。
+
 ### `AGENT_GATEWAY_URL`
 
 - 类型：可选
 - 描述：Agent Gateway 端点，用于让 Gateway Mode 通过后端运行支持的助理任务。浏览器会向该地址建立 WebSocket 连接，因此必须能被浏览器访问。
 - 默认值：-
 - 示例：`https://agent-gateway.example.com`
+
+### `PRIVATE_AGENT_GATEWAY_URL`
+
+- 类型：可选
+- 描述：可选私网 Agent Gateway 地址。网页通过与 `AGENT_GATEWAY_URL` 相同的全局配置获取地址，优先复用原有 WebSocket 流程连接它；连接失败或超时后，使用 `AGENT_GATEWAY_URL` 重新连接同一个任务。Desktop/CLI 设备客户端也会在可达时优先使用该地址。如果应用入口使用 HTTPS，请配置带有效证书的 `wss://` 地址。
+- 默认值：-
+- 示例：`wss://agent-gateway.lan.example.com`
+
+### `PRIVATE_APP_URLS`
+
+- 类型：可选
+- 描述：以逗号分隔、向设备客户端公布的服务端地址。Desktop 和 CLI 当前仍使用已配置的服务端地址发送 HTTP 请求，避免响应丢失后跨地址重放写请求造成重复操作。需要使用私网 HTTP 地址时，请显式配置客户端服务端地址。自动私网 WebSocket 连接及公网回退请使用 `PRIVATE_DEVICE_GATEWAY_URL` 或 `PRIVATE_AGENT_GATEWAY_URL`。
+- 默认值：-
+- 示例：`https://lobehub.lan.example.com,https://192.168.1.10:3210`
+
+### `PRIVATE_DEVICE_GATEWAY_URL`
+
+- 类型：可选
+- 描述：供 Desktop/CLI 设备建立持久连接的私网 Device Gateway 地址。客户端直接尝试现有 WebSocket 连接，连接失败或超时后切换到已配置或默认的公网 Device Gateway，无需 HTTP 探测；显式配置的客户端地址优先级更高。生产环境请使用设备信任的 `wss://` 证书。
+- 默认值：-
+- 示例：`wss://device-gateway.lan.example.com`
 
 ### `AGENT_GATEWAY_PROTOCOL`
 

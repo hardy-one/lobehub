@@ -3,6 +3,12 @@ import { type ServerConfigStore } from './store';
 export const featureFlagsSelectors = (s: ServerConfigStore) => s.featureFlags;
 
 export const serverConfigSelectors = {
+  /**
+   * Self-hosted switch for Artifact deployment. Cloud never sets it: there the
+   * capability ships with the deployment instead of being opt-in.
+   */
+  enableArtifactDeployment: (s: ServerConfigStore) =>
+    s.serverConfig.enableArtifactDeployment || false,
   disableEmailPassword: (s: ServerConfigStore) => s.serverConfig.disableEmailPassword || false,
   enableBusinessFeatures: (s: ServerConfigStore) => s.serverConfig.enableBusinessFeatures || false,
   enableEmailVerification: (s: ServerConfigStore) =>

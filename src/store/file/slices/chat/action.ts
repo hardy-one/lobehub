@@ -217,16 +217,14 @@ export class FileActionImpl {
 
     if (item?.skipRemoveFile) return;
 
+    // Only a settled upload has a server row to delete: an unsettled draft is
+    // client-side only, and its id is still the file name, so calling the file
+    // API would 404.
+    if (item?.status !== 'success') return;
+
     // Share uploads are creator-owned rows the visitor's own file API cannot
     // see; the share endpoint deletes them only while still unsent.
-    if (item?.shareId) {
-      // Only a settled upload has a server row to drop; a pending or failed
-      // draft is client-side only (its id is still the file name) and the
-      // share endpoint would just reject it.
-      if (item.status !== 'success') return;
-      await shareChatService.removeFile(item.shareId, id);
-      return;
-    }
+    if (item.shareId) return shareChatService.removeFile(item.shareId, id);
 
     await fileService.removeFile(id);
   };

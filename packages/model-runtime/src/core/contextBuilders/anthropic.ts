@@ -6,6 +6,13 @@ import type OpenAI from 'openai';
 import type { OpenAIChatMessage, UserMessageContentPart } from '../../types';
 import { normalizeAnthropicToolSchema } from '../../utils/anthropicToolSchema';
 import { parseDataUri } from '../../utils/uriParser';
+import { type LocalObjectReader, readLocalObject } from './localObject';
+
+export interface BuildAnthropicBlockOptions {
+  enabledContextCaching?: boolean;
+  /** Reads objects this deployment owns straight from storage. */
+  localObjectReader?: LocalObjectReader;
+}
 
 const ANTHROPIC_SUPPORTED_IMAGE_TYPES = new Set([
   'image/jpeg',
@@ -43,6 +50,7 @@ const hasVisibleText = (text: string | null | undefined): text is string => !!te
 
 export const buildAnthropicBlock = async (
   content: UserMessageContentPart,
+  options?: BuildAnthropicBlockOptions,
 ): Promise<
   Anthropic.ContentBlock | Anthropic.ImageBlockParam | AnthropicVideoBlockParam | undefined
 > => {
@@ -78,7 +86,8 @@ export const buildAnthropicBlock = async (
       }
 
       if (type === 'url') {
-        const { base64, mimeType } = await imageUrlToBase64(content.image_url.url);
+        const local = await readLocalObject(content.image_url.url, options?.localObjectReader);
+        const { base64, mimeType } = local ?? (await imageUrlToBase64(content.image_url.url));
 
         if (!isImageTypeSupported(mimeType)) return undefined;
 
@@ -138,9 +147,12 @@ export const buildAnthropicBlock = async (
   }
 };
 
-const buildArrayContent = async (content: UserMessageContentPart[]) => {
+const buildArrayContent = async (
+  content: UserMessageContentPart[],
+  options?: BuildAnthropicBlockOptions,
+) => {
   let messageContent = (await Promise.all(
-    (content as UserMessageContentPart[]).map(async (c) => await buildAnthropicBlock(c)),
+    (content as UserMessageContentPart[]).map(async (c) => await buildAnthropicBlock(c, options)),
   )) as Anthropic.Messages.ContentBlockParam[];
 
   messageContent = messageContent.filter(Boolean);
@@ -155,11 +167,12 @@ const buildArrayContent = async (content: UserMessageContentPart[]) => {
  */
 const buildAnthropicToolResultBlock = async (
   message: Pick<OpenAIChatMessage, 'content' | 'tool_call_id'>,
+  options?: BuildAnthropicBlockOptions,
 ): Promise<Anthropic.ToolResultBlockParam | undefined> => {
   if (!message.tool_call_id) return undefined;
 
   const toolResultContent = Array.isArray(message.content)
-    ? await buildArrayContent(message.content)
+    ? await buildArrayContent(message.content, options)
     : hasVisibleText(message.content)
       ? [{ text: message.content, type: 'text' as const }]
       : [];
@@ -177,6 +190,7 @@ const buildAnthropicToolResultBlock = async (
 
 export const buildAnthropicMessage = async (
   message: OpenAIChatMessage,
+  options?: BuildAnthropicBlockOptions,
 ): Promise<Anthropic.Messages.MessageParam | undefined> => {
   const content = message.content as string | UserMessageContentPart[];
 
@@ -189,7 +203,7 @@ export const buildAnthropicMessage = async (
       // Filter out empty user messages to prevent Anthropic API validation errors.
       // Empty messages can appear after context truncation or user edits.
       if (Array.isArray(content)) {
-        const messageContent = await buildArrayContent(content);
+        const messageContent = await buildArrayContent(content, options);
         if (messageContent.length === 0) return undefined;
 
         return {
@@ -232,7 +246,7 @@ export const buildAnthropicMessage = async (
               ? content
               : []; // null/undefined/empty string -> empty array (will be filtered)
 
-        const messageContent = await buildArrayContent(rawContent);
+        const messageContent = await buildArrayContent(rawContent, options);
 
         return {
           content: [
@@ -312,7 +326,7 @@ export const buildAnthropicMessage = async (
       // or it's a plain assistant message
       // Handle array content (e.g., content with thinking blocks)
       if (Array.isArray(content)) {
-        const messageContent = await buildArrayContent(content);
+        const messageContent = await buildArrayContent(content, options);
         if (messageContent.length === 0) return undefined;
         return { content: messageContent, role: 'assistant' };
       }
@@ -331,7 +345,7 @@ export const buildAnthropicMessage = async (
 
 export const buildAnthropicMessages = async (
   oaiMessages: OpenAIChatMessage[],
-  options: { enabledContextCaching?: boolean } = {},
+  options: BuildAnthropicBlockOptions = {},
 ): Promise<Anthropic.Messages.MessageParam[]> => {
   const messages: Anthropic.Messages.MessageParam[] = [];
 
@@ -371,7 +385,7 @@ export const buildAnthropicMessages = async (
     )
       continue;
 
-    const toolResultBlock = await buildAnthropicToolResultBlock(message);
+    const toolResultBlock = await buildAnthropicToolResultBlock(message, options);
     if (toolResultBlock) {
       toolResultsByCallId.set(message.tool_call_id, toolResultBlock);
     }
@@ -385,10 +399,13 @@ export const buildAnthropicMessages = async (
         (toolCall) => !!toolCall.id && toolResultsByCallId.has(toolCall.id),
       );
 
-      const anthropicMessage = await buildAnthropicMessage({
-        ...message,
-        tool_calls: pairedToolCalls?.length ? pairedToolCalls : undefined,
-      });
+      const anthropicMessage = await buildAnthropicMessage(
+        {
+          ...message,
+          tool_calls: pairedToolCalls?.length ? pairedToolCalls : undefined,
+        },
+        options,
+      );
 
       if (anthropicMessage) {
         messages.push(anthropicMessage);
@@ -426,7 +443,7 @@ export const buildAnthropicMessages = async (
       continue;
     }
 
-    const anthropicMessage = await buildAnthropicMessage(message);
+    const anthropicMessage = await buildAnthropicMessage(message, options);
     if (anthropicMessage) {
       messages.push(anthropicMessage);
     }

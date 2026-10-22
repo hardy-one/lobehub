@@ -7,7 +7,6 @@ import type { PluginOption, ViteDevServer } from 'vite';
 import { defineConfig, loadEnv } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-import { canvasRuntimeEntries } from './plugins/vite/canvasRuntime';
 import { customBrandingLoadingScreen } from './plugins/vite/customBrandingLoadingScreen';
 import { viteEnvRestartKeys } from './plugins/vite/envRestartKeys';
 import { lobeUiImportSources } from './plugins/vite/lobeUiImports';
@@ -121,13 +120,17 @@ export default defineConfig({
         isAuth ? 'index.auth.html' : isMobile ? 'index.mobile.html' : 'index.html',
       ),
       output: createSharedRolldownOutput({
+        // Only the app entry takes part in entry-set chunking. The canvas
+        // runtime is emitted as its own chunk for the iframe, and naming it
+        // here made the labeler treat every module it reaches as first-screen:
+        // its stylesheet (canvas base.css, carrying a `body` reset) was then
+        // preloaded into the App document and restyled every page. Mobile/auth
+        // have no Canvas consumer either, so no platform lists them here.
         initialEntries: {
           main: path.resolve(
             __dirname,
             isAuth ? 'index.auth.html' : isMobile ? 'index.mobile.html' : 'index.html',
           ),
-          // Mobile/auth have no Canvas consumer, so the plugin emits no runtime entries.
-          ...(!isAuth && !isMobile && canvasRuntimeEntries),
         },
         strictExecutionOrder: true,
       }),

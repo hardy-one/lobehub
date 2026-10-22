@@ -20,18 +20,24 @@ import type {
   ToolCallRequestMessage,
 } from '@lobechat/device-gateway-client';
 import { GatewayClient } from '@lobechat/device-gateway-client';
-import { listHeterogeneousAgentModels } from '@lobechat/heterogeneous-agents/models';
+import {
+  listHeterogeneousAgentModels,
+  probeHeterogeneousThinkingLevels,
+} from '@lobechat/heterogeneous-agents/models';
 import {
   createRuntimeProbeCache,
   type RuntimeProbeCache,
 } from '@lobechat/heterogeneous-agents/runtimeProbeCache';
 import type { Command } from 'commander';
 
+import { chooseAgentGatewayUrl } from '../api/chooseAgentGatewayUrl';
 import { createLambdaClient } from '../api/client';
+import { fetchAdvertisedRuntimeEndpoints } from '../api/runtimeEndpoints';
 import { scheduleProactiveRefresh } from '../auth/proactiveRefresh';
 import { resolveToken } from '../auth/resolveToken';
 import { CLI_API_KEY_ENV } from '../constants/auth';
 import { CLI_CONNECT_SERVICE_NAME, CLI_DISPLAY_NAME, CLI_PRIMARY_BIN } from '../constants/identity';
+import { OFFICIAL_GATEWAY_URL } from '../constants/urls';
 import { CliMaintenance } from '../daemon/maintenance';
 import {
   appendLog,
@@ -48,12 +54,6 @@ import {
 } from '../daemon/manager';
 import { listTasks } from '../daemon/taskRegistry';
 import { spawnHeteroAgentRun } from '../device/agentRun';
-import {
-  describeDeviceGateway,
-  describeDeviceGatewayFailure,
-  rememberGatewayOverride,
-  resolveCliDeviceGateway,
-} from '../device/gatewayEndpoint';
 import {
   mintWorkspaceConnectToken,
   registerDevice,
@@ -76,9 +76,13 @@ import {
 import {
   addWorkspaceEnrollment,
   loadOrCreateConnectionId,
+  loadSettings,
   loadWorkspaceEnrollments,
+  normalizeUrl,
   removeWorkspaceEnrollment,
+  resolveAgentGatewayUrl,
   resolveDeviceMetricsBacklogPath,
+  saveSettings,
 } from '../settings';
 import { executeToolCall } from '../tools';
 import { closeBrowserSessions, executeBrowserCall, resolveBrowserDevice } from '../tools/browser';
@@ -173,7 +177,8 @@ export function registerConnectCommand(program: Command) {
       if (status) {
         log.info(`  Started at       : ${status.startedAt}`);
         log.info(`  Connection       : ${status.connectionStatus}`);
-        log.info(`  Gateway          : ${formatStatusGateway(status)}`);
+        log.info(`  Gateway          : ${status.gatewayUrl}`);
+        log.info(`  Server           : ${status.serverUrl ?? 'unknown'}`);
         const uptime = formatUptime(new Date(status.startedAt));
         log.info(`  Uptime           : ${uptime}`);
       }
@@ -306,7 +311,8 @@ export function registerConnectCommand(program: Command) {
       }
       if (status) {
         log.info(`  Connection       : ${status.connectionStatus}`);
-        log.info(`  Gateway          : ${formatStatusGateway(status)}`);
+        log.info(`  Gateway          : ${status.gatewayUrl}`);
+        log.info(`  Server           : ${status.serverUrl ?? 'unknown'}`);
         const uptime = formatUptime(new Date(status.startedAt));
         log.info(`  Uptime           : ${uptime}`);
       }
@@ -371,35 +377,74 @@ function buildDaemonArgs(options: ConnectOptions): string[] {
 async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   const unavailableExitCode = options.workspace ? CONNECT_RETRYABLE_EXIT_CODE : undefined;
   let auth = await resolveToken({ ...options, unavailableExitCode });
+  const settings = loadSettings();
+  let settingsToPersist = settings;
+  // Prefer advertised WebSocket endpoints; keep the configured addresses for fallback.
+  let privateDeviceGatewayUrl: string | undefined;
+  if (!process.env.LOBEHUB_SERVER) {
+    const advertised = await fetchAdvertisedRuntimeEndpoints();
 
-  const info = (msg: string) => {
-    if (isDaemonChild) appendLog(msg);
-    else log.info(msg);
-  };
+    // HTTP writes keep their configured origin; a failed response is not safe to replay.
 
-  const error = (msg: string) => {
-    if (isDaemonChild) appendLog(`[ERROR] ${msg}`);
-    else log.error(msg);
-  };
-
-  // Resolved once per process, against the server the token belongs to. The
-  // client's own reconnects and every workspace share connection reuse it.
-  const gateway = await resolveCliDeviceGateway({
-    override: options.gateway,
-    serverUrl: auth.serverUrl,
-  });
-  if (!gateway.ok) {
-    const { detail, fix } = describeDeviceGatewayFailure(gateway, auth.serverUrl);
-    // Thrown, so a daemon parent reports it as the startup error too.
-    throw new Error(`${detail} ${fix}`);
+    // Unlike the app origin, this one is persisted: `lh agent` is a separate
+    // invocation that cannot see this process' memory, and `settings.agentGatewayUrl`
+    // is the field `resolveAgentGatewayUrl()` already reads. Each connect overwrites
+    // it, so a deployment that moves the gateway is picked up rather than sticking.
+    const configuredAgentGateway =
+      normalizeUrl(settings?.agentGatewayFallbackUrl) || resolveAgentGatewayUrl();
+    const chosenAgentGateway = await chooseAgentGatewayUrl({
+      advertised: advertised.agentGatewayUrls,
+      configuredUrl: configuredAgentGateway,
+    });
+    if (chosenAgentGateway.url !== configuredAgentGateway) {
+      log.info(
+        `Using the agent gateway this server provides for devices: ${chosenAgentGateway.url}`,
+      );
+    }
+    if (!process.env.AGENT_GATEWAY_URL) {
+      const selectedUrl = chosenAgentGateway.url;
+      const fallbackUrl =
+        selectedUrl !== configuredAgentGateway ? configuredAgentGateway : undefined;
+      settingsToPersist = {
+        ...settings,
+        agentGatewayUrl: selectedUrl,
+        agentGatewayFallbackUrl: fallbackUrl,
+      };
+    }
+    // The persistent device socket has its own gateway, distinct from the
+    // Agent Gateway used by `lh agent`. Prefer the deployment's reachable private
+    // endpoint for this process only; explicit --gateway remains authoritative.
+    if (!options.gateway && advertised.deviceGatewayUrls.length > 0) {
+      const chosenDeviceGateway = await chooseAgentGatewayUrl({
+        advertised: advertised.deviceGatewayUrls,
+        configuredUrl: settingsToPersist?.gatewayUrl || OFFICIAL_GATEWAY_URL,
+      });
+      if (chosenDeviceGateway.source === 'advertised') {
+        privateDeviceGatewayUrl = chosenDeviceGateway.url;
+        log.info(
+          `Using the private device gateway this server provides: ${privateDeviceGatewayUrl}`,
+        );
+      }
+    }
   }
-  const resolvedGatewayUrl = gateway.endpoint.url;
-  const gatewayDescription = describeDeviceGateway(gateway.endpoint);
-  if (rememberGatewayOverride(auth.serverUrl, gateway.endpoint)) {
-    info(
-      `Saved ${resolvedGatewayUrl} as the device gateway for ${auth.serverUrl}; later runs use it ahead of the server's own address.`,
+
+  const gatewayUrl =
+    normalizeUrl(options.gateway) || privateDeviceGatewayUrl || settingsToPersist?.gatewayUrl;
+
+  if (!gatewayUrl && settings?.serverUrl) {
+    log.error(
+      `Current login uses custom --server ${settings?.serverUrl}. Please also provide '--gateway <url>' for the device gateway.`,
     );
+    process.exit(1);
+    throw new Error('process.exit');
   }
+
+  if (options.gateway && gatewayUrl) {
+    settingsToPersist = { ...settingsToPersist, gatewayUrl };
+  }
+  if (settingsToPersist !== settings && settingsToPersist) saveSettings(settingsToPersist);
+
+  const resolvedGatewayUrl = gatewayUrl || OFFICIAL_GATEWAY_URL;
 
   // Fail before connecting rather than advertise a tool this device cannot run.
   const computerUse = await resolveComputerUseDevice(options.auv).catch((err: Error) => {
@@ -466,6 +511,9 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     channel,
     connectionId: loadOrCreateConnectionId(),
     deviceId: identity?.deviceId ?? options.deviceId,
+    fallbackGatewayUrl: privateDeviceGatewayUrl
+      ? settingsToPersist?.gatewayUrl || OFFICIAL_GATEWAY_URL
+      : undefined,
     gatewayUrl: resolvedGatewayUrl,
     logger: isDaemonChild ? createDaemonLogger() : log,
     serverUrl: auth.serverUrl,
@@ -475,12 +523,22 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     workspaceId,
   });
 
+  const info = (msg: string) => {
+    if (isDaemonChild) appendLog(msg);
+    else log.info(msg);
+  };
+
+  const error = (msg: string) => {
+    if (isDaemonChild) appendLog(`[ERROR] ${msg}`);
+    else log.error(msg);
+  };
+
   // Print device info
   info(`─── ${CLI_DISPLAY_NAME} ───`);
   info(`  Device ID : ${client.currentDeviceId}`);
   info(`  Hostname  : ${os.hostname()}`);
   info(`  Platform  : ${process.platform}`);
-  info(`  Gateway   : ${gatewayDescription}`);
+  info(`  Gateway   : ${resolvedGatewayUrl}`);
   info(`  Auth      : ${auth.tokenType}`);
   info(`  Mode      : ${isDaemonChild ? 'daemon' : 'foreground'}`);
   info('───────────────────');
@@ -493,9 +551,11 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     writeStatus({
       connectionStatus,
       deviceId: client.currentDeviceId,
-      gatewaySource: gateway.endpoint.source,
-      gatewayUrl: resolvedGatewayUrl,
+      gatewayUrl: client.currentGatewayUrl,
       lastRequestAt,
+      // Runtime state, rewritten on every start: which server address this
+      // session actually settled on (the deployment's own, or the configured one).
+      serverUrl: auth.serverUrl,
       pid: process.pid,
       startedAt: startedAt.toISOString(),
     });
@@ -557,6 +617,11 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     readTerminal: (params) => Promise.resolve(terminals.read(params)),
     resizeTerminal: (params) => Promise.resolve(terminals.resize(params)),
     restartCli: maintenance.restart,
+    probeHeterogeneousThinkingLevels: (params) =>
+      probeHeterogeneousThinkingLevels({
+        ...params,
+        env: { ...process.env, ...params.env },
+      }),
     searchProjectFiles: defaultSearchProjectFiles,
     writeTerminal: (params) => Promise.resolve(terminals.write(params)),
   };
@@ -656,6 +721,9 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
       channel,
       connectionId: loadOrCreateConnectionId(),
       deviceId: wsIdentity.deviceId,
+      fallbackGatewayUrl: privateDeviceGatewayUrl
+        ? settingsToPersist?.gatewayUrl || OFFICIAL_GATEWAY_URL
+        : undefined,
       gatewayUrl: resolvedGatewayUrl,
       logger: isDaemonChild ? createDaemonLogger() : log,
       serverUrl: auth.serverUrl,
@@ -1170,12 +1238,6 @@ function createDaemonLogger() {
     info: (msg: string) => appendLog(`[INFO] ${msg}`),
     warn: (msg: string) => appendLog(`[WARN] ${msg}`),
   };
-}
-
-function formatStatusGateway(status: { gatewaySource?: string; gatewayUrl: string }): string {
-  return status.gatewaySource
-    ? `${status.gatewayUrl} (${status.gatewaySource})`
-    : status.gatewayUrl;
 }
 
 function formatUptime(startedAt: Date): string {

@@ -39,6 +39,7 @@ import { isRecord } from '@lobechat/utils/object';
 import type { Command } from 'commander';
 
 import { getTrpcClient } from '../api/client';
+import { waitForPiBackgroundTasks } from '../device/piBackgroundTaskWaiter';
 import { cliVersion } from '../pkg';
 import { CoalescingBatchIngester } from '../utils/CoalescingBatchIngester';
 import { HeteroTraceRecorder } from '../utils/HeteroTraceRecorder';
@@ -121,7 +122,10 @@ const spawnRuntimeRegistry: Partial<
       onStartupControl: lifecycle?.onStartupControl,
       prompt: await toPiRpcPrompt(spawnOpts.prompt),
       resumeSessionId: spawnOpts.resumeSessionId,
+      initialThinkingLevel: spawnOpts.initialThinkingLevel,
       uploadImage: spawnOpts.uploadImage,
+      waitForBackgroundTasks: (pid, sessionId) =>
+        waitForPiBackgroundTasks(spawnOpts.cwd ?? process.cwd(), pid, sessionId),
     }),
 };
 
@@ -1274,6 +1278,7 @@ const exec = async (options: ExecOptions): Promise<void> => {
       options.type === 'droid' || options.type === 'devin' || options.type === 'trae'
         ? options.model
         : undefined,
+    initialThinkingLevel: options.type === 'pi' ? options.effort : undefined,
     // Keep Claude Code's stdin open while it can still use input: closing it
     // early makes print mode kill background tasks after 10 minutes.
     liveInput: options.type === 'claude-code',

@@ -162,6 +162,42 @@ export const agentsRouter = router({
         workspaceId: ctx.workspaceId,
       }),
     ),
+  /** Probe the thinking levels a heterogeneous CLI serves for one model on the executing device. */
+  probeHeterogeneousThinkingLevels: deviceProcedure
+    .input(
+      z.object({
+        args: z.array(z.string()).optional(),
+        command: z.string().optional(),
+        cwd: z.string().optional(),
+        deviceId: z.string(),
+        env: z.record(z.string(), z.string()).optional(),
+        type: z.enum([
+          'codebuddy',
+          'codex',
+          'cursor',
+          'droid',
+          'devin',
+          'grok-build',
+          'kimi-code',
+          'opencode',
+          'pi',
+          'qoder',
+          'trae',
+        ]),
+      }),
+    )
+    .query(async ({ ctx, input }) =>
+      deviceGateway.probeHeterogeneousThinkingLevels({
+        args: input.args,
+        command: input.command,
+        cwd: input.cwd,
+        deviceId: input.deviceId,
+        env: input.env,
+        type: input.type,
+        userId: ctx.userId,
+        workspaceId: ctx.workspaceId,
+      }),
+    ),
   /**
    * Fetch the agent profile (title, description, avatar) from the platform
    * installed on the given device. Used to pre-fill the creation modal.

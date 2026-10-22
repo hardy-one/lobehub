@@ -3,18 +3,17 @@ import os from 'node:os';
 import path from 'node:path';
 
 import type * as DeviceControlModule from '@lobechat/device-control';
-import type * as DeviceGatewayClientModule from '@lobechat/device-gateway-client';
 import { GatewayClient } from '@lobechat/device-gateway-client';
 import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type * as ApiClientModule from '../api/client';
+import { fetchAdvertisedRuntimeEndpoints } from '../api/runtimeEndpoints';
 import type * as RefreshModule from '../auth/refresh';
 import { resolveToken } from '../auth/resolveToken';
 import { removeStatus, spawnDaemon, stopDaemon, writeStatus } from '../daemon/manager';
 import type * as DeviceRegister from '../device/register';
 import type * as SystemInfoModule from '../device/systemInfo';
-import { loadDeviceGatewayUrl, saveDeviceGatewayUrl } from '../settings';
+import { loadSettings, saveSettings } from '../settings';
 import { executeToolCall } from '../tools';
 import { cleanupAllProcesses } from '../tools/shell';
 import { log, setVerbose } from '../utils/logger';
@@ -24,6 +23,17 @@ import { registerConnectCommand } from './connect';
 vi.mock('../device/systemInfo', async (importOriginal) => ({
   ...(await importOriginal<typeof SystemInfoModule>()),
   probeNativeRuntimes: vi.fn().mockResolvedValue([]),
+}));
+vi.mock('../api/runtimeEndpoints', () => ({
+  fetchAdvertisedRuntimeEndpoints: vi
+    .fn()
+    .mockResolvedValue({ serverUrls: [], agentGatewayUrls: [], deviceGatewayUrls: [] }),
+}));
+vi.mock('../api/chooseAgentGatewayUrl', () => ({
+  chooseAgentGatewayUrl: vi.fn(async ({ advertised, configuredUrl }) => ({
+    source: advertised.length ? 'advertised' : 'configured',
+    url: advertised[0] ?? configuredUrl,
+  })),
 }));
 
 const registerDeviceMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
@@ -57,7 +67,6 @@ vi.mock('../auth/resolveToken', () => ({
 }));
 vi.mock('../settings', () => ({
   addWorkspaceEnrollment: vi.fn(),
-  loadDeviceGatewayUrl: vi.fn(),
   loadOrCreateConnectionId: vi.fn().mockReturnValue('test-connection-id'),
   loadSettings: vi.fn().mockReturnValue(null),
   // Default: no persisted workspace shares, so runConnect skips the restore path.
@@ -65,27 +74,9 @@ vi.mock('../settings', () => ({
   normalizeUrl: vi.fn((url?: string) => (url ? url.replace(/\/$/, '') : undefined)),
   removeWorkspaceEnrollment: vi.fn(),
   resolveDeviceMetricsBacklogPath: vi.fn((id: string) => `/tmp/device-metrics/${id}.json`),
-  saveDeviceGatewayUrl: vi.fn(),
+  resolveAgentGatewayUrl: vi.fn().mockReturnValue('https://old-agent.example.com'),
   saveSettings: vi.fn(),
 }));
-
-// `config.getGlobalConfig` on the server the token belongs to.
-const getGlobalConfig = vi.hoisted(() => vi.fn());
-const createPublicLambdaClientMock = vi.hoisted(() =>
-  vi.fn(() => ({ config: { getGlobalConfig: { query: getGlobalConfig } } })),
-);
-vi.mock('../api/client', async (importOriginal) => ({
-  ...(await importOriginal<typeof ApiClientModule>()),
-  createPublicLambdaClient: createPublicLambdaClientMock,
-}));
-
-const OFFICIAL_AUTH = {
-  serverUrl: 'https://app.lobehub.com',
-  token: 'test-token',
-  tokenType: 'jwt' as const,
-  userId: 'test-user',
-};
-const SELF_HOSTED = 'https://self-hosted.example.com';
 
 vi.mock('../tools/shell', () => ({
   cleanupAllProcesses: vi.fn(),
@@ -144,9 +135,7 @@ vi.mock('@lobechat/device-control', async (importOriginal) => ({
   }),
 }));
 
-vi.mock('@lobechat/device-gateway-client', async (importOriginal) => ({
-  // Address resolution is real; only the socket is faked.
-  ...(await importOriginal<typeof DeviceGatewayClientModule>()),
+vi.mock('@lobechat/device-gateway-client', () => ({
   GatewayClient: vi.fn().mockImplementation(function (opts: any) {
     clientOptions = opts;
     clientEventHandlers = {};
@@ -164,7 +153,6 @@ vi.mock('@lobechat/device-gateway-client', async (importOriginal) => ({
       }),
       reconnect: vi.fn().mockResolvedValue(undefined),
       reportMetrics: clientReportMetrics,
-      sendRpcResponse: vi.fn(),
       sendSystemInfoResponse: vi.fn().mockImplementation((data: any) => {
         lastSentSystemInfoResponse = data;
       }),
@@ -191,10 +179,9 @@ describe('connect command', () => {
     mockRunningPid = null;
     mockSpawnedPid = 0;
     mockStatus = null;
-    clientOptions = {};
-    vi.mocked(resolveToken).mockResolvedValue(OFFICIAL_AUTH);
-    vi.mocked(loadDeviceGatewayUrl).mockReturnValue(undefined);
-    getGlobalConfig.mockResolvedValue({ serverConfig: {} });
+    vi.stubEnv('LOBEHUB_SERVER', '');
+    vi.stubEnv('LOBEHUB_DAEMON', '');
+    vi.stubEnv('LOBEHUB_CONNECT_SERVICE', '');
   });
 
   afterEach(() => {
@@ -205,6 +192,7 @@ describe('connect command', () => {
     }
     exitSpy.mockRestore();
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     vi.clearAllMocks();
   });
 
@@ -286,12 +274,33 @@ describe('connect command', () => {
     await running;
   });
 
+  it('does not replace the configured server with an advertised HTTP origin', async () => {
+    vi.mocked(fetchAdvertisedRuntimeEndpoints).mockResolvedValueOnce({
+      serverUrls: ['https://private.test'],
+      agentGatewayUrls: [],
+      deviceGatewayUrls: [],
+    });
+    await createProgram().parseAsync(['node', 'test', 'connect']);
+    expect(clientOptions.serverUrl).toBe('https://app.lobehub.com');
+  });
+
   it('should connect to gateway', async () => {
     const program = createProgram();
     await program.parseAsync(['node', 'test', 'connect']);
 
     expect(connectCalled).toBe(true);
     expect(log.info).toHaveBeenCalledWith(expect.stringContaining('LobeHub CLI'));
+  });
+
+  it('should require explicit gateway for custom login server', async () => {
+    vi.mocked(loadSettings).mockReturnValueOnce({ serverUrl: 'https://self-hosted.example.com' });
+
+    const program = createProgram();
+    await expect(program.parseAsync(['node', 'test', 'connect'])).rejects.toThrow('process.exit');
+    expect(log.error).toHaveBeenCalledWith(
+      "Current login uses custom --server https://self-hosted.example.com. Please also provide '--gateway <url>' for the device gateway.",
+    );
+    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it('exits with a retryable code when the workspace token mint fails transiently', async () => {
@@ -346,130 +355,73 @@ describe('connect command', () => {
     expect(connectCalled).toBe(false);
   });
 
-  describe('device gateway address', () => {
-    const connect = (...args: string[]) =>
-      createProgram().parseAsync(['node', 'test', 'connect', ...args]);
+  it('should use explicit gateway for custom login server', async () => {
+    vi.mocked(loadSettings).mockReturnValueOnce({ serverUrl: 'https://self-hosted.example.com' });
 
-    it("connects to the gateway the token's server advertises when none is saved", async () => {
-      vi.mocked(resolveToken).mockResolvedValue({ ...OFFICIAL_AUTH, serverUrl: SELF_HOSTED });
-      getGlobalConfig.mockResolvedValue({
-        serverConfig: { deviceGatewayUrl: 'https://gw.example.com/edge/' },
-      });
+    const program = createProgram();
+    await program.parseAsync([
+      'node',
+      'test',
+      'connect',
+      '--gateway',
+      'https://gateway.example.com/',
+    ]);
 
-      await connect();
-
-      expect(createPublicLambdaClientMock).toHaveBeenCalledWith(SELF_HOSTED);
-      expect(clientOptions).toMatchObject({
-        gatewayUrl: 'https://gw.example.com/edge',
-        serverUrl: SELF_HOSTED,
-        token: 'test-token',
-      });
-      expect(writeStatus).toHaveBeenCalledWith(
-        expect.objectContaining({
-          gatewaySource: 'server',
-          gatewayUrl: 'https://gw.example.com/edge',
-        }),
-      );
-      expect(log.info).toHaveBeenCalledWith(
-        '  Gateway   : https://gw.example.com/edge (advertised by the server)',
-      );
-    });
-
-    it.each([OFFICIAL_AUTH.serverUrl, SELF_HOSTED])(
-      'uses the address saved for the token’s server ahead of its advertisement (%s)',
-      async (serverUrl) => {
-        vi.mocked(resolveToken).mockResolvedValue({ ...OFFICIAL_AUTH, serverUrl });
-        vi.mocked(loadDeviceGatewayUrl).mockImplementation((server) =>
-          server === serverUrl ? 'https://gw.saved.example' : undefined,
-        );
-        getGlobalConfig.mockResolvedValue({
-          serverConfig: { deviceGatewayUrl: 'https://gw.example.com' },
-        });
-
-        await connect();
-
-        // Saved, so the server is not even asked: a down server cannot block it.
-        expect(getGlobalConfig).not.toHaveBeenCalled();
-        expect(clientOptions.gatewayUrl).toBe('https://gw.saved.example');
-        expect(log.info).toHaveBeenCalledWith(
-          '  Gateway   : https://gw.saved.example (saved for this server)',
-        );
-        expect(saveDeviceGatewayUrl).not.toHaveBeenCalled();
-      },
+    expect(clientOptions.gatewayUrl).toBe('https://gateway.example.com');
+    expect(saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gatewayUrl: 'https://gateway.example.com',
+        serverUrl: 'https://self-hosted.example.com',
+      }),
     );
-
-    it('keeps the official gateway for official cloud when nothing is advertised or saved', async () => {
-      await connect();
-
-      expect(clientOptions.gatewayUrl).toBe('https://device-gateway.lobehub.com');
-    });
-
-    it('refuses to start without a gateway for a self-hosted server that advertises none', async () => {
-      vi.mocked(resolveToken).mockResolvedValue({ ...OFFICIAL_AUTH, serverUrl: SELF_HOSTED });
-
-      await expect(connect()).rejects.toThrow(
-        `${SELF_HOSTED} does not advertise a device gateway, and none is saved for it.`,
-      );
-      expect(clientOptions).toEqual({});
-    });
-
-    it.each([OFFICIAL_AUTH.serverUrl, SELF_HOSTED])(
-      'does not fall back when the config lookup fails (%s)',
-      async (serverUrl) => {
-        vi.mocked(resolveToken).mockResolvedValue({ ...OFFICIAL_AUTH, serverUrl });
-        getGlobalConfig.mockRejectedValue(new Error('HTTP 502'));
-
-        await expect(connect()).rejects.toThrow('Could not read the device gateway address');
-        expect(clientOptions).toEqual({});
-      },
-    );
-
-    it('uses --gateway without a lookup and saves it for that server', async () => {
-      vi.mocked(resolveToken).mockResolvedValue({ ...OFFICIAL_AUTH, serverUrl: SELF_HOSTED });
-      vi.mocked(loadDeviceGatewayUrl).mockReturnValue('https://gw.saved.example');
-      getGlobalConfig.mockRejectedValue(new Error('server down'));
-
-      await connect('--gateway', 'https://gateway.example.com/');
-
-      expect(getGlobalConfig).not.toHaveBeenCalled();
-      expect(clientOptions.gatewayUrl).toBe('https://gateway.example.com');
-      expect(saveDeviceGatewayUrl).toHaveBeenCalledWith(SELF_HOSTED, 'https://gateway.example.com');
-    });
-
-    it('opens workspace shares on the same gateway as the personal connection', async () => {
-      vi.mocked(resolveToken).mockResolvedValue({ ...OFFICIAL_AUTH, serverUrl: SELF_HOSTED });
-      getGlobalConfig.mockResolvedValue({
-        serverConfig: { deviceGatewayUrl: 'https://gw.example.com' },
-      });
-      await connect();
-      const personal = clientOptions;
-
-      await clientEventHandlers['rpc_request']?.({
-        method: 'enrollWorkspace',
-        params: { token: 'ws-token', workspaceId: 'ws-1' },
-        requestId: 'rpc-1',
-        type: 'rpc_request',
-      });
-
-      expect(clientOptions).not.toBe(personal);
-      expect(clientOptions).toMatchObject({
-        gatewayUrl: 'https://gw.example.com',
-        serverUrl: SELF_HOSTED,
-        token: 'ws-token',
-        workspaceId: 'ws-1',
-      });
-    });
-
-    it('passes --gateway through to the daemon child, which resolves the same way', async () => {
-      await connect('--daemon', '--gateway', 'https://gateway.example.com');
-
-      expect(spawnDaemon).toHaveBeenCalledWith(
-        expect.arrayContaining(['connect', '--gateway', 'https://gateway.example.com']),
-      );
-      // The parent resolves nothing itself; the child runs `runConnect`.
-      expect(getGlobalConfig).not.toHaveBeenCalled();
-    });
   });
+  it('uses a reachable advertised private Device Gateway for this connection without persisting it', async () => {
+    vi.mocked(loadSettings).mockReturnValueOnce({ serverUrl: 'https://self-hosted.example.com' });
+    vi.mocked(fetchAdvertisedRuntimeEndpoints).mockResolvedValueOnce({
+      agentGatewayUrls: [],
+      deviceGatewayUrls: ['wss://device-gateway.private.example'],
+      serverUrls: [],
+    });
+
+    await createProgram().parseAsync(['node', 'test', 'connect']);
+
+    expect(clientOptions.gatewayUrl).toBe('wss://device-gateway.private.example');
+    expect(clientOptions.fallbackGatewayUrl).toBe('https://device-gateway.lobehub.com');
+    expect(saveSettings).not.toHaveBeenCalledWith(
+      expect.objectContaining({ gatewayUrl: 'wss://device-gateway.private.example' }),
+    );
+  });
+  it.each([{ agentGatewayUrls: ['https://new-agent.example.com'] }, { agentGatewayUrls: [] }])(
+    'saves device and advertised agent gateways together (%j)',
+    async ({ agentGatewayUrls }) => {
+      vi.mocked(loadSettings).mockReturnValueOnce({
+        agentGatewayUrl: 'https://old-agent.example.com',
+        serverUrl: 'https://self-hosted.example.com',
+      });
+      vi.mocked(fetchAdvertisedRuntimeEndpoints).mockResolvedValueOnce({
+        agentGatewayUrls,
+        serverUrls: [],
+        deviceGatewayUrls: [],
+      });
+      await createProgram().parseAsync([
+        'node',
+        'test',
+        'connect',
+        '--gateway',
+        'https://device.example.com',
+      ]);
+
+      expect(saveSettings).toHaveBeenLastCalledWith({
+        agentGatewayUrl: agentGatewayUrls[0] || 'https://old-agent.example.com',
+        agentGatewayFallbackUrl: agentGatewayUrls.length
+          ? 'https://old-agent.example.com'
+          : undefined,
+        gatewayUrl: 'https://device.example.com',
+        serverUrl: 'https://self-hosted.example.com',
+      });
+    },
+  );
+
   it('should pass the resolved serverUrl to GatewayClient', async () => {
     const program = createProgram();
     await program.parseAsync(['node', 'test', 'connect']);
@@ -632,9 +584,6 @@ describe('connect command', () => {
       token: 'test-api-key',
       tokenType: 'apiKey',
       userId: 'user',
-    });
-    getGlobalConfig.mockResolvedValue({
-      serverConfig: { deviceGatewayUrl: 'https://gw.self-hosted.example.com' },
     });
 
     const program = createProgram();

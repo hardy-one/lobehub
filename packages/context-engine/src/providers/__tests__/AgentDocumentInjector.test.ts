@@ -2,13 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { PipelineContext } from '../../types';
 import type { AgentContextDocument } from '../AgentDocumentInjector';
-import {
-  AgentDocumentBeforeSystemInjector,
-  AgentDocumentContextInjector,
-  AgentDocumentMessageInjector,
-  AgentDocumentSystemAppendInjector,
-  AgentDocumentSystemReplaceInjector,
-} from '../AgentDocumentInjector';
+import { AgentDocumentContextInjector } from '../AgentDocumentInjector';
 
 describe('AgentDocumentInjector', () => {
   const createContext = (messages: any[] = []): PipelineContext => ({
@@ -218,9 +212,9 @@ describe('AgentDocumentInjector', () => {
         "<agent_documents_index>
         User-created docs, when present, are listed below — use readDocument(id) for full content.
 
-        TITLE                     ID                                    SIZE  UPDATED
-        Daily Brief 提取框架          2af6eb88-8bdb-468f-887f-620baa394efa  35    2026-04-27
-        cfg-constrained-decoding  32e12975-7db2-4818-8415-9b5c3d383f05  6.0k  2026-04-10
+        TITLE                     ID                                    SIZE   UPDATED
+        Daily Brief 提取框架          2af6eb88-8bdb-468f-887f-620baa394efa  <1k    2026-04-27
+        cfg-constrained-decoding  32e12975-7db2-4818-8415-9b5c3d383f05  ~1k    2026-04-10
         </agent_documents_index>"
       `);
       expect(result.messages[0].content).not.toContain('Full content that should NOT appear');
@@ -398,6 +392,36 @@ describe('AgentDocumentInjector', () => {
       expect(first).not.toContain('ago');
     });
 
+    it('should bucket index sizes so an edit inside a bucket keeps the index byte-identical', async () => {
+      const renderWithSize = async (contentCharCount: number) => {
+        const provider = new AgentDocumentContextInjector({
+          currentTime: new Date('2026-04-29T00:00:00.000Z'),
+          documents: [
+            {
+              content: '',
+              contentCharCount,
+              filename: 'note.md',
+              id: 'doc-1',
+              loadPosition: 'before-first-user' as const,
+              loadRules: { rule: 'always' as const },
+              policyLoad: 'progressive' as const,
+              sourceType: 'file' as const,
+              title: 'Note',
+              updatedAt: new Date('2026-04-28T00:00:00.000Z'),
+            },
+          ] satisfies AgentContextDocument[],
+        });
+        const context = createContext([{ content: 'Hello', id: 'user-1', role: 'user' }]);
+        const result = await provider.process(context);
+        return result.messages[0].content;
+      };
+
+      // Growing inside one order of magnitude must not rewrite the index.
+      expect(await renderWithSize(6000)).toBe(await renderWithSize(8600));
+      // Crossing an order of magnitude still moves, so the model keeps the signal.
+      expect(await renderWithSize(6000)).not.toBe(await renderWithSize(12_000));
+    });
+
     it('should render progressive index sizes from contentCharCount when content is omitted', async () => {
       const provider = new AgentDocumentContextInjector({
         currentTime: new Date('2026-04-29T00:00:00.000Z'),
@@ -421,7 +445,7 @@ describe('AgentDocumentInjector', () => {
       const result = await provider.process(context);
 
       expect(result.messages[0].content).toContain('Large Note');
-      expect(result.messages[0].content).toContain('12k');
+      expect(result.messages[0].content).toContain('~10k');
       expect(result.messages[0].content).not.toContain('empty');
     });
 
@@ -472,8 +496,8 @@ describe('AgentDocumentInjector', () => {
         User-created docs, when present, are listed below — use readDocument(id) for full content.
         Web-crawled docs are available but omitted here — call listDocuments(sourceType='web') to discover them.
 
-        TITLE        ID                                    SIZE  UPDATED
-        Daily Brief  2af6eb88-8bdb-468f-887f-620baa394efa  9     2026-04-27
+        TITLE        ID                                    SIZE   UPDATED
+        Daily Brief  2af6eb88-8bdb-468f-887f-620baa394efa  <1k    2026-04-27
         </agent_documents_index>"
       `);
       expect(result.messages[0].content).not.toContain('Gold price');
@@ -557,10 +581,10 @@ describe('AgentDocumentInjector', () => {
         User-created docs, when present, are listed below — use readDocument(id) for full content.
         1 folder collapsed (📁) — call listDocuments(parentId=<id>) to list a folder's docs.
 
-        TITLE      ID      SIZE  UPDATED
-        Root note  root-1  9     2026-04-28
+        TITLE      ID      SIZE   UPDATED
+        Root note  root-1  <1k    2026-04-28
 
-        📁 dailyBrief  folder-daily  3 docs, 4.3k–20k  2026-04-27
+        📁 dailyBrief  folder-daily  3 docs, ~1k–~10k  2026-04-27
         </agent_documents_index>"
       `);
       // Individual folded doc ids are hidden — the model expands via listDocuments.
@@ -736,138 +760,6 @@ describe('AgentDocumentInjector', () => {
       expect(injected).toContain('Setup');
       expect(injected).toContain('no-policy-1');
       expect(injected).not.toContain('Body of a doc that forgot to set policyLoad');
-    });
-  });
-
-  describe('AgentDocumentBeforeSystemInjector (before-system)', () => {
-    it('should prepend documents before system message', async () => {
-      const provider = new AgentDocumentBeforeSystemInjector({
-        documents: [
-          {
-            content: 'Before system content',
-            filename: 'framework.md',
-            loadPosition: 'before-system',
-            loadRules: { rule: 'always' },
-            policyLoad: 'always',
-          },
-        ],
-      });
-
-      const context = createContext([
-        { content: 'Original system', id: 'sys-1', role: 'system' },
-        { content: 'Hello', id: 'user-1', role: 'user' },
-      ]);
-
-      const result = await provider.process(context);
-
-      expect(result.messages).toHaveLength(3);
-      expect(result.messages[0].content).toContain('Before system content');
-      expect(result.messages[1].content).toBe('Original system');
-    });
-  });
-
-  describe('AgentDocumentSystemAppendInjector (system-append)', () => {
-    it('should append documents to existing system message', async () => {
-      const provider = new AgentDocumentSystemAppendInjector({
-        documents: [
-          {
-            content: 'System append content',
-            filename: 'system.md',
-            loadPosition: 'system-append',
-            loadRules: { rule: 'always' },
-            policyLoad: 'always',
-          },
-        ],
-      });
-
-      const context = createContext([
-        { content: 'Original system', id: 'sys-1', role: 'system' },
-        { content: 'Hello', id: 'user-1', role: 'user' },
-      ]);
-
-      const result = await provider.process(context);
-
-      expect(result.messages).toHaveLength(2);
-      expect(result.messages[0].content).toContain('Original system');
-      expect(result.messages[0].content).toContain('System append content');
-    });
-  });
-
-  describe('AgentDocumentSystemReplaceInjector (system-replace)', () => {
-    it('should replace entire system message', async () => {
-      const provider = new AgentDocumentSystemReplaceInjector({
-        documents: [
-          {
-            content: 'Replacement content',
-            filename: 'override.md',
-            loadPosition: 'system-replace',
-            loadRules: { rule: 'always' },
-            policyLoad: 'always',
-          },
-        ],
-      });
-
-      const context = createContext([
-        { content: 'Original system', id: 'sys-1', role: 'system' },
-        { content: 'Hello', id: 'user-1', role: 'user' },
-      ]);
-
-      const result = await provider.process(context);
-
-      expect(result.messages).toHaveLength(2);
-      expect(result.messages[0].content).toContain('Replacement content');
-      expect(result.messages[0].content).not.toContain('Original system');
-    });
-  });
-
-  describe('AgentDocumentMessageInjector (after-first-user, context-end)', () => {
-    it('should inject documents at context end', async () => {
-      const provider = new AgentDocumentMessageInjector({
-        documents: [
-          {
-            content: 'Session summary memo',
-            filename: 'summary.md',
-            loadPosition: 'context-end',
-            loadRules: { rule: 'always' },
-            policyLoad: 'always',
-          },
-        ],
-      });
-
-      const context = createContext([
-        { content: 'System prompt', id: 'sys-1', role: 'system' },
-        { content: 'Hello', id: 'user-1', role: 'user' },
-      ]);
-
-      const result = await provider.process(context);
-
-      expect(result.messages).toHaveLength(3);
-      expect(result.messages[2].content).toContain('Session summary memo');
-    });
-
-    it('should inject documents after first user message', async () => {
-      const provider = new AgentDocumentMessageInjector({
-        documents: [
-          {
-            content: 'After user content',
-            filename: 'after.md',
-            loadPosition: 'after-first-user',
-            loadRules: { rule: 'always' },
-            policyLoad: 'always',
-          },
-        ],
-      });
-
-      const context = createContext([
-        { content: 'System prompt', id: 'sys-1', role: 'system' },
-        { content: 'Hello', id: 'user-1', role: 'user' },
-        { content: 'Response', id: 'asst-1', role: 'assistant' },
-      ]);
-
-      const result = await provider.process(context);
-
-      expect(result.messages).toHaveLength(4);
-      expect(result.messages[2].content).toContain('After user content');
     });
   });
 });

@@ -152,6 +152,13 @@ export interface GlobalServerConfig {
    */
   deviceGatewayUrl?: string;
   disableEmailPassword?: boolean;
+  /**
+   * Self-hosted switch for Artifact deployment (`OSS_ENABLE_ARTIFACT_DEPLOYMENT`):
+   * publishing a chat Artifact to a URL this deployment hosts. Off by default —
+   * it puts user content on the public internet, and serving has no session to
+   * evaluate an allowlist against. Cloud never sets it.
+   */
+  enableArtifactDeployment?: boolean;
   enableBusinessFeatures?: boolean;
   enableComposio?: boolean;
   /**
@@ -163,6 +170,8 @@ export interface GlobalServerConfig {
    * Whether Gateway mode is available for app-level agent execution.
    */
   enableGatewayMode?: boolean;
+  /** Whether `AUTH_INVITATION_CODES` is set, so sign-up asks for the code. */
+  enableInvitationCode?: boolean;
   enableLobehubSkill?: boolean;
   enableMagicLink?: boolean;
   enableMarketTrustedClient?: boolean;

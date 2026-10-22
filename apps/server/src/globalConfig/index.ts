@@ -159,6 +159,7 @@ export const getServerGlobalConfig = async () => {
       ? { deviceGatewayUrl: gatewayEnv.DEVICE_GATEWAY_PUBLIC_URL }
       : undefined),
     disableEmailPassword: authEnv.AUTH_DISABLE_EMAIL_PASSWORD,
+    enableArtifactDeployment: !!appEnv.OSS_ENABLE_ARTIFACT_DEPLOYMENT,
     enableBusinessFeatures: ENABLE_BUSINESS_FEATURES,
     enableEmailVerification: authEnv.AUTH_EMAIL_VERIFICATION,
     enableComposio: !!composioEnv.COMPOSIO_API_KEY,

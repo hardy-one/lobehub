@@ -45,20 +45,30 @@ const LabsForm = memo(() => {
     LAB_FEATURES.map(({ flag }) => labPreferSelectors[flag](s)),
   );
   const enableWorkspace = useServerConfigStore(serverConfigSelectors.enableWorkspace);
+  const enableArtifactDeployment = useServerConfigStore(
+    serverConfigSelectors.enableArtifactDeployment,
+  );
+  // Experiments whose capability this deployment does not offer are left out
+  // entirely: their switch could not turn anything on.
+  const availableFeatures = LAB_FEATURES.filter(
+    (feature) =>
+      !feature.serverFlag ||
+      (feature.serverFlag === 'enableArtifactDeployment' && enableArtifactDeployment),
+  );
   const form = useForm();
 
   // Cross-surface experiments. Platform-specific ones (Electron main-process
   // features) live in the Desktop group; workspace experiments only show to
   // users with workspace access. Everything else is General.
-  const generalItems = LAB_FEATURES.filter(
+  const generalItems = availableFeatures.filter(
     (feature) => !feature.desktopOnly && !feature.workspaceOnly,
   );
   const workspaceItems = enableWorkspace
-    ? LAB_FEATURES.filter((feature) => feature.workspaceOnly)
+    ? availableFeatures.filter((feature) => feature.workspaceOnly)
     : [];
   // Desktop-only experiments: local agent runtimes, iMessage bridge, and the
   // in-app browser (renderer-retained Electron webviews).
-  const desktopItems = LAB_FEATURES.filter((feature) => feature.desktopOnly);
+  const desktopItems = availableFeatures.filter((feature) => feature.desktopOnly);
 
   if (!isUserStateInit) {
     // A failed user-state init must show error + Retry, not a permanent skeleton

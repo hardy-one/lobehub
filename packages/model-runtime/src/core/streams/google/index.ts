@@ -411,11 +411,23 @@ export const GoogleGenerativeAIStream = (
   const transformWithPayload: typeof transformGoogleGenerativeAIStream = (chunk, ctx) =>
     transformGoogleGenerativeAIStream(chunk, ctx, payload);
 
+  const isVisibleTextOutputChunk = (chunk: StreamProtocolChunk) => {
+    if (chunk.type === 'text') {
+      return typeof chunk.data === 'string' && chunk.data.length > 0;
+    }
+    if (chunk.type !== 'content_part') return false;
+
+    const part = chunk.data as StreamPartChunkData;
+    return part.partType === 'text' && typeof part.content === 'string' && part.content.length > 0;
+  };
+
   return rawStream
     .pipeThrough(
       createTokenSpeedCalculator(transformWithPayload, {
         enableStreaming,
+        getSpeedOutputTokens: (usage) => usage.outputTextTokens ?? 0,
         inputStartAt,
+        isSpeedStartChunk: isVisibleTextOutputChunk,
         streamStack,
       }),
     )

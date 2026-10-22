@@ -1091,6 +1091,50 @@ table api_keys {
   }
 }
 
+table artifact_deployment_revisions {
+  id uuid [pk, not null, default: `gen_random_uuid()`]
+  deployment_id varchar(64) [not null]
+  revision integer [not null]
+  object_prefix text [not null]
+  manifest jsonb [not null]
+  total_bytes integer [not null]
+  file_count integer [not null]
+  source text
+  content_hash text
+  build_ms integer
+  message_id text
+  accessed_at "timestamp with time zone" [not null, default: `now()`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  updated_at "timestamp with time zone" [not null, default: `now()`]
+
+  indexes {
+    (deployment_id, revision) [name: 'artifact_deployment_revisions_deployment_id_revision_unique', unique]
+    deployment_id [name: 'artifact_deployment_revisions_deployment_id_idx']
+  }
+}
+
+table artifact_deployments {
+  id varchar(64) [pk, not null]
+  user_id text [not null]
+  workspace_id text
+  topic_id text [not null]
+  identifier text [not null]
+  title text
+  kind text [not null, default: 'html']
+  slug text
+  status text [not null, default: 'published']
+  current_revision integer [not null, default: 1]
+  entry text [not null, default: 'index.html']
+  accessed_at "timestamp with time zone" [not null, default: `now()`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  updated_at "timestamp with time zone" [not null, default: `now()`]
+
+  indexes {
+    (user_id, topic_id, identifier) [name: 'artifact_deployments_user_id_topic_id_identifier_unique', unique]
+    user_id [name: 'artifact_deployments_user_id_idx']
+  }
+}
+
 table async_tasks {
   id uuid [pk, not null, default: `gen_random_uuid()`]
   type text

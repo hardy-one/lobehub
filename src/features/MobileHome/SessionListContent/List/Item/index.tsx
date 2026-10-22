@@ -1,6 +1,6 @@
 import { DEFAULT_AVATAR } from '@lobechat/const';
 import { agentDisplayName, type SidebarAgentItem } from '@lobechat/types';
-import { Flexbox } from '@lobehub/ui';
+import { Flexbox, Tag } from '@lobehub/ui';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -10,6 +10,7 @@ import { useAgentGroupStore } from '@/store/agentGroup';
 import { useChatStore } from '@/store/chat';
 import { operationSelectors } from '@/store/chat/selectors';
 
+import { getHeterogeneousTypeLabel } from '../../getHeterogeneousTypeLabel';
 import ListItem from '../../ListItem';
 import Actions from './Actions';
 
@@ -23,6 +24,10 @@ const AgentItem = ({ item, groupId }: { item: SidebarAgentItem; groupId?: string
       ? operationSelectors.isGroupVisiblyRunning(item.id)
       : operationSelectors.isAgentVisiblyRunning(item.id),
   );
+
+  const heterogeneousLabel =
+    item.type === 'agent' ? getHeterogeneousTypeLabel(item.heterogeneousType) : undefined;
+
   return (
     <ListItem
       actions={<Actions groupId={groupId} item={item} setOpen={setOpen} />}
@@ -37,9 +42,10 @@ const AgentItem = ({ item, groupId }: { item: SidebarAgentItem; groupId?: string
       title={agentDisplayName(item, t(item.type === 'group' ? 'untitledGroup' : 'untitledAgent'))}
       type={item.type}
       addon={
-        item.type === 'agent' && item.model ? (
+        item.type === 'agent' && (heterogeneousLabel || item.model) ? (
           <Flexbox horizontal gap={4} style={{ flexWrap: 'wrap' }}>
-            <ModelTag model={item.model} />
+            {heterogeneousLabel && <Tag size="small">{heterogeneousLabel}</Tag>}
+            {item.model && <ModelTag model={item.model} />}
           </Flexbox>
         ) : undefined
       }
@@ -50,4 +56,5 @@ const AgentItem = ({ item, groupId }: { item: SidebarAgentItem; groupId?: string
     />
   );
 };
+
 export default AgentItem;

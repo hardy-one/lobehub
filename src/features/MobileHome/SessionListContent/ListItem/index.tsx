@@ -15,6 +15,13 @@ const styles = createStaticStyles(({ css, cssVar }) => {
       margin-block: 2px;
       padding-inline: 12px 16px;
       border-radius: ${cssVar.borderRadius};
+
+      h3 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 500;
+        line-height: 1.2;
+      }
     `,
     mobile: css`
       margin-block: 0;
@@ -22,6 +29,9 @@ const styles = createStaticStyles(({ css, cssVar }) => {
       border-radius: 0;
     `,
     title: css`
+      margin: 0;
+      font-size: 14px;
+      font-weight: 500;
       line-height: 1.2;
     `,
   };

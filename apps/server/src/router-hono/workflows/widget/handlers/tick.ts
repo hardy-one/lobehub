@@ -2,6 +2,7 @@ import type { Context } from 'hono';
 
 import { getServerDB } from '@/database/server';
 import { appEnv } from '@/envs/app';
+import { getQStashCallbackBaseUrl } from '@/envs/qstash';
 import { qstashClient } from '@/libs/qstash';
 import { toQStashDeduplicationId } from '@/libs/qstash/deduplicationId';
 import { createWidgetSandboxRunner } from '@/server/services/widget/sandbox';
@@ -52,10 +53,11 @@ export async function tick(c: Context) {
 
     const dispatch = appEnv.enableQueueAgentRuntime
       ? async (target: WidgetDispatchTarget) => {
-          if (!process.env.APP_URL) {
+          const baseUrl = getQStashCallbackBaseUrl();
+          if (!baseUrl) {
             throw new Error('APP_URL is required to fan out widget runs via QStash');
           }
-          const url = `${process.env.APP_URL.replace(/\/$/, '')}${RUN_WIDGET_PATH}`;
+          const url = `${baseUrl.replace(/\/$/, '')}${RUN_WIDGET_PATH}`;
 
           if (isWidgetResumeTarget(target)) {
             const leaseStartedAt = target.leaseStartedAt.toISOString();

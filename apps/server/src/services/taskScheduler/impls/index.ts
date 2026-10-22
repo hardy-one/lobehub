@@ -1,4 +1,5 @@
 import { appEnv } from '@/envs/app';
+import { getQStashCallbackBaseUrl } from '@/envs/qstash';
 import { qstashClient } from '@/libs/qstash';
 
 import { LocalTaskScheduler, type TaskExecutionCallback } from './local';
@@ -21,7 +22,7 @@ export const createTaskSchedulerModule = (): TaskSchedulerImpl => {
   if (cachedScheduler) return cachedScheduler;
 
   if (appEnv.enableQueueAgentRuntime) {
-    const baseUrl = process.env.APP_URL;
+    const baseUrl = getQStashCallbackBaseUrl();
     if (!baseUrl) {
       throw new Error('APP_URL is required to schedule heartbeat ticks via QStash');
     }

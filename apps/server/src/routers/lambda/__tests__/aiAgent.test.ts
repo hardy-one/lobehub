@@ -17,6 +17,7 @@ import { eq } from 'drizzle-orm';
 import type * as ModelBankModule from 'model-bank';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type * as ErrorLoggerModule from '@/libs/trpc/utils/errorLogger';
 import type * as InternalJwtModule from '@/libs/trpc/utils/internalJwt';
 import { AiAgentService } from '@/server/services/aiAgent';
 import {
@@ -644,6 +645,40 @@ describe('AI Agent Router Integration Tests', () => {
         expect.objectContaining({ interactiveStart: true, replacesOperationId: 'op-old' }),
       );
       execAgent.mockRestore();
+    });
+  });
+
+  describe('refreshGatewayToken stale marker', () => {
+    // A client reconnecting to a topic whose run already ended gets this 404
+    // on every switch. It is an expected answer, so the shared tRPC handler
+    // must skip it instead of logging an error on each mobile app resume.
+    it('marks the NOT_FOUND of a finished run as silent in the handler log', async () => {
+      const markSilentTRPCErrorLog = vi
+        .spyOn(ErrorLoggerModule, 'markSilentTRPCErrorLog')
+        .mockImplementation(() => {});
+      const [topic] = await serverDB
+        .insert(topics)
+        .values({
+          agentId: testAgentId,
+          metadata: { runningOperation: { operationId: 'op-already-finished' } },
+          sessionId: testSessionId,
+          title: 'Finished run',
+          userId,
+        })
+        .returning();
+      const caller = aiAgentRouter.createCaller(createTestContext());
+
+      let thrown: TRPCError | undefined;
+      try {
+        await caller.refreshGatewayToken({ topicId: topic.id });
+      } catch (error) {
+        thrown = error as TRPCError;
+      }
+
+      expect(thrown).toBeInstanceOf(TRPCError);
+      expect(thrown?.code).toBe('NOT_FOUND');
+      expect(markSilentTRPCErrorLog).toHaveBeenCalledWith(thrown?.cause);
+      expect(mockSignUserJWT).not.toHaveBeenCalled();
     });
   });
 

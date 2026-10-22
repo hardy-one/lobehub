@@ -2,6 +2,7 @@ import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 
 import { router } from '@/libs/trpc/lambda';
+import { markSilentTRPCErrorLog } from '@/libs/trpc/utils/errorLogger';
 import { signUserJWT } from '@/libs/trpc/utils/internalJwt';
 
 import { LlmExecutorSchema } from './execSchemas';
@@ -75,10 +76,16 @@ export const gatewayRelayRouter = router({
         !runningOperation ||
         !(await ctx.topicModel.isRunningOperationAlive(ctx.serverDB, runningOperation))
       ) {
-        throw new TRPCError({
+        const staleMarkerError = new TRPCError({
           code: 'NOT_FOUND',
           message: 'No running operation found on this topic',
         });
+        // Expected 404, not a server fault: a client reconnecting to a finished
+        // run reaches this on every topic switch and app resume. The client
+        // treats NOT_FOUND as "stale marker, clear it", so the shared handler
+        // must not log it as an error.
+        markSilentTRPCErrorLog(staleMarkerError.cause);
+        throw staleMarkerError;
       }
 
       const token = await signUserJWT(ctx.userId);

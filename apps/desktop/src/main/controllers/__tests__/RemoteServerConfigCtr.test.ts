@@ -70,6 +70,35 @@ describe('RemoteServerConfigCtr', () => {
     controller = new RemoteServerConfigCtr(mockApp);
   });
 
+  describe('device server address isolation', () => {
+    it('keeps device HTTP traffic on the configured origin without discovery probes', async () => {
+      vi.spyOn(controller, 'getRemoteServerUrl').mockResolvedValue('https://new.example.com');
+      expect(await controller.getDeviceServerUrl()).toBe('https://new.example.com');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('returns a private gateway candidate without an unrelated HEAD probe', async () => {
+      vi.spyOn(controller, 'getRemoteServerUrl').mockResolvedValue('https://app.example.com');
+      vi.spyOn(controller, 'getAccessToken').mockResolvedValue('app-access-token');
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result: { data: { json: { deviceGatewayUrls: ['wss://device.internal'] } } },
+        }),
+      });
+
+      await expect(controller.getPrivateDeviceGatewayUrl()).resolves.toBe('wss://device.internal/');
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        1,
+        'https://app.example.com/trpc/lambda/aiAgent.heteroRuntimeEndpoints',
+        expect.objectContaining({
+          headers: expect.objectContaining({ 'Oidc-Auth': 'app-access-token' }),
+        }),
+      );
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('getRemoteServerConfig', () => {
     it('should return stored configuration', async () => {
       const config: DataSyncConfig = {

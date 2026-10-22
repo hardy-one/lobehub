@@ -29,6 +29,7 @@ vi.mock('../RemoteServerConfigCtr', () => ({
 const mockRemoteCtr = {
   getAccessToken: vi.fn(),
   getRemoteServerUrl: vi.fn(),
+  getDeviceServerUrl: vi.fn(),
 };
 
 const mockApp = {
@@ -42,6 +43,9 @@ describe('CliCtr.buildCliEnv', () => {
     vi.clearAllMocks();
     mockRemoteCtr.getAccessToken.mockResolvedValue('jwt-token');
     mockRemoteCtr.getRemoteServerUrl.mockResolvedValue('https://app.example.com/');
+    mockRemoteCtr.getDeviceServerUrl.mockImplementation(async () =>
+      mockRemoteCtr.getRemoteServerUrl(),
+    );
     ctr = new CliCtr(mockApp);
   });
 

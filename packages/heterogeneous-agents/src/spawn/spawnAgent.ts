@@ -27,7 +27,7 @@ import {
 import type { AgentPromptInput, BuildAgentInputOptions } from './input';
 import { buildAgentInput } from './input';
 import { getHeterogeneousAgentPresetEnv } from './presetEnv';
-import { assertSpawnableWorkingDirectory } from './workingDirectory';
+import { assertSpawnableWorkingDirectory, withWorkingDirectoryEnv } from './workingDirectory';
 
 export interface SpawnAgentOptions {
   /** Registered local heterogeneous-agent type key. */
@@ -55,8 +55,10 @@ export interface SpawnAgentOptions {
    * connected client renders live token streaming.
    */
   includePartialMessages?: boolean;
-  /** Initial model selected through the agent protocol after session setup (Droid/TRAE ACP). */
   initialModel?: string;
+  /** Initial model selected through the agent protocol after session setup (Droid/TRAE ACP). */
+  /** Initial thinking level applied through the agent protocol after session setup (Pi RPC). */
+  initialThinkingLevel?: string;
   /**
    * Image normalization options (URL fetch + on-disk cache + path
    * materialization). Forwarded to `buildAgentInput`. When `prompt` is a
@@ -480,11 +482,14 @@ export const spawnAgent = async (options: SpawnAgentOptions): Promise<SpawnAgent
   }
 
   const inputPlan = await buildAgentInput(options.agentType, options.prompt, options.inputOptions);
-  const childEnv: NodeJS.ProcessEnv = {
-    ...process.env,
-    ...getHeterogeneousAgentPresetEnv(options.agentType),
-    ...options.env,
-  };
+  const childEnv = withWorkingDirectoryEnv(
+    {
+      ...process.env,
+      ...getHeterogeneousAgentPresetEnv(options.agentType),
+      ...options.env,
+    },
+    cwd,
+  );
   // Codex builds each shell command's env from `[shell_environment_policy]`,
   // not from its own process env, so a user's `inherit = "core"` strips the
   // run context `lh` needs. Forward it as `shell_environment_policy.set.*`

@@ -927,14 +927,14 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
               ...(providerModel.name ? { displayName: providerModel.name } : {}),
             };
 
-            // Provider data is authoritative for availability and supplied fields; keep the model-bank
-            // card as fallback for metadata this endpoint does not expose.
+            // Model-bank card is authoritative for known models; keep provider data as fallback
+            // for metadata this endpoint exposes or for unknown models.
             const knownModel = LOBE_DEFAULT_MODEL_LIST.find((model) => model.id === item.id);
 
             if (knownModel) {
               return {
-                ...knownModel,
                 ...remoteModelMetadata,
+                ...knownModel,
                 releasedAt: toReleasedAt() ?? knownModel.releasedAt,
               };
             }

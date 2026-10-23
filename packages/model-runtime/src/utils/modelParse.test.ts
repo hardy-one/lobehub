@@ -470,7 +470,7 @@ describe('modelParse', () => {
         expect(result[0].vision).toBe(false); // knownModel.abilities.vision is false
       });
 
-      it('should prioritize model.displayName > knownModel.displayName > model.id', async () => {
+      it('should prioritize knownModel.displayName > model.displayName > model.id', async () => {
         const modelList = [
           { id: 'model-a', displayName: 'Model A DisplayName' },
           { id: 'model-known-displayname' }, // displayName from knownModel
@@ -484,7 +484,7 @@ describe('modelParse', () => {
         expect(result.find((m) => m.id === 'model-c')!.displayName).toBe('model-c');
       });
 
-      it('should prioritize model.contextWindowTokens > knownModel.contextWindowTokens', async () => {
+      it('should prioritize knownModel.contextWindowTokens > model.contextWindowTokens', async () => {
         const modelList = [
           { id: 'model-ctx-direct', contextWindowTokens: 5000 },
           { id: 'model-known-context' }, // context from knownModel
@@ -835,8 +835,8 @@ describe('modelParse', () => {
         const config = MODEL_LIST_CONFIGS.openai;
         const result = await processModelList([modelWithOverlap], config);
 
-        expect(result[0].displayName).toBe('Direct Special Model'); // From model (priority)
-        expect(result[0].contextWindowTokens).toBe(5000); // From model (priority)
+        expect(result[0].displayName).toBe('Known Special Model'); // From knownModel (priority)
+        expect(result[0].contextWindowTokens).toBe(10000); // From knownModel (priority)
         expect(result[0].maxOutput).toBe(2000); // From knownModel
         expect(result[0].enabled).toBe(false);
       });

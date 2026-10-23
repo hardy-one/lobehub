@@ -26,5 +26,11 @@ describe('manifest', () => {
         purpose: 'any',
       },
     ]);
+    expect((result as Record<string, unknown>).user_preferences).toEqual({
+      color_scheme_dark: {
+        background_color: '#000000',
+        theme_color: '#000000',
+      },
+    });
   });
 });

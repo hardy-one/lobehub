@@ -6,21 +6,28 @@ import { useEffect } from 'react';
 import { resolveThemeColor } from './themeColor';
 
 const ThemeColorMeta = () => {
-  const { resolvedTheme } = useTheme();
+  const { forcedTheme, resolvedTheme } = useTheme();
 
   useEffect(() => {
     const documentTheme = document.documentElement.getAttribute('data-theme');
-    const color = resolveThemeColor(resolvedTheme, documentTheme);
-    let meta = document.head.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    const color = resolveThemeColor(forcedTheme ?? resolvedTheme, documentTheme);
+    const metas = document.head.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]');
 
-    if (!meta) {
-      meta = document.createElement('meta');
+    if (metas.length === 0) {
+      const meta = document.createElement('meta');
       meta.name = 'theme-color';
+      meta.content = color;
       document.head.append(meta);
+      return;
     }
 
-    meta.content = color;
-  }, [resolvedTheme]);
+    const [firstMeta, ...extraMetas] = metas;
+    firstMeta.removeAttribute('media');
+    firstMeta.content = color;
+    for (const extraMeta of extraMetas) {
+      extraMeta.remove();
+    }
+  }, [forcedTheme, resolvedTheme]);
 
   return null;
 };

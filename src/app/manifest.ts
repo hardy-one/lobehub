@@ -4,7 +4,7 @@ const manifest = async (): Promise<MetadataRoute.Manifest> => {
   // Skip heavy module compilation in development
   if (process.env.NODE_ENV === 'development') {
     return {
-      background_color: '#f8f8f8',
+      background_color: '#000000',
       description: 'LobeHub Development',
       display: 'standalone',
       icons: [
@@ -17,7 +17,7 @@ const manifest = async (): Promise<MetadataRoute.Manifest> => {
       name: 'LobeHub',
       short_name: 'LobeHub',
       start_url: '/',
-      theme_color: '#f8f8f8',
+      theme_color: '#000000',
       // @ts-expect-error - non-standard WebAPK dark mode color override
       user_preferences: {
         color_scheme_dark: {

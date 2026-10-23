@@ -5,6 +5,7 @@ import { getCanonicalUrl } from '@/server/utils/url';
 
 const MAX_AGE = 31_536_000;
 const COLOR = '#f8f8f8';
+const DARK_COLOR = '#000000';
 
 interface IconItem {
   purpose: 'any' | 'maskable';
@@ -23,6 +24,7 @@ interface ScreenshotItem {
 export class Manifest {
   public generate({
     color = COLOR,
+    darkColor = DARK_COLOR,
     description,
     name,
     id,
@@ -30,6 +32,7 @@ export class Manifest {
     screenshots,
   }: {
     color?: string;
+    darkColor?: string;
     description: string;
     icons: IconItem[];
     id: string;
@@ -70,6 +73,12 @@ export class Manifest {
         },
       },
       theme_color: color,
+      user_preferences: {
+        color_scheme_dark: {
+          background_color: darkColor,
+          theme_color: darkColor,
+        },
+      },
     };
   }
 

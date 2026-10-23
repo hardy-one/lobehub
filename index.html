@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="/favicon.ico" />
     <link rel="shortcut icon" href="/favicon-32x32.ico" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="manifest" href="/manifest.webmanifest?v=3" />
+    <meta name="theme-color" content="#f8f8f8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
     <!--SEO_META-->
     <style>
       html body {
@@ -107,6 +109,16 @@
         var resolvedTheme = theme === 'system' ? systemTheme : theme;
         if (resolvedTheme === 'dark' || resolvedTheme === 'light') {
           document.documentElement.setAttribute('data-theme', resolvedTheme);
+          var themeColor = resolvedTheme === 'dark' ? '#000000' : '#f8f8f8';
+          var metas = document.head.querySelectorAll('meta[name="theme-color"]');
+          for (var i = 0; i < metas.length; i++) {
+            if (i === 0) {
+              metas[i].removeAttribute('media');
+              metas[i].setAttribute('content', themeColor);
+            } else {
+              metas[i].remove();
+            }
+          }
         }
 
         var hl = new URLSearchParams(location.search).get('hl');

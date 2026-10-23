@@ -63,6 +63,12 @@ describe('Manifest', () => {
 
       expect(result.background_color).toBe('#f8f8f8');
       expect(result.theme_color).toBe('#f8f8f8');
+      expect(result.user_preferences).toEqual({
+        color_scheme_dark: {
+          background_color: '#000000',
+          theme_color: '#000000',
+        },
+      });
     });
   });
 

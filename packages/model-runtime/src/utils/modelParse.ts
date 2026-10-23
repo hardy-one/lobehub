@@ -337,19 +337,20 @@ const findKnownModelByProvider = async (
   }
 };
 
-const findKnownModel = async (
+export const findKnownModel = async (
   modelId: string,
   provider: ModelProviderKey | keyof typeof MODEL_LIST_CONFIGS | undefined,
-  builtinModels: readonly AIBaseModelCard[],
+  builtinModels?: readonly AIBaseModelCard[],
 ): Promise<AIBaseModelCard | null> => {
+  const models = builtinModels ?? ((await (await import('model-bank')).loadModels?.()) || []);
   const providerModel = provider ? await findKnownModelByProvider(modelId, provider) : null;
   const exactModelId = modelId.toLowerCase();
-  const exactBuiltinModel = builtinModels.find((model) => model.id.toLowerCase() === exactModelId);
+  const exactBuiltinModel = models.find((model) => model.id.toLowerCase() === exactModelId);
 
   if (providerModel?.id.toLowerCase() === exactModelId) return providerModel;
   if (exactBuiltinModel) return exactBuiltinModel;
 
-  return providerModel ?? findModelById(builtinModels, modelId) ?? null;
+  return providerModel ?? findModelById(models, modelId) ?? null;
 };
 
 /**
@@ -400,6 +401,8 @@ const formatTimestampToDate = (timestamp: number): string | undefined => {
  * @returns Processed releasedAt value
  */
 const processReleasedAt = (model: any, knownModel?: any): string | undefined => {
+  if (knownModel?.releasedAt) return knownModel.releasedAt;
+
   // Check model.created first
   if (model.created !== undefined && model.created !== null) {
     // Check if it's in timestamp format
@@ -418,7 +421,7 @@ const processReleasedAt = (model: any, knownModel?: any): string | undefined => 
   }
 
   // Fall back to original logic
-  return model.releasedAt ?? knownModel?.releasedAt ?? undefined;
+  return model.releasedAt ?? undefined;
 };
 
 /**
@@ -674,47 +677,55 @@ const processModelCard = (
 
   return {
     ...(model.sdkType ? { sdkType: model.sdkType } : {}),
-    contextWindowTokens: model.contextWindowTokens ?? knownModel?.contextWindowTokens ?? undefined,
-    description: model.description ?? knownModel?.description ?? '',
-    displayName: processDisplayName(model.displayName ?? knownModel?.displayName ?? model.id),
+    contextWindowTokens: knownModel?.contextWindowTokens ?? model.contextWindowTokens ?? undefined,
+    description: knownModel?.description ?? model.description ?? '',
+    displayName: processDisplayName(knownModel?.displayName ?? model.displayName ?? model.id),
     enabled: model?.enabled || false,
     functionCall:
-      model.functionCall ??
       knownModel?.abilities?.functionCall ??
-      ((isKeywordListMatch(model.id.toLowerCase(), functionCallKeywords) && !isExcludedModel) ||
-        false),
+      (model.functionCall !== undefined
+        ? model.functionCall
+        : (isKeywordListMatch(model.id.toLowerCase(), functionCallKeywords) && !isExcludedModel) ||
+          false),
     id: model.id,
     imageOutput:
-      model.imageOutput ??
       knownModel?.abilities?.imageOutput ??
-      ((isKeywordListMatch(model.id.toLowerCase(), imageOutputKeywords) && !isExcludedModel) ||
-        false),
-    maxOutput: model.maxOutput ?? knownModel?.maxOutput ?? undefined,
-    pricing: formatPricing(model?.pricing) ?? formatPricing(knownModel?.pricing) ?? undefined,
+      (model.imageOutput !== undefined
+        ? model.imageOutput
+        : (isKeywordListMatch(model.id.toLowerCase(), imageOutputKeywords) && !isExcludedModel) ||
+          false),
+    maxOutput: knownModel?.maxOutput ?? model.maxOutput ?? undefined,
+    pricing: formatPricing(knownModel?.pricing) ?? formatPricing(model?.pricing) ?? undefined,
     reasoning:
-      model.reasoning ??
       knownModel?.abilities?.reasoning ??
-      ((isKeywordListMatch(model.id.toLowerCase(), reasoningKeywords) && !isExcludedModel) ||
-        false),
+      (model.reasoning !== undefined
+        ? model.reasoning
+        : (isKeywordListMatch(model.id.toLowerCase(), reasoningKeywords) && !isExcludedModel) ||
+          false),
     releasedAt: processReleasedAt(model, knownModel),
     search:
-      model.search ??
       knownModel?.abilities?.search ??
-      ((isKeywordListMatch(model.id.toLowerCase(), searchKeywords) && !isExcludedModel) || false),
+      (model.search !== undefined
+        ? model.search
+        : (isKeywordListMatch(model.id.toLowerCase(), searchKeywords) && !isExcludedModel) ||
+          false),
     type: modelType,
     // current, only image model use the parameters field
     ...(modelType === 'image' && {
-      parameters: model.parameters ?? knownModel?.parameters,
+      parameters: knownModel?.parameters ?? model.parameters,
     }),
     ...(mergedSettings ? { settings: mergedSettings } : {}),
     video:
-      model.video ??
       knownModel?.abilities?.video ??
-      ((isKeywordListMatch(model.id.toLowerCase(), videoKeywords) && !isExcludedModel) || false),
+      (model.video !== undefined
+        ? model.video
+        : (isKeywordListMatch(model.id.toLowerCase(), videoKeywords) && !isExcludedModel) || false),
     vision:
-      model.vision ??
       knownModel?.abilities?.vision ??
-      ((isKeywordListMatch(model.id.toLowerCase(), visionKeywords) && !isExcludedModel) || false),
+      (model.vision !== undefined
+        ? model.vision
+        : (isKeywordListMatch(model.id.toLowerCase(), visionKeywords) && !isExcludedModel) ||
+          false),
   };
 };
 

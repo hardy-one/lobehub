@@ -147,12 +147,13 @@ export class AiModelActionImpl {
 
     const data = await modelsService.getModels(providerId);
     if (data) {
-      // The provider's confirmed list is the replica view; keeping its enabled
-      // flags avoids re-disabling models the user has already turned on.
-      const currentEnabledState = new Map(
-        (this.#get().aiModelListMap[providerId] ?? []).map(({ enabled, id }) => [id, enabled]),
-      );
+      const currentModels = this.#get().aiModelListMap[providerId] ?? [];
+      const currentModelMap = new Map(currentModels.map((item) => [item.id, item]));
+
       const remoteModels = data.map<AiProviderModelListItem>((model) => {
+        const existingModel = currentModelMap.get(model.id);
+        const isCustom = existingModel?.source === 'custom';
+
         const hasAnyAbility =
           model.files ||
           model.functionCall ||
@@ -162,10 +163,8 @@ export class AiModelActionImpl {
           model.video ||
           model.vision;
 
-        return {
-          ...model,
-          ...(hasAnyAbility && {
-            abilities: {
+        const remoteAbilities = hasAnyAbility
+          ? {
               files: model.files,
               functionCall: model.functionCall,
               imageOutput: model.imageOutput,
@@ -173,11 +172,29 @@ export class AiModelActionImpl {
               search: model.search,
               video: model.video,
               vision: model.vision,
-            },
-          }),
-          enabled: currentEnabledState.get(model.id) ?? model.enabled ?? false,
-          source: 'remote',
-          type: model.type ?? 'chat',
+            }
+          : undefined;
+
+        // Priority during fetch action: model-bank (in model) > custom (existing) > remote
+        // model contains model-bank metadata when known; if custom model has properties, preserve them
+        return {
+          ...model,
+          abilities:
+            model.abilities ?? (isCustom ? existingModel?.abilities : undefined) ?? remoteAbilities,
+          contextWindowTokens:
+            model.contextWindowTokens ??
+            (isCustom ? existingModel?.contextWindowTokens : undefined),
+          description: model.description ?? (isCustom ? existingModel?.description : undefined),
+          displayName:
+            model.displayName ?? (isCustom ? existingModel?.displayName : undefined) ?? model.id,
+          enabled: existingModel?.enabled ?? model.enabled ?? false,
+          maxOutput: model.maxOutput ?? (isCustom ? existingModel?.maxOutput : undefined),
+          parameters: model.parameters ?? (isCustom ? existingModel?.parameters : undefined),
+          pricing: model.pricing ?? (isCustom ? existingModel?.pricing : undefined),
+          releasedAt: model.releasedAt ?? (isCustom ? existingModel?.releasedAt : undefined),
+          settings: model.settings ?? (isCustom ? existingModel?.settings : undefined),
+          source: isCustom ? 'custom' : 'remote',
+          type: model.type ?? (isCustom ? existingModel?.type : undefined) ?? 'chat',
         };
       });
       const { duplicateIds, models, removedCount } = deduplicateRemoteModels(remoteModels);

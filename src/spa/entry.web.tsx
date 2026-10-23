@@ -13,6 +13,7 @@ import { startAppInitialization } from './initialize/bootstrap';
 import { unregisterLegacyRootServiceWorker } from './registerServiceWorker';
 import { desktopRoutes } from './router/desktopRouter.config';
 import { createSPARoot } from './runtime';
+import ThemeColorMeta from './ThemeColorMeta';
 
 bootTiming.mark('bundle-eval');
 startAppInitialization();
@@ -36,6 +37,7 @@ const showBootShell = isMainLayoutLocation(desktopRoutes, window.location.pathna
 createSPARoot(document.getElementById('root')!).render(
   <BootErrorBoundary>
     <NextThemeProvider>
+      <ThemeColorMeta />
       {showBootShell && <BootShell />}
       <RouterProvider router={router} />
     </NextThemeProvider>

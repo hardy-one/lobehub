@@ -18,6 +18,13 @@ const manifest = async (): Promise<MetadataRoute.Manifest> => {
       short_name: 'LobeHub',
       start_url: '/',
       theme_color: '#f8f8f8',
+      // @ts-expect-error - non-standard WebAPK dark mode color override
+      user_preferences: {
+        color_scheme_dark: {
+          background_color: '#000000',
+          theme_color: '#000000',
+        },
+      },
     };
   }
 

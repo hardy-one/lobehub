@@ -54,6 +54,18 @@ type AutoCompleteProps = {
   }) => Promise<string | null>;
 };
 
+type PressEnterProps = { event: KeyboardEvent; editor: unknown };
+
+const getPressEnter = async (): Promise<(params: PressEnterProps) => boolean | undefined> => {
+  const { Editor } = await import('@lobehub/editor/react');
+  const props = vi.mocked(Editor).mock.lastCall?.[0] as
+    { onPressEnter?: (params: PressEnterProps) => boolean | undefined } | undefined;
+
+  expect(props?.onPressEnter).toBeDefined();
+
+  return props!.onPressEnter!;
+};
+
 const getAutoCompleteProps = async (): Promise<AutoCompleteProps> => {
   const { ReactAutoCompletePlugin } = await import('@lobehub/editor');
   const { Editor } = await import('@lobehub/editor/react');
@@ -305,6 +317,20 @@ describe('ChatInput InputEditor', () => {
     render(<InputEditor />);
 
     expect((await getEditorStyle())?.fontSize).toBeUndefined();
+  });
+
+  it('does not send on Enter on mobile so Enter inserts a line break', async () => {
+    permission.allowed = true;
+    platform.isMobile = true;
+
+    render(<InputEditor />);
+
+    const onPressEnter = await getPressEnter();
+
+    // Returning true keeps the editor's own Enter handling, so it inserts a newline.
+    expect(onPressEnter({ editor: undefined, event: { key: 'Enter' } as KeyboardEvent })).toBe(
+      true,
+    );
   });
 
   it('tags autocomplete requests with the input completion trigger', async () => {

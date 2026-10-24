@@ -13,7 +13,7 @@ import { INSERT_MENTION_COMMAND, ReactAutoCompletePlugin } from '@lobehub/editor
 import { Editor, useEditorState } from '@lobehub/editor/react';
 import { combineKeys, css, cx } from '@lobehub/ui';
 import Fuse from 'fuse.js';
-import { KEY_ESCAPE_COMMAND } from 'lexical';
+import { INSERT_PARAGRAPH_COMMAND, KEY_ESCAPE_COMMAND } from 'lexical';
 import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useHotkeysContext } from 'react-hotkeys-hook';
 import { useTranslation } from 'react-i18next';
@@ -636,8 +636,15 @@ const InputEditor = memo<{
           // when user like alt + enter to add ai message
           if (e.altKey && hotkey === combineKeys([KeyEnum.Alt, KeyEnum.Enter])) return true;
           // On touch devices the software keyboard has no reliable "send" gesture, so
-          // Enter inserts a line break and sending goes through the send button.
-          if (mobile) return true;
+          // Enter inserts a line break and sending goes through the send button. The
+          // newline is inserted here instead of deferring to the browser default: a
+          // soft keyboard may dispatch the key without a default editing action (or
+          // the editor has already claimed the key), and returning true without
+          // inserting leaves the press doing nothing at all.
+          if (mobile) {
+            editor?.dispatchCommand(INSERT_PARAGRAPH_COMMAND, undefined);
+            return true;
+          }
           // In fullscreen mode, Enter inserts newline; only Cmd/Ctrl+Enter sends
           if (expand) {
             if (isCommandPressed(e)) {

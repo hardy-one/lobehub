@@ -13,7 +13,7 @@ import type { ColorScaleItem } from '@lobehub/ui/es/color/types';
  * Only the dark appearance is tuned. The light ladder, the primary colour, the
  * status palette and the syntax theme stay on their defaults.
  */
-interface SoftDarkPreset {
+interface DarkPreset {
   /** `colorBgContainer`: content and code surfaces. */
   container: string;
   /** `colorBgElevated`: popovers, menus, modal surfaces. */
@@ -26,29 +26,29 @@ interface SoftDarkPreset {
   text: [string, string, string, string];
 }
 
-const SOFT_DARK_PRESETS: SoftDarkPreset[] = [
+const DARK_PRESETS: DarkPreset[] = [
   {
     container: '#23282f',
     elevated: '#2b313a',
-    label: 'Soft Blue Grey',
+    label: 'Blue Grey',
     layout: '#1b1f26',
-    name: 'soft-cool',
+    name: 'cool',
     text: ['#dedede', '#aaaaaa', '#8f8f8f', '#909090'],
   },
   {
     container: '#222325',
     elevated: '#2a2b2e',
-    label: 'Soft Neutral',
+    label: 'Neutral',
     layout: '#1a1b1d',
-    name: 'soft-neutral',
+    name: 'neutral',
     text: ['#dedede', '#aaaaaa', '#8f8f8f', '#909090'],
   },
   {
     container: '#242424',
     elevated: '#2c2c2c',
-    label: 'Soft Warm Grey',
+    label: 'Warm Grey',
     layout: '#1c1c1c',
-    name: 'soft-warm',
+    name: 'warm',
     text: ['#dedede', '#aaaaaa', '#8f8f8f', '#909090'],
   },
 ];
@@ -128,7 +128,7 @@ const DEFAULT_LIGHT_TEXT: [string, string, string, string] = [
   '#b0b0b0',
 ];
 
-const buildScale = ({ layout, container, elevated }: SoftDarkPreset): ColorScaleItem => {
+const buildScale = ({ layout, container, elevated }: DarkPreset): ColorScaleItem => {
   // Only steps 0-2 drive the layout / container / elevated surfaces. Steps 3-12
   // keep the default ladder so borders and disabled fills do not shift.
   const dark = [...DEFAULT_DARK_LADDER] as ColorScaleItem['dark'];
@@ -144,7 +144,7 @@ const buildScale = ({ layout, container, elevated }: SoftDarkPreset): ColorScale
   };
 };
 
-export interface SoftDarkNeutral {
+export interface DarkNeutral {
   label: string;
   name: string;
   scale: ColorScaleItem;
@@ -153,7 +153,7 @@ export interface SoftDarkNeutral {
   text: { dark: [string, string, string, string]; light: [string, string, string, string] };
 }
 
-export const SOFT_DARK_NEUTRALS: SoftDarkNeutral[] = SOFT_DARK_PRESETS.map((preset) => ({
+export const DARK_NEUTRALS: DarkNeutral[] = DARK_PRESETS.map((preset) => ({
   label: preset.label,
   name: preset.name,
   scale: buildScale(preset),
@@ -161,19 +161,19 @@ export const SOFT_DARK_NEUTRALS: SoftDarkNeutral[] = SOFT_DARK_PRESETS.map((pres
   text: { dark: preset.text, light: DEFAULT_LIGHT_TEXT },
 }));
 
-export const isSoftDarkNeutral = (value?: string | null) =>
-  !!value && SOFT_DARK_NEUTRALS.some((preset) => preset.name === value);
+export const isDarkNeutral = (value?: string | null) =>
+  !!value && DARK_NEUTRALS.some((preset) => preset.name === value);
 
-export const findSoftDarkNeutral = (value?: string | null) =>
-  SOFT_DARK_NEUTRALS.find((preset) => preset.name === value);
+export const findDarkNeutral = (value?: string | null) =>
+  DARK_NEUTRALS.find((preset) => preset.name === value);
 
 type RegisterNeutral = (
   name: string,
-  neutral: { scale: ColorScaleItem; text: SoftDarkNeutral['text'] },
+  neutral: { scale: ColorScaleItem; text: DarkNeutral['text'] },
 ) => void;
 
-export const registerSoftDarkNeutrals = (register: RegisterNeutral) => {
-  for (const preset of SOFT_DARK_NEUTRALS) {
+export const registerDarkNeutrals = (register: RegisterNeutral) => {
+  for (const preset of DARK_NEUTRALS) {
     register(preset.name, { scale: preset.scale, text: preset.text });
   }
 };

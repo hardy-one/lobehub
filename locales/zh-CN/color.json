@@ -1,5 +1,6 @@
 {
   "blue": "拂晓蓝",
+  "cool": "蓝灰",
   "custom": "自定义",
   "cyan": "明青",
   "default": "默认",
@@ -9,6 +10,7 @@
   "lime": "青柠",
   "magenta": "法式洋红",
   "mauve": "藤萝紫",
+  "neutral": "中性",
   "olive": "橄榄绿",
   "orange": "日暮",
   "purple": "酱紫",
@@ -16,9 +18,7 @@
   "sage": "鼠尾草绿",
   "sand": "沙滩",
   "slate": "石板灰",
-  "soft-cool": "柔和蓝灰",
-  "soft-neutral": "柔和中性",
-  "soft-warm": "柔和暖灰",
   "volcano": "火山",
+  "warm": "暖灰",
   "yellow": "日出"
 }

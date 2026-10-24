@@ -35,8 +35,15 @@ describe('manifest', () => {
     // `color_scheme_dark` yet (crbug.com/383165202), so the member is inert today.
     // It is still the only spec-compliant way to describe the dark variant.
     expect((result as Record<string, unknown>).color_scheme_dark).toEqual({
-      background_color: '#000000',
-      theme_color: '#000000',
+      background_color: '#141517',
+      theme_color: '#141517',
     });
+  });
+
+  it('keeps the installed shell off pure black', async () => {
+    const result = await manifest();
+
+    expect(result.background_color).toBe('#141517');
+    expect(result.theme_color).toBe('#141517');
   });
 });

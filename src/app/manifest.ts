@@ -4,11 +4,11 @@ const manifest = async (): Promise<MetadataRoute.Manifest> => {
   // Skip heavy module compilation in development
   if (process.env.NODE_ENV === 'development') {
     return {
-      background_color: '#000000',
+      background_color: '#141517',
       // @ts-expect-error - spec member not yet in Next's MetadataRoute.Manifest
       color_scheme_dark: {
-        background_color: '#000000',
-        theme_color: '#000000',
+        background_color: '#141517',
+        theme_color: '#141517',
       },
       description: 'LobeHub Development',
       display: 'standalone',
@@ -22,7 +22,7 @@ const manifest = async (): Promise<MetadataRoute.Manifest> => {
       name: 'LobeHub',
       short_name: 'LobeHub',
       start_url: '/',
-      theme_color: '#000000',
+      theme_color: '#141517',
     };
   }
 

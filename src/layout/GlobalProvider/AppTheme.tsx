@@ -5,7 +5,14 @@ import '@lobehub/ui/global.css';
 import '@lobehub/ui/style.css';
 
 import { type NeutralColors, type PrimaryColors } from '@lobehub/ui';
-import { ConfigProvider, createStaticStyles, cx, FontLoader, setLobeTheme } from '@lobehub/ui';
+import {
+  ConfigProvider,
+  createStaticStyles,
+  cx,
+  FontLoader,
+  registerLobeNeutral,
+  setLobeTheme,
+} from '@lobehub/ui';
 import * as m from 'motion/react-m';
 import { type ReactNode } from 'react';
 import { memo, useEffect, useMemo, useState } from 'react';
@@ -13,6 +20,12 @@ import { memo, useEffect, useMemo, useState } from 'react';
 import Link from '@/components/Link';
 import { genFontFamily, genFontFamilyCode } from '@/const/font';
 import { LOBE_THEME_NEUTRAL_COLOR, LOBE_THEME_PRIMARY_COLOR } from '@/const/theme';
+import { DARK_NEUTRAL_COLOR } from '@/layout/GlobalProvider/darkNeutral';
+import {
+  NORD_NEUTRAL_NAME,
+  nordNeutralScale,
+  nordNeutralText,
+} from '@/layout/GlobalProvider/nordNeutral';
 import { getUILocaleAndResources } from '@/libs/getUILocaleAndResources';
 import type { UILocaleResources } from '@/libs/getUILocaleAndResources.utils';
 import { resolveUILocale } from '@/libs/getUILocaleAndResources.utils';
@@ -150,8 +163,19 @@ const AppTheme = memo<AppThemeProps>(
     }, [primaryColor]);
 
     useEffect(() => {
+      // Registered before `setLobeTheme` selects it, so the theme layer keeps Nord's
+      // own blue-grey steps instead of retinting one hex into a near-neutral grey.
+      registerLobeNeutral(NORD_NEUTRAL_NAME, {
+        scale: nordNeutralScale,
+        text: nordNeutralText,
+      });
+
       setLobeTheme({
-        neutralColor: neutralColor ?? defaultNeutralColor,
+        // A neutral grey keeps the dark surfaces off pure black. Pure black adapts the
+        // eye to zero luminance, so light text halates around the glyphs, which is hard
+        // to read for people with astigmatism, and it leaves no room between the
+        // layout, container and elevated surfaces.
+        neutralColor: neutralColor ?? defaultNeutralColor ?? DARK_NEUTRAL_COLOR,
         primaryColor: primaryColor ?? defaultPrimaryColor,
       });
     }, [primaryColor, neutralColor, defaultPrimaryColor, defaultNeutralColor]);

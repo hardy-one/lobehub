@@ -6,6 +6,7 @@ import { Outlet, useRouteError } from 'react-router';
 
 import Loading from '@/components/Loading/BrandTextLoading';
 import AuthShell from '@/features/AuthShell';
+import { DARK_THEME_COLOR } from '@/spa/themeColor';
 import { isChunkLoadError, notifyChunkError } from '@/utils/chunkError';
 
 // Local helper on purpose: @/utils/router's dynamicElement would pull SPAGlobalProvider/global store into the auth bundle
@@ -34,14 +35,14 @@ const AuthErrorBoundary = () => {
     notifyChunkError(error);
   }
 
-  // index.auth.html paints the body black in dark mode before React mounts
+  // index.auth.html paints the body the dark layout color before React mounts
   const isDark = resolvedTheme === 'dark';
 
   return (
     <div
       style={{
         alignItems: 'center',
-        background: isDark ? '#000' : '#f8f8f8',
+        background: isDark ? DARK_THEME_COLOR : '#f8f8f8',
         color: isDark ? '#e6e6e6' : '#1a1a1a',
         display: 'flex',
         flexDirection: 'column',

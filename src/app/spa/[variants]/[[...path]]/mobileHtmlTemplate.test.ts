@@ -11,12 +11,18 @@ describe('mobileHtmlTemplate', () => {
       '<meta name="theme-color" content="#f8f8f8" media="(prefers-color-scheme: light)" />',
     );
     expect(mobileHtmlTemplate).toContain(
-      '<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />',
+      '<meta name="theme-color" content="#141517" media="(prefers-color-scheme: dark)" />',
     );
     expect(mobileHtmlTemplate).toContain('color-scheme: light;');
     expect(mobileHtmlTemplate).toContain('background-color: #f8f8f8;');
     expect(mobileHtmlTemplate).toContain(
-      "var themeColor = resolvedTheme === 'dark' ? '#000000' : '#f8f8f8';",
+      "var themeColor = resolvedTheme === 'dark' ? '#141517' : '#f8f8f8';",
     );
+  });
+
+  it('never paints the dark shell pure black', () => {
+    // Pure black behind light glyphs maximises halation, which is the reported
+    // readability problem for astigmatic users.
+    expect(mobileHtmlTemplate).not.toContain('#000');
   });
 });

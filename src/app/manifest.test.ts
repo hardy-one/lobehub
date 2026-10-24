@@ -26,11 +26,17 @@ describe('manifest', () => {
         purpose: 'any',
       },
     ]);
-    expect((result as Record<string, unknown>).user_preferences).toEqual({
-      color_scheme_dark: {
-        background_color: '#000000',
-        theme_color: '#000000',
-      },
+  });
+
+  it('declares the spec dark color scheme so a future Chrome release can follow the OS theme', async () => {
+    const result = await manifest();
+
+    // WebAPK freezes the manifest colors at install time and Chrome has not shipped
+    // `color_scheme_dark` yet (crbug.com/383165202), so the member is inert today.
+    // It is still the only spec-compliant way to describe the dark variant.
+    expect((result as Record<string, unknown>).color_scheme_dark).toEqual({
+      background_color: '#000000',
+      theme_color: '#000000',
     });
   });
 });

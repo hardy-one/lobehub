@@ -635,6 +635,9 @@ const InputEditor = memo<{
           if (e.shiftKey || isComposingRef.current) return;
           // when user like alt + enter to add ai message
           if (e.altKey && hotkey === combineKeys([KeyEnum.Alt, KeyEnum.Enter])) return true;
+          // On touch devices the software keyboard has no reliable "send" gesture, so
+          // Enter inserts a line break and sending goes through the send button.
+          if (mobile) return true;
           // In fullscreen mode, Enter inserts newline; only Cmd/Ctrl+Enter sends
           if (expand) {
             if (isCommandPressed(e)) {

@@ -8,6 +8,7 @@ import {
   NORD_NEUTRAL_NAME,
   NORD_SWATCH_COLOR,
 } from '@/layout/GlobalProvider/nordNeutral';
+import { findSoftDarkNeutral, SOFT_DARK_NEUTRALS } from '@/layout/GlobalProvider/softDarkNeutrals';
 
 interface IProps {
   onChange?: (v: NeutralColors) => void;
@@ -17,15 +18,27 @@ interface IProps {
 const ThemeSwatchesNeutral = memo<IProps>(({ value, onChange }) => {
   const { t } = useTranslation('color');
 
+  // Every preset below is registered at runtime, so none of them is in the
+  // built-in neutral name table. Match the swatch colour back to its name first
+  // and only then fall back to the table.
   const handleSelect = (v: any) => {
-    // Nord is registered at runtime, so it is not in the built-in name table.
-    const name = v === NORD_SWATCH_COLOR ? NORD_NEUTRAL_NAME : findCustomThemeName('neutral', v);
+    const softDark = SOFT_DARK_NEUTRALS.find((preset) => preset.swatch === v);
+
+    const name = softDark
+      ? softDark.name
+      : v === NORD_SWATCH_COLOR
+        ? NORD_NEUTRAL_NAME
+        : findCustomThemeName('neutral', v);
 
     onChange?.((name || '') as NeutralColors);
   };
 
+  const current =
+    findSoftDarkNeutral(value)?.swatch ?? (isNordNeutral(value) ? NORD_SWATCH_COLOR : undefined);
+
   return (
     <ColorSwatches
+      value={current ?? neutralColors[value as keyof typeof neutralColors]}
       colors={[
         {
           color: 'rgba(0, 0, 0, 0)',
@@ -55,14 +68,11 @@ const ThemeSwatchesNeutral = memo<IProps>(({ value, onChange }) => {
           color: NORD_SWATCH_COLOR,
           title: 'Nord',
         },
+        ...SOFT_DARK_NEUTRALS.map((preset) => ({
+          color: preset.swatch,
+          title: t(preset.name as 'soft-cool'),
+        })),
       ]}
-      value={
-        value
-          ? isNordNeutral(value)
-            ? NORD_SWATCH_COLOR
-            : neutralColors[value as keyof typeof neutralColors]
-          : undefined
-      }
       onChange={handleSelect}
     />
   );

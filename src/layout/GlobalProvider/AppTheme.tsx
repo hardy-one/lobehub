@@ -25,6 +25,7 @@ import {
   nordNeutralScale,
   nordNeutralText,
 } from '@/layout/GlobalProvider/nordNeutral';
+import { registerSoftDarkNeutrals } from '@/layout/GlobalProvider/softDarkNeutrals';
 import { getUILocaleAndResources } from '@/libs/getUILocaleAndResources';
 import type { UILocaleResources } from '@/libs/getUILocaleAndResources.utils';
 import { resolveUILocale } from '@/libs/getUILocaleAndResources.utils';
@@ -169,6 +170,7 @@ const AppTheme = memo<AppThemeProps>(
         scale: nordNeutralScale,
         text: nordNeutralText,
       });
+      registerSoftDarkNeutrals(registerLobeNeutral);
 
       setLobeTheme({
         neutralColor: neutralColor ?? defaultNeutralColor,

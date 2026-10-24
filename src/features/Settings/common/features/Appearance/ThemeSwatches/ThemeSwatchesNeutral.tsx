@@ -3,6 +3,12 @@ import { ColorSwatches, findCustomThemeName, neutralColors } from '@lobehub/ui';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import {
+  isNordNeutral,
+  NORD_NEUTRAL_NAME,
+  NORD_SWATCH_COLOR,
+} from '@/layout/GlobalProvider/nordNeutral';
+
 interface IProps {
   onChange?: (v: NeutralColors) => void;
   value?: NeutralColors;
@@ -12,13 +18,14 @@ const ThemeSwatchesNeutral = memo<IProps>(({ value, onChange }) => {
   const { t } = useTranslation('color');
 
   const handleSelect = (v: any) => {
-    const name = findCustomThemeName('neutral', v) as NeutralColors;
-    onChange?.(name || '');
+    // Nord is registered at runtime, so it is not in the built-in name table.
+    const name = v === NORD_SWATCH_COLOR ? NORD_NEUTRAL_NAME : findCustomThemeName('neutral', v);
+
+    onChange?.((name || '') as NeutralColors);
   };
 
   return (
     <ColorSwatches
-      value={value ? neutralColors[value] : undefined}
       colors={[
         {
           color: 'rgba(0, 0, 0, 0)',
@@ -44,7 +51,18 @@ const ThemeSwatchesNeutral = memo<IProps>(({ value, onChange }) => {
           color: neutralColors.slate,
           title: t('slate'),
         },
+        {
+          color: NORD_SWATCH_COLOR,
+          title: 'Nord',
+        },
       ]}
+      value={
+        value
+          ? isNordNeutral(value)
+            ? NORD_SWATCH_COLOR
+            : neutralColors[value as keyof typeof neutralColors]
+          : undefined
+      }
       onChange={handleSelect}
     />
   );

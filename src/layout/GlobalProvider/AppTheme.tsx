@@ -5,7 +5,14 @@ import '@lobehub/ui/global.css';
 import '@lobehub/ui/style.css';
 
 import { type NeutralColors, type PrimaryColors } from '@lobehub/ui';
-import { ConfigProvider, createStaticStyles, cx, FontLoader, setLobeTheme } from '@lobehub/ui';
+import {
+  ConfigProvider,
+  createStaticStyles,
+  cx,
+  FontLoader,
+  registerLobeNeutral,
+  setLobeTheme,
+} from '@lobehub/ui';
 import * as m from 'motion/react-m';
 import { type ReactNode } from 'react';
 import { memo, useEffect, useMemo, useState } from 'react';
@@ -13,6 +20,11 @@ import { memo, useEffect, useMemo, useState } from 'react';
 import Link from '@/components/Link';
 import { genFontFamily, genFontFamilyCode } from '@/const/font';
 import { LOBE_THEME_NEUTRAL_COLOR, LOBE_THEME_PRIMARY_COLOR } from '@/const/theme';
+import {
+  NORD_NEUTRAL_NAME,
+  nordNeutralScale,
+  nordNeutralText,
+} from '@/layout/GlobalProvider/nordNeutral';
 import { getUILocaleAndResources } from '@/libs/getUILocaleAndResources';
 import type { UILocaleResources } from '@/libs/getUILocaleAndResources.utils';
 import { resolveUILocale } from '@/libs/getUILocaleAndResources.utils';
@@ -150,6 +162,14 @@ const AppTheme = memo<AppThemeProps>(
     }, [primaryColor]);
 
     useEffect(() => {
+      // Registered before it is selected: a registered scale keeps Nord's own
+      // `#2e3440` page background, while a plain hex would be retinted through the
+      // grey ladder into a near-neutral grey.
+      registerLobeNeutral(NORD_NEUTRAL_NAME, {
+        scale: nordNeutralScale,
+        text: nordNeutralText,
+      });
+
       setLobeTheme({
         neutralColor: neutralColor ?? defaultNeutralColor,
         primaryColor: primaryColor ?? defaultPrimaryColor,

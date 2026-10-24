@@ -1715,6 +1715,8 @@ export default {
   'followUpPlaceholderHeterogeneous': 'Follow up.',
   'sendPlaceholder': 'Ask, create, or start a task, <hotkey><hotkey/>',
   'sendPlaceholderChat': 'Ask, search, or brainstorm, <hotkey><hotkey/>',
+  'sendPlaceholderChatMobile': 'Ask, search, or brainstorm…',
+  'sendPlaceholderMobile': 'Ask, create, or start a task…',
   'sendPlaceholderChatWithAgentAssignment':
     'Ask, search, or brainstorm. @ to bring in other agents.',
   'sendPlaceholderHeterogeneous': 'Describe a task or ask a question to {{name}}',

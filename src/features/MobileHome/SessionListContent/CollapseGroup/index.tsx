@@ -11,12 +11,16 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
 
     ${responsive.sm} {
       border-radius: 0;
-      background: ${cssVar.colorFillQuaternary};
+
+      /* A 2% white wash is invisible against the softened dark surfaces, so the
+         group header and the rows below it read as one flat block. 6% keeps the
+         header distinguishable without introducing another surface colour. */
+      background: ${cssVar.colorFillTertiary};
     }
 
     &:hover {
       color: ${cssVar.colorText};
-      background: ${cssVar.colorFillTertiary};
+      background: ${cssVar.colorFillSecondary};
     }
   `,
 }));

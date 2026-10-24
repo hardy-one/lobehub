@@ -11,13 +11,18 @@ interface MobileContentLayoutProps extends FlexboxProps {
 
 const styles = stylex.create({
   // Mobile pages declared no background of their own, so the scroll surface fell
-  // through to `body`. Stating it here keeps the content area on the layout
+  // through to `body`. Stating it here keeps the content area on the container
   // surface of the selected colour scheme, independent of what sets `body`.
+  //
+  // This is `colorBgContainer`, the same surface the desktop content panel uses,
+  // so the mobile content sits one step above the layout surface that the header
+  // and tab bar keep. Using the layout surface here flattened the content into the
+  // page and left the composer as the only raised element.
   //
   // `backgroundColor`, not the `background` shorthand: StyleX drops the shorthand
   // silently, which leaves the container transparent.
   container: {
-    backgroundColor: cssVar.colorBgLayout,
+    backgroundColor: cssVar.colorBgContainer,
   },
 });
 

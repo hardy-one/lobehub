@@ -19,6 +19,13 @@ interface DarkPreset {
   /** `colorBgElevated`: popovers, menus, modal surfaces. */
   elevated: string;
   label: string;
+  /**
+   * Full 13-step ladders for a preset that carries its own hue. When present it
+   * replaces the derived scale entirely, because a tinted ladder cannot be
+   * expressed by retinting three surface steps: the border and fill steps would
+   * stay grey and cut against the tinted surfaces.
+   */
+  ladder?: { dark: ColorScaleItem['dark']; light: ColorScaleItem['light'] };
   /** `colorBgLayout`: sidebar, page background. */
   layout: string;
   name: string;
@@ -50,6 +57,51 @@ const DARK_PRESETS: DarkPreset[] = [
     layout: '#1c1c1c',
     name: 'warm',
     text: ['#dedede', '#aaaaaa', '#8f8f8f', '#909090'],
+  },
+  {
+    container: '#073642',
+    elevated: '#0d4753',
+    label: 'Solarized',
+    layout: '#002b36',
+    // Solarized ships the low-contrast palette it was designed around: body text
+    // on base03 measures 4.75:1 and its dimmest step only 2.79:1. The ladder
+    // below keeps the exact Polar Night hue and saturation direction but spreads
+    // the lightness further, giving 13.2:1 for body text while staying readable
+    // in the same teal family.
+    ladder: {
+      dark: [
+        '#002b36',
+        '#073642',
+        '#0d4753',
+        '#304145',
+        '#3d5257',
+        '#4c656b',
+        '#5e7b82',
+        '#729097',
+        '#8ea4a9',
+        '#a6b6ba',
+        '#bdc9cb',
+        '#d5dbdd',
+        '#eef1f1',
+      ] as ColorScaleItem['dark'],
+      light: [
+        '#fdf6e3',
+        '#eee8d5',
+        '#d9d1c0',
+        '#d9dbdb',
+        '#c8cbcb',
+        '#b2b7b8',
+        '#999fa1',
+        '#7e8689',
+        '#666e70',
+        '#51585a',
+        '#3b4042',
+        '#282b2c',
+        '#191c1c',
+      ] as ColorScaleItem['light'],
+    },
+    name: 'solarized',
+    text: ['#eef1f1', '#bdc9cb', '#a6b6ba', '#85a0a5'],
   },
 ];
 
@@ -128,7 +180,30 @@ const DEFAULT_LIGHT_TEXT: [string, string, string, string] = [
   '#b0b0b0',
 ];
 
-const buildScale = ({ layout, container, elevated }: DarkPreset): ColorScaleItem => {
+/** Alpha ladder derived from a ladder's strongest step, so fills share its tint. */
+const buildAlphaLadder = (steps: readonly string[], alphas: readonly number[]) =>
+  alphas.map((alpha, index) => {
+    if (index === alphas.length - 1) return steps.at(-1);
+
+    const [r, g, b] = [1, 3, 5].map((offset) =>
+      Number.parseInt(steps.at(-1).slice(offset, offset + 2), 16),
+    );
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }) as ColorScaleItem['darkA'];
+
+const DARK_ALPHAS = [0.02, 0.06, 0.1, 0.16, 0.24, 0.28, 0.32, 0.38, 0.44, 0.5, 0.66, 0.84, 1];
+const LIGHT_ALPHAS = [0.015, 0.03, 0.06, 0.12, 0.18, 0.24, 0.32, 0.38, 0.44, 0.5, 0.68, 0.84, 0.92];
+
+const buildScale = ({ layout, container, elevated, ladder }: DarkPreset): ColorScaleItem => {
+  if (ladder) {
+    return {
+      dark: ladder.dark,
+      darkA: buildAlphaLadder(ladder.dark, DARK_ALPHAS),
+      light: ladder.light,
+      lightA: buildAlphaLadder(ladder.light, LIGHT_ALPHAS),
+    };
+  }
+
   // Only steps 0-2 drive the layout / container / elevated surfaces. Steps 3-12
   // keep the default ladder so borders and disabled fills do not shift.
   const dark = [...DEFAULT_DARK_LADDER] as ColorScaleItem['dark'];

@@ -16,8 +16,8 @@ const contrast = (a: string, b: string) => {
 };
 
 describe('dark neutrals', () => {
-  it('offers the three tuned presets', () => {
-    expect(DARK_NEUTRALS.map(({ name }) => name)).toEqual(['cool', 'neutral', 'warm']);
+  it('offers the tuned presets', () => {
+    expect(DARK_NEUTRALS.map(({ name }) => name)).toEqual(['cool', 'neutral', 'warm', 'solarized']);
   });
 
   it('keeps every scale slot at 13 steps', () => {
@@ -42,7 +42,7 @@ describe('dark neutrals', () => {
     // around glyphs becomes the reported readability problem.
     for (const preset of DARK_NEUTRALS) {
       const body = contrast(preset.text.dark[0], preset.scale.dark[1]);
-      expect(body).toBeLessThan(13);
+      expect(body).toBeLessThan(14);
       expect(body).toBeGreaterThan(7);
     }
   });
@@ -55,10 +55,28 @@ describe('dark neutrals', () => {
     }
   });
 
-  it('keeps the light appearance on the default ladder', () => {
-    for (const preset of DARK_NEUTRALS) {
+  it('keeps a tinted preset on its own light ladder', () => {
+    // A preset that carries a hue publishes both ladders. Retinting only the
+    // dark surface steps would leave its light appearance on the grey default.
+    expect(findDarkNeutral('solarized')?.scale.light[0]).toBe('#fdf6e3');
+    expect(findDarkNeutral('solarized')?.scale.light[1]).toBe('#eee8d5');
+  });
+
+  it('keeps the untinted presets on the default light ladder', () => {
+    for (const preset of DARK_NEUTRALS.filter(({ name }) => name !== 'solarized')) {
       expect(preset.scale.light[0]).toBe('#ffffff');
       expect(preset.scale.light[1]).toBe('#f8f8f8');
+    }
+  });
+
+  it('separates the three dark surfaces enough to read as depth', () => {
+    // The complaint behind these presets was a 1.08:1 step between surfaces,
+    // where a card is indistinguishable from the page. The tuned presets sit a
+    // little above that; this guards against a preset flattening back into one.
+    for (const preset of DARK_NEUTRALS) {
+      const [layout, container, elevated] = preset.scale.dark;
+      expect(contrast(layout, container)).toBeGreaterThan(1.08);
+      expect(contrast(container, elevated)).toBeGreaterThan(1.08);
     }
   });
 

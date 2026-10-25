@@ -1,4 +1,4 @@
-CREATE TABLE "artifact_deployment_revisions" (
+CREATE TABLE IF NOT EXISTS "artifact_deployment_revisions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"deployment_id" varchar(64) NOT NULL,
 	"revision" integer NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE "artifact_deployment_revisions" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "artifact_deployments" (
+CREATE TABLE IF NOT EXISTS "artifact_deployments" (
 	"id" varchar(64) PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"workspace_id" text,
@@ -32,10 +32,13 @@ CREATE TABLE "artifact_deployments" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+ALTER TABLE "artifact_deployment_revisions" DROP CONSTRAINT IF EXISTS "artifact_deployment_revisions_deployment_id_artifact_deployments_id_fk";--> statement-breakpoint
 ALTER TABLE "artifact_deployment_revisions" ADD CONSTRAINT "artifact_deployment_revisions_deployment_id_artifact_deployments_id_fk" FOREIGN KEY ("deployment_id") REFERENCES "public"."artifact_deployments"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "artifact_deployments" DROP CONSTRAINT IF EXISTS "artifact_deployments_user_id_users_id_fk";--> statement-breakpoint
 ALTER TABLE "artifact_deployments" ADD CONSTRAINT "artifact_deployments_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "artifact_deployments" DROP CONSTRAINT IF EXISTS "artifact_deployments_workspace_id_workspaces_id_fk";--> statement-breakpoint
 ALTER TABLE "artifact_deployments" ADD CONSTRAINT "artifact_deployments_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE UNIQUE INDEX "artifact_deployment_revisions_deployment_id_revision_unique" ON "artifact_deployment_revisions" USING btree ("deployment_id","revision");--> statement-breakpoint
-CREATE INDEX "artifact_deployment_revisions_deployment_id_idx" ON "artifact_deployment_revisions" USING btree ("deployment_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "artifact_deployments_user_id_topic_id_identifier_unique" ON "artifact_deployments" USING btree ("user_id","topic_id","identifier");--> statement-breakpoint
-CREATE INDEX "artifact_deployments_user_id_idx" ON "artifact_deployments" USING btree ("user_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "artifact_deployment_revisions_deployment_id_revision_unique" ON "artifact_deployment_revisions" USING btree ("deployment_id","revision");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "artifact_deployment_revisions_deployment_id_idx" ON "artifact_deployment_revisions" USING btree ("deployment_id");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "artifact_deployments_user_id_topic_id_identifier_unique" ON "artifact_deployments" USING btree ("user_id","topic_id","identifier");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "artifact_deployments_user_id_idx" ON "artifact_deployments" USING btree ("user_id");

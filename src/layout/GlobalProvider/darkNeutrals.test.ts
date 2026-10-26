@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { DARK_NEUTRALS, findDarkNeutral, isDarkNeutral } from './darkNeutrals';
+import { DARK_NEUTRALS, findDarkNeutral, isDarkNeutral, neutralsFor } from './darkNeutrals';
 
 const luminance = (hex: string) => {
   const [r, g, b] = [1, 3, 5].map((i) => {
@@ -17,7 +17,24 @@ const contrast = (a: string, b: string) => {
 
 describe('dark neutrals', () => {
   it('offers the tuned presets', () => {
-    expect(DARK_NEUTRALS.map(({ name }) => name)).toEqual(['cool', 'neutral', 'warm', 'solarized']);
+    expect(DARK_NEUTRALS.map(({ name }) => name)).toEqual([
+      'cool',
+      'neutral',
+      'warm',
+      'solarized',
+      'catppuccin-mocha',
+      'catppuccin-macchiato',
+      'catppuccin-frappe',
+      'catppuccin-latte',
+    ]);
+  });
+
+  it('offers only the presets that suit the appearance in use', () => {
+    // A preset tuned for one appearance reads wrong in the other, so the picker
+    // must not mix them.
+    expect(neutralsFor(true).every(({ appearance }) => appearance === 'dark')).toBe(true);
+    expect(neutralsFor(false).map(({ name }) => name)).toEqual(['catppuccin-latte']);
+    expect(neutralsFor(true).length + neutralsFor(false).length).toBe(DARK_NEUTRALS.length);
   });
 
   it('keeps every scale slot at 13 steps', () => {
@@ -31,27 +48,65 @@ describe('dark neutrals', () => {
   it('selects the surfaces the theme reads', () => {
     for (const preset of DARK_NEUTRALS) {
       // scale[0] is the layout surface, scale[1] the container, scale[2] the
-      // elevated one; the swatch previews the layout surface.
-      expect(preset.scale.dark[0]).toBe(preset.swatch);
-      expect(preset.scale.dark[0]).not.toBe('#000000');
+      // elevated one; the swatch previews the layout surface of the appearance
+      // the preset belongs to.
+      const [layout] = preset.appearance === 'dark' ? preset.scale.dark : preset.scale.light;
+
+      expect(layout).toBe(preset.swatch);
+      expect(layout).not.toBe('#000000');
     }
   });
 
   it('keeps the body text off the extreme end of the contrast range', () => {
     // Near-black surfaces push body text past 15:1, which is where halation
     // around glyphs becomes the reported readability problem.
-    for (const preset of DARK_NEUTRALS) {
+    for (const preset of neutralsFor(true)) {
       const body = contrast(preset.text.dark[0], preset.scale.dark[1]);
       expect(body).toBeLessThan(14);
       expect(body).toBeGreaterThan(7);
     }
   });
 
-  it('keeps every dark text step at or above the AA floor', () => {
-    for (const preset of DARK_NEUTRALS) {
-      for (const step of preset.text.dark) {
+  it('keeps the three readable dark text steps at or above the AA floor', () => {
+    // The fourth step is decorative, so only the first three carry body copy.
+    for (const preset of neutralsFor(true)) {
+      for (const step of preset.text.dark.slice(0, 3)) {
         expect(contrast(step, preset.scale.dark[1])).toBeGreaterThanOrEqual(4.5);
       }
+    }
+  });
+
+  it('keeps the three readable light text steps at or above the AA floor', () => {
+    // A light preset is read against its light container, not its dark one.
+    for (const preset of neutralsFor(false)) {
+      for (const step of preset.text.light.slice(0, 3)) {
+        expect(contrast(step, preset.scale.light[1])).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it('steps the text ladder down in order', () => {
+    // Each step must read as weaker than the one before it. A ladder where two
+    // neighbouring steps measure the same is a ladder with one step missing.
+    const check = (steps: string[], surface: string) => {
+      const values = steps.map((step) => contrast(step, surface));
+
+      for (let index = 1; index < values.length; index++) {
+        expect(values[index]).toBeLessThan(values[index - 1]);
+      }
+
+      // Neighbouring steps must differ enough to be told apart.
+      for (let index = 1; index < values.length; index++) {
+        expect(values[index - 1] - values[index]).toBeGreaterThan(0.3);
+      }
+    };
+
+    for (const preset of neutralsFor(true)) {
+      check(preset.text.dark, preset.scale.dark[1]);
+    }
+
+    for (const preset of neutralsFor(false)) {
+      check(preset.text.light, preset.scale.light[1]);
     }
   });
 
@@ -59,11 +114,13 @@ describe('dark neutrals', () => {
     // A preset that carries a hue publishes both ladders. Retinting only the
     // dark surface steps would leave its light appearance on the grey default.
     expect(findDarkNeutral('solarized')?.scale.light[0]).toBe('#fdf6e3');
-    expect(findDarkNeutral('solarized')?.scale.light[1]).toBe('#eee8d5');
+    expect(findDarkNeutral('catppuccin-latte')?.scale.light[0]).toBe('#eff1f5');
   });
 
   it('keeps the untinted presets on the default light ladder', () => {
-    for (const preset of DARK_NEUTRALS.filter(({ name }) => name !== 'solarized')) {
+    const untinted = DARK_NEUTRALS.filter(({ name }) => ['cool', 'neutral', 'warm'].includes(name));
+
+    for (const preset of untinted) {
       expect(preset.scale.light[0]).toBe('#ffffff');
       expect(preset.scale.light[1]).toBe('#f8f8f8');
     }

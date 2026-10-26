@@ -14,6 +14,8 @@ import type { ColorScaleItem } from '@lobehub/ui/es/color/types';
  * status palette and the syntax theme stay on their defaults.
  */
 interface DarkPreset {
+  /** Which appearance the picker shows this preset in. */
+  appearance?: 'dark' | 'light';
   /** `colorBgContainer`: content and code surfaces. */
   container: string;
   /** `colorBgElevated`: popovers, menus, modal surfaces. */
@@ -40,7 +42,7 @@ const DARK_PRESETS: DarkPreset[] = [
     label: 'Blue Grey',
     layout: '#1b1f26',
     name: 'cool',
-    text: ['#dedede', '#aaaaaa', '#8f8f8f', '#909090'],
+    text: ['#dedede', '#aaaaaa', '#8f8f8f', '#7d7d7d'],
   },
   {
     container: '#222325',
@@ -48,7 +50,7 @@ const DARK_PRESETS: DarkPreset[] = [
     label: 'Neutral',
     layout: '#1a1b1d',
     name: 'neutral',
-    text: ['#dedede', '#aaaaaa', '#8f8f8f', '#909090'],
+    text: ['#dedede', '#aaaaaa', '#8f8f8f', '#7d7d7d'],
   },
   {
     container: '#242424',
@@ -56,7 +58,7 @@ const DARK_PRESETS: DarkPreset[] = [
     label: 'Warm Grey',
     layout: '#1c1c1c',
     name: 'warm',
-    text: ['#dedede', '#aaaaaa', '#8f8f8f', '#909090'],
+    text: ['#dedede', '#aaaaaa', '#8f8f8f', '#7d7d7d'],
   },
   {
     container: '#073642',
@@ -103,6 +105,173 @@ const DARK_PRESETS: DarkPreset[] = [
     },
     name: 'solarized',
     text: ['#d3d9da', '#bac3c5', '#a7b3b4', '#96a4a6'],
+  },
+  {
+    appearance: 'dark',
+    container: '#1e1e2e',
+    elevated: '#313244',
+    label: 'Catppuccin Mocha',
+    layout: '#11111b',
+    // Catppuccin publishes named role steps rather than a ladder, so the four
+    // gaps between them are interpolated on the published hue. Every text step
+    // is the shipped value, unchanged.
+    ladder: {
+      dark: [
+        '#11111b',
+        '#1e1e2e',
+        '#313244',
+        '#3c3e4e',
+        '#45475a',
+        '#585b70',
+        '#6c7086',
+        '#7f849c',
+        '#9399b2',
+        '#a6adc8',
+        '#bac2de',
+        '#cdd6f4',
+        '#e6ebfa',
+      ] as ColorScaleItem['dark'],
+      light: [
+        '#eff1f5',
+        '#e6e9ef',
+        '#dce0e8',
+        '#ccd0da',
+        '#bcc0cc',
+        '#acb0be',
+        '#9ca0b0',
+        '#8c8fa1',
+        '#7c7f93',
+        '#6c6f85',
+        '#5c5f77',
+        '#4c4f69',
+        '#3c3e53',
+      ] as ColorScaleItem['light'],
+    },
+    name: 'catppuccin-mocha',
+    text: ['#cdd6f4', '#bac2de', '#a6adc8', '#9399b2'],
+  },
+  {
+    appearance: 'dark',
+    container: '#24273a',
+    elevated: '#363a4f',
+    label: 'Catppuccin Macchiato',
+    layout: '#181926',
+    ladder: {
+      dark: [
+        '#181926',
+        '#24273a',
+        '#363a4f',
+        '#414458',
+        '#494d64',
+        '#5b6078',
+        '#6e738d',
+        '#8087a2',
+        '#939ab7',
+        '#a5adcb',
+        '#b8c0e0',
+        '#cad3f5',
+        '#e4e8fa',
+      ] as ColorScaleItem['dark'],
+      light: [
+        '#eff1f5',
+        '#e6e9ef',
+        '#dce0e8',
+        '#ccd0da',
+        '#bcc0cc',
+        '#acb0be',
+        '#9ca0b0',
+        '#8c8fa1',
+        '#7c7f93',
+        '#6c6f85',
+        '#5c5f77',
+        '#4c4f69',
+        '#3c3e53',
+      ] as ColorScaleItem['light'],
+    },
+    name: 'catppuccin-macchiato',
+    text: ['#cad3f5', '#b8c0e0', '#a5adcb', '#939ab7'],
+  },
+  {
+    appearance: 'dark',
+    container: '#303446',
+    elevated: '#414559',
+    label: 'Catppuccin Frappe',
+    layout: '#232634',
+    ladder: {
+      dark: [
+        '#232634',
+        '#303446',
+        '#414559',
+        '#494f63',
+        '#51576d',
+        '#626880',
+        '#737994',
+        '#838ba7',
+        '#949cbb',
+        '#a5adce',
+        '#b5bfe2',
+        '#c6d0f5',
+        '#e0e5fa',
+      ] as ColorScaleItem['dark'],
+      light: [
+        '#eff1f5',
+        '#e6e9ef',
+        '#dce0e8',
+        '#ccd0da',
+        '#bcc0cc',
+        '#acb0be',
+        '#9ca0b0',
+        '#8c8fa1',
+        '#7c7f93',
+        '#6c6f85',
+        '#5c5f77',
+        '#4c4f69',
+        '#3c3e53',
+      ] as ColorScaleItem['light'],
+    },
+    name: 'catppuccin-frappe',
+    text: ['#c6d0f5', '#b5bfe2', '#a5adce', '#949cbb'],
+  },
+  {
+    appearance: 'light',
+    container: '#e6e9ef',
+    elevated: '#dce0e8',
+    label: 'Catppuccin Latte',
+    layout: '#eff1f5',
+    ladder: {
+      dark: [
+        '#11111b',
+        '#1e1e2e',
+        '#313244',
+        '#3c3e4e',
+        '#45475a',
+        '#585b70',
+        '#6c7086',
+        '#7f849c',
+        '#9399b2',
+        '#a6adc8',
+        '#bac2de',
+        '#cdd6f4',
+        '#e6ebfa',
+      ] as ColorScaleItem['dark'],
+      light: [
+        '#eff1f5',
+        '#e6e9ef',
+        '#dce0e8',
+        '#ccd0da',
+        '#bcc0cc',
+        '#acb0be',
+        '#9ca0b0',
+        '#8c8fa1',
+        '#7c7f93',
+        '#6c6f85',
+        '#5c5f77',
+        '#4c4f69',
+        '#3c3e53',
+      ] as ColorScaleItem['light'],
+    },
+    name: 'catppuccin-latte',
+    text: ['#4c4f69', '#5c5f77', '#62677d', '#8a8d9e'],
   },
 ];
 
@@ -174,6 +343,13 @@ const DEFAULT_LIGHT_ALPHA_LADDER = [
   'rgba(0, 0, 0, 0.92)',
 ] as const;
 
+const DEFAULT_DARK_TEXT: [string, string, string, string] = [
+  '#dedede',
+  '#aaaaaa',
+  '#8f8f8f',
+  '#7d7d7d',
+];
+
 const DEFAULT_LIGHT_TEXT: [string, string, string, string] = [
   '#1f1f1f',
   '#666666',
@@ -221,6 +397,8 @@ const buildScale = ({ layout, container, elevated, ladder }: DarkPreset): ColorS
 };
 
 export interface DarkNeutral {
+  /** Appearance this preset is meant for; the picker only lists matching ones. */
+  appearance: 'dark' | 'light';
   label: string;
   name: string;
   scale: ColorScaleItem;
@@ -229,13 +407,27 @@ export interface DarkNeutral {
   text: { dark: [string, string, string, string]; light: [string, string, string, string] };
 }
 
-export const DARK_NEUTRALS: DarkNeutral[] = DARK_PRESETS.map((preset) => ({
-  label: preset.label,
-  name: preset.name,
-  scale: buildScale(preset),
-  swatch: preset.layout,
-  text: { dark: preset.text, light: DEFAULT_LIGHT_TEXT },
-}));
+export const DARK_NEUTRALS: DarkNeutral[] = DARK_PRESETS.map((preset) => {
+  const appearance = preset.appearance ?? 'dark';
+
+  return {
+    appearance,
+    label: preset.label,
+    name: preset.name,
+    scale: buildScale(preset),
+    swatch: preset.layout,
+    // A preset states one text ladder, for the appearance it belongs to. The
+    // other side keeps the default, because the preset is never shown there.
+    text: {
+      dark: appearance === 'dark' ? preset.text : DEFAULT_DARK_TEXT,
+      light: appearance === 'light' ? preset.text : DEFAULT_LIGHT_TEXT,
+    },
+  };
+});
+
+/** Presets that suit the given appearance, for the settings picker. */
+export const neutralsFor = (isDark: boolean) =>
+  DARK_NEUTRALS.filter((preset) => (preset.appearance === 'dark') === isDark);
 
 export const isDarkNeutral = (value?: string | null) =>
   !!value && DARK_NEUTRALS.some((preset) => preset.name === value);

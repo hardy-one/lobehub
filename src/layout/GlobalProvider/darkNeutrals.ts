@@ -63,45 +63,46 @@ const DARK_PRESETS: DarkPreset[] = [
     elevated: '#0d4753',
     label: 'Solarized',
     layout: '#002b36',
-    // Solarized ships the low-contrast palette it was designed around: body text
-    // on base03 measures 4.75:1 and its dimmest step only 2.79:1. The ladder
-    // below keeps the exact Polar Night hue and saturation direction but spreads
-    // the lightness further, giving 13.2:1 for body text while staying readable
-    // in the same teal family.
+    // Solarized ships the low-contrast palette it was designed around: its body
+    // text on base03 measures 4.75:1 and its dimmest step 2.79:1, so secondary
+    // copy reads washed out. The ladder keeps base0's exact hue and saturation
+    // (186deg, 8.3%) and spreads the lightness instead. Step 8 is still the
+    // published base0; the text steps above it reach 10.5:1 in the same teal
+    // family, matching the contrast rhythm of the other presets.
     ladder: {
       dark: [
         '#002b36',
         '#073642',
         '#0d4753',
-        '#304145',
-        '#3d5257',
-        '#4c656b',
-        '#5e7b82',
-        '#729097',
-        '#8ea4a9',
-        '#a6b6ba',
-        '#bdc9cb',
-        '#d5dbdd',
-        '#eef1f1',
+        '#333c3d',
+        '#414c4d',
+        '#505c5e',
+        '#606f71',
+        '#708285',
+        '#839496',
+        '#96a4a6',
+        '#a7b3b4',
+        '#bac3c5',
+        '#d3d9da',
       ] as ColorScaleItem['dark'],
       light: [
         '#fdf6e3',
         '#eee8d5',
         '#d9d1c0',
-        '#d9dbdb',
-        '#c8cbcb',
-        '#b2b7b8',
-        '#999fa1',
-        '#7e8689',
-        '#666e70',
-        '#51585a',
-        '#3b4042',
-        '#282b2c',
-        '#191c1c',
+        '#d1d9db',
+        '#bac5ca',
+        '#a3b2b8',
+        '#8fa2a8',
+        '#7d939b',
+        '#6d848d',
+        '#5f747c',
+        '#52646b',
+        '#435156',
+        '#313b3f',
       ] as ColorScaleItem['light'],
     },
     name: 'solarized',
-    text: ['#eef1f1', '#bdc9cb', '#a6b6ba', '#85a0a5'],
+    text: ['#d3d9da', '#bac3c5', '#a7b3b4', '#96a4a6'],
   },
 ];
 

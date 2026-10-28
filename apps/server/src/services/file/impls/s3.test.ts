@@ -173,8 +173,35 @@ describe('S3StaticFileImpl', () => {
       expect(redisMocks.redis.set).toHaveBeenCalledWith(
         'file:presigned-preview:7200:path/to/redis-write-file.jpg',
         'https://presigned.example.com/test.jpg',
-        { ex: 3600 },
+        { ex: 7140 },
       );
+    });
+
+    it('should keep one presigned preview URL stable across provider cache lifetimes', async () => {
+      // `S3_PREVIEW_URL_EXPIRE_IN` is 7200 here; the cached URL outlives the
+      // signature itself so stored history is not rewritten by re-signing.
+      config.S3_SET_ACL = false;
+      redisMocks.getRedisConfig.mockReturnValue({
+        enabled: true,
+        prefix: 'lobechat',
+        tls: false,
+        url: 'redis://localhost:6379',
+      });
+      redisMocks.isRedisEnabled.mockReturnValue(true);
+      redisMocks.redis.get.mockResolvedValue(null);
+
+      const url = 'path/to/long-lived-file.jpg';
+      const createPreSignedUrlForPreview = fileService['s3'].createPreSignedUrlForPreview;
+
+      await fileService.getFullFileUrl(url);
+
+      expect(createPreSignedUrlForPreview).toHaveBeenCalledTimes(1);
+      expect(redisMocks.redis.set).toHaveBeenCalledWith(
+        'file:presigned-preview:7200:path/to/long-lived-file.jpg',
+        'https://presigned.example.com/test.jpg',
+        { ex: 7140 },
+      );
+      config.S3_SET_ACL = true;
     });
 
     it('should return correct URL when S3_ENABLE_PATH_STYLE is false', async () => {

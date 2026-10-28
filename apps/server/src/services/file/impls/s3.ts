@@ -13,7 +13,16 @@ import type { FileServiceImpl, PreSignedUpload } from './type';
 const log = debug('lobe-file:s3');
 
 const PRESIGNED_PREVIEW_CACHE_SAFETY_SECONDS = 60;
-const PRESIGNED_PREVIEW_CACHE_MAX_SECONDS = 3600;
+/**
+ * Ceiling for how long one presigned preview URL is reused. Every re-sign rewrites
+ * the `X-Amz-*` query on that file's entry in stored conversation history, which
+ * breaks the provider's prefix cache from that message onward. Provider caches are
+ * measured in hours to days (DeepSeek documents "a few hours to a few days"), so a
+ * short ceiling would churn URLs in exactly the sessions that are cheapest to keep
+ * warm. Never longer than the provider cache can plausibly live, so the link is not
+ * refreshed far past the point any of it still pays off.
+ */
+const PRESIGNED_PREVIEW_CACHE_MAX_SECONDS = 86_400;
 const PRESIGNED_PREVIEW_CACHE_KEY_PREFIX = 'file:presigned-preview:';
 
 interface PresignedPreviewCacheEntry {

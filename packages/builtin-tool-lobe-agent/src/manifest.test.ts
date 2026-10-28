@@ -85,4 +85,16 @@ describe('LobeAgentManifest', () => {
     expect(LobeAgentManifest.systemRole).toContain('`vent` is never a control action');
     expect(LobeAgentManifest.systemRole).toContain('do not call it again');
   });
+
+  // The sub-agent model comes from the agent's sub-agent/agency configuration and
+  // the parent's effective model; the tool call itself carries no model choice.
+  it('keeps the sub-agent model out of the callSubAgent parameters', () => {
+    const callSubAgent = LobeAgentManifest.api.find(
+      (api) => api.name === LobeAgentApiName.callSubAgent,
+    );
+    const properties = Object.keys(callSubAgent!.parameters.properties);
+
+    expect(properties).not.toContain('model');
+    expect(properties).not.toContain('provider');
+  });
 });

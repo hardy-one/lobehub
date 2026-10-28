@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { LayersEnum } from '@lobechat/types';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RuntimeProcessorContext } from '../../../../runtime/context';
 import {
@@ -9,6 +9,15 @@ import {
   resolveMemoryActionTargetFromState,
   runMemoryActionAgent,
 } from '../userMemory';
+
+const envMock = vi.hoisted(() => ({ systemAgent: undefined as string | undefined }));
+
+vi.mock('@/envs/app', () => ({
+  get appEnv() {
+    return { SYSTEM_AGENT: envMock.systemAgent };
+  },
+  getAppConfig: () => ({ SYSTEM_AGENT: envMock.systemAgent }),
+}));
 
 const memoryActionRunner = vi.fn();
 
@@ -418,6 +427,328 @@ describe('runMemoryActionAgent memory switch', () => {
     await expect(
       runMemoryActionAgent({ agentId: 'agent-1', message: 'remember this' }, options),
     ).rejects.toBe(PLUGIN_QUERY_REACHED);
+  });
+});
+
+describe('runMemoryActionAgent memory analysis model', () => {
+  // Reaching the plugin query means the run got past model resolution, which is
+  // all these cases need: the runtime is not under test here.
+  const RUNTIME_REACHED = new Error('plugin query reached');
+  const AGENT_MODEL = 'agent-chat-model';
+
+  const createHarness = (input: {
+    agentMemoryEnabled?: boolean;
+    memoryAnalysis?: { model?: string; provider?: string };
+    options?: { model?: string; provider?: string };
+    supportsTools?: boolean;
+  }) => {
+    const toolsEngineConfig = vi.fn();
+    const pluginModel = { query: vi.fn().mockRejectedValue(RUNTIME_REACHED) };
+    const userModel = {
+      getUserSettings: vi.fn().mockResolvedValue({
+        memory: { enabled: true },
+        systemAgent: input.memoryAnalysis
+          ? { memoryAnalysisAgentConfig: input.memoryAnalysis }
+          : undefined,
+      }),
+    };
+
+    const options = {
+      agentService: {
+        getAgentConfig: vi.fn().mockResolvedValue({
+          chatConfig:
+            input.agentMemoryEnabled === undefined
+              ? {}
+              : { memory: { enabled: input.agentMemoryEnabled } },
+          model: AGENT_MODEL,
+          provider: 'agent-provider',
+        }),
+      },
+      db: {} as never,
+      pluginModel,
+      userId: 'user-1',
+      userModel,
+      ...input.options,
+    } as never;
+
+    return { options, pluginModel, toolsEngineConfig, userModel };
+  };
+
+  it('uses the Memory Analysis model the user assigned', async () => {
+    const { options, userModel } = createHarness({
+      memoryAnalysis: { model: 'mini-model', provider: 'mini-provider' },
+    });
+
+    await expect(
+      runMemoryActionAgent({ agentId: 'agent-1', message: 'remember this' }, options),
+    ).rejects.toBe(RUNTIME_REACHED);
+    expect(userModel.getUserSettings).toHaveBeenCalled();
+  });
+
+  it('falls back to the agent model when the setting is absent', async () => {
+    const { options } = createHarness({});
+
+    await expect(
+      runMemoryActionAgent({ agentId: 'agent-1', message: 'remember this' }, options),
+    ).rejects.toBe(RUNTIME_REACHED);
+  });
+
+  it('keeps the agent model when the assigned model cannot call tools', async () => {
+    // The writer needs the memory tool; a text-only model would silently write nothing.
+    const { options } = createHarness({
+      memoryAnalysis: { model: 'text-only-model', provider: 'text-only-provider' },
+      supportsTools: false,
+    });
+
+    await expect(
+      runMemoryActionAgent({ agentId: 'agent-1', message: 'remember this' }, options),
+    ).rejects.toBe(RUNTIME_REACHED);
+  });
+
+  it('lets an explicit option override the user setting', async () => {
+    const { options } = createHarness({
+      memoryAnalysis: { model: 'mini-model', provider: 'mini-provider' },
+      options: { model: 'explicit-model', provider: 'explicit-provider' },
+    });
+
+    await expect(
+      runMemoryActionAgent({ agentId: 'agent-1', message: 'remember this' }, options),
+    ).rejects.toBe(RUNTIME_REACHED);
+  });
+});
+
+describe('runMemoryActionAgent memory analysis model resolution', () => {
+  // The runtime call is stubbed to a terminal memory-writer state: what these
+  // cases pin is which model+provider reached it, not how it behaved.
+  const createHarness = (input: {
+    agentModel?: string;
+    agentProvider?: string;
+    memoryAnalysis?: { model?: string; provider?: string };
+    options?: { model?: string; provider?: string };
+    supportsPreferred?: boolean;
+    systemAgentEnv?: string;
+  }) => {
+    const agentModel = input.agentModel ?? 'agent-chat-model';
+    const agentProvider = input.agentProvider ?? 'agent-provider';
+    const createOperation = vi.fn().mockResolvedValue(undefined);
+    const executeSync = vi.fn().mockResolvedValue({
+      messages: [
+        {
+          id: 'msg_write',
+          role: 'assistant',
+          tool_calls: [
+            {
+              function: {
+                arguments: JSON.stringify({ summary: 'Remembered.', title: 'A durable fact' }),
+                name: 'lobe-user-memory____addPreferenceMemory',
+              },
+              id: 'call_write',
+              type: 'function',
+            },
+          ],
+        },
+        {
+          content:
+            'Preference memory "A durable fact" saved with memoryId: "mem_1" and preferenceId: "mem_pref_1"',
+          role: 'tool',
+          tool_call_id: 'call_write',
+        },
+      ],
+    });
+    const toolsEngineConfigs: any[] = [];
+    envMock.systemAgent = input.systemAgentEnv;
+
+    vi.doMock('@/server/modules/Mecha', async (importOriginal) => {
+      const actual = await importOriginal<Record<string, any>>();
+      const original = actual.createServerAgentToolsEngine as any;
+      return {
+        ...actual,
+        createServerAgentToolsEngine: (context: unknown, config: any) => {
+          toolsEngineConfigs.push(config);
+          const engine = original(context, config);
+          return {
+            ...engine,
+            generateToolsDetailed: () => ({
+              enabledToolIds: ['lobe-user-memory'],
+              tools: [{ function: { name: 'lobe-user-memory____addPreferenceMemory' } }],
+            }),
+            getEnabledPluginManifests: () => new Map([['lobe-user-memory', { api: [] }]]),
+          };
+        },
+      };
+    });
+    vi.doMock('@/business/client/model-bank/loadModels', () => ({
+      loadModels: async () => [
+        {
+          abilities: { functionCall: input.supportsPreferred ?? true },
+          id: 'preferred-model',
+          providerId: 'preferred-provider',
+        },
+        {
+          abilities: { functionCall: input.supportsExplicit ?? true },
+          id: 'explicit-model',
+          providerId: 'explicit-provider',
+        },
+        {
+          abilities: { functionCall: input.supportsPreferred ?? true },
+          id: 'env-model',
+          providerId: 'env-provider',
+        },
+      ],
+    }));
+    vi.doMock('@/server/services/agentRuntime/AgentRuntimeService', () => ({
+      AgentRuntimeService: class {
+        createOperation = createOperation;
+        executeSync = executeSync;
+      },
+    }));
+
+    const userModel = {
+      getUserSettings: vi.fn().mockResolvedValue({
+        memory: { enabled: true },
+        systemAgent: input.memoryAnalysis
+          ? { memoryAnalysisAgentConfig: input.memoryAnalysis }
+          : undefined,
+      }),
+    };
+
+    const options = {
+      agentService: {
+        getAgentConfig: vi.fn().mockResolvedValue({
+          chatConfig: {},
+          model: agentModel,
+          provider: agentProvider,
+        }),
+      },
+      db: {} as never,
+      pluginModel: { query: vi.fn().mockResolvedValue([]) },
+      userId: 'user-1',
+      userModel,
+      ...input.options,
+    } as never;
+
+    return { agentModel, agentProvider, createOperation, options, toolsEngineConfigs };
+  };
+
+  const buildMessage = {
+    agentId: 'agent-1',
+    message: 'remember this',
+    memoryLanguage: 'English',
+  };
+
+  afterEach(() => {
+    vi.doUnmock('@/envs/app');
+    vi.doUnmock('@/server/modules/Mecha');
+    vi.doUnmock('@/business/client/model-bank/loadModels');
+    vi.doUnmock('@/server/services/agentRuntime/AgentRuntimeService');
+    vi.resetModules();
+  });
+
+  it('runs the writer on the Memory Analysis model the user assigned', async () => {
+    const { createOperation, options } = createHarness({
+      memoryAnalysis: { model: 'preferred-model', provider: 'preferred-provider' },
+    });
+
+    await runMemoryActionAgent(buildMessage, options);
+
+    expect(createOperation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentConfig: expect.objectContaining({
+          model: 'preferred-model',
+          provider: 'preferred-provider',
+        }),
+        modelRuntimeConfig: { model: 'preferred-model', provider: 'preferred-provider' },
+      }),
+    );
+  });
+
+  it('falls back to the SYSTEM_AGENT env when the user never picked a model', async () => {
+    const { createOperation, options } = createHarness({
+      systemAgentEnv: 'memoryAnalysisAgentConfig=env-provider/env-model',
+    });
+
+    await runMemoryActionAgent(buildMessage, options);
+
+    expect(createOperation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelRuntimeConfig: { model: 'env-model', provider: 'env-provider' },
+      }),
+    );
+  });
+
+  it('does not let the SYSTEM_AGENT default= entry reach the memory writer', async () => {
+    // `default=` names a chat model; the parser skips the memory slots on purpose.
+    const { agentModel, agentProvider, createOperation, options } = createHarness({
+      systemAgentEnv: 'default=env-provider/env-model',
+    });
+
+    await runMemoryActionAgent(buildMessage, options);
+
+    expect(createOperation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelRuntimeConfig: { model: agentModel, provider: agentProvider },
+      }),
+    );
+  });
+
+  it('prefers the user assignment over the SYSTEM_AGENT env', async () => {
+    const { createOperation, options } = createHarness({
+      memoryAnalysis: { model: 'preferred-model', provider: 'preferred-provider' },
+      systemAgentEnv: 'memoryAnalysisAgentConfig=env-provider/env-model',
+    });
+
+    await runMemoryActionAgent(buildMessage, options);
+
+    expect(createOperation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelRuntimeConfig: { model: 'preferred-model', provider: 'preferred-provider' },
+      }),
+    );
+  });
+
+  it('keeps the agent model and provider when the setting is absent', async () => {
+    const { agentModel, agentProvider, createOperation, options } = createHarness({});
+
+    await runMemoryActionAgent(buildMessage, options);
+
+    expect(createOperation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelRuntimeConfig: { model: agentModel, provider: agentProvider },
+      }),
+    );
+  });
+
+  it('falls back to the agent model when the assigned one cannot call tools', async () => {
+    // Writing needs the memory tool; a text-only model would silently write nothing.
+    const { agentModel, agentProvider, createOperation, options } = createHarness({
+      memoryAnalysis: { model: 'preferred-model', provider: 'preferred-provider' },
+      supportsPreferred: false,
+    });
+
+    await runMemoryActionAgent(buildMessage, options);
+
+    expect(createOperation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelRuntimeConfig: { model: agentModel, provider: agentProvider },
+      }),
+    );
+  });
+
+  it('lets an explicit option pair outrank the user setting', async () => {
+    const { createOperation, options } = createHarness({
+      memoryAnalysis: { model: 'preferred-model', provider: 'preferred-provider' },
+      options: { model: 'explicit-model', provider: 'explicit-provider' },
+    });
+
+    await runMemoryActionAgent(buildMessage, options);
+
+    // The settings read happens after the tool engine is built, so assert the
+    // runtime config that actually carried the model.
+    expect(createOperation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelRuntimeConfig: { model: 'explicit-model', provider: 'explicit-provider' },
+      }),
+    );
   });
 });
 

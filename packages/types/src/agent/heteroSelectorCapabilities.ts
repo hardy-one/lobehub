@@ -90,10 +90,36 @@ export type QoderReasoningEffort = (typeof QODER_REASONING_EFFORT_LEVELS)[number
 
 export const QODER_REASONING_EFFORT_FLAG = '--reasoning-effort';
 
+/**
+ * Pi thinking levels, mirroring the vocabulary `set_thinking_level` accepts.
+ *
+ * This is the whole vocabulary pi accepts. Which of these a given model
+ * actually serves is decided inside pi (`getSupportedThinkingLevels`), so the
+ * host probes `get_available_thinking_levels` over RPC and narrows the menu to
+ * the model's own list. This constant is the fallback used while that probe is
+ * unavailable (remote device, older CLI): pi clamps an unsupported level to the
+ * nearest valid one instead of failing, so the run still honours the intent.
+ */
+export const PI_THINKING_LEVELS = [
+  'off',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+] as const;
+
+export type PiThinkingEffort = (typeof PI_THINKING_LEVELS)[number];
+
+export const isPiThinkingEffort = (value: string | undefined): value is PiThinkingEffort =>
+  !!value && (PI_THINKING_LEVELS as readonly string[]).includes(value);
+
 export type HeterogeneousReasoningEffortLevel =
   | ClaudeCodeReasoningEffort
   | CodexReasoningEffort
   | GrokBuildReasoningEffort
+  | PiThinkingEffort
   | QoderReasoningEffort;
 
 export type HeterogeneousReasoningEffort =
@@ -155,6 +181,24 @@ export const isGrokBuildReasoningEffort = (
 
 export const isQoderReasoningEffort = (value: string | undefined): value is QoderReasoningEffort =>
   !!value && QODER_REASONING_EFFORT_LEVELS.includes(value as QoderReasoningEffort);
+
+const HETEROGENEOUS_REASONING_EFFORT_LEVELS: readonly string[] = [
+  ...CLAUDE_CODE_REASONING_EFFORT_LEVELS,
+  ...CODEX_REASONING_EFFORT_LEVELS,
+  ...GROK_BUILD_REASONING_EFFORT_LEVELS,
+  ...PI_THINKING_LEVELS,
+  ...QODER_REASONING_EFFORT_LEVELS,
+];
+
+/**
+ * Narrows a level a host reported for its model. The probe answers with the
+ * CLI's own `string[]` vocabulary, so a level outside every provider set here
+ * has no menu entry and must be dropped rather than cast.
+ */
+export const isHeterogeneousReasoningEffortLevel = (
+  value: string | undefined,
+): value is HeterogeneousReasoningEffortLevel =>
+  !!value && HETEROGENEOUS_REASONING_EFFORT_LEVELS.includes(value);
 
 export const isCodexFastServiceTier = (value: string | undefined): boolean =>
   !!value &&
@@ -277,6 +321,13 @@ const resolveQoderReasoningEffort = (
   return isQoderReasoningEffort(effort) ? effort : HETEROGENEOUS_AGENT_DEFAULT_SELECTION;
 };
 
+const resolvePiThinkingEffort = (
+  source: HeteroSelectionSource | null | undefined,
+): PiThinkingEffort | HeterogeneousAgentDefaultSelection => {
+  const effort = source?.effort?.trim();
+  return isPiThinkingEffort(effort) ? effort : HETEROGENEOUS_AGENT_DEFAULT_SELECTION;
+};
+
 /**
  * Catalog providers persist the picked model id verbatim and never read it back
  * out of `args`. Widening them to the arg-first order that `buildHeteroSpawnArgs`
@@ -319,6 +370,16 @@ export interface HeteroSelectorEffortCapability {
   encodings: readonly HeteroCliEncoding[];
   levels: (model: string) => readonly HeterogeneousReasoningEffortLevel[];
   resolve: (source: HeteroSelectionSource | null | undefined) => HeterogeneousReasoningEffort;
+  /**
+   * `static` (default) — `levels` is the whole truth.
+   *
+   * `runtime` — the values are applied after session setup and the host can
+   * probe what the current model actually serves (pi answers
+   * `get_available_thinking_levels` per model). `levels` then only provides the
+   * fallback vocabulary for hosts that cannot probe, so a UI must never treat
+   * it as the model's real list.
+   */
+  source?: 'runtime' | 'static';
 }
 
 export interface HeteroSelectorSpeedCapability {
@@ -436,6 +497,14 @@ export const HETERO_SELECTOR_CAPABILITIES = {
     model: { encodings: [MODEL_FLAGS_ENCODING], resolve: resolvePersistedModel, source: 'catalog' },
   },
   'pi': {
+    effort: {
+      // Pi applies the persisted level through `set_thinking_level` after the
+      // RPC session starts, so it has no CLI spelling of its own.
+      encodings: [],
+      levels: () => PI_THINKING_LEVELS,
+      source: 'runtime',
+      resolve: resolvePiThinkingEffort,
+    },
     model: {
       encodings: [{ flags: ['--model'], kind: 'flag' }],
       extraStripFlags: ['--provider'],

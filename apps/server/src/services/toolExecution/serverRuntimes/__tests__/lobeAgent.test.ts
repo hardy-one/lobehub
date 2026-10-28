@@ -1113,6 +1113,33 @@ describe('lobeAgentRuntime', () => {
       expect(result).toMatchObject({ error: { code: 'INVALID_ARGUMENTS' } });
       expect(run).not.toHaveBeenCalled();
     });
+
+    // Models sometimes fill fields the schema does not declare. The run keeps the
+    // configured sub-agent model, so such extras must not reach the runner.
+    it('does not forward undeclared model or provider arguments to the runner', async () => {
+      const runtime = lobeAgentRuntime.factory(baseContext);
+      const run = vi
+        .fn()
+        .mockResolvedValue({ started: true, subOperationId: 'sub-op-4', threadId: 'thread-4' });
+
+      await runtime.callSubAgent(
+        {
+          description: 'Research',
+          instruction: 'Find the answer',
+          model: 'deepseek-v4-pro',
+          provider: 'deepseek',
+        } as any,
+        { ...baseContext, subAgent: { run } } as ToolExecutionContext,
+      );
+
+      expect(run).toHaveBeenCalledWith({
+        background: false,
+        description: 'Research',
+        instruction: 'Find the answer',
+        subAgentId: undefined,
+        timeout: undefined,
+      });
+    });
   });
 
   describe('todos', () => {

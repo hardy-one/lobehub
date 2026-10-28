@@ -11,6 +11,7 @@ import {
   createAgentSignalMemoryWriterPrompt,
   createAgentSignalMemoryWriterSystemRole,
 } from '@lobechat/prompts';
+import type { UserServiceModelConfig } from '@lobechat/types';
 import { RequestTrigger, ThreadType } from '@lobechat/types';
 import { nanoid } from '@lobechat/utils';
 
@@ -19,6 +20,8 @@ import { PluginModel } from '@/database/models/plugin';
 import { ThreadModel } from '@/database/models/thread';
 import { UserModel } from '@/database/models/user';
 import type { LobeChatDatabase } from '@/database/type';
+import { appEnv } from '@/envs/app';
+import { parseSystemAgent } from '@/server/globalConfig/parseSystemAgent';
 import {
   InMemoryAgentStateManager,
   InMemoryStreamEventManager,
@@ -76,7 +79,13 @@ export interface UserMemoryActionHandlerOptions {
     topicId?: string;
   }) => Promise<MemoryAgentActionResult>;
   messageModel?: Pick<MessageModel, 'create'>;
+  /**
+   * Model that judges and writes the memory. Absent means the agent's own model,
+   * which is what this path used before the Memory Analysis setting was honoured.
+   */
+  model?: string;
   pluginModel?: Pick<PluginModel, 'query'>;
+  provider?: string;
   threadModel?: Pick<ThreadModel, 'create'>;
   userId: string;
   userModel?: Pick<UserModel, 'getUserSettings'>;
@@ -108,6 +117,42 @@ const toExecutorError = (actionId: string, error: unknown, startedAt: number): E
 
 const isUserMemoryAction = (action: BaseAction): action is ActionUserMemoryHandle => {
   return action.actionType === AGENT_SIGNAL_POLICY_ACTION_TYPES.userMemoryHandle;
+};
+
+/**
+ * Resolves the Memory Analysis model for the writer, mirroring the settings page.
+ *
+ * Use when:
+ * - The memory writer must run on the user's assigned model rather than the
+ *   conversation's own
+ *
+ * Expects:
+ * - `settings` is the user's stored row; anything it leaves unset for this slot
+ *   falls through to `SYSTEM_AGENT`, which is how a deployment configures it
+ *
+ * Returns:
+ * - `{ model, provider }` from the user's row, else from `SYSTEM_AGENT`, else
+ *   undefined so the caller keeps the agent's model
+ */
+const resolveMemoryAnalysisModel = (
+  settings: { systemAgent?: unknown } | undefined,
+  envSystemAgent: string | undefined,
+): { model: string; provider: string } | undefined => {
+  const fromSettings = (settings?.systemAgent as Partial<UserServiceModelConfig> | undefined)
+    ?.memoryAnalysisAgentConfig;
+  if (fromSettings?.model && fromSettings.provider) {
+    return { model: fromSettings.model, provider: fromSettings.provider };
+  }
+
+  const fromEnv = parseSystemAgent(envSystemAgent).memoryAnalysisAgentConfig;
+  // `SYSTEM_AGENT` also carries a `default=` entry, but that one deliberately
+  // skips the memory slots: a deployment naming one chat model for everything
+  // must not silently repoint the memory writer at it.
+  if (fromEnv?.model && fromEnv.provider) {
+    return { model: fromEnv.model, provider: fromEnv.provider };
+  }
+
+  return undefined;
 };
 
 interface BuildUserMemoryActionAgentSignalMarkerInput {
@@ -217,9 +262,18 @@ export const runMemoryActionAgent = async (
   // must not get memories written in the background either.
   const agentMemoryEnabled = agentConfig?.chatConfig?.memory?.enabled;
   let memoryEnabled = agentMemoryEnabled;
+  // One settings read serves both the memory switch and the Memory Analysis model.
+  const userModel = options.userModel ?? new UserModel(options.db, options.userId);
+  const needsSettings = memoryEnabled === undefined || options.model === undefined;
+  let settings: Awaited<ReturnType<typeof userModel.getUserSettings>> | undefined;
+  if (needsSettings && memoryEnabled !== false) {
+    try {
+      settings = await userModel.getUserSettings();
+    } catch {
+      // Settings are advisory here: an unreadable row must not block the writer.
+    }
+  }
   if (memoryEnabled === undefined) {
-    const userModel = options.userModel ?? new UserModel(options.db, options.userId);
-    const settings = await userModel.getUserSettings();
     const memorySettings = settings?.memory as { enabled?: boolean } | undefined;
     memoryEnabled = memorySettings?.enabled !== false;
   }
@@ -245,30 +299,59 @@ export const runMemoryActionAgent = async (
     isModelSupportToolUse,
   };
 
+  // The Memory Analysis slot owns this decision: it is the same judgement the
+  // batch extractor makes, and that path already reads it. Precedence mirrors the
+  // settings page — the user's own assignment, then `SYSTEM_AGENT`, then the
+  // agent's model — so what the UI shows is what runs. A model that cannot call
+  // tools would leave the writer unable to write at all, so keep the agent's
+  // model in that case rather than trading a costly run for a silent no-op.
+  const configuredModel =
+    options.model !== undefined
+      ? { model: options.model, provider: options.provider || agentConfig.provider }
+      : options.provider !== undefined
+        ? undefined
+        : resolveMemoryAnalysisModel(settings, appEnv.SYSTEM_AGENT);
+  const preferredSupportsTools =
+    !configuredModel ||
+    (configuredModel.model === agentConfig.model &&
+      configuredModel.provider === agentConfig.provider) ||
+    isModelSupportToolUse(configuredModel.model, configuredModel.provider);
+  const memoryModel = preferredSupportsTools
+    ? (configuredModel?.model ?? agentConfig.model)
+    : agentConfig.model;
+  const memoryProvider = preferredSupportsTools
+    ? (configuredModel?.provider ?? agentConfig.provider)
+    : agentConfig.provider;
+
   const memoryToolsAgentConfig = {
     chatConfig: {
       runtimeEnv: agentConfig.chatConfig?.runtimeEnv,
       searchMode: agentConfig.chatConfig?.searchMode,
     },
+    // Tool availability is judged for the model that will run, not the agent's.
+    model: memoryModel,
     plugins: [MemoryIdentifier],
+    provider: memoryProvider,
   };
 
   const memoryRuntimeAgentConfig = {
     ...agentConfig,
+    model: memoryModel,
     plugins: [MemoryIdentifier],
+    provider: memoryProvider,
     systemRole: createAgentSignalMemoryWriterSystemRole({ memoryLanguage }),
   };
 
   const toolsEngine = createServerAgentToolsEngine(toolsContext, {
     agentConfig: memoryToolsAgentConfig,
     globalMemoryEnabled: true,
-    model: agentConfig.model,
-    provider: agentConfig.provider,
+    model: memoryModel,
+    provider: memoryProvider,
   });
 
   const toolsResult = toolsEngine.generateToolsDetailed({
-    model: agentConfig.model,
-    provider: agentConfig.provider,
+    model: memoryModel,
+    provider: memoryProvider,
     skipDefaultTools: true,
     toolIds: [MemoryIdentifier],
   });
@@ -340,8 +423,8 @@ export const runMemoryActionAgent = async (
     initialContext,
     initialMessages: [seedMessage],
     modelRuntimeConfig: {
-      model: agentConfig.model,
-      provider: agentConfig.provider,
+      model: memoryModel,
+      provider: memoryProvider,
     },
     operationId,
     toolSet: {

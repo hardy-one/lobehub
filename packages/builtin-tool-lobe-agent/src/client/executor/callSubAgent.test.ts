@@ -110,6 +110,21 @@ describe('lobeAgentExecutor.callSubAgent', () => {
 
     expect(result.success).toBe(false);
   });
+
+  // Models sometimes fill fields the schema does not declare. The runner keeps
+  // the configured sub-agent model, so such extras must not reach it.
+  it('does not forward undeclared model or provider arguments to the runner', async () => {
+    const run = vi.fn().mockResolvedValue({ result: 'done', success: true, threadId: 'thd_3' });
+
+    await lobeAgentExecutor.callSubAgent(
+      { ...params, model: 'deepseek-v4-pro', provider: 'deepseek' } as any,
+      createContext(run),
+    );
+
+    const runParams = run.mock.calls[0][0] as Record<string, unknown>;
+    expect(runParams).not.toHaveProperty('model');
+    expect(runParams).not.toHaveProperty('provider');
+  });
 });
 
 describe('lobeAgentExecutor.callSubAgent runInBackground', () => {

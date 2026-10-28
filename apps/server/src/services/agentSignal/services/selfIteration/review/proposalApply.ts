@@ -256,7 +256,7 @@ const prepareToolAction = (
       return toApplyResult(
         action,
         'skipped_unsupported',
-        'Proposal action is missing an executable operation.',
+        'Create-skill proposal has no executable operation: approve-time apply needs operation { domain: "skill", operation: "create", input: { name, bodyMarkdown } }.',
       );
     }
 

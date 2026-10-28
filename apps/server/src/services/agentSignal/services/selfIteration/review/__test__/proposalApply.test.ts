@@ -295,6 +295,60 @@ describe('self-review proposal apply service', () => {
 
   /**
    * @example
+   * expect(result.proposal.applyAttempts?.[0].actionResults[0].status).toBe('skipped_unsupported');
+   */
+  it('reports a create_skill action without an operation instead of applying it', async () => {
+    const createSkillIfAbsent = vi.fn();
+    const replaceSkillContentCAS = vi.fn();
+    const service = createSelfReviewProposalApplyService({
+      checkAction: vi.fn().mockResolvedValue({ allowed: true }),
+      checkGates: vi.fn().mockResolvedValue({ allowed: true }),
+      now: () => '2026-05-09T01:00:00.000Z',
+      tools: {
+        createSkillIfAbsent,
+        replaceSkillContentCAS,
+      },
+      updateProposal: vi.fn(),
+    });
+
+    const result = await service.apply({
+      agentId: 'agt_1',
+      proposal: createProposal({
+        actionType: 'create_skill',
+        actions: [
+          {
+            actionType: 'create_skill',
+            baseSnapshot: {
+              absent: true,
+              skillName: 'code-review',
+              targetType: 'skill',
+            },
+            evidenceRefs: [],
+            idempotencyKey: 'nightly:create_skill:code-review',
+            rationale: 'Create a managed skill.',
+            risk: Risk.Medium,
+            target: { skillName: 'code-review' },
+          },
+        ],
+        proposalKey: 'agt_1:create_skill:skill:code-review',
+      }),
+      sourceId: 'nightly-review:user_1:agt_1:2026-05-09',
+      sourceType: 'agent.nightly_review.requested',
+      userId: 'user_1',
+    });
+
+    expect(createSkillIfAbsent).not.toHaveBeenCalled();
+    expect(replaceSkillContentCAS).not.toHaveBeenCalled();
+    expect(result.proposal.status).toBe('failed');
+    expect(result.proposal.applyAttempts?.[0].actionResults[0]).toMatchObject({
+      idempotencyKey: 'nightly:create_skill:code-review',
+      status: 'skipped_unsupported',
+      summary: expect.stringContaining('operation { domain: "skill", operation: "create"'),
+    });
+  });
+
+  /**
+   * @example
    * expect(result.proposal.conflictReason).toBe('document_changed');
    */
   it('skips stale proposal actions without calling safe tools', async () => {

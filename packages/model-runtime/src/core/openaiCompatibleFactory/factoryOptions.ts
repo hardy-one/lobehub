@@ -28,7 +28,10 @@ import type { DecideConfig } from './decide';
 
 // OpenAI SDK v6 widened `apiKey` to `string | ApiKeySetter`; lobehub only ever
 // passes a plain string, so narrow it back to keep `.trim()` / string assignments valid.
-export type LobeClientOptions = Omit<ClientOptions, 'apiKey'> & { apiKey?: string };
+export type LobeClientOptions = Omit<ClientOptions, 'apiKey'> & {
+  apiKey?: string;
+  modelSdkType?: 'openai' | 'openai-responses';
+};
 export type ConstructorOptions<T extends Record<string, any> = any> = LobeClientOptions &
   ModelIdMappingOptions &
   T;

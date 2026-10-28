@@ -377,6 +377,11 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
 
       const log = debug(`${this.logPrefix}:shouldUseResponsesAPI`);
 
+      // Provider-scoped protocol metadata is stronger than global model-name heuristics.
+      if (this._options.modelSdkType) {
+        return this._options.modelSdkType === 'openai-responses';
+      }
+
       // Priority 0: Check built-in Responses API model rules FIRST (highest priority)
       // These models MUST use Responses API regardless of user settings.
       if (model && isResponsesAPIModel(model)) {

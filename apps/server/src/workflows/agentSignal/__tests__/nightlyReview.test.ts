@@ -18,6 +18,12 @@ vi.mock('@/envs/app', () => ({
   },
 }));
 
+/**
+ * QStash calls back from the public internet, so every entry URL must use
+ * APP_URL. INTERNAL_APP_URL is answered here only to prove it loses: it points
+ * at a container-local host that QStash cannot resolve.
+ */
+
 vi.mock('@/libs/observability/traceparent', () => ({
   injectActiveTraceHeaders: mocks.injectActiveTraceHeaders,
 }));
@@ -60,8 +66,31 @@ describe('AgentSignalNightlyReviewWorkflow cron entry', () => {
         parallelism: 1,
       },
       headers: { traceparent: '00-trace-parent' },
-      url: 'https://internal.example.com/api/workflows/agent-signal/paginate-nightly-review-users',
+      url: 'https://public.example.com/api/workflows/agent-signal/paginate-nightly-review-users',
     });
+  });
+
+  it('uses QSTASH_CALLBACK_BASE_URL so a self-hosted queue can call back internally', async () => {
+    /**
+     * A queue on the deployment network reaches the app over an internal address;
+     * without the override every entry URL would hairpin through the public edge.
+     *
+     * @example
+     * expect(publishJSON).toHaveBeenCalledWith(expect.objectContaining({ url: 'http://lobe:3210/...' }));
+     */
+    vi.stubEnv('QSTASH_CALLBACK_BASE_URL', 'http://lobe:3210');
+
+    try {
+      await AgentSignalNightlyReviewWorkflow.publishPaginateUsersEntry(payload);
+
+      expect(mocks.publishJSON).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: 'http://lobe:3210/api/workflows/agent-signal/paginate-nightly-review-users',
+        }),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('fails fast instead of hanging when the outbound publish stalls', async () => {
@@ -148,7 +177,7 @@ describe('AgentSignalNightlyReviewWorkflow', () => {
         parallelism: 1,
       },
       headers: { traceparent: '00-trace-parent' },
-      url: 'https://internal.example.com/api/workflows/agent-signal/paginate-nightly-review-users',
+      url: 'https://public.example.com/api/workflows/agent-signal/paginate-nightly-review-users',
     });
   });
 
@@ -177,7 +206,7 @@ describe('AgentSignalNightlyReviewWorkflow', () => {
         parallelism: 5,
       },
       headers: { traceparent: '00-trace-parent' },
-      url: 'https://internal.example.com/api/workflows/agent-signal/execute-nightly-review-user',
+      url: 'https://public.example.com/api/workflows/agent-signal/execute-nightly-review-user',
     });
   });
 });

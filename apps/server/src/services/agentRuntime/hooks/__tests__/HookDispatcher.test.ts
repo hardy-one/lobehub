@@ -291,6 +291,7 @@ describe('HookDispatcher', () => {
       else process.env.QSTASH_TOKEN = originalToken;
       delete process.env.APP_URL;
       delete process.env.INTERNAL_APP_URL;
+      delete process.env.QSTASH_CALLBACK_BASE_URL;
       vi.restoreAllMocks();
     });
 
@@ -298,6 +299,20 @@ describe('HookDispatcher', () => {
       await deliverWebhook({ delivery: 'qstash', url: 'https://example.com/hook' }, { a: 1 });
 
       expect(global.fetch).toHaveBeenCalled();
+    });
+
+    it('resolves a relative queue destination against the callback base URL', async () => {
+      process.env.QSTASH_TOKEN = 'test-token';
+      process.env.APP_URL = 'https://public.example.com';
+      process.env.INTERNAL_APP_URL = 'http://app:3210';
+      process.env.QSTASH_CALLBACK_BASE_URL = 'http://queue-callback:3210';
+      mockPublishJSON.mockResolvedValue({});
+
+      await deliverWebhook({ delivery: 'qstash', url: '/api/hook' }, { a: 1 });
+
+      expect(mockPublishJSON).toHaveBeenCalledWith(
+        expect.objectContaining({ url: 'http://queue-callback:3210/api/hook' }),
+      );
     });
 
     it("throws instead of unsigned-fetching when fallback is 'none' and the token is missing", async () => {

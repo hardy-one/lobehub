@@ -4,14 +4,14 @@ import qs from 'query-string';
 import { getCanonicalUrl } from '@/server/utils/url';
 
 const MAX_AGE = 31_536_000;
-const COLOR = '#000000';
+const COLOR = '#1a1b1d';
 // The manifest colors are snapshotted into the installed WebAPK shell, so they
 // cannot follow the OS theme at runtime. Chrome has not shipped the spec
 // `color_scheme_dark` member yet (https://crbug.com/383165202), so both values
 // stay dark for now to keep a dark-mode install from falling back to a light
 // navigation bar. Once Chrome honours the member, point COLOR at the light value
 // and the navigation bar follows the OS theme.
-const DARK_COLOR = '#000000';
+const DARK_COLOR = '#1a1b1d';
 
 interface IconItem {
   purpose: 'any' | 'maskable';

@@ -7,7 +7,7 @@
     <link rel="shortcut icon" href="/favicon-32x32.ico" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#f8f8f8" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#1a1b1d" media="(prefers-color-scheme: dark)" />
     <!--SEO_META-->
     <style>
       html body {
@@ -15,11 +15,11 @@
       }
       @media (prefers-color-scheme: dark) {
         html:not([data-theme='light']) body {
-          background-color: #000;
+          background-color: #1a1b1d;
         }
       }
       html[data-theme='dark'] body {
-        background-color: #000;
+        background-color: #1a1b1d;
       }
       #loading-screen {
         position: fixed;
@@ -114,7 +114,7 @@
         var resolvedTheme = theme === 'system' ? systemTheme : theme;
         if (resolvedTheme === 'dark' || resolvedTheme === 'light') {
           document.documentElement.setAttribute('data-theme', resolvedTheme);
-          var themeColor = resolvedTheme === 'dark' ? '#000000' : '#f8f8f8';
+          var themeColor = resolvedTheme === 'dark' ? '#1a1b1d' : '#f8f8f8';
           var metas = document.head.querySelectorAll('meta[name="theme-color"]');
           for (var i = 0; i < metas.length; i++) {
             if (i === 0) {

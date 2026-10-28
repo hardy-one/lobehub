@@ -13,7 +13,7 @@
     <meta name="apple-mobile-web-app-title" content="LobeHub" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" content="#f8f8f8" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#1a1b1d" media="(prefers-color-scheme: dark)" />
     <style>
       html {
         -webkit-text-size-adjust: 100%;
@@ -31,7 +31,7 @@
         html:not([data-theme='light']) body,
         html:not([data-theme='light']) #root {
           color-scheme: dark;
-          background-color: #000;
+          background-color: #1a1b1d;
         }
       }
       html[data-theme='light'],
@@ -44,7 +44,7 @@
       html[data-theme='dark'] body,
       html[data-theme='dark'] #root {
         color-scheme: dark;
-        background-color: #000;
+        background-color: #1a1b1d;
       }
     </style>
     <script>
@@ -75,7 +75,7 @@
         var resolvedTheme = theme === 'system' ? systemTheme : theme;
         if (resolvedTheme === 'dark' || resolvedTheme === 'light') {
           document.documentElement.setAttribute('data-theme', resolvedTheme);
-          var themeColor = resolvedTheme === 'dark' ? '#000000' : '#f8f8f8';
+          var themeColor = resolvedTheme === 'dark' ? '#1a1b1d' : '#f8f8f8';
           var metas = document.head.querySelectorAll('meta[name="theme-color"]');
           for (var i = 0; i < metas.length; i++) {
             if (i === 0) {

@@ -35,8 +35,8 @@ describe('manifest', () => {
     // `color_scheme_dark` yet (crbug.com/383165202), so the member is inert today.
     // It is still the only spec-compliant way to describe the dark variant.
     expect((result as Record<string, unknown>).color_scheme_dark).toEqual({
-      background_color: '#000000',
-      theme_color: '#000000',
+      background_color: '#1a1b1d',
+      theme_color: '#1a1b1d',
     });
   });
 });

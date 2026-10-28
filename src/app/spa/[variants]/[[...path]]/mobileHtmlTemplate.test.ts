@@ -11,12 +11,12 @@ describe('mobileHtmlTemplate', () => {
       '<meta name="theme-color" content="#f8f8f8" media="(prefers-color-scheme: light)" />',
     );
     expect(mobileHtmlTemplate).toContain(
-      '<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />',
+      '<meta name="theme-color" content="#1a1b1d" media="(prefers-color-scheme: dark)" />',
     );
     expect(mobileHtmlTemplate).toContain('color-scheme: light;');
     expect(mobileHtmlTemplate).toContain('background-color: #f8f8f8;');
     expect(mobileHtmlTemplate).toContain(
-      "var themeColor = resolvedTheme === 'dark' ? '#000000' : '#f8f8f8';",
+      "var themeColor = resolvedTheme === 'dark' ? '#1a1b1d' : '#f8f8f8';",
     );
   });
 });

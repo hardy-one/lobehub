@@ -5,7 +5,14 @@ import '@lobehub/ui/global.css';
 import '@lobehub/ui/style.css';
 
 import { type NeutralColors, type PrimaryColors } from '@lobehub/ui';
-import { ConfigProvider, createStaticStyles, cx, FontLoader, setLobeTheme } from '@lobehub/ui';
+import {
+  ConfigProvider,
+  createStaticStyles,
+  cx,
+  FontLoader,
+  registerLobeNeutral,
+  setLobeTheme,
+} from '@lobehub/ui';
 import * as m from 'motion/react-m';
 import { type ReactNode } from 'react';
 import { memo, useEffect, useMemo, useState } from 'react';
@@ -13,6 +20,7 @@ import { memo, useEffect, useMemo, useState } from 'react';
 import Link from '@/components/Link';
 import { genFontFamily, genFontFamilyCode } from '@/const/font';
 import { LOBE_THEME_NEUTRAL_COLOR, LOBE_THEME_PRIMARY_COLOR } from '@/const/theme';
+import { registerDarkNeutrals } from '@/layout/GlobalProvider/darkNeutrals';
 import { getUILocaleAndResources } from '@/libs/getUILocaleAndResources';
 import type { UILocaleResources } from '@/libs/getUILocaleAndResources.utils';
 import { resolveUILocale } from '@/libs/getUILocaleAndResources.utils';
@@ -150,6 +158,11 @@ const AppTheme = memo<AppThemeProps>(
     }, [primaryColor]);
 
     useEffect(() => {
+      // Registered before the theme selects one: a registered scale keeps its own
+      // surface steps, while a plain hex would be retinted through the grey ladder
+      // into a near-neutral grey.
+      registerDarkNeutrals(registerLobeNeutral);
+
       setLobeTheme({
         neutralColor: neutralColor ?? defaultNeutralColor,
         primaryColor: primaryColor ?? defaultPrimaryColor,

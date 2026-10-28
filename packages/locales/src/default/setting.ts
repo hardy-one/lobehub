@@ -1258,8 +1258,9 @@ export default {
   'settingAppearance.font.monospaceFallback.needPrimary': 'Choose a monospace font first.',
   'settingAppearance.font.monospaceFallback.title': 'Monospace Fallback Fonts',
   'settingAppearance.font.title': 'Font',
-  'settingAppearance.neutralColor.desc': 'Custom grayscale with different color tendencies',
-  'settingAppearance.neutralColor.title': 'Neutral Color',
+  'settingAppearance.neutralColor.desc':
+    'Surface and text tones for the whole interface, with presets tuned for low light and astigmatism',
+  'settingAppearance.neutralColor.title': 'Color Scheme',
   'settingAppearance.noAnimation.desc': 'Disable all animation effects in the application',
   'settingAppearance.noAnimation.title': 'No Animation Mode',
   'settingAppearance.preview.title': 'Color Palette',

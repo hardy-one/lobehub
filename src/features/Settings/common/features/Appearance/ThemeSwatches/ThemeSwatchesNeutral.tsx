@@ -3,6 +3,8 @@ import { ColorSwatches, findCustomThemeName, neutralColors } from '@lobehub/ui';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { DARK_NEUTRALS, findDarkNeutral } from '@/layout/GlobalProvider/darkNeutrals';
+
 interface IProps {
   onChange?: (v: NeutralColors) => void;
   value?: NeutralColors;
@@ -11,14 +13,19 @@ interface IProps {
 const ThemeSwatchesNeutral = memo<IProps>(({ value, onChange }) => {
   const { t } = useTranslation('color');
 
+  // The presets below are registered at runtime, so none of them is in the
+  // built-in neutral name table. Match the swatch colour back to its name first
+  // and only then fall back to the table.
   const handleSelect = (v: any) => {
-    const name = findCustomThemeName('neutral', v) as NeutralColors;
-    onChange?.(name || '');
+    const preset = DARK_NEUTRALS.find((item) => item.swatch === v);
+    const name = preset ? preset.name : findCustomThemeName('neutral', v);
+
+    onChange?.((name || '') as NeutralColors);
   };
 
   return (
     <ColorSwatches
-      value={value ? neutralColors[value] : undefined}
+      value={findDarkNeutral(value)?.swatch ?? neutralColors[value]}
       colors={[
         {
           color: 'rgba(0, 0, 0, 0)',
@@ -44,6 +51,10 @@ const ThemeSwatchesNeutral = memo<IProps>(({ value, onChange }) => {
           color: neutralColors.slate,
           title: t('slate'),
         },
+        ...DARK_NEUTRALS.map((preset) => ({
+          color: preset.swatch,
+          title: t(preset.name),
+        })),
       ]}
       onChange={handleSelect}
     />

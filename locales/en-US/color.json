@@ -1,5 +1,6 @@
 {
   "blue": "Dawn Blue",
+  "cool": "Blue Grey",
   "custom": "Custom",
   "cyan": "Bright Cyan",
   "default": "Default",
@@ -9,6 +10,7 @@
   "lime": "Lime",
   "magenta": "French Magenta",
   "mauve": "Wisteria Purple",
+  "neutral": "Neutral",
   "olive": "Olive Green",
   "orange": "Sunset",
   "purple": "Eggplant Purple",
@@ -17,5 +19,6 @@
   "sand": "Beach",
   "slate": "Slate Gray",
   "volcano": "Volcano",
+  "warm": "Warm Grey",
   "yellow": "Sunrise"
 }

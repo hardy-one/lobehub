@@ -1,6 +1,7 @@
 export default {
   blue: 'Dawn Blue',
   custom: 'Custom',
+  cool: 'Blue Grey',
   cyan: 'Bright Cyan',
   default: 'Default',
   geekblue: 'Geek Blue',
@@ -9,6 +10,7 @@ export default {
   lime: 'Lime',
   magenta: 'French Magenta',
   mauve: 'Wisteria Purple',
+  neutral: 'Neutral',
   olive: 'Olive Green',
   orange: 'Sunset',
   purple: 'Eggplant Purple',
@@ -17,5 +19,6 @@ export default {
   sand: 'Beach',
   slate: 'Slate Gray',
   volcano: 'Volcano',
+  warm: 'Warm Grey',
   yellow: 'Sunrise',
 };

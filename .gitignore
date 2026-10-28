@@ -119,6 +119,7 @@ vertex-ai-key.json
 
 # AI coding tools
 .local/
+.pi/
 .claude/
 .mcp.json
 CLAUDE.local.md
@@ -175,7 +176,10 @@ docs/ryugi/
 .auv/
 
 # Amp agent runtime
-.amp/
+.amp/*
+!.amp/
+!.amp/settings.json
+.pw-cache/
 
 # synthesized by plugins/vite/completionSounds.ts
 public/sounds/

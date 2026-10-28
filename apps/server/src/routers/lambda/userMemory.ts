@@ -28,7 +28,7 @@ import {
   UserPersonaVersionNotFoundError,
   UserPersonaVersionSnapshotMissingError,
 } from '@/database/models/userMemory/persona';
-import { appEnv } from '@/envs/app';
+import { getQStashCallbackBaseUrl } from '@/envs/qstash';
 import { router } from '@/libs/trpc/lambda';
 import { serverDatabase } from '@/libs/trpc/lambda/middleware';
 import { parseMemoryExtractionConfig } from '@/server/globalConfig/parseMemoryExtractionConfig';
@@ -313,7 +313,9 @@ export const userMemoryRouter = router({
       }
 
       const { webhook, upstashWorkflowExtraHeaders } = parseMemoryExtractionConfig();
-      const baseUrl = webhook.baseUrl || appEnv.INTERNAL_APP_URL || appEnv.APP_URL;
+      // QStash/Upstash workflow entry URLs must be publicly resolvable; APP_URL
+      // takes precedence over the docker-network-only INTERNAL_APP_URL.
+      const baseUrl = webhook.baseUrl || getQStashCallbackBaseUrl();
 
       try {
         const { workflowRunId } = await MemoryExtractionWorkflowService.triggerProcessUsers(

@@ -22,6 +22,7 @@ import {
 } from '@/libs/better-auth/email-templates';
 import { deferredSessionRefresh } from '@/libs/better-auth/plugins/deferred-session-refresh';
 import { emailWhitelist } from '@/libs/better-auth/plugins/email-whitelist';
+import { invitationCode } from '@/libs/better-auth/plugins/invitation-code';
 import { sessionOptions } from '@/libs/better-auth/session-options';
 import { initBetterAuthSSOProviders } from '@/libs/better-auth/sso';
 import {
@@ -313,6 +314,7 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
       ...customOptions.plugins,
       deferredSessionRefresh(),
       emailWhitelist(),
+      invitationCode(),
       expo(),
       admin(),
       // Email OTP plugin for mobile verification

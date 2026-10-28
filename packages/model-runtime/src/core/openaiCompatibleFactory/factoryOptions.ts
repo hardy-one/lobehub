@@ -190,6 +190,9 @@ export interface OpenAICompatibleFactoryOptions<T extends Record<string, any> = 
   /**
    * Additional provider-specific model patterns that support `prompt_cache_key`.
    * OpenAI models are handled by the factory default; other providers must opt in.
+   *
+   * Patterns are tested with `RegExp.test`, so `g` / `y` flags would make the
+   * result depend on how many times the pattern has already been tested.
    */
   promptCacheKeyModels?: Array<string | RegExp>;
   provider: string;

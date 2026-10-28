@@ -1000,6 +1000,71 @@ describe('LobeOpenAICompatibleFactory', () => {
         );
       });
 
+      it('should add prompt_cache_key for provider models opted in via promptCacheKeyModels', async () => {
+        const LobeMoonshotProvider = createOpenAICompatibleRuntime({
+          baseURL: 'https://api.moonshot.cn/v1',
+          promptCacheKeyModels: [/^kimi-/],
+          provider: 'moonshot',
+        });
+
+        const instance = new LobeMoonshotProvider({ apiKey: 'test' });
+        const mockCreateMethod = vi
+          .spyOn(instance['client'].chat.completions, 'create')
+          .mockResolvedValue(new ReadableStream() as any);
+
+        await instance.chat(
+          {
+            messages: [{ content: 'Hello', role: 'user' }],
+            model: 'kimi-k2',
+            temperature: 0,
+          },
+          { user: 'testUser' },
+        );
+
+        expect(mockCreateMethod).toHaveBeenCalledWith(
+          expect.objectContaining({
+            prompt_cache_key: 'lobe:testUser:kimi-k2',
+          }),
+          expect.anything(),
+        );
+      });
+
+      it('should match provider promptCacheKeyModels on every call', async () => {
+        // A `g` flag would make `test()` stateful: the second call would miss.
+        const LobeMoonshotProvider = createOpenAICompatibleRuntime({
+          baseURL: 'https://api.moonshot.cn/v1',
+          promptCacheKeyModels: [/^kimi-/, 'kimi'],
+          provider: 'moonshot',
+        });
+
+        const instance = new LobeMoonshotProvider({ apiKey: 'test' });
+        const mockCreateMethod = vi.spyOn(instance['client'].chat.completions, 'create');
+        // A fresh stream per call: one mock response cannot be read three times.
+        mockCreateMethod.mockImplementation(() => new ReadableStream() as any as Promise<any>);
+
+        for (let i = 0; i < 3; i++) {
+          try {
+            await instance.chat(
+              {
+                messages: [{ content: 'Hello', role: 'user' }],
+                model: 'kimi-k2',
+                temperature: 0,
+              },
+              { user: 'testUser' },
+            );
+          } catch {
+            // The empty stream ends without a message; only the request matters here.
+          }
+        }
+
+        expect(mockCreateMethod).toHaveBeenCalledTimes(3);
+        for (const call of mockCreateMethod.mock.calls) {
+          expect(call[0]).toEqual(
+            expect.objectContaining({ prompt_cache_key: 'lobe:testUser:kimi-k2' }),
+          );
+        }
+      });
+
       it('should not override custom prompt_cache_key from handlePayload', async () => {
         const LobeOpenAIProvider = createOpenAICompatibleRuntime({
           baseURL: 'https://api.openai.com/v1',

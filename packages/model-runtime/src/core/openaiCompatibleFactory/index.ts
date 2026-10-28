@@ -435,7 +435,6 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
         if (!model) return false;
         if (typeof item === 'string') return model.includes(item);
 
-        item.lastIndex = 0;
         return item.test(model);
       });
       if (matchesProviderPromptCacheModel) {

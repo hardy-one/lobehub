@@ -1,8 +1,34 @@
-import { cssVar, Icon } from '@lobehub/ui';
+import { createStaticStyles, cssVar, Icon, keyframes } from '@lobehub/ui';
 import { CircleAlert } from 'lucide-react';
 import { memo } from 'react';
 
 import { EXECUTION_STATUS_VISUALS, type ExecutionStatusVisual } from '@/components/ExecutionStatus';
+
+const spin = keyframes`
+  to {
+    transform: rotate(360deg);
+  }
+`;
+
+const styles = createStaticStyles(({ css }) => ({
+  // The animation lives on the wrapping span, never on the svg: Blink refuses
+  // to composite transform animations on SVG elements once the effective zoom
+  // is > 1 (device pixel ratio scaling), so an svg-level spin costs a full
+  // style-recalc pass over the whole document every frame (~60/s measured
+  // on-device with several running icons mounted). An HTML wrapper composites
+  // for free. The track and center dot are rotation-symmetric, so spinning
+  // the whole icon is equivalent.
+  running: css`
+    display: inline-flex;
+    flex: none;
+    line-height: 1;
+    animation: ${spin} 1s linear infinite;
+
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
+  `,
+}));
 
 type TopicRunStatus =
   | 'canceled'
@@ -37,26 +63,19 @@ const RunningIcon = memo<{ size: number }>(({ size }) => {
   const mainColor = cssVar.colorWarning;
   const ringColor = `color-mix(in srgb, ${cssVar.colorWarning} 35%, transparent)`;
   return (
-    <svg aria-hidden fill="none" height={size} style={NO_SHRINK} viewBox="0 0 16 16" width={size}>
-      <circle cx="8" cy="8" r="6.5" stroke={ringColor} strokeWidth="1.5" />
-      <path
-        d="M14.5 8 A 6.5 6.5 0 0 1 8 14.5"
-        fill="none"
-        stroke={mainColor}
-        strokeLinecap="round"
-        strokeWidth="1.5"
-      >
-        <animateTransform
-          attributeName="transform"
-          dur="1s"
-          from="0 8 8"
-          repeatCount="indefinite"
-          to="360 8 8"
-          type="rotate"
+    <span className={styles.running}>
+      <svg aria-hidden fill="none" height={size} viewBox="0 0 16 16" width={size}>
+        <circle cx="8" cy="8" r="6.5" stroke={ringColor} strokeWidth="1.5" />
+        <path
+          d="M14.5 8 A 6.5 6.5 0 0 1 8 14.5"
+          fill="none"
+          stroke={mainColor}
+          strokeLinecap="round"
+          strokeWidth="1.5"
         />
-      </path>
-      <circle cx="8" cy="8" fill={mainColor} r="2.5" stroke={ringColor} strokeWidth="1" />
-    </svg>
+        <circle cx="8" cy="8" fill={mainColor} r="2.5" stroke={ringColor} strokeWidth="1" />
+      </svg>
+    </span>
   );
 });
 

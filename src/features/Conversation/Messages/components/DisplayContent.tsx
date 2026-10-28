@@ -3,9 +3,9 @@ import { type MarkdownProps } from '@lobehub/ui';
 import { memo } from 'react';
 
 import { LOADING_FLAT } from '@/const/message';
+import { usePreparedMessage } from '@/features/Conversation/hooks/usePreparedMessage';
 import MarkdownMessage from '@/features/Conversation/Markdown';
 
-import { normalizeThinkTags, processWithArtifact } from '../../utils/markdown';
 import ContentLoading from './ContentLoading';
 import { RichContentRenderer } from './RichContentRenderer';
 
@@ -30,7 +30,11 @@ const DisplayContent = memo<{
     tempDisplayContent,
     id,
   }) => {
-    const message = normalizeThinkTags(processWithArtifact(content));
+    // Only the plain-text branch needs the rewritten message; multimodal parts
+    // and the placeholder states never read it. Preparing it first spent the
+    // full-text passes on renders that returned a skeleton or parts instead.
+    const needsPrintableMessage = !isToolCallGenerating && !isMultimodal;
+    const preparedMessage = usePreparedMessage(needsPrintableMessage ? content : '');
     if (isToolCallGenerating) return;
 
     if (content === LOADING_FLAT) return generating ? <ContentLoading id={id} /> : null;
@@ -41,7 +45,7 @@ const DisplayContent = memo<{
     return contentParts ? (
       <RichContentRenderer parts={contentParts} />
     ) : (
-      <MarkdownMessage {...markdownProps}>{message}</MarkdownMessage>
+      <MarkdownMessage {...markdownProps}>{preparedMessage}</MarkdownMessage>
     );
   },
 );

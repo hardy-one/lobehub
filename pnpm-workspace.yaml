@@ -95,6 +95,7 @@ overrides:
   'zod@^4': 4.6.5
 
 patchedDependencies:
+  '@lobehub/editor': patches/@lobehub__editor.patch
   '@lobehub/streamdown': patches/@lobehub__streamdown.patch
   '@lobehub/ui': patches/@lobehub__ui.patch
   '@upstash/qstash': patches/@upstash__qstash.patch

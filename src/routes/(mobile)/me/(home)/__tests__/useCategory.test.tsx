@@ -50,6 +50,8 @@ describe('useCategory', () => {
       expect(items.some((item) => item.key === 'setting')).toBe(true);
       expect(items.some((item) => item.key === 'docs')).toBe(true);
       expect(items.some((item) => item.key === 'feedback')).toBe(true);
+      expect(items.some((item) => item.key === 'agents')).toBe(true);
+      expect(items.some((item) => item.key === 'tasks')).toBe(true);
       expect(items.some((item) => item.key === 'changelog')).toBe(true);
     });
   });

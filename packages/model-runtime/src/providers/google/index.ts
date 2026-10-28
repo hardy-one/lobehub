@@ -5,6 +5,7 @@ import type {
   Tool as GoogleFunctionCallTool,
 } from '@google/genai';
 import { GoogleGenAI } from '@google/genai';
+import { LOBE_USER_AGENT } from '@lobechat/const';
 import debug from 'debug';
 
 import type { LobeRuntimeAI } from '../../core/BaseAI';
@@ -149,9 +150,10 @@ export class LobeGoogleAI implements LobeRuntimeAI {
   }: LobeGoogleAIParams = {}) {
     if (!apiKey) throw AgentRuntimeError.createError(AgentRuntimeErrorType.InvalidProviderAPIKey);
 
-    const httpOptions = baseURL
-      ? ({ baseUrl: baseURL, headers: defaultHeaders } as HttpOptions)
-      : undefined;
+    const httpOptions = {
+      ...(baseURL ? { baseUrl: baseURL } : {}),
+      headers: { 'User-Agent': LOBE_USER_AGENT, ...defaultHeaders },
+    } as HttpOptions;
 
     this.apiKey = apiKey;
     this.client = client ?? new GoogleGenAI({ apiKey, httpOptions });

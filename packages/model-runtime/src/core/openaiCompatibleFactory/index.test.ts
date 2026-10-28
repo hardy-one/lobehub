@@ -115,6 +115,38 @@ afterEach(() => {
 });
 
 describe('LobeOpenAICompatibleFactory', () => {
+  describe('User-Agent', () => {
+    // The SDK names itself after `this.constructor.name`, which a minified
+    // build leaves a single letter: without this every vendor sees `k/JS …`.
+    it('sends LobeHub as the User-Agent, not the SDK class name', () => {
+      const headers = (instance['client'] as any)._options.defaultHeaders;
+
+      expect(headers['User-Agent']).toMatch(/^lobehub\//);
+      expect(headers['User-Agent']).not.toMatch(/^\w\/JS /);
+    });
+
+    it("keeps a provider's own User-Agent over it", () => {
+      const provider = createOpenAICompatibleRuntime({
+        constructorOptions: { defaultHeaders: { 'User-Agent': 'vendor-agent/1.0' } },
+        provider: ModelProvider.Groq,
+      });
+      const headers = (new provider({ apiKey: 'test' })['client'] as any)._options.defaultHeaders;
+
+      expect(headers['User-Agent']).toBe('vendor-agent/1.0');
+    });
+
+    it('keeps provider headers beside the User-Agent', () => {
+      const provider = createOpenAICompatibleRuntime({
+        constructorOptions: { defaultHeaders: { 'X-Title': 'LobeHub' } },
+        provider: ModelProvider.Groq,
+      });
+      const headers = (new provider({ apiKey: 'test' })['client'] as any)._options.defaultHeaders;
+
+      expect(headers['X-Title']).toBe('LobeHub');
+      expect(headers['User-Agent']).toMatch(/^lobehub\//);
+    });
+  });
+
   // Polyfill File for Node environment used in image tests
   if (typeof File === 'undefined') {
     // @ts-ignore

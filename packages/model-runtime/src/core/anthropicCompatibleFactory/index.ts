@@ -1,6 +1,6 @@
 import Anthropic, { type ClientOptions } from '@anthropic-ai/sdk';
 import type { Stream } from '@anthropic-ai/sdk/streaming';
-import { CURRENT_VERSION } from '@lobechat/const';
+import { LOBE_USER_AGENT } from '@lobechat/const';
 import type { ChatModelCard } from '@lobechat/types';
 import debug from 'debug';
 import type { Pricing } from 'model-bank';
@@ -304,7 +304,7 @@ export const createDefaultAnthropicClient = <T extends Record<string, any> = any
   const betaHeaders = process.env.ANTHROPIC_BETA_HEADERS;
   const baseURL = normalizeAnthropicCompatibleBaseURL(options.baseURL);
   const defaultHeaders = {
-    'User-Agent': `lobehub/${CURRENT_VERSION}`,
+    'User-Agent': LOBE_USER_AGENT,
     ...options.defaultHeaders,
     ...(betaHeaders ? { 'anthropic-beta': betaHeaders } : {}),
   };
@@ -564,7 +564,7 @@ export const createAnthropicCompatibleRuntime = <T extends Record<string, any> =
       if (customClient?.createClient) {
         this.client = customClient.createClient(initOptions as ConstructorOptions<T>);
       } else {
-        this.client = new Anthropic(initOptions as ConstructorOptions<T>);
+        this.client = createDefaultAnthropicClient(initOptions);
       }
 
       this.baseURL = finalBaseURL || this.client.baseURL;

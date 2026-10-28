@@ -1,3 +1,4 @@
+import { LOBE_USER_AGENT } from '@lobechat/const';
 import type { ChatModelCard } from '@lobechat/types';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -179,6 +180,23 @@ type OpenAIModelWithProviderMetadata = OpenAI.Model & {
   name?: string;
 };
 
+/**
+ * initOptions with LobeHub's User-Agent in `defaultHeaders`. The OpenAI SDK
+ * names itself after `this.constructor.name`, which a minified build leaves a
+ * single letter, so every request would otherwise reach a vendor as `k/JS
+ * 6.49.0`. A provider's own headers come after, so one that must look like
+ * something else still decides.
+ */
+const withLobeUserAgent = <T extends Record<string, any>>(options: T): T => {
+  const { defaultHeaders, ...rest } = options as T & {
+    defaultHeaders?: Record<string, string>;
+  };
+  return {
+    ...rest,
+    defaultHeaders: { 'User-Agent': LOBE_USER_AGENT, ...defaultHeaders },
+  } as T;
+};
+
 export const createOpenAICompatibleRuntime = <T extends Record<string, any> = any>({
   provider,
   baseURL: DEFAULT_BASE_URL,
@@ -239,7 +257,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
 
       if (!apiKey) throw AgentRuntimeError.createError(ErrorType?.invalidAPIKey);
 
-      const initOptions = { apiKey, baseURL, ...constructorOptions, ...res };
+      const initOptions = withLobeUserAgent({ apiKey, baseURL, ...constructorOptions, ...res });
 
       // if the custom client is provided, use it as client
       if (customClient?.createClient) {
@@ -582,12 +600,12 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
             baseURL: targetBaseURL,
           } as ConstructorOptions<T>;
 
-          const initOptions = {
+          const initOptions = withLobeUserAgent({
             apiKey: sanitizedApiKey,
             baseURL: targetBaseURL,
             ...constructorOptions,
             ...restOptions,
-          } as ConstructorOptions<T> & Record<string, any>;
+          }) as ConstructorOptions<T> & Record<string, any>;
 
           this._options = nextOptions;
 

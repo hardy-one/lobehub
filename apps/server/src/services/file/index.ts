@@ -181,6 +181,15 @@ export class FileService {
   }
 
   /**
+   * Read an object this deployment stores, addressed by its browser-facing URL.
+   * Returns `undefined` when the URL is not ours, so callers keep their existing
+   * transport for external URLs.
+   */
+  public async readObjectByUrl(url: string): Promise<Uint8Array | undefined> {
+    return this.impl.readObjectByUrl(url);
+  }
+
+  /**
    * Extract key from full URL
    */
   public async getKeyFromFullUrl(url: string): Promise<string | null> {

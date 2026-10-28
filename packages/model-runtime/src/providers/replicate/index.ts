@@ -1,3 +1,4 @@
+import { LOBE_USER_AGENT } from '@lobechat/const';
 import { Buffer } from 'buffer.js';
 import Replicate from 'replicate';
 
@@ -37,6 +38,7 @@ export class LobeReplicateAI implements LobeRuntimeAI {
       auth: apiKey,
       baseUrl: baseURL !== DEFAULT_BASE_URL ? baseURL : undefined,
       useFileOutput: false, // Return URLs instead of binary data
+      userAgent: LOBE_USER_AGENT,
     });
 
     this.baseURL = baseURL;

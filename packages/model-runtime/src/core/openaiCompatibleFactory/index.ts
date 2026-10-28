@@ -1,3 +1,4 @@
+import { LOBE_USER_AGENT } from '@lobechat/const';
 import type { ChatModelCard } from '@lobechat/types';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -60,6 +61,7 @@ import {
   type SignatureScopeKind,
 } from '../../utils/signatureScope';
 import type { LobeRuntimeAI } from '../BaseAI';
+import type { LocalObjectReader } from '../contextBuilders/localObject';
 import { normalizeToolsParameters } from '../contextBuilders/normalizeToolSchema';
 import { convertOpenAIMessages, convertOpenAIResponseInputs } from '../contextBuilders/openai';
 import { resolveModelSamplingParameters } from '../parameterResolver';
@@ -171,6 +173,32 @@ const getGenerateObjectResponsesReasoningParams = ({
     : {};
 };
 
+type OpenAIModelWithProviderMetadata = OpenAI.Model & {
+  context_length?: number;
+  max_output_tokens?: number;
+  max_tokens?: number;
+  name?: string;
+};
+
+/**
+ * initOptions with LobeHub's User-Agent in `defaultHeaders`. The OpenAI SDK
+ * names itself after `this.constructor.name`, which a minified build leaves a
+ * single letter, so every request would otherwise reach a vendor as `k/JS
+ * 6.49.0`. A provider's own headers come after, so one that must look like
+ * something else still decides.
+ */
+const withLobeUserAgent = <T extends Record<string, any>>(
+  options: T,
+): Omit<T, 'defaultHeaders'> & { defaultHeaders: Record<string, string> } => {
+  const { defaultHeaders, ...rest } = options;
+  return Object.assign(rest, {
+    defaultHeaders: {
+      'User-Agent': LOBE_USER_AGENT,
+      ...(defaultHeaders as Record<string, string>),
+    },
+  });
+};
+
 export const createOpenAICompatibleRuntime = <T extends Record<string, any> = any>({
   provider,
   baseURL: DEFAULT_BASE_URL,
@@ -231,7 +259,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
 
       if (!apiKey) throw AgentRuntimeError.createError(ErrorType?.invalidAPIKey);
 
-      const initOptions = { apiKey, baseURL, ...constructorOptions, ...res };
+      const initOptions = withLobeUserAgent({ apiKey, baseURL, ...constructorOptions, ...res });
 
       // if the custom client is provided, use it as client
       if (customClient?.createClient) {
@@ -260,6 +288,18 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
             provider: this.id,
           });
       }
+    }
+
+    /**
+     * `chatCompletion` from the factory config is static, but the constructor
+     * options are where `ModelRuntime` forwards per-deployment values, so a
+     * deployment-supplied reader must win.
+     */
+    private get localObjectReader(): LocalObjectReader | undefined {
+      const instanceChat = (this._options as any).chatCompletion as
+        { localObjectReader?: LocalObjectReader } | undefined;
+
+      return instanceChat?.localObjectReader ?? chatCompletion?.localObjectReader;
     }
 
     /**
@@ -357,6 +397,11 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
 
       const log = debug(`${this.logPrefix}:shouldUseResponsesAPI`);
 
+      // Provider-scoped protocol metadata is stronger than global model-name heuristics.
+      if (this._options.modelSdkType) {
+        return this._options.modelSdkType === 'openai-responses';
+      }
+
       // Priority 0: Check built-in Responses API model rules FIRST (highest priority)
       // These models MUST use Responses API regardless of user settings.
       if (model && isResponsesAPIModel(model)) {
@@ -435,7 +480,6 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
         if (!model) return false;
         if (typeof item === 'string') return model.includes(item);
 
-        item.lastIndex = 0;
         return item.test(model);
       });
       if (matchesProviderPromptCacheModel) {
@@ -558,12 +602,12 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
             baseURL: targetBaseURL,
           } as ConstructorOptions<T>;
 
-          const initOptions = {
+          const initOptions = withLobeUserAgent({
             apiKey: sanitizedApiKey,
             baseURL: targetBaseURL,
             ...constructorOptions,
             ...restOptions,
-          } as ConstructorOptions<T> & Record<string, any>;
+          }) as ConstructorOptions<T> & Record<string, any>;
 
           this._options = nextOptions;
 
@@ -587,6 +631,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
         const messages = await convertOpenAIMessages(postPayload.messages, {
           forceImageBase64: chatCompletion?.forceImageBase64,
           forceVideoBase64: chatCompletion?.forceVideoBase64,
+          localObjectReader: this.localObjectReader,
           model: postPayload.model,
           supportsAudioInput: chatCompletion?.supportsAudioInput,
           thoughtSignatureScope,
@@ -893,16 +938,29 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
               return dayjs.utc(item.created * 1000).format('YYYY-MM-DD');
             };
 
-            // TODO: should refactor after remove v1 user/modelList code
+            const providerModel = item as OpenAIModelWithProviderMetadata;
+            const contextWindowTokens = providerModel.context_length;
+            const maxOutput = providerModel.max_tokens ?? providerModel.max_output_tokens;
+            const remoteModelMetadata = {
+              ...(contextWindowTokens === undefined ? {} : { contextWindowTokens }),
+              ...(maxOutput === undefined ? {} : { maxOutput }),
+              ...(providerModel.name ? { displayName: providerModel.name } : {}),
+            };
+
+            // Model-bank card is authoritative for known models; keep provider data as fallback
+            // for metadata this endpoint exposes or for unknown models.
             const knownModel = LOBE_DEFAULT_MODEL_LIST.find((model) => model.id === item.id);
 
             if (knownModel) {
-              const releasedAt = knownModel.releasedAt ?? toReleasedAt();
-
-              return { ...knownModel, releasedAt };
+              return {
+                ...remoteModelMetadata,
+                ...knownModel,
+                releasedAt: toReleasedAt() ?? knownModel.releasedAt,
+              };
             }
 
             return {
+              ...remoteModelMetadata,
               id: item.id,
               releasedAt: toReleasedAt(),
             };
@@ -1044,6 +1102,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
           const input = await convertOpenAIResponseInputs(messages as any, {
             forceImageBase64: chatCompletion?.forceImageBase64,
             forceVideoBase64: chatCompletion?.forceVideoBase64,
+            localObjectReader: this.localObjectReader,
             provider: this.id,
             strictToolPairing: true,
           });
@@ -1440,6 +1499,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
       const input = await convertOpenAIResponseInputs(messages as any, {
         forceImageBase64: chatCompletion?.forceImageBase64,
         forceVideoBase64: chatCompletion?.forceVideoBase64,
+        localObjectReader: this.localObjectReader,
         provider: this.id,
         reasoningSignatureScope,
         strictToolPairing: true,
@@ -1632,6 +1692,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
         const input = await convertOpenAIResponseInputs(messages as any, {
           forceImageBase64: chatCompletion?.forceImageBase64,
           forceVideoBase64: chatCompletion?.forceVideoBase64,
+          localObjectReader: this.localObjectReader,
           provider: this.id,
           reasoningSignatureScope,
           strictToolPairing: true,
@@ -1683,6 +1744,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
       const msgs = await convertOpenAIMessages(messages as any, {
         forceImageBase64: chatCompletion?.forceImageBase64,
         forceVideoBase64: chatCompletion?.forceVideoBase64,
+        localObjectReader: this.localObjectReader,
         model,
         thoughtSignatureScope,
       });

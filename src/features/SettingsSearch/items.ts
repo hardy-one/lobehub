@@ -350,7 +350,7 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   },
   {
     anchor: 'appearance-neutral-color',
-    keywords: ['color', 'gray', 'grey'],
+    keywords: ['color scheme', 'gray', 'grey', 'dark', 'contrast', 'astigmatism'],
     labelKey: 'settingAppearance.neutralColor.title',
     tab: SettingsTabs.Appearance,
   },

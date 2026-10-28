@@ -12,6 +12,7 @@ import {
   FontLoader,
   registerLobeNeutral,
   setLobeTheme,
+  useThemeMode,
 } from '@lobehub/ui';
 import * as m from 'motion/react-m';
 import { type ReactNode } from 'react';
@@ -20,7 +21,7 @@ import { memo, useEffect, useMemo, useState } from 'react';
 import Link from '@/components/Link';
 import { genFontFamily, genFontFamilyCode } from '@/const/font';
 import { LOBE_THEME_NEUTRAL_COLOR, LOBE_THEME_PRIMARY_COLOR } from '@/const/theme';
-import { registerDarkNeutrals } from '@/layout/GlobalProvider/darkNeutrals';
+import { registerDarkNeutrals, suitsAppearance } from '@/layout/GlobalProvider/darkNeutrals';
 import { getUILocaleAndResources } from '@/libs/getUILocaleAndResources';
 import type { UILocaleResources } from '@/libs/getUILocaleAndResources.utils';
 import { resolveUILocale } from '@/libs/getUILocaleAndResources.utils';
@@ -106,6 +107,7 @@ const AppTheme = memo<AppThemeProps>(
     customFontFamily,
   }) => {
     const language = useGlobalStore(systemStatusSelectors.language);
+    const { isDarkMode } = useThemeMode();
     const [primaryColor, neutralColor, fontAntialiasing] = useUserStore((s) => [
       userGeneralSettingsSelectors.primaryColor(s),
       userGeneralSettingsSelectors.neutralColor(s),
@@ -163,11 +165,17 @@ const AppTheme = memo<AppThemeProps>(
       // into a near-neutral grey.
       registerDarkNeutrals(registerLobeNeutral);
 
+      // A preset tuned for one appearance paints the wrong surfaces in the other,
+      // so falling back keeps the page readable after a light/dark switch instead
+      // of leaving the previous appearance's palette in place.
       setLobeTheme({
-        neutralColor: neutralColor ?? defaultNeutralColor,
+        neutralColor:
+          neutralColor && suitsAppearance(neutralColor, isDarkMode)
+            ? neutralColor
+            : defaultNeutralColor,
         primaryColor: primaryColor ?? defaultPrimaryColor,
       });
-    }, [primaryColor, neutralColor, defaultPrimaryColor, defaultNeutralColor]);
+    }, [primaryColor, neutralColor, defaultPrimaryColor, defaultNeutralColor, isDarkMode]);
 
     useEffect(() => {
       const { style } = document.documentElement;

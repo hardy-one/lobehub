@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { DARK_NEUTRALS, findDarkNeutral, isDarkNeutral, neutralsFor } from './darkNeutrals';
+import {
+  DARK_NEUTRALS,
+  findDarkNeutral,
+  isDarkNeutral,
+  neutralsFor,
+  suitsAppearance,
+} from './darkNeutrals';
 
 const luminance = (hex: string) => {
   const [r, g, b] = [1, 3, 5].map((i) => {
@@ -24,6 +30,18 @@ describe('dark neutrals', () => {
       'catppuccin-frappe',
       'catppuccin-latte',
     ]);
+  });
+
+  it('drops a preset that does not suit the appearance in use', () => {
+    // A dark preset left selected after switching to light keeps painting dark
+    // surfaces, so it has to be treated as unusable there.
+    expect(suitsAppearance('solarized', true)).toBe(true);
+    expect(suitsAppearance('solarized', false)).toBe(false);
+    expect(suitsAppearance('catppuccin-latte', false)).toBe(true);
+    expect(suitsAppearance('catppuccin-latte', true)).toBe(false);
+    // Names the theme does not own are left to the built-in selection.
+    expect(suitsAppearance('slate', false)).toBe(true);
+    expect(suitsAppearance(undefined, true)).toBe(true);
   });
 
   it('offers only the presets that suit the appearance in use', () => {

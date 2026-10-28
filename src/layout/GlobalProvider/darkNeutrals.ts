@@ -405,6 +405,23 @@ export const DARK_NEUTRALS: DarkNeutral[] = DARK_PRESETS.map((preset) => {
 export const neutralsFor = (isDark: boolean) =>
   DARK_NEUTRALS.filter((preset) => (preset.appearance === 'dark') === isDark);
 
+/**
+ * A stored preset name is only usable in the appearance it was tuned for. A dark
+ * preset keeps painting dark surfaces after the app switches to light, so the
+ * name has to be dropped when the appearance no longer matches it.
+ */
+export const suitsAppearance = (name: string | undefined | null, isDark: boolean) => {
+  if (!name) return true;
+
+  const preset = findDarkNeutral(name);
+
+  // A name the theme does not own (a built-in preset or a custom hex) is left
+  // alone; only the presets defined here carry an appearance.
+  if (!preset) return true;
+
+  return (preset.appearance === 'dark') === isDark;
+};
+
 export const isDarkNeutral = (value?: string | null) =>
   !!value && DARK_NEUTRALS.some((preset) => preset.name === value);
 

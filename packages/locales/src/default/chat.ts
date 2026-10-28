@@ -618,6 +618,7 @@ export default {
   'groupWizard.searchTemplates': 'Search templates...',
   'groupWizard.title': 'Create Group',
   'groupWizard.useTemplate': 'Use Template',
+  'heteroAgent.defaultName': "{{owner}}'s {{product}}",
   'heteroAgent.fullAccess.label': 'Full access',
   'heteroAgent.fullAccess.tooltip':
     'The local coding agent runs with full read/write access to the working directory. Switching permission modes is not available yet.',
@@ -792,6 +793,8 @@ export default {
   'heteroAgent.modelSelector.reasoning.low': 'Low',
   'heteroAgent.modelSelector.reasoning.max': 'Max',
   'heteroAgent.modelSelector.reasoning.medium': 'Medium',
+  'heteroAgent.modelSelector.reasoning.minimal': 'Minimal',
+  'heteroAgent.modelSelector.reasoning.off': 'Off',
   'heteroAgent.modelSelector.reasoning.ultra': 'Ultra',
   'heteroAgent.modelSelector.reasoning.xhigh': 'Extra High',
   'heteroAgent.modelSelector.source.agent': 'Agent default',

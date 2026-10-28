@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { TopicModel } from '@/database/models/topic';
 import { router } from '@/libs/trpc/lambda';
+import { markSilentTRPCErrorLog } from '@/libs/trpc/utils/errorLogger';
 import { signUserJWT } from '@/libs/trpc/utils/internalJwt';
 
 import { findVisitorTopicOrThrow, resolveLinkShareOrThrow } from './guards';
@@ -64,10 +65,16 @@ export const gatewayRouter = router({
         !runningOperation ||
         !(await topicModel.isRunningOperationAlive(ctx.serverDB, runningOperation))
       ) {
-        throw new TRPCError({
+        const staleMarkerCause = new Error('No running operation found on this topic');
+        const staleMarkerError = new TRPCError({
+          cause: staleMarkerCause,
           code: 'NOT_FOUND',
           message: 'No running operation found on this topic',
         });
+        // Same expected 404 as the owner path in `aiAgent.refreshGatewayToken`:
+        // a visitor's page can reconnect to a run that already finished.
+        markSilentTRPCErrorLog(staleMarkerCause);
+        throw staleMarkerError;
       }
 
       const token = await signUserJWT(ctx.userId);

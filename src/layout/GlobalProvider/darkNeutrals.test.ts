@@ -18,9 +18,6 @@ const contrast = (a: string, b: string) => {
 describe('dark neutrals', () => {
   it('offers the tuned presets', () => {
     expect(DARK_NEUTRALS.map(({ name }) => name)).toEqual([
-      'cool',
-      'neutral',
-      'warm',
       'solarized',
       'catppuccin-mocha',
       'catppuccin-macchiato',
@@ -138,8 +135,8 @@ describe('dark neutrals', () => {
   });
 
   it('resolves a stored name back to its swatch', () => {
-    expect(isDarkNeutral('cool')).toBe(true);
+    expect(isDarkNeutral('solarized')).toBe(true);
     expect(isDarkNeutral('mauve')).toBe(false);
-    expect(findDarkNeutral('warm')?.swatch).toBe('#1c1c1c');
+    expect(findDarkNeutral('solarized')?.swatch).toBe('#002b36');
   });
 });

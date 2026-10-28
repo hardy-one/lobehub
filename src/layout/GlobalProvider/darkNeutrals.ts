@@ -37,30 +37,6 @@ interface DarkPreset {
 
 const DARK_PRESETS: DarkPreset[] = [
   {
-    container: '#23282f',
-    elevated: '#2b313a',
-    label: 'Blue Grey',
-    layout: '#1b1f26',
-    name: 'cool',
-    text: ['#dedede', '#aaaaaa', '#8f8f8f', '#7d7d7d'],
-  },
-  {
-    container: '#222325',
-    elevated: '#2a2b2e',
-    label: 'Neutral',
-    layout: '#1a1b1d',
-    name: 'neutral',
-    text: ['#dedede', '#aaaaaa', '#8f8f8f', '#7d7d7d'],
-  },
-  {
-    container: '#242424',
-    elevated: '#2c2c2c',
-    label: 'Warm Grey',
-    layout: '#1c1c1c',
-    name: 'warm',
-    text: ['#dedede', '#aaaaaa', '#8f8f8f', '#7d7d7d'],
-  },
-  {
     container: '#073642',
     elevated: '#0d4753',
     label: 'Solarized',

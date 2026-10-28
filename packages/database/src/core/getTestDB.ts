@@ -14,6 +14,8 @@ import * as schema from '../schemas';
 import type { LobeChatDatabase } from '../type';
 
 const migrationsFolder = join(__dirname, '../../migrations');
+const forkMigrationsFolder = join(__dirname, '../../migrations-fork');
+const forkMigrationTable = '__lobehub_fork_migrations';
 
 const isServerDBMode = process.env.TEST_SERVER_DB === '1';
 
@@ -35,6 +37,10 @@ export const getTestDB = async (): Promise<LobeChatDatabase> => {
     testServerDB = nodeDrizzle(client, { schema });
 
     await nodeMigrate(testServerDB, { migrationsFolder });
+    await nodeMigrate(testServerDB, {
+      migrationsFolder: forkMigrationsFolder,
+      migrationsTable: forkMigrationTable,
+    });
 
     return testServerDB as unknown as LobeChatDatabase;
   }
@@ -47,6 +53,10 @@ export const getTestDB = async (): Promise<LobeChatDatabase> => {
 
   // pg_search migrations skip themselves when the extension is unavailable, as in PGlite.
   await pgliteMigrate(testClientDB, { migrationsFolder });
+  await pgliteMigrate(testClientDB, {
+    migrationsFolder: forkMigrationsFolder,
+    migrationsTable: forkMigrationTable,
+  });
 
   return testClientDB as unknown as LobeChatDatabase;
 };

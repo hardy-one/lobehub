@@ -20,6 +20,8 @@ const redisMocks = vi.hoisted(() => ({
 
 const config = {
   S3_ENABLE_PATH_STYLE: false,
+  S3_ENDPOINT: 'https://s3.example.com',
+  S3_INTERNAL_ENDPOINT: undefined as string | undefined,
   S3_PUBLIC_DOMAIN: 'https://example.com',
   S3_BUCKET: 'my-bucket',
   S3_PREVIEW_URL_EXPIRE_IN: 7200,
@@ -488,6 +490,55 @@ describe('S3StaticFileImpl', () => {
         'S3 upload failed',
       );
       expect(fileService['s3'].uploadMedia).toHaveBeenCalledWith(testKey, testBuffer);
+    });
+  });
+
+  describe('readObjectByUrl', () => {
+    it('通过存储客户端读取本服务的对象', async () => {
+      config.S3_ENABLE_PATH_STYLE = true;
+
+      const bytes = await fileService.readObjectByUrl(
+        'https://s3.example.com/my-bucket/files/1.png?X-Amz-Signature=abc',
+      );
+
+      expect(bytes).toEqual(new Uint8Array([1, 2, 3]));
+      expect(fileService['s3'].getFileByteArray).toHaveBeenCalledWith('files/1.png');
+    });
+
+    it('虚拟主机风格按路径取 key', async () => {
+      const bytes = await fileService.readObjectByUrl('https://s3.example.com/files/1.png');
+
+      expect(bytes).toEqual(new Uint8Array([1, 2, 3]));
+      expect(fileService['s3'].getFileByteArray).toHaveBeenCalledWith('files/1.png');
+    });
+
+    it('认 internal endpoint,预签名始终用公网地址', async () => {
+      config.S3_ENABLE_PATH_STYLE = true;
+      config.S3_INTERNAL_ENDPOINT = 'http://rustfs:9000';
+
+      const bytes = await fileService.readObjectByUrl('http://rustfs:9000/my-bucket/files/1.png');
+
+      expect(bytes).toEqual(new Uint8Array([1, 2, 3]));
+
+      config.S3_INTERNAL_ENDPOINT = undefined;
+    });
+
+    it('外部地址返回 undefined,由调用方保持原有下载方式', async () => {
+      const bytes = await fileService.readObjectByUrl('https://cdn.other.com/1.png');
+
+      expect(bytes).toBeUndefined();
+      expect(fileService['s3'].getFileByteArray).not.toHaveBeenCalled();
+    });
+
+    it('同一主机但路径不属于本桶时不读取', async () => {
+      config.S3_ENABLE_PATH_STYLE = true;
+
+      const bytes = await fileService.readObjectByUrl(
+        'https://s3.example.com/other-bucket/files/1.png',
+      );
+
+      expect(bytes).toBeUndefined();
+      expect(fileService['s3'].getFileByteArray).not.toHaveBeenCalled();
     });
   });
 });

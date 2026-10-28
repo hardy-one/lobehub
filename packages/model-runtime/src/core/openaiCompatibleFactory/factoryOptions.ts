@@ -22,6 +22,7 @@ import type {
 } from '../../types/video';
 import type { ModelIdMappingOptions } from '../../utils/modelIdMapping';
 import type { AssertContextWithinWindowOptions } from '../../utils/resolveSafeMaxTokens';
+import type { LocalObjectReader } from '../contextBuilders/localObject';
 import type { ChatPayloadForTransformStream } from '../streams/protocol';
 import type { DecideConfig } from './decide';
 
@@ -92,6 +93,11 @@ export interface OpenAICompatibleFactoryOptions<T extends Record<string, any> = 
     excludeUsage?: boolean;
     forceImageBase64?: boolean;
     forceVideoBase64?: boolean;
+    /**
+     * Reads objects this deployment owns straight from storage. Deployments
+     * that set it avoid downloading their own presigned URLs back over HTTP.
+     */
+    localObjectReader?: LocalObjectReader;
     handleError?: (
       error: any,
       options: ConstructorOptions<T>,

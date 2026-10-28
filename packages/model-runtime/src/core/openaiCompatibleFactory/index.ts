@@ -60,6 +60,7 @@ import {
   type SignatureScopeKind,
 } from '../../utils/signatureScope';
 import type { LobeRuntimeAI } from '../BaseAI';
+import type { LocalObjectReader } from '../contextBuilders/localObject';
 import { normalizeToolsParameters } from '../contextBuilders/normalizeToolSchema';
 import { convertOpenAIMessages, convertOpenAIResponseInputs } from '../contextBuilders/openai';
 import { resolveModelSamplingParameters } from '../parameterResolver';
@@ -267,6 +268,18 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
             provider: this.id,
           });
       }
+    }
+
+    /**
+     * `chatCompletion` from the factory config is static, but the constructor
+     * options are where `ModelRuntime` forwards per-deployment values, so a
+     * deployment-supplied reader must win.
+     */
+    private get localObjectReader(): LocalObjectReader | undefined {
+      const instanceChat = (this._options as any).chatCompletion as
+        { localObjectReader?: LocalObjectReader } | undefined;
+
+      return instanceChat?.localObjectReader ?? chatCompletion?.localObjectReader;
     }
 
     /**
@@ -593,6 +606,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
         const messages = await convertOpenAIMessages(postPayload.messages, {
           forceImageBase64: chatCompletion?.forceImageBase64,
           forceVideoBase64: chatCompletion?.forceVideoBase64,
+          localObjectReader: this.localObjectReader,
           model: postPayload.model,
           supportsAudioInput: chatCompletion?.supportsAudioInput,
           thoughtSignatureScope,
@@ -1063,6 +1077,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
           const input = await convertOpenAIResponseInputs(messages as any, {
             forceImageBase64: chatCompletion?.forceImageBase64,
             forceVideoBase64: chatCompletion?.forceVideoBase64,
+            localObjectReader: this.localObjectReader,
             provider: this.id,
             strictToolPairing: true,
           });
@@ -1459,6 +1474,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
       const input = await convertOpenAIResponseInputs(messages as any, {
         forceImageBase64: chatCompletion?.forceImageBase64,
         forceVideoBase64: chatCompletion?.forceVideoBase64,
+        localObjectReader: this.localObjectReader,
         provider: this.id,
         reasoningSignatureScope,
         strictToolPairing: true,
@@ -1651,6 +1667,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
         const input = await convertOpenAIResponseInputs(messages as any, {
           forceImageBase64: chatCompletion?.forceImageBase64,
           forceVideoBase64: chatCompletion?.forceVideoBase64,
+          localObjectReader: this.localObjectReader,
           provider: this.id,
           reasoningSignatureScope,
           strictToolPairing: true,
@@ -1702,6 +1719,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
       const msgs = await convertOpenAIMessages(messages as any, {
         forceImageBase64: chatCompletion?.forceImageBase64,
         forceVideoBase64: chatCompletion?.forceVideoBase64,
+        localObjectReader: this.localObjectReader,
         model,
         thoughtSignatureScope,
       });

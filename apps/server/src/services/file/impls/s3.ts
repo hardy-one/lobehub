@@ -32,6 +32,27 @@ interface PresignedPreviewCacheEntry {
 
 const presignedPreviewUrlCache = new Map<string, PresignedPreviewCacheEntry>();
 
+/**
+ * Origins whose objects this server can read through its own storage client.
+ * `S3_INTERNAL_ENDPOINT` differs from `S3_ENDPOINT` only for server-side
+ * requests, but a presigned URL is always signed against the public endpoint,
+ * so both are matched. Resolved per call so configuration changes stay visible.
+ */
+const getSelfStorageOrigins = () =>
+  new Set(
+    [fileEnv.S3_ENDPOINT, fileEnv.S3_INTERNAL_ENDPOINT]
+      .map((endpoint) => (endpoint ? parseOrigin(endpoint)?.origin : undefined))
+      .filter((origin): origin is string => Boolean(origin)),
+  );
+
+function parseOrigin(url: string): URL | undefined {
+  try {
+    return new URL(url);
+  } catch {
+    return undefined;
+  }
+}
+
 const createPresignedPreviewCacheKey = (key: string, expiresIn: number) =>
   `${PRESIGNED_PREVIEW_CACHE_KEY_PREFIX}${expiresIn}:${key}`;
 
@@ -195,6 +216,40 @@ export class S3StaticFileImpl implements FileServiceImpl {
     }
 
     return urlJoin(publicUrlBase, key);
+  }
+
+  /**
+   * Objects behind one of the server's own storage origins, or behind the
+   * `/f/{fileId}` proxy, are read straight from storage. Everything else (user
+   * pasted URLs, provider callbacks) stays on the caller's HTTP transport, so
+   * SSRF protection there is unaffected.
+   */
+  async readObjectByUrl(url: string): Promise<Uint8Array | undefined> {
+    if (!this.isOwnStorageUrl(url)) return undefined;
+
+    const key = await this.getKeyFromFullUrl(url);
+    if (!key) return undefined;
+
+    return this.getFileByteArray(key);
+  }
+
+  private isOwnStorageUrl(url: string): boolean {
+    const origin = parseOrigin(url);
+    if (!origin) return false;
+
+    // The proxy path carries the file id, so the origin alone decides; there is
+    // no bucket to match against and `getKeyFromFullUrl` resolves the record.
+    if (origin.pathname.startsWith('/f/')) return true;
+
+    if (!getSelfStorageOrigins().has(origin.origin)) return false;
+
+    // Path style keeps the bucket in the path; virtual-host style puts it in
+    // the hostname, which the origin check above cannot see.
+    return (
+      !fileEnv.S3_ENABLE_PATH_STYLE ||
+      !fileEnv.S3_BUCKET ||
+      origin.pathname.startsWith(`/${fileEnv.S3_BUCKET}/`)
+    );
   }
 
   async getKeyFromFullUrl(url: string): Promise<string | null> {

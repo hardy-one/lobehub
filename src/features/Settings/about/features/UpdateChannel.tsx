@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { SettingsSearchAnchor } from '@/features/SettingsSearch/anchor';
 import { autoUpdateService } from '@/services/electron/autoUpdate';
 
-type UpdateChannelValue = 'canary' | 'stable';
+type UpdateChannelValue = 'canary' | 'stable' | 'HARDY';
 
 /**
  * Which releases the desktop app updates to. It sits under the version row in
@@ -52,6 +52,7 @@ const UpdateChannel = memo<{ mobile?: boolean }>(({ mobile }) => {
         options={[
           { label: t('tab.advanced.updateChannel.stable'), value: 'stable' },
           { label: t('tab.advanced.updateChannel.canary'), value: 'canary' },
+          { label: t('tab.advanced.updateChannel.hardy'), value: 'HARDY' },
         ]}
         onChange={handleChange}
       />

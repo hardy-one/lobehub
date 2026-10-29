@@ -24,15 +24,44 @@ const createHelloEditor = () => ({
   cleanDocument: vi.fn(),
   dispatchCommand: vi.fn(),
   focus: vi.fn(),
-  getLexicalEditor: () => ({}),
+  getLexicalEditor: () => ({ getEditorState: () => ({ read: () => 'Hello' }) }),
   getDocument: vi.fn((type: string) => (type === 'markdown' ? 'Hello' : { root: {} })),
 });
+
+const createComposerEditor = (text: string) => {
+  const editor = new Kernel() as unknown as IEditor;
+  editor.registerPlugins([CommonPlugin]);
+  editor.initNodeEditor();
+  editor.setDocument('text', text);
+  return editor;
+};
 
 describe('ChatInput store actions', () => {
   beforeEach(() => {
     localStorage.clear();
     useAgentStore.setState({ activeAgentId: undefined });
     vi.restoreAllMocks();
+  });
+
+  it('sends the typed text without growing a blank line into two', () => {
+    // A typed blank line is one empty paragraph between two text paragraphs.
+    // Projecting the root node added a newline at every boundary and another
+    // around the empty paragraph, so the send grew to four newlines.
+    const store = createStore({ editor: createComposerEditor('A\n\nB') });
+
+    expect(store.getState().getMarkdownContent()).toBe('A\n\nB');
+  });
+
+  it('sends characters that read as Markdown syntax literally', () => {
+    const store = createStore({ editor: createComposerEditor('*/10 * * * *') });
+
+    expect(store.getState().getMarkdownContent()).toBe('*/10 * * * *');
+  });
+
+  it('sends an empty string once the composer is gone', () => {
+    const store = createStore({ editor: undefined });
+
+    expect(store.getState().getMarkdownContent()).toBe('');
   });
 
   it('keeps action lists usable when a host omits them', () => {
@@ -62,7 +91,7 @@ describe('ChatInput store actions', () => {
       cleanDocument: vi.fn(),
       dispatchCommand: vi.fn(),
       focus: vi.fn(),
-      getLexicalEditor: () => ({}),
+      getLexicalEditor: () => ({ getEditorState: () => ({ read: () => 'Hello' }) }),
       getDocument: vi.fn((type: string) => (type === 'markdown' ? 'Hello' : editorData)),
     };
     const store = createStore({
@@ -86,7 +115,7 @@ describe('ChatInput store actions', () => {
       cleanDocument: vi.fn(),
       dispatchCommand: vi.fn(),
       focus: vi.fn(),
-      getLexicalEditor: () => ({}),
+      getLexicalEditor: () => ({ getEditorState: () => ({ read: () => '' }) }),
       getDocument: vi.fn((type: string) => (type === 'markdown' ? 'Hello' : { text: 'Hello' })),
     };
     saveDraft('main_agt_a_tpc_1', { text: 'Hello' });
@@ -108,7 +137,7 @@ describe('ChatInput store actions', () => {
       cleanDocument: vi.fn(),
       dispatchCommand: vi.fn(),
       focus: vi.fn(),
-      getLexicalEditor: () => ({}),
+      getLexicalEditor: () => ({ getEditorState: () => ({ read: () => '' }) }),
       getDocument: vi.fn((type: string) => (type === 'markdown' ? 'Hello' : { text: 'Hello' })),
     };
     saveDraft('main_agt_a_tpc_1', { text: 'Hello' });
@@ -133,7 +162,7 @@ describe('ChatInput store actions', () => {
       cleanDocument: vi.fn(),
       dispatchCommand: vi.fn(),
       focus: vi.fn(),
-      getLexicalEditor: () => ({}),
+      getLexicalEditor: () => ({ getEditorState: () => ({ read: () => 'Hello' }) }),
       getDocument: vi.fn((type: string) => (type === 'markdown' ? 'Hello' : editorData)),
     };
     const store = createStore({
@@ -161,7 +190,9 @@ describe('ChatInput store actions', () => {
       cleanDocument: vi.fn(),
       dispatchCommand: vi.fn(),
       focus: vi.fn(),
-      getLexicalEditor: () => ({}),
+      getLexicalEditor: () => ({
+        getEditorState: () => ({ read: () => '/goal Ship the homepage' }),
+      }),
       getDocument: vi.fn((type: string) =>
         type === 'markdown' ? '/goal Ship the homepage' : { root: {} },
       ),
@@ -198,7 +229,7 @@ describe('ChatInput store actions', () => {
       cleanDocument: vi.fn(),
       dispatchCommand,
       focus: vi.fn(),
-      getLexicalEditor: () => ({}),
+      getLexicalEditor: () => ({ getEditorState: () => ({ read: () => '' }) }),
       getDocument: vi.fn((type: string) => (type === 'markdown' ? 'Hello' : { root: {} })),
     };
     const store = createStore({
@@ -217,7 +248,7 @@ describe('ChatInput store actions', () => {
       cleanDocument: vi.fn(),
       dispatchCommand,
       focus: vi.fn(),
-      getLexicalEditor: () => ({}),
+      getLexicalEditor: () => ({ getEditorState: () => ({ read: () => '' }) }),
       getDocument: vi.fn((type: string) => (type === 'markdown' ? 'Hello' : { root: {} })),
     };
     const store = createStore({

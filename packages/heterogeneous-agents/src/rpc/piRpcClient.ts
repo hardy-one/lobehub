@@ -12,6 +12,7 @@ import {
   type PiRpcCommand,
   type PiRpcEvent,
   type PiRpcResponse,
+  type PiRpcThinkingLevelsData,
 } from './piRpcProtocol';
 import { RpcStdioClient, RpcStdioConnectionError } from './rpcStdioClient';
 
@@ -149,6 +150,11 @@ export class PiRpcClient {
   get sessionId(): string | undefined {
     return this.handshakeSessionId;
   }
+
+  /**
+   * Model the handshake reported. `--model` is resolved before `get_state`
+   * answers, so a probe that bound a model sees it here.
+   */
 
   /**
    * Spawn the process and complete the startup handshake. Rejects with a
@@ -292,6 +298,26 @@ export class PiRpcClient {
   /** Bound the abort ACK independently of ordinary command timeout settings. */
   async abort(): Promise<void> {
     await this.command({ type: 'abort' }, PI_RPC_ABORT_TIMEOUT_MS);
+  }
+
+  /**
+   * Thinking levels the CURRENT model serves. Pi derives this from the model's
+   * own capability table, so the answer narrows once `--model` is bound — an
+   * unbound session answers the whole vocabulary.
+   */
+  async getAvailableThinkingLevels(timeoutMs?: number): Promise<string[]> {
+    const response = await this.command<PiRpcThinkingLevelsData>(
+      { type: 'get_available_thinking_levels' },
+      timeoutMs,
+    );
+    return response.data?.levels ?? [];
+  }
+
+  /**
+   * Apply a thinking level. Pi clamps to what the model serves instead of failing.
+   */
+  async setThinkingLevel(level: string): Promise<void> {
+    await this.command({ level, type: 'set_thinking_level' });
   }
 
   /**

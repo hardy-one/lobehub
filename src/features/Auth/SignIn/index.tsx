@@ -28,6 +28,7 @@ const SignIn = () => {
     sessionExpired,
     sentInfo,
     serverConfigInit,
+    showInvitationCode,
     setAgreementChecked,
     socialErrorProvider,
     socialLoading,
@@ -74,6 +75,7 @@ const SignIn = () => {
         serverConfigInit={serverConfigInit}
         sessionExpired={sessionExpired}
         setAgreementChecked={setAgreementChecked}
+        showInvitationCode={showInvitationCode}
         socialErrorProvider={socialErrorProvider}
         socialLoading={socialLoading}
         onGoToSignup={handleGoToSignup}

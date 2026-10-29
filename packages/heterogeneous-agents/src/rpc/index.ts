@@ -29,14 +29,21 @@ export {
   type PiRpcImage,
   type PiRpcResponse,
   type PiRpcStateData,
+  type PiRpcThinkingLevelsData,
   type PiSessionEvent,
   type PiStreamingBehavior,
 } from './piRpcProtocol';
 export {
+  type PiRpcBackgroundTaskWait,
   type PiRpcPromptInput,
   PiRpcSession,
   type PiRpcSessionCallbacks,
   type PiRpcSessionOptions,
 } from './piRpcSession';
 export { preparePiRpcInput } from './preparePiRpcInput';
+export {
+  type PiThinkingLevelsResult,
+  probePiThinkingLevels,
+  type ProbePiThinkingLevelsParams,
+} from './probePiThinkingLevels';
 export { RpcStdioClient, RpcStdioConnectionError } from './rpcStdioClient';

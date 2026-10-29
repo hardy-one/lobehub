@@ -5,7 +5,12 @@ import {
   type DeviceSystemInfo,
   GatewayHttpClient,
 } from '@lobechat/device-gateway-client';
-import type { DeviceClient, DeviceMetricSample } from '@lobechat/types';
+import type {
+  DeviceClient,
+  DeviceMetricSample,
+  HeterogeneousThinkingLevels,
+  ProbeHeterogeneousThinkingLevelsParams,
+} from '@lobechat/types';
 import debug from 'debug';
 
 import { gatewayEnv } from '@/envs/gateway';
@@ -321,6 +326,55 @@ export class DeviceGateway {
 
   listGitBranches(...args: DeviceRpcArgs<typeof gitRead.listGitBranches>) {
     return gitRead.listGitBranches(this.clientGetter, ...args);
+  }
+
+  /**
+   * Ask the device which thinking levels one model serves. Pi answers this per
+   * session, so the caller passes the run's own args (including `--model`).
+   */
+  async probeHeterogeneousThinkingLevels(
+    params: ProbeHeterogeneousThinkingLevelsParams & {
+      deviceId: string;
+      timeout?: number;
+      userId: string;
+      workspaceId?: string;
+    },
+  ): Promise<HeterogeneousThinkingLevels> {
+    const { deviceId, timeout = 20_000, userId, workspaceId, ...probeParams } = params;
+    const client = this.getClient();
+    const unavailable = (message: string): HeterogeneousThinkingLevels => ({
+      error: { code: 'device_unavailable', message },
+      status: 'error',
+      updatedAt: Date.now(),
+    });
+    if (!client) return unavailable('Device gateway is not configured');
+
+    try {
+      const result = await client.invokeRpc<HeterogeneousThinkingLevels>(
+        { deviceId, timeout, userId, workspaceId },
+        { method: 'probeHeterogeneousThinkingLevels', params: probeParams },
+      );
+
+      if (!result.success || !result.data) {
+        const message = result.error || 'The device did not return thinking levels';
+        const unsupported =
+          message.includes('does not support heterogeneous agent thinking-level discovery') ||
+          message.includes('Unknown device RPC method');
+        log('probeHeterogeneousThinkingLevels: failed for deviceId=%s — %s', deviceId, message);
+        return {
+          error: { code: unsupported ? 'unsupported_client' : 'device_unavailable', message },
+          status: 'error',
+          updatedAt: Date.now(),
+        };
+      }
+
+      return result.data;
+    } catch (error) {
+      log('probeHeterogeneousThinkingLevels: error for deviceId=%s — %O', deviceId, error);
+      return unavailable(
+        error instanceof Error ? error.message : 'Device thinking-level discovery failed',
+      );
+    }
   }
 
   checkoutGitBranch(...args: DeviceRpcArgs<typeof gitWrite.checkoutGitBranch>) {

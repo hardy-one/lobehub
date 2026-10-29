@@ -22,12 +22,16 @@ import type {
 } from '../../types/video';
 import type { ModelIdMappingOptions } from '../../utils/modelIdMapping';
 import type { AssertContextWithinWindowOptions } from '../../utils/resolveSafeMaxTokens';
+import type { LocalObjectReader } from '../contextBuilders/localObject';
 import type { ChatPayloadForTransformStream } from '../streams/protocol';
 import type { DecideConfig } from './decide';
 
 // OpenAI SDK v6 widened `apiKey` to `string | ApiKeySetter`; lobehub only ever
 // passes a plain string, so narrow it back to keep `.trim()` / string assignments valid.
-export type LobeClientOptions = Omit<ClientOptions, 'apiKey'> & { apiKey?: string };
+export type LobeClientOptions = Omit<ClientOptions, 'apiKey'> & {
+  apiKey?: string;
+  modelSdkType?: 'openai' | 'openai-responses';
+};
 export type ConstructorOptions<T extends Record<string, any> = any> = LobeClientOptions &
   ModelIdMappingOptions &
   T;
@@ -92,6 +96,11 @@ export interface OpenAICompatibleFactoryOptions<T extends Record<string, any> = 
     excludeUsage?: boolean;
     forceImageBase64?: boolean;
     forceVideoBase64?: boolean;
+    /**
+     * Reads objects this deployment owns straight from storage. Deployments
+     * that set it avoid downloading their own presigned URLs back over HTTP.
+     */
+    localObjectReader?: LocalObjectReader;
     handleError?: (
       error: any,
       options: ConstructorOptions<T>,
@@ -190,6 +199,9 @@ export interface OpenAICompatibleFactoryOptions<T extends Record<string, any> = 
   /**
    * Additional provider-specific model patterns that support `prompt_cache_key`.
    * OpenAI models are handled by the factory default; other providers must opt in.
+   *
+   * Patterns are tested with `RegExp.test`, so `g` / `y` flags would make the
+   * result depend on how many times the pattern has already been tested.
    */
   promptCacheKeyModels?: Array<string | RegExp>;
   provider: string;

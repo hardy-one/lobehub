@@ -1,5 +1,5 @@
 import { getGoalCommand, isGoalCommandFailed } from '@lobechat/shared-tool-ui/goal-command';
-import { Icon } from '@lobehub/ui';
+import { cx, Icon } from '@lobehub/ui';
 import { cssVar } from '@lobehub/ui/stylex/cssVar.stylex';
 import * as stylex from '@stylexjs/stylex';
 import isEqual from 'fast-deep-equal';
@@ -9,9 +9,9 @@ import { useTranslation } from 'react-i18next';
 
 import { pluginHelpers, useToolStore } from '@/store/tool';
 import { toolSelectors } from '@/store/tool/selectors';
-import { shinyTextStyles } from '@/styles';
+import { rowShinyText } from '@/styles';
 import { useDensity } from '@/styles/density';
-import { sx } from '@/styles/sx';
+import { type MetaData } from '@/types/meta';
 
 import { getToolDisplayName } from '../../toolDisplayNames';
 import { extractToolKeyword, getShellCommandTitle } from './extractToolKeyword';
@@ -67,6 +67,11 @@ interface ToolTitleProps {
   isAborted?: boolean;
   isLoading?: boolean;
   partialArgs?: Record<string, unknown>;
+  /**
+   * Metadata for this identifier, resolved once per tool list by the parent.
+   * Omitted means resolve it here, which costs a full scan of the tool list.
+   */
+  pluginMeta?: MetaData;
   /** The settled tool result, so a failed goal command is not titled as done. */
   result?: { error?: unknown; state?: any };
 }
@@ -81,14 +86,28 @@ const isCJK = (value: string) => /[\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/.tes
  * keep the "<label> <keyword>" shape in the smaller code font.
  */
 const ToolTitle = memo<ToolTitleProps>(
-  ({ identifier, apiName, args, partialArgs, isLoading, isAborted, result }) => {
+  ({
+    identifier,
+    apiName,
+    args,
+    partialArgs,
+    isLoading,
+    isAborted,
+    pluginMeta: pluginMetaProp,
+    result,
+  }) => {
     const { t } = useTranslation('plugin');
     const { compact } = useDensity();
     const labelCompact = compact && !isAborted && styles.labelCompact;
     const keywordStyles = stylex.props(styles.keyword, compact && styles.keywordCompact);
 
-    const pluginMeta = useToolStore(toolSelectors.getMetaById(identifier), isEqual);
-    const pluginTitle = pluginHelpers.getPluginTitle(pluginMeta);
+    // The parent resolves every identifier in the list in one pass; this
+    // fallback keeps standalone callers working without that list.
+    const resolvedMeta = useToolStore(
+      pluginMetaProp === undefined ? toolSelectors.getMetaById(identifier) : () => pluginMetaProp,
+      isEqual,
+    );
+    const pluginTitle = pluginHelpers.getPluginTitle(resolvedMeta);
 
     // Builtin (and hetero-agent) tools have per-API action labels under
     // `builtins.<identifier>.apiName.<apiName>`; everything else falls back to
@@ -128,10 +147,13 @@ const ToolTitle = memo<ToolTitleProps>(
       const failed = !isLoading && isGoalCommandFailed(result);
       const status = isLoading ? 'loading' : failed ? 'failed' : 'completed';
       return (
-        <div {...stylex.props(styles.root, isAborted && styles.aborted)}>
-          <span
-            {...sx(styles.label, labelCompact, isLoading ? shinyTextStyles.shinyText : undefined)}
-          >
+        <div
+          className={cx(
+            stylex.props(styles.root, isAborted && styles.aborted).className,
+            rowShinyText(isLoading),
+          )}
+        >
+          <span {...stylex.props(styles.label, labelCompact)}>
             {t(`builtins.goalCommand.${goalCommand.kind}.${status}`)}
           </span>
           {goalTitle && <span {...stylex.props(styles.standalone)}>{goalTitle}</span>}
@@ -144,12 +166,13 @@ const ToolTitle = memo<ToolTitleProps>(
     if (commandTitle) {
       const { action, isProse, subject } = commandTitle;
       return (
-        <div {...stylex.props(styles.root, isAborted && styles.aborted)}>
-          <span
-            {...sx(styles.label, labelCompact, isLoading ? shinyTextStyles.shinyText : undefined)}
-          >
-            {t(`builtins.shellCommand.${action}`)}
-          </span>
+        <div
+          className={cx(
+            stylex.props(styles.root, isAborted && styles.aborted).className,
+            rowShinyText(isLoading),
+          )}
+        >
+          <span {...stylex.props(styles.label, labelCompact)}>{t(`builtins.shellCommand.${action}`)}</span>
           {subject && (
             <span {...(isProse ? stylex.props(styles.standalone) : keywordStyles)}>{subject}</span>
           )}
@@ -158,16 +181,17 @@ const ToolTitle = memo<ToolTitleProps>(
     }
 
     return (
-      <div {...stylex.props(styles.root, isAborted && styles.aborted)}>
+      <div
+        className={cx(
+          stylex.props(styles.root, isAborted && styles.aborted).className,
+          rowShinyText(isLoading),
+        )}
+      >
         {isStandaloneDescription ? (
-          <span {...sx(styles.standalone, isLoading ? shinyTextStyles.shinyText : undefined)}>
-            {keyword}
-          </span>
+          <span {...stylex.props(styles.standalone)}>{keyword}</span>
         ) : (
           <>
-            <span
-              {...sx(styles.label, labelCompact, isLoading ? shinyTextStyles.shinyText : undefined)}
-            >
+            <span {...stylex.props(styles.label, labelCompact)}>
               {actionLabel || (
                 <>
                   {pluginTitle && (

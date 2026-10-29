@@ -82,8 +82,6 @@ export const Tools = memo<ToolsRendererProps>(({ disableEditing, messageId, tool
     runningToolCallIds,
   );
 
-  void executingToolCallIds;
-
   if (visibleToolCallIds.length === 0) return null;
 
   return (
@@ -94,6 +92,7 @@ export const Tools = memo<ToolsRendererProps>(({ disableEditing, messageId, tool
             assistantMessageId={messageId}
             disableEditing={disableEditing}
             id={toolCallId}
+            isExecuting={executingToolCallIds.includes(toolCallId)}
           />
         </Flexbox>
       ))}

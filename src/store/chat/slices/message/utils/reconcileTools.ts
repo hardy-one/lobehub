@@ -1,5 +1,43 @@
 import type { ChatToolPayload, UIChatMessage } from '@lobechat/types';
 
+import type { MessageDispatch } from '../reducer';
+
+/**
+ * The dispatches that can break the tool↔assistant link.
+ *
+ * The invariant below only fails when a `role:'tool'` row and its parent are
+ * both present while the parent's `tools[]` lacks the entry. Only these
+ * dispatches can produce that: they create or delete rows, or rewrite a
+ * message's `tools[]` wholesale. A text, reasoning or plugin-state update
+ * touches neither, so an unchanged bucket cannot have drifted and re-scanning
+ * it on every streamed chunk was pure waste.
+ */
+export const mayBreakToolLinks = (payload: MessageDispatch): boolean => {
+  switch (payload.type) {
+    case 'createMessage':
+    case 'deleteMessage':
+    case 'deleteMessages':
+    case 'updateMessages': {
+      return true;
+    }
+    // An `updateMessage` carries a full partial message, so it can replace
+    // `tools[]` the same way an optimistic tool step does.
+    case 'updateMessage': {
+      return payload.value.tools !== undefined;
+    }
+    // These rewrite one assistant's `tools[]` without touching the tool rows.
+    case 'addMessageTool':
+    case 'deleteMessageTool':
+    case 'updateMessageTools': {
+      return true;
+    }
+    // Metadata / plugin state / extras never reach `tools[]`.
+    default: {
+      return false;
+    }
+  }
+};
+
 /**
  * Keep a raw message bucket internally consistent on the tool↔assistant link.
  *

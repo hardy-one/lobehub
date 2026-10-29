@@ -3,6 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StreamingHandler } from './StreamingHandler';
 import { type StreamingCallbacks, type StreamingContext } from './types/streaming';
 
+/**
+ * Long enough to drain any coalescing window the handler uses. The exact value
+ * is an implementation detail; these tests assert the *effect* of batching, not
+ * its duration.
+ */
+const COALESCE_WINDOW_MS = 200;
+
 const createMockCallbacks = (): StreamingCallbacks => ({
   onContentUpdate: vi.fn(),
   onReasoningUpdate: vi.fn(),
@@ -25,6 +32,7 @@ const mockContext: StreamingContext = {
 describe('StreamingHandler', () => {
   describe('handleChunk - text', () => {
     it('should accumulate text output', () => {
+      vi.useFakeTimers();
       const callbacks = createMockCallbacks();
       const handler = new StreamingHandler(mockContext, callbacks);
 
@@ -32,7 +40,54 @@ describe('StreamingHandler', () => {
       handler.handleChunk({ type: 'text', text: 'World' });
 
       expect(handler.getOutput()).toBe('Hello World');
-      expect(callbacks.onContentUpdate).toHaveBeenCalledTimes(2);
+
+      // Both chunks land in one write: the store reads a complete message, not
+      // a per-chunk snapshot.
+      vi.advanceTimersByTime(COALESCE_WINDOW_MS);
+      expect(callbacks.onContentUpdate).toHaveBeenCalledTimes(1);
+      expect(callbacks.onContentUpdate).toHaveBeenLastCalledWith('Hello World', undefined);
+      vi.useRealTimers();
+    });
+
+    it('should publish the last chunk immediately when the stream stops', () => {
+      vi.useFakeTimers();
+      const callbacks = createMockCallbacks();
+      const handler = new StreamingHandler(mockContext, callbacks);
+
+      handler.handleChunk({ type: 'text', text: 'Hello ' });
+      handler.handleChunk({ type: 'text', text: 'World' });
+      handler.handleChunk({ type: 'stop' });
+
+      // No timer wait: the stop path must not leave text behind a frame.
+      expect(callbacks.onContentUpdate).toHaveBeenCalledTimes(1);
+      expect(callbacks.onContentUpdate).toHaveBeenLastCalledWith('Hello World', undefined);
+      vi.useRealTimers();
+    });
+
+    it('should publish pending text before finishing', async () => {
+      vi.useFakeTimers();
+      const callbacks = createMockCallbacks();
+      const handler = new StreamingHandler(mockContext, callbacks);
+
+      handler.handleChunk({ type: 'text', text: 'partial' });
+      const finished = handler.handleFinish({ type: 'finish' } as never);
+
+      expect(callbacks.onContentUpdate).toHaveBeenCalledTimes(1);
+      expect((await finished).content).toBe('partial');
+      vi.useRealTimers();
+    });
+
+    it('should not publish again when nothing arrived after a flush', () => {
+      vi.useFakeTimers();
+      const callbacks = createMockCallbacks();
+      const handler = new StreamingHandler(mockContext, callbacks);
+
+      handler.handleChunk({ type: 'text', text: 'once' });
+      vi.advanceTimersByTime(COALESCE_WINDOW_MS);
+      handler.handleChunk({ type: 'stop' });
+
+      expect(callbacks.onContentUpdate).toHaveBeenCalledTimes(1);
+      vi.useRealTimers();
     });
 
     it('should clean speaker tag from output', () => {

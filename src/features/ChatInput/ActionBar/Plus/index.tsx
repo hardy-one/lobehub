@@ -25,7 +25,11 @@ import { useAgentStore } from '@/store/agent';
 import { agentSelectors } from '@/store/agent/selectors';
 import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors';
-import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
+import {
+  featureFlagsSelectors,
+  serverConfigSelectors,
+  useServerConfigStore,
+} from '@/store/serverConfig';
 import { useDensityTokens } from '@/styles/density';
 import { densityTokens } from '@/styles/density.stylex';
 
@@ -41,6 +45,7 @@ import { ChatInputAction } from '../components/ChatInputAction';
 import SubmenuChevron from '../components/SubmenuChevron';
 import { useDetailPopoverState } from '../components/useDetailPopoverState';
 import { useControls as useKnowledgeControls } from '../Knowledge/useControls';
+import Controls from '../Params/Controls';
 import { useControls as useToolsControls } from '../Tools/useControls';
 import { useSkillsMenuItem } from './useSkillsMenuItem';
 
@@ -83,6 +88,21 @@ const styles = stylex.create({
     },
   },
   labelWithChip: { display: 'inline-flex', gap: '8px', alignItems: 'center' },
+  // The mobile advanced-parameters panel is rendered inside DropdownMenuHeader.
+  // Keep it inside the header's content box; the submenu owns the viewport-sized
+  // width/height and Controls.body owns the vertical scroll.
+  paramsSubmenuContent: {
+    boxSizing: 'border-box',
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100%',
+    maxWidth: '100%',
+    minHeight: 0,
+    minWidth: 0,
+    overscrollBehavior: 'contain',
+    overflow: 'hidden',
+    width: '100%',
+  },
 });
 
 type DropdownItemWithPopover = NonNullable<ActionDropdownMenuItems>[number] & {
@@ -187,6 +207,7 @@ const usePlusMenuItems = ({ close }: { close: () => void }): ActionDropdownMenuI
 
   const upload = useChatInputUpload();
   const { enableKnowledgeBase } = useServerConfigStore(featureFlagsSelectors);
+  const isMobile = useServerConfigStore(serverConfigSelectors.isMobile);
 
   const { model, provider } = useEffectiveModel(agentId);
   const isAgentModeEnabled = useAgentStore(agentSelectors.isAgentModeEnabled);
@@ -330,6 +351,39 @@ const usePlusMenuItems = ({ close }: { close: () => void }): ActionDropdownMenuI
       skillsMenuItem,
     ];
 
+    // Advanced parameter settings — a second-level panel inside this menu on
+    // mobile, where the working sidebar is too narrow for the form, and the
+    // working sidebar toggle on wider viewports. Only when resources can be
+    // configured.
+    const paramsItems: ActionDropdownMenuItems = canConfigureResource
+      ? isMobile
+        ? [
+            {
+              children: [],
+              extra: <SubmenuChevron />,
+              header: (
+                <div
+                  className={`lobe-params-submenu-content ${stylex.props(styles.paramsSubmenuContent).className}`}
+                >
+                  <Controls variant={'sidebar'} />
+                </div>
+              ),
+              icon: Settings2Icon,
+              key: 'params',
+              label: tSetting('settingModel.params.title'),
+              type: 'submenu',
+            } as ActionDropdownMenuItems[number],
+          ]
+        : [
+            {
+              icon: Settings2Icon,
+              key: 'params',
+              label: renderActive(tSetting('settingModel.params.title'), isParamsPanelActive),
+              onClick: handleToggleParams,
+            } as ActionDropdownMenuItems[number],
+          ]
+      : [];
+
     // Formatting toolbar is always available; advanced params only when the
     // user can configure resources.
     const formatItems: ActionDropdownMenuItems = [
@@ -342,17 +396,7 @@ const usePlusMenuItems = ({ close }: { close: () => void }): ActionDropdownMenuI
         onCheckedChange: (checked: boolean) => setShowTypoBar(checked),
         type: 'switch',
       },
-      // Advanced parameter settings — only when resources can be configured.
-      ...(canConfigureResource
-        ? [
-            {
-              icon: Settings2Icon,
-              key: 'params',
-              label: renderActive(tSetting('settingModel.params.title'), isParamsPanelActive),
-              onClick: handleToggleParams,
-            } as ActionDropdownMenuItems[number],
-          ]
-        : []),
+      ...paramsItems,
     ];
 
     // "Add Attachments..." merges file upload with the knowledge base (libraries / files).
@@ -426,6 +470,7 @@ const usePlusMenuItems = ({ close }: { close: () => void }): ActionDropdownMenuI
     enableKnowledgeBase,
     handleToggleParams,
     isAgentModeEnabled,
+    isMobile,
     isParamsPanelActive,
     isSkillPolicyMenuOpen,
     knowledgeEnabledCount,
@@ -457,6 +502,7 @@ const PlusAction = memo(() => {
   const { t } = useTranslation('chat');
   const { controlHeight, iconSize } = useDensityTokens();
 
+  const isMobile = useServerConfigStore(serverConfigSelectors.isMobile);
   return (
     <ChatInputAction
       icon={PlusIcon}
@@ -466,6 +512,15 @@ const PlusAction = memo(() => {
       dropdown={{
         menu: { useItems: usePlusMenuItems },
         minWidth: 196,
+        popupProps: isMobile
+          ? {
+              style: {
+                maxWidth: 'calc(100vw - 32px)',
+                minWidth: 0,
+                width: 'min(320px, calc(100vw - 32px))',
+              },
+            }
+          : undefined,
         placement: 'topLeft',
       }}
     />

@@ -19,7 +19,7 @@ import {
 } from '@lobehub/ui';
 import dayjs from 'dayjs';
 import isEqual from 'fast-deep-equal';
-import { MessageSquareDashed, TargetIcon } from 'lucide-react';
+import { Hash, MessageSquareDashed, TargetIcon } from 'lucide-react';
 import type { CSSProperties, DragEvent, MouseEvent, RefObject } from 'react';
 import { memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -584,7 +584,17 @@ const TopicItemRow = memo<TopicItemRowProps>(
       return null;
     })();
 
-    const idleIconPlaceholder = <span aria-hidden style={{ flex: 'none', width: 16 }} />;
+    const idleIconPlaceholder =
+      isMaskedRunningTail && isTopicActive ? (
+        <span aria-hidden style={{ flex: 'none', width: 16 }} />
+      ) : (
+        <Icon
+          color={cssVar.colorTextQuaternary}
+          icon={Hash}
+          size={'small'}
+          style={{ opacity: 0.7 }}
+        />
+      );
 
     // Workspace mode (creator resolvable): the creator's round avatar is the
     // primary visual and always leads the row; the row's own icon — execution

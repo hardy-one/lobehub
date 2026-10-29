@@ -14,7 +14,7 @@ import { buildGrokAcpPrompt, GrokAcpSession } from './grokAcpSession';
 import { getHeterogeneousAgentSpawnEnv } from './presetEnv';
 import type { SpawnAgentHandle, SpawnAgentOptions } from './spawnAgent';
 import { buildTraeAcpPrompt, TraeAcpSession } from './traeAcpSession';
-import { assertSpawnableWorkingDirectory } from './workingDirectory';
+import { assertSpawnableWorkingDirectory, withWorkingDirectoryEnv } from './workingDirectory';
 
 /**
  * ACP runtimes (Antigravity, Cursor, Devin, Droid, Grok, TRAE) behind the ordinary
@@ -215,7 +215,7 @@ export const spawnGrokAcpAgent = async (
     commandPath: command,
     cwd,
     detached: options.detached,
-    env: { ...process.env, ...options.env },
+    env: withWorkingDirectoryEnv({ ...process.env, ...options.env }, cwd),
     onEvents: bridge.onEvents,
     onRawMessage: teeAcpRawStdout(options.onRawStdout),
     onRuntimeStatus: () => {},
@@ -243,7 +243,7 @@ export const spawnCursorAcpAgent = async (
     commandPath: command,
     cwd,
     detached: options.detached,
-    env: { ...process.env, ...options.env },
+    env: withWorkingDirectoryEnv({ ...process.env, ...options.env }, cwd),
     onEvents: bridge.onEvents,
     onRawMessage: teeAcpRawStdout(options.onRawStdout),
     onRuntimeStatus: () => {},
@@ -270,7 +270,7 @@ export const spawnDroidAcpAgent = async (
     clientVersion: 'lobehub-cli',
     commandPath: command,
     cwd,
-    env: { ...process.env, ...options.env },
+    env: withWorkingDirectoryEnv({ ...process.env, ...options.env }, cwd),
     initialModel: options.initialModel,
     onEvents: bridge.onEvents,
     onRawMessage: teeAcpRawStdout(options.onRawStdout),
@@ -313,7 +313,7 @@ export const spawnDevinAcpAgent = async (
     commandPath: command,
     cwd,
     detached: options.detached,
-    env: { ...process.env, ...options.env },
+    env: withWorkingDirectoryEnv({ ...process.env, ...options.env }, cwd),
     initialModel: options.initialModel,
     onEvents: bridge.onEvents,
     onRawMessage: teeAcpRawStdout(options.onRawStdout),
@@ -366,7 +366,7 @@ export const spawnTraeAcpAgent = async (options: SpawnAgentOptions): Promise<Spa
     isPathLikeCommand(requestedCommand) && !path.isAbsolute(requestedCommand)
       ? path.resolve(cwd, requestedCommand)
       : requestedCommand;
-  const childEnv = { ...process.env, ...options.env };
+  const childEnv = withWorkingDirectoryEnv({ ...process.env, ...options.env }, cwd);
   const { detectHeterogeneousCliCommand } = await import('./resolveCliCommand');
   const commandStatus = await detectHeterogeneousCliCommand('trae', command, childEnv);
   if (!commandStatus.available || !commandStatus.path) {

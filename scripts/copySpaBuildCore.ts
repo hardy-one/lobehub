@@ -58,4 +58,16 @@ export const copySpaBuild = (root = path.resolve(import.meta.dirname, '..')) => 
       console.log(`Copied dist/${distDir}/${file} -> ${publicDir}/${file}`);
     }
   }
+  // Keep the worker beside the copied /_spa assets. Its default scope is /_spa/;
+  // it must not own document navigations because the server selects HTML by user agent.
+  const desktopDistRoot = path.resolve(root, 'dist/desktop');
+  const spaDir = path.resolve(root, 'public/_spa');
+  if (existsSync(desktopDistRoot)) {
+    mkdirSync(spaDir, { recursive: true });
+    for (const file of readdirSync(desktopDistRoot)) {
+      if (!/^(?:sw|workbox-.+)\.js$/.test(file)) continue;
+      cpSync(path.resolve(desktopDistRoot, file), path.resolve(spaDir, file));
+      console.log(`Copied dist/desktop/${file} -> public/_spa/${file}`);
+    }
+  }
 };

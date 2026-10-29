@@ -78,8 +78,11 @@ const SPAGlobalProvider = memo<PropsWithChildren>(({ children }) => {
   const serverConfig: SPAServerConfig | undefined = window.__SERVER_CONFIG__;
 
   const locale = document.documentElement.lang || 'en-US';
-  const isMobile =
-    (serverConfig?.isMobile ?? typeof __MOBILE__ !== 'undefined') ? __MOBILE__ : false;
+  // The server detects mobile from the request UA; the build flag is the same
+  // surface's compile-time answer. Fall back to the flag when the injected
+  // config omits it, so a proxy that rewrites the UA cannot silently turn a
+  // mobile view into the desktop layout (and desktop Enter-to-send behaviour).
+  const isMobile = serverConfig?.isMobile ?? (typeof __MOBILE__ !== 'undefined' && __MOBILE__);
 
   const content = (
     <AuthProvider>

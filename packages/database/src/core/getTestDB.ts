@@ -8,7 +8,13 @@ import { serverDBEnv } from '@/config/db';
 
 import * as schema from '../schemas';
 import type { LobeChatDatabase } from '../type';
-import { createPGlite, migrationsFolder, readPGliteSnapshot } from './pgliteSnapshot';
+import {
+  createPGlite,
+  forkMigrationsFolder,
+  forkMigrationTable,
+  migrationsFolder,
+  readPGliteSnapshot,
+} from './pgliteSnapshot';
 
 const isServerDBMode = process.env.TEST_SERVER_DB === '1';
 
@@ -30,6 +36,10 @@ export const getTestDB = async (): Promise<LobeChatDatabase> => {
     testServerDB = nodeDrizzle(client, { schema });
 
     await nodeMigrate(testServerDB, { migrationsFolder });
+    await nodeMigrate(testServerDB, {
+      migrationsFolder: forkMigrationsFolder,
+      migrationsTable: forkMigrationTable,
+    });
 
     return testServerDB as unknown as LobeChatDatabase;
   }
@@ -44,6 +54,12 @@ export const getTestDB = async (): Promise<LobeChatDatabase> => {
   // The global setup's snapshot is already migrated; without it, migrate here.
   // pg_search migrations skip themselves when the extension is unavailable, as in PGlite.
   if (!snapshot) await pgliteMigrate(testClientDB, { migrationsFolder });
+  // The fork chain is separate, so it also runs on top of a snapshot that
+  // already carries it: drizzle skips the migrations it has recorded.
+  await pgliteMigrate(testClientDB, {
+    migrationsFolder: forkMigrationsFolder,
+    migrationsTable: forkMigrationTable,
+  });
 
   return testClientDB as unknown as LobeChatDatabase;
 };

@@ -18,6 +18,10 @@ const runMigrations = async () => {
   await migrator.migrate(db, {
     migrationsFolder: path.join(__dirname, './migrations'),
   });
+  await migrator.migrate(db, {
+    migrationsFolder: path.join(__dirname, './migrations-fork'),
+    migrationsTable: '__lobehub_fork_migrations',
+  });
   await assertPgSearchReady((text) => client.query(text));
 
   console.log('✅ database migration pass.');

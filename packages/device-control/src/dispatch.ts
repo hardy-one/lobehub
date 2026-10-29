@@ -73,6 +73,7 @@ import type {
   ListProjectSkillsParams,
   LocalFilePreviewUrlParams,
   PrepareSkillDirectoryParams,
+  ProbeHeterogeneousThinkingLevelsParams,
   ProjectDirectoryListParams,
   ProjectFileIndexParams,
   ProjectFileSearchParams,
@@ -98,6 +99,7 @@ export const DEVICE_RPC_METHODS = [
   'listHeterogeneousAgentModels',
   'listMcpTools',
   'getAntigravityQuota',
+  'probeHeterogeneousThinkingLevels',
   'getClaudeCodeQuota',
   'getCodexQuota',
   'getKimiCodeQuota',
@@ -286,6 +288,17 @@ export const executeDeviceRpc = async (
     case 'listMcpTools': {
       if (!deps.listMcpTools) throw new Error(MCP_UNSUPPORTED_MESSAGE);
       return deps.listMcpTools(params as ListMcpToolsParams);
+    }
+
+    case 'probeHeterogeneousThinkingLevels': {
+      if (!deps.probeHeterogeneousThinkingLevels) {
+        throw new Error(
+          'This device client does not support heterogeneous agent thinking-level discovery',
+        );
+      }
+      return deps.probeHeterogeneousThinkingLevels(
+        params as ProbeHeterogeneousThinkingLevelsParams,
+      );
     }
 
     case 'getClaudeCodeQuota': {

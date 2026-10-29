@@ -11,6 +11,7 @@ import type { AcpRpcMessage } from './acpStdioClient';
 import { AcpServerRequestError } from './acpStdioClient';
 import type { CliCommandStatus } from './resolveCliCommand';
 import { detectValidatedCommand } from './resolveCliCommand';
+import { withWorkingDirectoryEnv } from './workingDirectory';
 
 /**
  * DeepSeek Harness over the Agent Client Protocol.
@@ -332,7 +333,10 @@ export const spawnDshAcpSession = (options: SpawnDshAcpSessionOptions): DshAcpSe
       clientVersion: options.clientVersion ?? '0.0.0',
       commandPath: options.command ?? DSH_COMMAND,
       cwd: options.cwd,
-      env: { ...process.env, ...options.env },
+      env: withWorkingDirectoryEnv(
+        { ...process.env, ...options.env },
+        options.cwd ?? process.cwd(),
+      ),
       model: options.model,
       onEvents: (events) => {
         queue.push(...events);

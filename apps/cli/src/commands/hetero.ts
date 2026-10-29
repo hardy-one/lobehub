@@ -41,6 +41,7 @@ import { isRecord } from '@lobechat/utils/object';
 import type { Command } from 'commander';
 
 import { getTrpcClient } from '../api/client';
+import { waitForPiBackgroundTasks } from '../device/piBackgroundTaskWaiter';
 import { cliVersion } from '../pkg';
 import { CoalescingBatchIngester } from '../utils/CoalescingBatchIngester';
 import { withHeteroSteer } from '../utils/heteroSteer';
@@ -122,7 +123,10 @@ const spawnRuntimeRegistry: Partial<
       onRawStdout: lifecycle?.onRawStdout,
       onStartupControl: lifecycle?.onStartupControl,
       resumeSessionId: spawnOpts.resumeSessionId,
+      initialThinkingLevel: spawnOpts.initialThinkingLevel,
       uploadImage: spawnOpts.uploadImage,
+      waitForBackgroundTasks: (pid, sessionId) =>
+        waitForPiBackgroundTasks(spawnOpts.cwd ?? process.cwd(), pid, sessionId),
     }),
 };
 
@@ -1267,6 +1271,7 @@ const exec = async (options: ExecOptions): Promise<void> => {
     // receives text while the process is running, not only the terminal assistant snapshot.
     includePartialMessages: options.type === 'claude-code',
     initialModel: usesHeterogeneousSessionInitialModel(options.type) ? options.model : undefined,
+    initialThinkingLevel: options.type === 'pi' ? options.effort : undefined,
     // Keep Claude Code's stdin open while it can still use input: closing it
     // early makes print mode kill background tasks after 10 minutes.
     liveInput: options.type === 'claude-code',

@@ -4,12 +4,15 @@ import type { ChatCompletionErrorPayload } from '../../types';
 import type { SignatureScope, SignatureScopeKind } from '../../utils/signatureScope';
 import type { ShouldUseResponsesAPIParams } from './apiMode';
 import type { ConstructorOptions, ResponseCreateParamsWithPromptCacheKey } from './factoryOptions';
+import type { LocalObjectReader } from '../contextBuilders/localObject';
 
 /**
  * What the protocol modules read from a factory-built runtime. The runtime builds it per
  * call, so its own members stay private and subclasses keep overriding `handleError`.
  */
 export interface OpenAICompatibleRuntimeContext {
+  /** Reader for deployment-owned object URLs, when configured. */
+  localObjectReader?: LocalObjectReader;
   _options: ConstructorOptions;
   baseURL: string;
   client: OpenAI;

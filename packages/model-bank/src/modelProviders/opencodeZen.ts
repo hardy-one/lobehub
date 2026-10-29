@@ -1,9 +1,8 @@
-import { default as zenModels } from '../aiModels/opencodeZen';
 import type { ModelProviderCard } from '../types';
 
 // ref: https://opencode.ai/zen
 const OpenCodeZen: ModelProviderCard = {
-  chatModels: zenModels,
+  chatModels: [],
   checkModel: 'claude-sonnet-4-5',
   description:
     'OpenCode Zen provides access to curated models from OpenAI, Anthropic, Moonshot, MiniMax, Zhipu, Qwen, and more via a single API key.',

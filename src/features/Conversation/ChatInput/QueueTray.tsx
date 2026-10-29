@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 
 import FileIcon from '@/components/FileIcon';
 import { useSingleton } from '@/hooks/useSingleton';
+import { heterogeneousAgentService } from '@/services/electron/heterogeneousAgent';
 import { useChatStore } from '@/store/chat';
 import { operationSelectors } from '@/store/chat/selectors';
 import {
@@ -258,6 +259,12 @@ const QueueTray = memo(() => {
         .run(async () => {
           setSendingId(msg.id);
           try {
+            // A Pi run holds its steered follow-ups itself: flush them over its RPC
+            // session instead of cancelling the run and re-sending.
+            if (msg.heterogeneousPiSessionId) {
+              await heterogeneousAgentService.executePiSteerQueue(msg.heterogeneousPiSessionId);
+              return;
+            }
             const outcome = await sendQueuedMessageNow({
               chat: useChatStore.getState(),
               context,

@@ -2,23 +2,25 @@ import path from 'node:path';
 
 import fs from 'fs-extra';
 
-type ReleaseType = 'stable' | 'beta' | 'nightly' | 'canary';
+type ReleaseType = 'stable' | 'beta' | 'nightly' | 'canary' | 'HARDY';
 
 // Get command line arguments for the script
 const version = process.argv[2];
-const releaseType = process.argv[3] as ReleaseType;
+const rawReleaseType = process.argv[3];
+const releaseType = rawReleaseType?.toLowerCase() as ReleaseType;
 
 // Validate parameters
 if (!version || !releaseType) {
   console.error(
-    'Missing parameters. Usage: bun run setDesktopVersion.ts <version> <stable|beta|nightly|canary>',
+    'Missing parameters. Usage: bun run setDesktopVersion.ts <version> <stable|beta|nightly|canary|Hardy>',
   );
   process.exit(1);
 }
 
-if (!['stable', 'beta', 'nightly', 'canary'].includes(releaseType)) {
+const validTypes = ['stable', 'beta', 'nightly', 'canary', 'hardy'];
+if (!validTypes.includes(releaseType)) {
   console.error(
-    `Invalid release type: ${releaseType}. Must be one of 'stable', 'beta', 'nightly', 'canary'.`,
+    `Invalid release type: ${rawReleaseType}. Must be one of 'stable', 'beta', 'nightly', 'canary', 'Hardy'.`,
   );
   process.exit(1);
 }
@@ -133,6 +135,12 @@ function updatePackageJson() {
         packageJson.productName = brandName;
         packageJson.name = `${packageBaseName}-canary`;
         console.log('🐤 Setting as Canary version (same app name and icon as stable).');
+        break;
+      }
+      case 'hardy': {
+        packageJson.productName = 'LobeHub-Hardy';
+        packageJson.name = 'lobehub-desktop-hardy';
+        console.log('🔨 Setting as Hardy version.');
         break;
       }
     }

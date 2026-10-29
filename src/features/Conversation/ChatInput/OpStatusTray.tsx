@@ -130,29 +130,52 @@ const styles = stylex.create({
     display: { default: null, [NARROWER]: 'none' },
   },
   activityGlyph: {
-    overflow: 'visible',
+    position: 'relative',
     flex: 'none',
     width: '16px',
     height: '16px',
     color: cssVar.colorPrimary,
   },
+  // Each looping animation lives on a wrapping span, never on the svg: Blink
+  // refuses to composite transform animations on SVG elements once the
+  // effective zoom is > 1 (device pixel ratio scaling), so svg-level motion
+  // costs a whole-document style recalc every frame instead of running on the
+  // compositor. The orbit and the core pulse are separate animations, so each
+  // layer gets its own span to carry it.
+  glyphLayer: {
+    position: 'absolute',
+    inset: 0,
+    display: 'block',
+    width: '100%',
+    height: '100%',
+  },
+  glyphSvg: {
+    overflow: 'visible',
+    display: 'block',
+    width: '100%',
+    height: '100%',
+  },
   glyphCore: {
-    transformOrigin: 'center',
-    transformBox: 'fill-box',
     fill: cssVar.colorPrimary,
+  },
+  glyphCoreLayer: {
+    // Scale from the icon's own centre, which is what the svg child used to do
+    // through transform-box: fill-box. A span has no fill box, so the origin is
+    // stated explicitly.
+    transformOrigin: 'center',
     animationName: { default: glyphCore, [REDUCED_MOTION]: 'none' },
     animationDuration: { default: '1.5s', [REDUCED_MOTION]: '0s' },
     animationTimingFunction: { default: 'ease-in-out', [REDUCED_MOTION]: 'ease' },
     animationIterationCount: { default: 'infinite', [REDUCED_MOTION]: 1 },
   },
   glyphOrbit: {
-    transformOrigin: 'center',
-    transformBox: 'fill-box',
     fill: 'none',
     stroke: `color-mix(in srgb, ${cssVar.colorPrimary} 76%, transparent)`,
     strokeDasharray: '9 18',
     strokeLinecap: 'round',
     strokeWidth: 1.5,
+  },
+  glyphOrbitLayer: {
     animationName: { default: glyphSpin, [REDUCED_MOTION]: 'none' },
     animationDuration: { default: '2s', [REDUCED_MOTION]: '0s' },
     animationTimingFunction: { default: 'linear', [REDUCED_MOTION]: 'ease' },
@@ -161,10 +184,18 @@ const styles = stylex.create({
 });
 
 const ActivityGlyph = () => (
-  <svg aria-hidden {...stylex.props(styles.activityGlyph)} viewBox="0 0 16 16">
-    <circle {...stylex.props(styles.glyphOrbit)} cx="8" cy="8" r="6.1" />
-    <circle {...stylex.props(styles.glyphCore)} cx="8" cy="8" r="2.7" />
-  </svg>
+  <span aria-hidden {...stylex.props(styles.activityGlyph)}>
+    <span {...stylex.props(styles.glyphLayer, styles.glyphOrbitLayer)}>
+      <svg {...stylex.props(styles.glyphSvg)} viewBox="0 0 16 16">
+        <circle {...stylex.props(styles.glyphOrbit)} cx="8" cy="8" r="6.1" />
+      </svg>
+    </span>
+    <span {...stylex.props(styles.glyphLayer, styles.glyphCoreLayer)}>
+      <svg {...stylex.props(styles.glyphSvg)} viewBox="0 0 16 16">
+        <circle {...stylex.props(styles.glyphCore)} cx="8" cy="8" r="2.7" />
+      </svg>
+    </span>
+  </span>
 );
 
 const formatTokens = (n: number) => {

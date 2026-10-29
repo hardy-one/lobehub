@@ -10,13 +10,18 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
     color: ${cssVar.colorTextDescription};
 
     ${responsive.sm} {
+      /* On mobile the header used to be a full-bleed tinted band. Once the content
+         area took the container surface the band sat brighter than the rows it
+         labels and cut the list into blocks, so the grouping now comes from
+         typography and spacing instead of a background. */
+      margin-block-start: 10px;
       border-radius: 0;
-      background: ${cssVar.colorFillQuaternary};
+      color: ${cssVar.colorTextSecondary};
     }
 
     &:hover {
       color: ${cssVar.colorText};
-      background: ${cssVar.colorFillTertiary};
+      background: ${cssVar.colorFillSecondary};
     }
   `,
 }));
@@ -47,7 +52,11 @@ const CollapseGroup = memo<CollapseGroupProps>(({ activeKey, items, onChange }) 
         alwaysShowAction: isMobile,
         children: item.children,
         key: item.key,
-        title: <Text ellipsis>{item.label}</Text>,
+        title: (
+          <Text ellipsis {...(isMobile ? { fontSize: 13, weight: 500 } : {})}>
+            {item.label}
+          </Text>
+        ),
       }))}
       styles={{
         header: isMobile ? { marginInline: 0 } : undefined,

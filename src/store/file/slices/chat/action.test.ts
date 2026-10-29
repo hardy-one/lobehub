@@ -628,7 +628,9 @@ describe('useFileStore:chat', () => {
 
       act(() => {
         useStore.setState({
-          chatUploadFileListByContext: { [CONTEXT_KEY]: [{ id: 'file-1' }] } as any,
+          chatUploadFileListByContext: {
+            [CONTEXT_KEY]: [{ id: 'file-1', status: 'success' }],
+          } as any,
         });
       });
 
@@ -639,6 +641,26 @@ describe('useFileStore:chat', () => {
       expect(uploadList()).toEqual([]);
       expect(removeFile).toHaveBeenCalledWith('file-1');
     });
+
+    it.each(['pending', 'error'] as const)(
+      'drops a %s draft locally without calling the file API',
+      async (status) => {
+        const removeFile = vi.spyOn(fileService, 'removeFile').mockResolvedValue(undefined);
+        const { result } = renderHook(() => useStore());
+
+        act(() => {
+          // Id is still the file name: the server row does not exist yet.
+          useStore.setState({ chatUploadFileList: [{ id: 'cat.png', status }] as any });
+        });
+
+        await act(async () => {
+          await result.current.removeChatUploadFile('cat.png');
+        });
+
+        expect(result.current.chatUploadFileList).toEqual([]);
+        expect(removeFile).not.toHaveBeenCalled();
+      },
+    );
 
     it('skips file deletion for a restored item (skipRemoveFile)', async () => {
       const removeFile = vi.spyOn(fileService, 'removeFile').mockResolvedValue(undefined);

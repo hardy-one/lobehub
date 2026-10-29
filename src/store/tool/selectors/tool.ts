@@ -37,6 +37,17 @@ const discoverableMetaList = (s: ToolStoreState): LobeToolMeta[] => {
   return builtinToolSelectors.discoverableMetaList(s).concat(pluginList).concat(lobehubSkillList);
 };
 
+const toMetaData = (item: LobeToolMeta): MetaData => {
+  if (item.meta) return item.meta;
+
+  return {
+    avatar: item.avatar,
+    backgroundColor: item.backgroundColor,
+    description: item.description,
+    title: item.title,
+  };
+};
+
 const getMetaById =
   (id: string) =>
   (s: ToolStoreState): MetaData | undefined => {
@@ -44,14 +55,31 @@ const getMetaById =
 
     if (!item) return;
 
-    if (item.meta) return item.meta;
+    return toMetaData(item);
+  };
 
-    return {
-      avatar: item?.avatar,
-      backgroundColor: item?.backgroundColor,
-      description: item?.description,
-      title: item?.title,
-    };
+/**
+ * Metadata for many identifiers from one pass over the tool list.
+ *
+ * A conversation with a long tool run asks for the same handful of identifiers
+ * once per row; resolving each one separately rebuilds and scans the whole
+ * builtin + plugin + skill list every time.
+ */
+const getMetaByIdentifiers =
+  (identifiers: string[]) =>
+  (s: ToolStoreState): Record<string, MetaData | undefined> => {
+    const wanted = new Set(identifiers);
+    const result: Record<string, MetaData | undefined> = {};
+    if (wanted.size === 0) return result;
+
+    for (const item of metaList(s)) {
+      if (!wanted.has(item.identifier)) continue;
+      result[item.identifier] = toMetaData(item);
+      wanted.delete(item.identifier);
+      if (wanted.size === 0) break;
+    }
+
+    return result;
   };
 
 const getManifestById =
@@ -213,6 +241,7 @@ export const toolSelectors = {
   getManifestLoadingStatus,
   getPluginInstallError,
   getMetaById,
+  getMetaByIdentifiers,
   getRenderDisplayControl,
   isToolHasUI,
   metaList,

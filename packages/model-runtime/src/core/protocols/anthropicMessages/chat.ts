@@ -39,7 +39,8 @@ export const chatViaMessages = async (
 
   log('chat called with model: %s, stream: %s', payload.model, payload.stream ?? true);
 
-  const build = (input: ChatStreamPayload) => handlePayload(input, runtime._options);
+  const build = (input: ChatStreamPayload) =>
+    handlePayload(input, { ...runtime._options, localObjectReader: runtime.localObjectReader });
   const { body: postPayload, headers } = await prepareAnthropicToolChanges(
     runtime,
     payload,

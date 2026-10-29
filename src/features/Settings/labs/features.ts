@@ -53,6 +53,12 @@ export interface LabFeatureItem {
   noteI18nKey?: LabFeatureNoteI18nKey;
   /** Extra untranslated English synonyms for the settings search index */
   searchKeywords: string[];
+  /**
+   * Server capability this experiment needs. Hidden when the deployment does not
+   * offer it — `OSS_ENABLE_ARTIFACT_DEPLOYMENT` and friends are operator
+   * decisions, so their toggle would do nothing here.
+   */
+  serverFlag?: 'enableArtifactDeployment';
   stage: LabStage;
   /** Only rendered (and searchable) for users with workspace access */
   workspaceOnly?: boolean;
@@ -133,6 +139,7 @@ const ALL_LAB_FEATURES: LabFeatureItem[] = [
     flag: 'enableArtifactDeployment',
     i18nKey: 'artifactDeployment',
     searchKeywords: ['artifact', 'deploy', 'publish'],
+    serverFlag: 'enableArtifactDeployment',
     stage: 'beta',
   },
   {

@@ -1,5 +1,5 @@
 import type { ModelParamsSchema } from '../standard-parameters';
-import type { AiModelSettings, AiModelType, Pricing } from './aiModel';
+import type { AiModelSettings, AiModelType, ModelSdkType, Pricing } from './aiModel';
 import type { AiProviderSettings } from './aiProvider';
 
 export interface ChatModelCard {
@@ -57,6 +57,8 @@ export interface ChatModelCard {
    * the date when model is released
    */
   releasedAt?: string;
+
+  sdkType?: ModelSdkType;
 
   /**
    *  whether model supports search

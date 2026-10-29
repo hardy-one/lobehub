@@ -25,9 +25,7 @@ import type { WorkflowExpandLevelDefault } from './WorkflowCollapse';
 const styles = createStaticStyles(({ css }) => {
   return {
     container: css`
-      &:has(.tool-blocks) {
-        width: 100%;
-      }
+      width: 100%;
     `,
   };
 });

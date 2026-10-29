@@ -2,6 +2,8 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
+import { LOBE_USER_AGENT } from '@lobechat/const';
+
 import {
   buildKimiCodeQuotaWindows,
   KIMI_CODE_MONTHLY_WINDOW_MINUTES,
@@ -132,6 +134,7 @@ const refreshAccessToken = async (
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': LOBE_USER_AGENT,
       },
       method: 'POST',
       signal: controller.signal,
@@ -293,8 +296,9 @@ const fetchKimiCodeIdentity = async (
   try {
     const response = await fetch(`${baseUrl}/me`, {
       headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${accessToken}`,
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+        'User-Agent': LOBE_USER_AGENT,
       },
       signal: controller.signal,
     });
@@ -331,8 +335,9 @@ export const fetchKimiCodeQuota = async (
   try {
     const response = await fetch(`${baseUrl}/usages`, {
       headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${lookup.accessToken}`,
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${lookup.accessToken}`,
+        'User-Agent': LOBE_USER_AGENT,
       },
       signal: controller.signal,
     });

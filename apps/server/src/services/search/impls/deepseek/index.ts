@@ -118,6 +118,7 @@ export class DeepSeekImpl implements SearchServiceImpl {
       const deepseekResponse = (await response.json()) as DeepSeekSearchResponse;
 
       const mappedResults = (deepseekResponse.results || []).map((result): UniformSearchResult => ({
+        authority: typeof result.authority === 'number' ? result.authority : undefined,
         category: 'general',
         // `summary` is the longer excerpt DeepSeek prepares for model reading
         content: result.summary || result.snippet || '',

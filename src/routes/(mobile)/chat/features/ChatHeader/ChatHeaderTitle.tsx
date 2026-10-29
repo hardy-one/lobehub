@@ -56,7 +56,6 @@ const ChatHeaderTitle = memo(() => {
       title={
         <div
           style={{
-            marginRight: '8px',
             maxWidth: '64vw',
             overflow: 'hidden',
             textOverflow: 'ellipsis',

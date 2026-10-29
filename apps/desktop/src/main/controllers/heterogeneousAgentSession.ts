@@ -153,6 +153,8 @@ export interface AgentSession {
   hostedProviderBinding?: HostedProviderBinding;
   /** Open input of a live CLI run (Claude Code or Antigravity). */
   liveInput?: AntigravityLiveInput | ClaudeCodeLiveInput;
+  /** Protocol-native thinking level applied to the Pi session before each run. */
+  initialThinkingLevel?: string;
   model?: string;
   modelSource?: string;
   modelVerificationLastAttemptAt?: number;

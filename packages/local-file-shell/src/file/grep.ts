@@ -1,79 +1,50 @@
-import { spawn } from 'node:child_process';
-
+import { type BaseContentSearch, createContentSearchImpl } from '../contentSearch';
 import type { GrepContentParams, GrepContentResult } from '../types';
 import { expandTilde } from './expandTilde';
 import { hasHiddenSegment } from './hasHiddenSegment';
 
 /**
- * Lightweight grep — spawns `rg` directly. For the platform-aware fallback
- * chain (rg → ag → grep → nodejs) with rich `output_mode` / `-A/-B/-C` support, use
- * `createContentSearchImpl()` from `@lobechat/local-file-shell/contentSearch`.
+ * Simple wrapper API for content search.
+ *
+ * Delegates to the platform-aware fallback chain (`rg` → `ag` → `grep` →
+ * nodejs) so a host without ripgrep still answers the query instead of
+ * failing outright. An earlier version spawned `rg` directly here: on a
+ * machine without it every search returned a bare `success: false` with no
+ * `error`, which the tool pipeline collapsed to
+ * "[UNKNOWN_EXEC_ERROR] Tool execution failed" — the agent could not tell a
+ * missing binary from a broken pattern and retried the same call forever.
+ * The chain reports its own failure reason, which the runtime surfaces
+ * verbatim.
  */
-export async function grepContent({
-  pattern,
-  cwd,
-  filePattern,
-  output_mode = 'files_with_matches',
-}: GrepContentParams): Promise<GrepContentResult> {
-  const wantsHidden = hasHiddenSegment(filePattern);
-  const hint = wantsHidden
-    ? `Auto-enabled hidden-file matching because filePattern contains a dot-prefixed segment.`
-    : undefined;
+let impl: BaseContentSearch | undefined;
 
-  return new Promise<GrepContentResult>((resolve) => {
-    const args = ['--color=never', '--no-heading', '--with-filename', '--max-columns', '500'];
-    if (wantsHidden) {
-      args.push('--hidden', '--glob', '!**/.git/**');
-    }
-    if (output_mode === 'files_with_matches') {
-      args.push('--files-with-matches');
-    } else if (output_mode === 'count') {
-      args.push('--count');
-    } else {
-      args.push('--line-number', '--column');
-    }
-    if (filePattern) args.push('--glob', filePattern);
-    args.push(pattern, '.');
+export async function grepContent(params: GrepContentParams): Promise<GrepContentResult> {
+  impl ??= createContentSearchImpl();
 
-    const child = spawn('rg', args, {
-      cwd: expandTilde(cwd) || process.cwd(),
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    let stdout = '';
+  // The chain reads `glob`; `filePattern` is this wrapper's legacy name for it.
+  const glob = params.glob ?? params.filePattern;
 
-    child.stdout?.on('data', (data) => {
-      stdout += data.toString();
-    });
-    child.stderr?.on('data', () => {
-      // stderr consumed but not used
-    });
-
-    child.on('close', (code) => {
-      if (code !== 0 && code !== 1) {
-        resolve({ engine: 'rg', hint, matches: [], success: false, total_matches: 0 });
-        return;
-      }
-
-      const matches = stdout.split('\n').filter(Boolean);
-      const totalMatches =
-        output_mode === 'count'
-          ? matches.reduce((sum, line) => {
-              const count = Number.parseInt(line.slice(line.lastIndexOf(':') + 1), 10);
-              return sum + (Number.isNaN(count) ? 0 : count);
-            }, 0)
-          : matches.length;
-
-      resolve({
-        engine: 'rg',
-        hint,
-        matches,
-        success: true,
-        total_matches: totalMatches,
-      });
-    });
-
-    child.on('error', () => {
-      resolve({ engine: 'rg', hint, matches: [], success: false, total_matches: 0 });
-    });
+  const result = await impl.grep({
+    ...params,
+    // The old wrapper always numbered content-mode lines; the chain only does
+    // so on `-n`. Keep the wrapper's contract.
+    '-n': params.output_mode === 'content' ? (params['-n'] ?? true) : params['-n'],
+    glob,
+    // Expand every search-root alias here: the chain only tilde-expands inside
+    // its existence check, and an unexpanded `~` reaches execa's `cwd` as a
+    // literal path on the actual search.
+    'path': expandTilde(params.path ?? params.scope ?? params.cwd) ?? process.cwd(),
   });
+
+  // Keep reporting the hidden-segment adjustment even when the engine itself
+  // picked it up, so a zero-match dot-path search never looks like a silent
+  // failure.
+  if (hasHiddenSegment(glob)) {
+    return {
+      ...result,
+      hint: `Auto-enabled hidden-file matching because filePattern contains a dot-prefixed segment.`,
+    };
+  }
+
+  return result;
 }

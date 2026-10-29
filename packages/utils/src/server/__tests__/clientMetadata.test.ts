@@ -1,7 +1,7 @@
 import { CLIENT_VERSION_HEADER } from '@lobechat/const';
 import { describe, expect, it } from 'vitest';
 
-import { parseClientMetadata } from '../clientMetadata';
+import { isMobileClient, parseClientMetadata } from '../clientMetadata';
 
 describe('parseClientMetadata', () => {
   it('should parse the current iOS mobile user agent', () => {
@@ -97,5 +97,19 @@ describe('parseClientMetadata', () => {
 
     expect(parseClientMetadata(emptyVersionHeaders)).toEqual({ type: 'unknown' });
     expect(parseClientMetadata(oversizedVersionHeaders)).toEqual({ type: 'unknown' });
+  });
+});
+
+describe('isMobileClient', () => {
+  it('matches native mobile client user agents', () => {
+    expect(isMobileClient('LobeHub-Mobile/android-v2.0.0')).toBe(true);
+    expect(isMobileClient('LobeHub-iOS/2.0')).toBe(true);
+    expect(isMobileClient('okhttp/4.12.0')).toBe(true);
+  });
+
+  it('does not classify web or desktop clients as mobile', () => {
+    expect(isMobileClient('Mozilla/5.0 Chrome/140.0.0.0')).toBe(false);
+    expect(isMobileClient('LobeHub Desktop/1.2.3')).toBe(false);
+    expect(isMobileClient(undefined)).toBe(false);
   });
 });

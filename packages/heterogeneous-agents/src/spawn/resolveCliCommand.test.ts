@@ -191,6 +191,20 @@ describe('resolveCliCommand', () => {
       });
     });
 
+    it('resolves and validates OpenCode using its product-prefixed version banner', async () => {
+      callExecFile('/Users/x/.opencode/bin/opencode\n');
+      callExecFile('opencode v2.0.27');
+
+      const { detectHeterogeneousCliCommand } = await importModule();
+      const status = await detectHeterogeneousCliCommand('opencode', 'opencode');
+
+      expect(status).toMatchObject({
+        available: true,
+        path: '/Users/x/.opencode/bin/opencode',
+        version: '2.0.27',
+      });
+    });
+
     it('validates Kimi Code using its bare semver and stream-json capabilities', async () => {
       callExecFile('/Users/x/.kimi-code/bin/kimi\n');
       callExecFile('1.8.0');

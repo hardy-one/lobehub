@@ -8,6 +8,7 @@ import { useChatStore } from '@/store/chat';
 import { topicSelectors } from '@/store/chat/selectors';
 
 import { type State } from '../../initialState';
+import { indexDisplayMessages } from './messageIndex';
 import { getPendingInterventions } from './pendingInterventions';
 import { collectSteerChains } from './steerChains';
 import { getWorkSummariesByRootOperationId } from './workSummaries';
@@ -242,32 +243,23 @@ const getRowLatestMessageWithoutTools = (id: string) => (s: State) => {
 };
 
 /**
- * Walk displayMessages (including compressed groups and agentCouncil members)
- * to find an assistant content block by its id. Used to let tool subtrees
- * self-subscribe to their own data instead of receiving it as props from the
- * message-level renderer.
+ * Resolve an assistant content block by id.
+ *
+ * Tool and content rows subscribe by block id, so this runs once per row on
+ * every snapshot. The index built in `indexDisplayMessages` answers the common
+ * case in one lookup; the walk below stays as the fallback because an
+ * `assistant` message is itself a block and is not registered as one.
  */
 const findBlockById = (
   blockId: string,
   messages: UIChatMessage[],
 ): AssistantContentBlock | undefined => {
+  const indexedBlock = indexDisplayMessages(messages).blockById.get(blockId);
+  if (indexedBlock) return indexedBlock;
+
   for (const message of messages) {
     if (message.role === 'assistant' && message.id === blockId) {
       return toAssistantContentBlock(message);
-    }
-    if (message.children) {
-      const block = message.children.find((child) => child.id === blockId);
-      if (block) return block;
-    }
-    // Post-task summary blocks live in a separate field on virtual
-    // assistantGroup messages so they render AFTER `<SignalCallbacks>`
-    // (). Same lookup contract as `children` — the renderer
-    // identifies blocks by id regardless of which slot they came from.
-    if ((message as { taskCompletions?: AssistantContentBlock[] }).taskCompletions) {
-      const block = (
-        message as { taskCompletions?: AssistantContentBlock[] }
-      ).taskCompletions!.find((child) => child.id === blockId);
-      if (block) return block;
     }
     if (message.compressedMessages) {
       const inCompressedMessages = findBlockById(blockId, message.compressedMessages);

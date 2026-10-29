@@ -168,6 +168,26 @@ describe('toolSelectors', () => {
       const result = toolSelectors.getMetaById('non-existent')(mockState);
       expect(result).toBeUndefined();
     });
+
+    it('resolves many identifiers in one pass, matching getMetaById per id', () => {
+      const ids = ['plugin-1', 'builtin-1', 'test-skill', 'non-existent'];
+
+      const result = toolSelectors.getMetaByIdentifiers(ids)(mockState);
+
+      for (const id of ids) {
+        expect(result[id]).toEqual(toolSelectors.getMetaById(id)(mockState));
+      }
+    });
+
+    it('omits identifiers that are not installed', () => {
+      const result = toolSelectors.getMetaByIdentifiers(['non-existent'])(mockState);
+
+      expect(result).toEqual({});
+    });
+
+    it('returns an empty record for an empty identifier list', () => {
+      expect(toolSelectors.getMetaByIdentifiers([])(mockState)).toEqual({});
+    });
   });
 
   describe('getManifestById and getManifestLoadingStatus', () => {

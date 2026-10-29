@@ -142,6 +142,8 @@ export interface AgentSession {
   env?: Record<string, string>;
   grokAcpSession?: GrokAcpSession;
   hostedProviderBinding?: HostedProviderBinding;
+  /** Protocol-native thinking level applied to the Pi session before each run. */
+  initialThinkingLevel?: string;
   model?: string;
   modelSource?: string;
   modelVerificationLastAttemptAt?: number;

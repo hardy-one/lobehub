@@ -1,5 +1,10 @@
 import type { TFunction } from 'i18next';
 
+import {
+  INVITATION_CODE_INVALID_CODE,
+  INVITATION_CODE_REQUIRED_CODE,
+} from '@/libs/better-auth/invitation-code';
+
 import { translateAuthError } from '../utils/translateAuthError';
 
 export interface SignUpErrorLike {
@@ -18,7 +23,7 @@ export interface ResolvedSignUpError {
    * Form field the error belongs to. Field errors render under that input and clear as
    * soon as the user edits it; errors without a field render next to the submit button.
    */
-  field?: 'email' | 'password';
+  field?: 'email' | 'invitationCode' | 'password';
   message: string;
 }
 
@@ -39,6 +44,12 @@ const PASSWORD_ERROR_CODES = new Set([
   'INVALID_PASSWORD',
   'PASSWORD_TOO_LONG',
   'PASSWORD_TOO_SHORT',
+]);
+
+/** Server rejections that the user fixes by correcting the invitation code */
+const INVITATION_CODE_ERROR_CODES = new Set([
+  INVITATION_CODE_INVALID_CODE,
+  INVITATION_CODE_REQUIRED_CODE,
 ]);
 
 /**
@@ -64,6 +75,9 @@ export const resolveSignUpError = (
   if (translated && error.code) {
     if (EMAIL_ERROR_CODES.has(error.code)) return { field: 'email', message: translated };
     if (PASSWORD_ERROR_CODES.has(error.code)) return { field: 'password', message: translated };
+    if (INVITATION_CODE_ERROR_CODES.has(error.code)) {
+      return { field: 'invitationCode', message: translated };
+    }
     return { message: translated };
   }
 

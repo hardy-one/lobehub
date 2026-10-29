@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { LOBE_USER_AGENT } from '@lobechat/const';
 import { type ChatModelCard } from '@lobechat/types';
 import { ModelProvider } from 'model-bank';
 import OpenAI from 'openai';
@@ -86,7 +87,7 @@ class CopilotTokenManager {
       headers: {
         'Accept': 'application/json',
         'Authorization': `Token ${githubToken}`,
-        'User-Agent': 'LobeChat/1.0',
+        'User-Agent': LOBE_USER_AGENT,
       },
       method: 'GET',
     });
@@ -219,6 +220,7 @@ export class LobeGithubCopilotAI implements LobeRuntimeAI {
           apiKey: bearerToken,
           baseURL: this.baseURL,
           defaultHeaders: {
+            'User-Agent': LOBE_USER_AGENT,
             'Authorization': `Bearer ${bearerToken}`,
             'Copilot-Integration-Id': 'vscode-chat',
             'Editor-Plugin-Version': 'LobeChat/1.0',
@@ -285,6 +287,7 @@ export class LobeGithubCopilotAI implements LobeRuntimeAI {
         apiKey: bearerToken,
         baseURL: COPILOT_BASE_URL,
         defaultHeaders: {
+          'User-Agent': LOBE_USER_AGENT,
           'Copilot-Integration-Id': 'vscode-chat',
           'Editor-Plugin-Version': 'LobeChat/1.0',
           'Editor-Version': 'LobeChat/1.0',

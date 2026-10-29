@@ -12,13 +12,11 @@ export const dotLoading = css`
 
     vertical-align: bottom;
 
+    /* Intentionally animates width, not transform: the reveal is step-wise
+       (steps(4)), and each ellipsis glyph is wider than the last, so only a
+       width animation exposes exactly one, two, or three dots. This rule
+       carries a single animation on one inline element — not worth converting. */
     animation: ellipsis steps(4, end) 900ms infinite;
-  }
-
-  @keyframes ellipsis {
-    to {
-      width: 1.25em;
-    }
   }
 
   @keyframes ellipsis {

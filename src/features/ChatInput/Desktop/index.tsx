@@ -56,6 +56,25 @@ const styles = stylex.create({
   },
   leftActions: { flex: 'none', minWidth: '0' },
   leftSlot: { overflow: 'hidden', flex: '1', minWidth: '0' },
+  // Mobile has no DesktopLayoutContainer portal target: the expanded composer
+  // must cover the viewport instead of positioning against the composer-sized
+  // WideScreenContainer. Applied after `fullscreen` so it overrides the
+  // absolute positioning and 100% sizing.
+  viewportFullscreen: {
+    position: 'fixed',
+    zIndex: 100,
+    inset: 0,
+    width: '100vw',
+    // dvh follows the mobile browser's dynamic toolbar as it shows and hides.
+    height: '100dvh',
+    marginBlockStart: '0',
+    paddingBlockStart: 'max(12px, env(safe-area-inset-top))',
+    paddingBlockEnd: 'max(12px, env(safe-area-inset-bottom))',
+    paddingInlineStart: 'max(12px, env(safe-area-inset-left))',
+    paddingInlineEnd: 'max(12px, env(safe-area-inset-right))',
+    backgroundColor: cssVar.colorBgContainer,
+    backgroundImage: 'none',
+  },
 });
 
 const fallback = createStaticStyles(({ css }) => ({
@@ -145,6 +164,9 @@ const DesktopChatInput = memo<DesktopChatInputProps>(
     // The ControlBar (or the custom slot standing in for it) hosts the
     // context-window token tag; without one, SendArea keeps it beside Send.
     const hasControlBar = Boolean(controlBarSlot) || showControlBar;
+    // Mobile has no DesktopLayoutContainer portal target; use a fixed viewport layer
+    // there instead of positioning against the composer-sized WideScreenContainer.
+    const isViewportFullscreen = expand && !layoutContainerRef.current;
 
     const setExpand = useChatInputStore((s) => s.setExpand);
     const skillDrop = useSkillDrop();
@@ -223,7 +245,13 @@ const DesktopChatInput = memo<DesktopChatInputProps>(
 
     const content = (
       <Flexbox
-        className={stylex.props(composerHoverMarker, expand && styles.fullscreen).className}
+        className={
+          stylex.props(
+            composerHoverMarker,
+            expand && styles.fullscreen,
+            isViewportFullscreen && styles.viewportFullscreen,
+          ).className
+        }
         gap={8}
         paddingBlock={expand ? 0 : showFootnote ? '0 12px' : '0 8px'}
         style={{ display: hidden ? 'none' : undefined }}

@@ -83,6 +83,8 @@ export class WebBrowsingExecutionRuntime {
           url: item.url,
           ...(item.content && { content: item.content }),
           ...(item.publishedDate && { publishedDate: item.publishedDate }),
+          ...(typeof item.score === 'number' && { score: item.score }),
+          ...(typeof item.authority === 'number' && { authority: item.authority }),
           ...(item.imgSrc && { imgSrc: item.imgSrc }),
           ...(item.thumbnail && { thumbnail: item.thumbnail }),
         }));

@@ -25,4 +25,12 @@ describe('getAuthConfig', () => {
 
     expect(getAuthConfig().AUTH_ADDITIONAL_TRUSTED_ORIGINS).toBe('https://gateway.example.com');
   });
+
+  it('should expose the invitation codes required to sign up', async () => {
+    vi.stubEnv('AUTH_INVITATION_CODES', 'team-2026,friend-invite');
+
+    const { getAuthConfig } = await import('../auth');
+
+    expect(getAuthConfig().AUTH_INVITATION_CODES).toBe('team-2026,friend-invite');
+  });
 });

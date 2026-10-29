@@ -212,6 +212,46 @@ describe('createReviewRuntimePrimitives', () => {
     expect(writeDailyBrief).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects an executable proposal action that carries no operation', async () => {
+    const writeDailyBrief = vi.fn();
+    const service = createReviewRuntimePrimitives({
+      agentId: 'agent-1',
+      briefModel: {} as never,
+      db: {} as unknown as LobeChatDatabase,
+      localDate: '2026-10-10',
+      proposalBriefWriter: { writeDailyBrief } as never,
+      reviewWindowEnd: '2026-10-10T14:00:00.000Z',
+      reviewWindowStart: '2026-10-09T14:00:00.000Z',
+      skillDocumentService: {
+        listSkills: vi.fn().mockResolvedValue([]),
+      } as unknown as SkillManagementDocumentService,
+      sourceId: 'nightly-review:user-1:agent-1:2026-10-10',
+      userId: 'user-1',
+    });
+
+    await expect(
+      service.createSelfReviewProposal?.(
+        {
+          actions: [
+            {
+              actionType: 'create_skill',
+              rationale: 'Repeated web research workflow.',
+              target: { skillName: 'evidence-grounded-web-research' },
+            },
+          ],
+          idempotencyKey: 'proposal-3',
+          proposalKey: 'skill:evidence-grounded-web-research',
+          summary: 'Create an evidence-grounded web research skill.',
+          userId: 'user-1',
+        },
+        {},
+      ),
+    ).rejects.toThrow(
+      'actions[0] with actionType "create_skill" requires operation { domain: "skill", operation: "create", input: {...} }; received nothing.',
+    );
+    expect(writeDailyBrief).not.toHaveBeenCalled();
+  });
+
   it('rejects proposal actions without a recognizable actionType with a recoverable error', async () => {
     const service = createReviewRuntimePrimitives({
       agentId: 'agent-1',

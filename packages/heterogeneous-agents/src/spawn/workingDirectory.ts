@@ -1,5 +1,5 @@
 import { type Stats, statSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { homedir, platform, tmpdir } from 'node:os';
 
 import { HETERO_WORKING_DIRECTORY_NOT_FOUND } from './classifyProcessFailure';
 
@@ -70,3 +70,19 @@ export const resolveHeteroSpawnCwd = (workDir: string): string | undefined =>
   [workDir, homedir(), tmpdir()].find(
     (candidate) => !!candidate && isSpawnableDirectory(candidate),
   );
+
+/**
+ * Bring `PWD` in line with the directory the child is actually started in.
+ *
+ * `spawn(..., { cwd })` chdirs the child but leaves the inherited `PWD` alone,
+ * so an agent CLI that resolves its project from `PWD` runs in whatever
+ * directory the launcher happened to sit in. OpenCode does exactly that: every
+ * dispatched conversation opened the `lh connect` daemon's directory even
+ * though `lh hetero exec --cwd <dir>` had started the process in the
+ * conversation's own. A shell never lets the two disagree, so neither do we —
+ * a child may be spawned either way and must not be able to tell.
+ *
+ * POSIX only: Windows has no `PWD`.
+ */
+export const withWorkingDirectoryEnv = (env: NodeJS.ProcessEnv, cwd: string): NodeJS.ProcessEnv =>
+  platform() === 'win32' ? env : { ...env, PWD: cwd };

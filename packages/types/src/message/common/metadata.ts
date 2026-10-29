@@ -153,6 +153,7 @@ export const ModelPerformanceSchema = z.object({
   tps: z.number().optional(),
   ttft: z.number().optional(),
   duration: z.number().optional(),
+  speedOutputTokens: z.number().optional(),
   latency: z.number().optional(),
 });
 
@@ -422,6 +423,10 @@ export interface ModelPerformance {
   /**
    * tokens per second
    */
+  /**
+   * Output tokens used as the numerator for tps. Providers may exclude reasoning tokens.
+   */
+  speedOutputTokens?: number;
   tps?: number;
   /**
    * time to first token (ms)

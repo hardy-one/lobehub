@@ -316,7 +316,7 @@ class LobeAgentExecutionRuntime {
       );
     }
 
-    const { description, instruction, timeout } = params;
+    const { description, instruction, timeout, model, provider } = params;
     if (!instruction || typeof instruction !== 'string') {
       return buildError('instruction is required.', 'INVALID_ARGUMENTS');
     }
@@ -331,7 +331,7 @@ class LobeAgentExecutionRuntime {
 
     const runner = ctx.subAgent;
     const startRun = () =>
-      runner.run({ background, description, instruction, subAgentId, timeout });
+      runner.run({ background, description, instruction, model, provider, subAgentId, timeout });
 
     let runResult: Awaited<ReturnType<typeof startRun>>;
     if (background) {

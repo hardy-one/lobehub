@@ -77,6 +77,13 @@ export interface FileServiceImpl {
   getKeyFromFullUrl: (url: string) => Promise<string | null>;
 
   /**
+   * Read a stored object addressed by its browser-facing URL through the
+   * server's own storage client. `undefined` means this backend does not own
+   * the URL, so the caller keeps whatever transport it already uses.
+   */
+  readObjectByUrl: (url: string) => Promise<Uint8Array | undefined>;
+
+  /**
    * Upload buffer with specified content type (for any file type)
    */
   uploadBuffer: (key: string, buffer: Buffer, contentType: string) => Promise<{ key: string }>;

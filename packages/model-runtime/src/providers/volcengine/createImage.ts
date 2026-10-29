@@ -1,3 +1,4 @@
+import { LOBE_USER_AGENT } from '@lobechat/const';
 import createDebug from 'debug';
 import type { RuntimeImageGenParamsValue } from 'model-bank';
 import OpenAI from 'openai';
@@ -23,6 +24,7 @@ export async function createVolcengineImage(
   const client = new OpenAI({
     apiKey: options.apiKey,
     baseURL: options.baseURL || 'https://ark.cn-beijing.volces.com/api/v3',
+    defaultHeaders: { 'User-Agent': LOBE_USER_AGENT },
   });
 
   // Parameter mapping: imageUrls/imageUrl -> image, cfg -> guidance_scale

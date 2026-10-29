@@ -53,6 +53,7 @@ import { aiAgentService, MAX_CLIENT_OPERATION_SNAPSHOT } from '@/services/aiAgen
 import { aiChatService } from '@/services/aiChat';
 import { resolveSelectedSkillsWithContent } from '@/services/chat/mecha/skillPreload';
 import { resolveSelectedToolsWithContent } from '@/services/chat/mecha/toolPreload';
+import { heterogeneousAgentService } from '@/services/electron/heterogeneousAgent';
 import { messageService } from '@/services/message';
 import { topicService } from '@/services/topic';
 import { getAgentStoreState } from '@/store/agent';
@@ -93,6 +94,7 @@ import {
   getNativeHeteroSessionBindingKey,
   resolveHeteroResume,
 } from '@/store/chat/slices/agentRun/actions/transports/hetero/heteroResume';
+import type { QueuedMessage } from '@/store/chat/slices/operation/types';
 import { isQueueBlockingOperation, snapshotQueuedFiles } from '@/store/chat/slices/operation/types';
 import { PortalViewType } from '@/store/chat/slices/portal/initialState';
 import { chatPortalSelectors } from '@/store/chat/slices/portal/selectors';
@@ -718,28 +720,50 @@ export class ConversationLifecycleActionImpl {
     /** Queue this send behind what holds `key`; on the server when the run can join it there. */
     const queueThisSend = (key: string) => {
       const queuedId = nanoid();
+      const filesPreview = snapshotQueuedFiles(files);
+      const piSessionId =
+        runningQueueBlockingOp?.metadata.heterogeneousAgentType === 'pi'
+          ? runningQueueBlockingOp.metadata.heterogeneousAgentSessionId
+          : undefined;
+      // A Pi run takes steered follow-ups over its own RPC session, so the server
+      // queue must not deliver the same message a second time.
       const queueOnServer =
+        !piSessionId &&
         !onlyAddUserMessage &&
         canQueueOnServer(this.#get, key, {
           context: operationContext,
           isGatewayRun: runtimeType === 'gateway' && !directMentionRoute && !willCreateNewTopic,
         });
-      this.#get().enqueueMessage(
-        key,
-        {
-          id: queuedId,
-          content: message,
-          editorData: editorData ?? undefined,
-          files: fileIdList,
-          filesPreview: snapshotQueuedFiles(files),
-          ...(forceRuntime ? { forceRuntime } : {}),
-          interruptMode: 'soft',
-          metadata: userMessageMetadata,
-          createdAt: Date.now(),
-          ...(queueOnServer && { serverDelivery: 'appending' as const }),
-        },
-        runningQueueBlockingOp?.id,
-      );
+      const queuedMessage: QueuedMessage = {
+        id: queuedId,
+        content: message,
+        editorData: editorData ?? undefined,
+        files: fileIdList,
+        filesPreview,
+        ...(forceRuntime ? { forceRuntime } : {}),
+        interruptMode: 'soft',
+        metadata: userMessageMetadata,
+        createdAt: Date.now(),
+        ...(piSessionId ? { heterogeneousPiSessionId: piSessionId } : {}),
+        ...(queueOnServer && { serverDelivery: 'appending' as const }),
+      };
+      this.#get().enqueueMessage(key, queuedMessage, runningQueueBlockingOp?.id);
+      if (piSessionId) {
+        const imageList = (filesPreview ?? [])
+          .filter((file) => file.mimeType.startsWith('image/'))
+          .map(({ id, url }) => ({ id, url }));
+        void heterogeneousAgentService
+          .steerPiSession(piSessionId, message, imageList)
+          .catch((error) => {
+            console.error(
+              '[sendMessage] Pi RPC steer failed; retaining message for normal queue drain:',
+              error,
+            );
+            this.#get().removeQueuedMessage(key, queuedId);
+            const { heterogeneousPiSessionId: _sessionId, ...fallbackMessage } = queuedMessage;
+            this.#get().enqueueMessage(key, fallbackMessage, runningQueueBlockingOp?.id);
+          });
+      }
       if (queueOnServer)
         void handOffQueuedMessage(this.#get, key, operationContext, queuedId, () =>
           buildQueuedFollowUpRequest(this.#get, {

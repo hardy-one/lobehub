@@ -1,3 +1,5 @@
+import urlJoin from 'url-join';
+
 import type { CrawlImpl, CrawlSuccessResult } from '../type';
 import { assertNotChallengePage } from '../utils/challengePage';
 import { PageNotFoundError, toFetchError } from '../utils/errorType';
@@ -34,13 +36,16 @@ export const unescapeMarkdown = (text: string) =>
 export const deepseek: CrawlImpl = async (url) => {
   // Fall back to the model provider key so a single DeepSeek key enables crawling too
   const apiKey = process.env.DEEPSEEK_SEARCH_API_KEY || process.env.DEEPSEEK_API_KEY;
+  // Allow a self-hosted / proxied DeepSeek-compatible endpoint
+  const baseUrl = process.env.DEEPSEEK_SEARCH_API_URL || 'https://api.deepseek.com';
+  const endpoint = urlJoin(baseUrl, '/v1/tools/fetch');
 
   let res: Response;
 
   try {
     res = await withTimeout(
       (signal) =>
-        fetch('https://api.deepseek.com/v1/tools/fetch', {
+        fetch(endpoint, {
           body: JSON.stringify({ url }),
           headers: {
             'Authorization': !apiKey ? '' : `Bearer ${apiKey}`,
@@ -76,12 +81,20 @@ export const deepseek: CrawlImpl = async (url) => {
     return;
   }
 
+  const hostname = (() => {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return '';
+    }
+  })();
+
   return {
     content,
     contentType: 'text',
     length: content.length,
-    siteName: new URL(url).hostname,
-    title,
+    siteName: hostname,
+    title: title || hostname,
     url,
   } satisfies CrawlSuccessResult;
 };

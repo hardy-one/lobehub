@@ -10,6 +10,7 @@ import { type SignatureScope } from '../../utils/signatureScope';
 import { ssrfFetch } from '../../utils/ssrfFetch';
 import { parseDataUri } from '../../utils/uriParser';
 import { videoUrlToBase64 } from '../../utils/videoToBase64';
+import { type LocalObjectReader, readLocalObject } from './localObject';
 
 export type ExtendedChatCompletionContentPart = {
   type: 'video_url';
@@ -21,6 +22,7 @@ export type ExtendedChatCompletionContentPart = {
 export type ConvertMessageContentOptions = {
   forceImageBase64?: boolean;
   forceVideoBase64?: boolean;
+  localObjectReader?: LocalObjectReader;
   model?: string;
   provider?: string;
   reasoningSignatureScope?: SignatureScope;
@@ -28,6 +30,8 @@ export type ConvertMessageContentOptions = {
   strictToolPairing?: boolean;
   thoughtSignatureScope?: SignatureScope;
 };
+
+export type { LocalObjectBytes, LocalObjectReader } from './localObject';
 
 export type OpenAICompatibleContentPart =
   ExtendedChatCompletionContentPart | OpenAI.ChatCompletionContentPart | UserMessageContentPart;
@@ -136,7 +140,8 @@ export const convertMessageContent = async (
       options?.forceImageBase64 || process.env.LLM_VISION_IMAGE_USE_BASE64 === '1';
 
     if (type === 'url' && shouldUseBase64) {
-      const { base64, mimeType } = await imageUrlToBase64(content.image_url.url);
+      const local = await readLocalObject(content.image_url.url, options?.localObjectReader);
+      const { base64, mimeType } = local ?? (await imageUrlToBase64(content.image_url.url));
 
       return {
         ...content,

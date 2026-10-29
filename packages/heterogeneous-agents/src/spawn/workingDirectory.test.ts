@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import type * as NodeOs from 'node:os';
-import { homedir, tmpdir } from 'node:os';
+import { homedir, platform, tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,6 +10,7 @@ import {
   describeUnusableWorkingDirectory,
   isSpawnableDirectory,
   resolveHeteroSpawnCwd,
+  withWorkingDirectoryEnv,
 } from './workingDirectory';
 
 // `homedir` / `tmpdir` are mocked so the fallback chain can be driven without
@@ -19,6 +20,7 @@ vi.mock('node:os', async (importOriginal) => {
   return {
     ...actual,
     homedir: vi.fn(() => actual.homedir()),
+    platform: vi.fn(() => actual.platform()),
     tmpdir: vi.fn(() => actual.tmpdir()),
   };
 });
@@ -98,5 +100,23 @@ describe('resolveHeteroSpawnCwd', () => {
     vi.mocked(tmpdir).mockReturnValue(path.join(missingDir, 'tmp'));
 
     expect(resolveHeteroSpawnCwd(missingDir)).toBeUndefined();
+  });
+});
+
+describe('withWorkingDirectoryEnv', () => {
+  it('points PWD at the child cwd without mutating the caller env', () => {
+    const env = { PWD: '/home/hardy', TOKEN: 'x' };
+
+    expect(withWorkingDirectoryEnv(env, workDir)).toEqual({ PWD: workDir, TOKEN: 'x' });
+    expect(env.PWD).toBe('/home/hardy');
+  });
+
+  it('leaves the environment alone on Windows, which has no PWD', () => {
+    vi.mocked(platform).mockReturnValue('win32');
+    const env = { TOKEN: 'x' };
+
+    expect(withWorkingDirectoryEnv(env, workDir)).toBe(env);
+
+    vi.mocked(platform).mockReturnValue('linux');
   });
 });

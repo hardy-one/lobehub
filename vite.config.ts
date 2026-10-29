@@ -322,7 +322,7 @@ export default defineConfig({
         registerType: 'prompt',
         workbox: {
           globIgnores: sharedPwaGlobIgnores,
-          globPatterns: ['**/*.{js,css,html,woff2}'],
+          globPatterns: ['**/*.{js,css,woff2}'],
           maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
           runtimeCaching: [
             ...sharedPwaRuntimeCaching,

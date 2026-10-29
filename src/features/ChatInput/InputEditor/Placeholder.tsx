@@ -4,6 +4,7 @@ import { memo } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 
 import { useAgentId } from '@/features/ChatInput/hooks/useAgentId';
+import { useServerConfigStore } from '@/store/serverConfig';
 import { useUserStore } from '@/store/user';
 import { preferenceSelectors } from '@/store/user/selectors';
 
@@ -20,6 +21,7 @@ interface PlaceholderProps {
 const Placeholder = memo<PlaceholderProps>(
   ({ heterogeneousName, showAgentAssignmentHint = false, variant = 'default' }) => {
     const useCmdEnterToSend = useUserStore(preferenceSelectors.useCmdEnterToSend);
+    const mobile = useServerConfigStore((s) => s.isMobile);
     const wrapperShortcut = useCmdEnterToSend
       ? KeyEnum.Enter
       : combineKeys([KeyEnum.Mod, KeyEnum.Enter]);
@@ -35,6 +37,13 @@ const Placeholder = memo<PlaceholderProps>(
         <span>
           {t(isHeterogeneous ? 'followUpPlaceholderHeterogeneous' : 'followUpPlaceholder')}
         </span>
+      );
+    }
+
+    // Mobile sends through the send button, so a send-key hint would be wrong there.
+    if (mobile && !isHeterogeneous) {
+      return (
+        <span>{t(isAgentRuntimeMode ? 'sendPlaceholderMobile' : 'sendPlaceholderChatMobile')}</span>
       );
     }
 

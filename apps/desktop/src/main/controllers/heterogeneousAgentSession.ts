@@ -145,6 +145,8 @@ export interface AgentSession {
   hostedProviderBinding?: HostedProviderBinding;
   /** Open input of a Claude Code CLI run (kept open for every run, like `lh hetero exec`). */
   liveInput?: ClaudeCodeLiveInput;
+  /** Protocol-native thinking level applied to the Pi session before each run. */
+  initialThinkingLevel?: string;
   model?: string;
   modelSource?: string;
   modelVerificationLastAttemptAt?: number;

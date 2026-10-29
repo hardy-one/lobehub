@@ -1252,9 +1252,6 @@ describe('Google generateObject', () => {
         type: 'function',
       };
 
-      // Suppress console.warn from sanitizer
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
       const result = buildGoogleTool(tool);
 
       expect(result.parametersJsonSchema).toEqual({
@@ -1265,8 +1262,6 @@ describe('Google generateObject', () => {
         required: ['status'],
         type: 'object',
       });
-
-      warnSpy.mockRestore();
     });
 
     // buildGoogleTool should sanitize nested tool parameters
@@ -1287,6 +1282,7 @@ describe('Google generateObject', () => {
               },
               role: { required: ['admin'], type: 'string' },
             },
+            required: [],
             type: 'object',
           },
         },
@@ -1311,6 +1307,7 @@ describe('Google generateObject', () => {
         },
         type: 'object',
       });
+      expect(warnSpy).not.toHaveBeenCalled();
 
       warnSpy.mockRestore();
     });
@@ -1334,8 +1331,6 @@ describe('Google generateObject', () => {
         type: 'function',
       };
 
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
       const result = buildGoogleTool(tool);
 
       // nullable type is passed through, but the null enum member is filtered out
@@ -1348,8 +1343,6 @@ describe('Google generateObject', () => {
         },
         type: 'object',
       });
-
-      warnSpy.mockRestore();
     });
   });
 });

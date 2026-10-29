@@ -23,6 +23,8 @@ dotenvExpand.expand(dotenv.config({ override: true, path: `.env.${env}` })); // 
 dotenvExpand.expand(dotenv.config({ override: true, path: `.env.${env}.local` })); // Load .env.[env].local and override
 
 const migrationsFolder = path.join(__dirname, '../../packages/database/migrations');
+const forkMigrationsFolder = path.join(__dirname, '../../packages/database/migrations-fork');
+const forkMigrationTable = '__lobehub_fork_migrations';
 
 const runMigrations = async () => {
   const { serverDB } = await import('../../packages/database/src/server');
@@ -31,8 +33,16 @@ const runMigrations = async () => {
   await runWithLockRetry(async () => {
     if (process.env.DATABASE_DRIVER === 'node') {
       await nodeMigrate(serverDB, { migrationsFolder });
+      await nodeMigrate(serverDB, {
+        migrationsFolder: forkMigrationsFolder,
+        migrationsTable: forkMigrationTable,
+      });
     } else {
       await neonMigrate(serverDB, { migrationsFolder });
+      await neonMigrate(serverDB, {
+        migrationsFolder: forkMigrationsFolder,
+        migrationsTable: forkMigrationTable,
+      });
     }
   });
   await assertPgSearchReady((text: string) => serverDB.execute(sql.raw(text)));

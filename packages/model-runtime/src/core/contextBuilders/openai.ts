@@ -15,6 +15,7 @@ import { isDeepSeekThinkingEligibleModel } from '../../utils/modelParse';
 import { fetchReferenceImageBytes } from '../../utils/referenceImageCache';
 import { resolveScopedSignature, type SignatureScope } from '../../utils/signatureScope';
 import { parseDataUri } from '../../utils/uriParser';
+import { type LocalObjectReader, readLocalObject } from './localObject';
 
 export type ExtendedChatCompletionContentPart = {
   type: 'video_url';
@@ -23,9 +24,12 @@ export type ExtendedChatCompletionContentPart = {
   };
 };
 
+export type { LocalObjectBytes, LocalObjectReader } from './localObject';
+
 type ConvertMessageContentOptions = {
   forceImageBase64?: boolean;
   forceVideoBase64?: boolean;
+  localObjectReader?: LocalObjectReader;
   model?: string;
   provider?: string;
   reasoningSignatureScope?: SignatureScope;
@@ -158,7 +162,8 @@ export const convertMessageContent = async (
       options?.forceImageBase64 || process.env.LLM_VISION_IMAGE_USE_BASE64 === '1';
 
     if (type === 'url' && shouldUseBase64) {
-      const { base64, mimeType } = await imageUrlToBase64(content.image_url.url);
+      const local = await readLocalObject(content.image_url.url, options?.localObjectReader);
+      const { base64, mimeType } = local ?? (await imageUrlToBase64(content.image_url.url));
 
       return {
         ...content,

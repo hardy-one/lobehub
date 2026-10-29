@@ -1,0 +1,13 @@
+{
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1793195269032,
+      "tag": "0000_artifact_deployment",
+      "breakpoints": true
+    }
+  ],
+  "version": "7"
+}

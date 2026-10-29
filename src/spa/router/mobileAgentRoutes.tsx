@@ -37,6 +37,15 @@ const mobileGroupChatElement = (name: string) =>
  * chat with the page name as a topic id.
  */
 const agentSubPages = overlayRoutes(agentPageChildren, {
+  // The mobile profile is a full-screen editor with its own header; mounting
+  // the desktop page would stack a second shell around the same form.
+  'profile': (route) => ({
+    ...route,
+    element: dynamicElement(
+      () => import('@/routes/(mobile)/chat/profile'),
+      'Mobile > Agent > Profile',
+    ),
+  }),
   // The empty state renders no header; the shell adds back + the docs drawer.
   'docs/index': (route) => ({
     ...route,

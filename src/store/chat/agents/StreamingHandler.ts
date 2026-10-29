@@ -22,6 +22,22 @@ import {
 
 const log = debug('lobe-store:streaming-handler');
 
+// Every text chunk used to land in the store on its own: one reducer pass over
+// the conversation, one orphan-tool-link scan and one deep compare per chunk.
+// The payload of those writes is a full message update, so at high token rates
+// the writes cost far more than the rendering they feed. Coalescing them keeps
+// the text moving at display speed without dropping any: `output` still
+// accumulates on every chunk, so a flush always publishes the complete text.
+//
+// The window deliberately sits above the renderer's own commit floor. What
+// reaches the markdown renderer is a single larger append, and it treats an
+// append past `largeAppendChars` (120) by committing immediately instead of
+// easing it in — so a window short enough to keep appends small would hand the
+// renderer more synchronous commits than it would have had on its own. 48ms is
+// that renderer's floor, and 50ms of tokens stays well under 120 characters at
+// the rates a chat model emits.
+const CONTENT_FLUSH_INTERVAL_MS = 48;
+
 /**
  * Streaming message handler
  *
@@ -72,6 +88,11 @@ export class StreamingHandler {
 
   // ========== Throttled updates ==========
   private throttledUpdateToolCalls: ReturnType<typeof throttle>;
+
+  // ========== Coalesced content writes ==========
+  /** Text arrived since the last flush; the store is behind `output`. */
+  private contentPending = false;
+  private contentFlushTimer?: ReturnType<typeof setTimeout>;
 
   constructor(
     private context: StreamingContext,
@@ -134,6 +155,10 @@ export class StreamingHandler {
    * Handle streaming finish
    */
   async handleFinish(finishData: FinishData): Promise<StreamingResult> {
+    // Publish any text still inside the coalescing window first: the final
+    // content below is read from `output`, but the store must see it too.
+    this.flushContent();
+
     // Update traceId
     if (finishData.traceId) {
       this.msgTraceId = finishData.traceId;
@@ -233,7 +258,7 @@ export class StreamingHandler {
     );
 
     // Notify update
-    this.callbacks.onContentUpdate(this.output, this.buildReasoningState());
+    this.scheduleContentUpdate(this.buildReasoningState());
   }
 
   private handleReasoningChunk(chunk: { text: string; type: 'reasoning' }): void {
@@ -328,9 +353,41 @@ export class StreamingHandler {
 
   private handleStopChunk(): void {
     this.endReasoningIfNeeded();
+
+    // The stream is over: publish whatever arrived inside the last window
+    // before anyone can read the output.
+    this.flushContent();
   }
 
   // ==================== Helper methods ====================
+
+  /**
+   * Publish the accumulated text at most once per window.
+   *
+   * `output` is always the complete text, so a flush that lands late publishes
+   * more than a chunk would have — never less. The reasoning snapshot is taken
+   * when the write actually happens, so it cannot be one flush stale.
+   */
+  private scheduleContentUpdate(reasoning: ReasoningState | undefined): void {
+    this.contentPending = true;
+    if (this.contentFlushTimer !== undefined) return;
+
+    this.contentFlushTimer = setTimeout(() => {
+      this.contentFlushTimer = undefined;
+      this.flushContent(reasoning);
+    }, CONTENT_FLUSH_INTERVAL_MS);
+  }
+
+  private flushContent(reasoning?: ReasoningState): void {
+    if (this.contentFlushTimer !== undefined) {
+      clearTimeout(this.contentFlushTimer);
+      this.contentFlushTimer = undefined;
+    }
+    if (!this.contentPending) return;
+
+    this.contentPending = false;
+    this.callbacks.onContentUpdate(this.output, reasoning ?? this.buildReasoningState());
+  }
 
   private startReasoningIfNeeded(): void {
     if (!this.thinkingStartAt) {
@@ -423,6 +480,14 @@ export class StreamingHandler {
   private notifyContentPartUpdate(): void {
     const hasContentImages = this.contentParts.some((p) => p.type === 'image');
     const hasReasoningImages = this.reasoningParts.some((p) => p.type === 'image');
+
+    // Multimodal content carries the parts the store must show now; a pending
+    // text flush would land after it with a stale, part-less payload.
+    this.contentPending = false;
+    if (this.contentFlushTimer !== undefined) {
+      clearTimeout(this.contentFlushTimer);
+      this.contentFlushTimer = undefined;
+    }
 
     this.callbacks.onContentUpdate(
       this.output,

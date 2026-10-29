@@ -70,6 +70,7 @@ describe('DeepSeekImpl', () => {
     expect(result.resultNumbers).toBe(2);
     expect(result.results).toEqual([
       {
+        authority: 3,
         category: 'general',
         content: 'Longer summary for the model',
         engines: ['deepseek'],

@@ -1,3 +1,4 @@
+import { LOBE_USER_AGENT } from '@lobechat/const';
 import type { ChatModelCard } from '@lobechat/types';
 import { ModelProvider } from 'model-bank';
 import type { ChatResponse, Tool } from 'ollama/browser';
@@ -55,7 +56,10 @@ export class LobeOllamaAI implements LobeRuntimeAI {
       throw AgentRuntimeError.createError(AgentRuntimeErrorType.InvalidOllamaArgs, e);
     }
 
-    this.client = new Ollama(!baseURL ? undefined : { host: baseURL });
+    this.client = new Ollama({
+      ...(baseURL && { host: baseURL }),
+      headers: { 'User-Agent': LOBE_USER_AGENT },
+    });
 
     if (baseURL) this.baseURL = baseURL;
   }
@@ -108,6 +112,7 @@ export class LobeOllamaAI implements LobeRuntimeAI {
       ? new Ollama({
           fetch: (input, init) => fetch(input, { ...init, signal }),
           ...(this.baseURL && { host: this.baseURL }),
+          headers: { 'User-Agent': LOBE_USER_AGENT },
         })
       : this.client;
 

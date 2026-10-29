@@ -21,6 +21,7 @@ vi.mock('@anthropic-ai/sdk', () => {
 
 vi.mock('@lobechat/const', () => ({
   CURRENT_VERSION: '1.0.0-test',
+  LOBE_USER_AGENT: 'lobehub/1.0.0-test',
 }));
 
 vi.mock('@lobechat/business-model-bank/model-config', () => ({

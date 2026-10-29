@@ -7,6 +7,7 @@ import { TRPCError } from '@trpc/server';
 import debug from 'debug';
 import urlJoin from 'url-join';
 
+import { normalizeSearchScore } from '../../score';
 import { type SearchServiceImpl } from '../type';
 import { type TavilyResponse, type TavilySearchParameters } from './type';
 
@@ -94,17 +95,15 @@ export class TavilyImpl implements SearchServiceImpl {
 
       log('Parsed Tavily response: %o', tavilyResponse);
 
-      const mappedResults = (tavilyResponse.results || []).map(
-        (result): UniformSearchResult => ({
-          category: body.topic || 'general', // Default category
-          content: result.content || '', // Prioritize content, fallback to snippet
-          engines: ['tavily'], // Use 'tavily' as the engine name
-          parsedUrl: result.url ? new URL(result.url).hostname : '', // Basic URL parsing
-          score: result.score || 0, // Default score to 0 if undefined
-          title: result.title || '',
-          url: result.url,
-        }),
-      );
+      const mappedResults = (tavilyResponse.results || []).map((result): UniformSearchResult => ({
+        category: body.topic || 'general', // Default category
+        content: result.content || '', // Prioritize content, fallback to snippet
+        engines: ['tavily'], // Use 'tavily' as the engine name
+        parsedUrl: result.url ? new URL(result.url).hostname : '', // Basic URL parsing
+        score: normalizeSearchScore(result.score),
+        title: result.title || '',
+        url: result.url,
+      }));
 
       log('Mapped %d results to SearchResult format', mappedResults.length);
 

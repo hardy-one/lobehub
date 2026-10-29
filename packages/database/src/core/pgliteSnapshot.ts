@@ -20,6 +20,10 @@ export const PGLITE_SNAPSHOT_ENV = 'LOBE_TEST_PGLITE_SNAPSHOT';
 
 export const migrationsFolder = join(__dirname, '../../migrations');
 
+/** Fork-only tables live on their own chain so upstream migrations stay untouched. */
+export const forkMigrationsFolder = join(__dirname, '../../migrations-fork');
+export const forkMigrationTable = '__lobehub_fork_migrations';
+
 export const createPGlite = (loadDataDir?: Blob) =>
   new PGlite({ extensions: { vector }, loadDataDir });
 
@@ -32,6 +36,12 @@ export const writeMigratedPGliteSnapshot = async (filePath: string) => {
   try {
     // pg_search migrations skip themselves when the extension is unavailable, as in PGlite.
     await pgliteMigrate(pgliteDrizzle({ client: pglite }), { migrationsFolder });
+    // The snapshot must also carry the fork tables, or a restoring test file
+    // would query them against a database that never ran that chain.
+    await pgliteMigrate(pgliteDrizzle({ client: pglite }), {
+      migrationsFolder: forkMigrationsFolder,
+      migrationsTable: forkMigrationTable,
+    });
     const dump = await pglite.dumpDataDir('none');
     await writeFile(filePath, Buffer.from(await dump.arrayBuffer()));
   } finally {

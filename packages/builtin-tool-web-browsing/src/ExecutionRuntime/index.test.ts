@@ -33,6 +33,44 @@ describe('WebBrowsingExecutionRuntime', () => {
       expect(result.content).toContain('Test');
     });
 
+    it('should pass score and authority into the model-facing XML', async () => {
+      const mockSearchService = {
+        crawlPages: vi.fn(),
+        webSearch: vi.fn().mockResolvedValue({
+          costTime: 10,
+          query: 'test',
+          resultNumbers: 2,
+          results: [
+            {
+              authority: 3,
+              content: 'Scored content',
+              engines: ['deepseek'],
+              parsedUrl: 'example.com',
+              score: 2.5,
+              title: 'Scored',
+              url: 'https://example.com',
+            },
+            {
+              content: 'Unscored content',
+              engines: ['searxng'],
+              parsedUrl: 'plain.com',
+              score: 0,
+              title: 'Unscored',
+              url: 'https://plain.com',
+            },
+          ],
+        }),
+      };
+
+      const runtime = new WebBrowsingExecutionRuntime({ searchService: mockSearchService });
+      const result = await runtime.search({ query: 'test' });
+
+      expect(result.content).toContain('score="2.5"');
+      expect(result.content).toContain('authority="3"');
+      // A result without authority omits the attribute instead of serializing a blank one
+      expect(result.content?.match(/authority=/g)).toHaveLength(1);
+    });
+
     it('should return success: false when response has errorDetail', async () => {
       const mockSearchService = {
         crawlPages: vi.fn(),

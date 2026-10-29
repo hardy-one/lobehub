@@ -344,6 +344,7 @@ const subscribeBroadcasts = (
   sessionId: string,
   callbacks: {
     onComplete: () => void;
+    onPiQueueUpdate: (data: { followUp: string[]; steering: string[] }) => void;
     onError: (error: HeterogeneousAgentSessionError | string) => void;
     onStreamEvent: (event: AgentStreamEvent) => void;
   },
@@ -358,6 +359,12 @@ const subscribeBroadcasts = (
   const onComplete = (_e: any, data: { sessionId: string }) => {
     if (data.sessionId === sessionId) callbacks.onComplete();
   };
+  const onPiQueueUpdate = (
+    _e: any,
+    data: { followUp: string[]; sessionId: string; steering: string[] },
+  ) => {
+    if (data.sessionId === sessionId) callbacks.onPiQueueUpdate(data);
+  };
   const onError = (
     _e: any,
     data: { error: HeterogeneousAgentSessionError | string; sessionId: string },
@@ -368,10 +375,12 @@ const subscribeBroadcasts = (
   const unsubscribeStreamEvent = ipc.on('heteroAgentEvent' as any, onStreamEvent);
   const unsubscribeComplete = ipc.on('heteroAgentSessionComplete' as any, onComplete);
   const unsubscribeError = ipc.on('heteroAgentSessionError' as any, onError);
+  const unsubscribePiQueueUpdate = ipc.on('heteroAgentPiQueueUpdate' as any, onPiQueueUpdate);
 
   return () => {
     unsubscribeStreamEvent();
     unsubscribeComplete();
+    unsubscribePiQueueUpdate();
     unsubscribeError();
   };
 };
@@ -1959,6 +1968,15 @@ export const executeHeterogeneousAgent = async (
         heterogeneousProvider.model !== HETEROGENEOUS_AGENT_DEFAULT_SELECTION
           ? heterogeneousProvider.model
           : undefined,
+      // Pi applies the level through `set_thinking_level` after the RPC session
+      // starts, so it travels as a value instead of an argv flag.
+      initialThinkingLevel:
+        adapterType === 'pi' &&
+        !providerBindingActive &&
+        heterogeneousProvider.effort &&
+        heterogeneousProvider.effort !== HETEROGENEOUS_AGENT_DEFAULT_SELECTION
+          ? heterogeneousProvider.effort
+          : undefined,
       providerBinding,
       resumeSessionId,
       useClaudeCodeSdk: labPreferSelectors.enableClaudeCodeSdk(useUserStore.getState()),
@@ -2001,6 +2019,10 @@ export const executeHeterogeneousAgent = async (
     ipcRunSessionId = result.sessionId;
     if (!ipcRunSessionId) throw new Error('Agent session returned no sessionId');
 
+    get().updateOperationMetadata?.(operationId, {
+      heterogeneousAgentSessionId: ipcRunSessionId,
+      heterogeneousAgentType: adapterType,
+    });
     writeTopicStatus('running');
 
     // Register cancel hook on the operation — when the user hits Stop, the op
@@ -2241,6 +2263,17 @@ export const executeHeterogeneousAgent = async (
 
     unsubscribe = subscribeBroadcasts(ipcRunSessionId, {
       onStreamEvent: handleStreamEvent,
+      onPiQueueUpdate: ({ steering }) => {
+        const pendingCounts = new Map<string, number>();
+        for (const text of steering) pendingCounts.set(text, (pendingCounts.get(text) ?? 0) + 1);
+        const queued = get().queuedMessages[messageMapKey(context)] ?? [];
+        for (const item of queued) {
+          if (item.heterogeneousPiSessionId !== ipcRunSessionId) continue;
+          const count = pendingCounts.get(item.content) ?? 0;
+          if (count > 0) pendingCounts.set(item.content, count - 1);
+          else get().removeQueuedMessage(messageMapKey(context), item.id);
+        }
+      },
 
       onComplete: () => {
         void runCompletionCallback(async () => {

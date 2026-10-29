@@ -1,120 +1,123 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createMockResponse } from '../../test-utils';
-import { NetworkConnectionError, PageNotFoundError } from '../../utils/errorType';
-import { withTimeout } from '../../utils/withTimeout';
+import { NetworkConnectionError, PageNotFoundError, TimeoutError } from '../../utils/errorType';
 import { deepseek } from '../deepseek';
 
 vi.mock('../../utils/withTimeout', () => ({
-  DEFAULT_TIMEOUT: 10_000,
-  withTimeout: vi.fn((fn: (signal: AbortSignal) => Promise<Response>) =>
-    fn(new AbortController().signal),
-  ),
+  DEFAULT_TIMEOUT: 30000,
+  withTimeout: vi.fn(),
 }));
 
-const markdown = '# Example\n\nThis is a test markdown content with enough length to pass. '.repeat(
-  3,
-);
-
 describe('deepseek crawler', () => {
-  const fetchMock = vi.fn();
-
   beforeEach(() => {
-    vi.stubGlobal('fetch', fetchMock);
-    fetchMock.mockReset();
+    vi.clearAllMocks();
     delete process.env.DEEPSEEK_SEARCH_API_KEY;
-    delete process.env.DEEPSEEK_API_KEY;
+    delete process.env.DEEPSEEK_SEARCH_API_URL;
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
+  it('should successfully crawl content with API key', async () => {
+    process.env.DEEPSEEK_SEARCH_API_KEY = 'test-deepseek-key';
+
+    const mockResponse = createMockResponse({
+      content: '# Article Title\n\nThis is the markdown body of the crawled page.',
+      title: 'Article Title',
+    });
+
+    const { withTimeout } = await import('../../utils/withTimeout');
+    vi.mocked(withTimeout).mockResolvedValue(mockResponse as any);
+
+    const result = await deepseek('https://example.com/article', { filterOptions: {} });
+
+    expect(result).toEqual({
+      content: '# Article Title\n\nThis is the markdown body of the crawled page.',
+      contentType: 'text',
+      length: '# Article Title\n\nThis is the markdown body of the crawled page.'.length,
+      siteName: 'example.com',
+      title: 'Article Title',
+      url: 'https://example.com/article',
+    });
+
+    expect(withTimeout).toHaveBeenCalledWith(expect.any(Function), 30000);
   });
 
-  it('should fetch the page with the search API key', async () => {
-    process.env.DEEPSEEK_SEARCH_API_KEY = 'search-key';
-    process.env.DEEPSEEK_API_KEY = 'model-key';
-    fetchMock.mockResolvedValue(createMockResponse({ content: markdown, title: 'Example' }));
+  it('should support custom DEEPSEEK_SEARCH_API_URL and normalize trailing slashes', async () => {
+    process.env.DEEPSEEK_SEARCH_API_KEY = 'test-deepseek-key';
+    process.env.DEEPSEEK_SEARCH_API_URL = 'https://custom.deepseek.proxy/';
 
-    const result = await deepseek('https://example.com/post', { filterOptions: {} });
+    const mockResponse = createMockResponse({
+      content: 'Custom endpoint content',
+      title: 'Custom Title',
+    });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.deepseek.com/v1/tools/fetch',
+    const { withTimeout } = await import('../../utils/withTimeout');
+    vi.mocked(withTimeout).mockImplementation(async (fn: any) => {
+      return fn(new AbortController().signal);
+    });
+
+    const fetchSpy = vi.fn().mockResolvedValue(mockResponse);
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const result = await deepseek('https://example.com', { filterOptions: {} });
+    expect(result?.title).toBe('Custom Title');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://custom.deepseek.proxy/v1/tools/fetch',
       expect.objectContaining({
-        body: JSON.stringify({ url: 'https://example.com/post' }),
-        headers: { 'Authorization': 'Bearer search-key', 'Content-Type': 'application/json' },
         method: 'POST',
       }),
     );
-    expect(withTimeout).toHaveBeenCalledWith(expect.any(Function), 20_000);
-    expect(result).toEqual({
-      content: markdown,
-      contentType: 'text',
-      length: markdown.length,
-      siteName: 'example.com',
-      title: 'Example',
-      url: 'https://example.com/post',
+    vi.unstubAllGlobals();
+  });
+
+  it('should return undefined when content is empty', async () => {
+    process.env.DEEPSEEK_SEARCH_API_KEY = 'test-deepseek-key';
+
+    const mockResponse = createMockResponse({
+      content: '   ',
+      title: 'Empty Article',
     });
-  });
 
-  it('should fall back to the DeepSeek model provider key', async () => {
-    process.env.DEEPSEEK_API_KEY = 'model-key';
-    fetchMock.mockResolvedValue(createMockResponse({ content: markdown, title: 'Example' }));
-
-    await deepseek('https://example.com', { filterOptions: {} });
-
-    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer model-key');
-  });
-
-  it('should undo the backslash escapes DeepSeek adds to the page text', async () => {
-    fetchMock.mockResolvedValue(
-      createMockResponse({
-        content: `\\# Search \\/ Fetch API\n\nPrice\\: 5 CNY \\(per 1\\,000 requests\\)\\. Path C\\:\\\\tmp\\. ${'x'.repeat(100)}`,
-        title: 'Search \\/ Fetch',
-      }),
-    );
+    const { withTimeout } = await import('../../utils/withTimeout');
+    vi.mocked(withTimeout).mockResolvedValue(mockResponse as any);
 
     const result = await deepseek('https://example.com', { filterOptions: {} });
-
-    expect(result?.title).toBe('Search / Fetch');
-    expect(result?.content).toBe(
-      `# Search / Fetch API\n\nPrice: 5 CNY (per 1,000 requests). Path C:\\tmp. ${'x'.repeat(100)}`,
-    );
+    expect(result).toBeUndefined();
   });
 
-  it('should return undefined for short content', async () => {
-    fetchMock.mockResolvedValue(createMockResponse({ content: 'too short', title: '' }));
+  it('should throw PageNotFoundError on 404 response', async () => {
+    process.env.DEEPSEEK_SEARCH_API_KEY = 'test-deepseek-key';
 
-    await expect(deepseek('https://example.com', { filterOptions: {} })).resolves.toBeUndefined();
-  });
-
-  it('should throw PageNotFoundError when DeepSeek cannot fetch usable content', async () => {
-    fetchMock.mockResolvedValue(
-      createMockResponse(
-        { error: { message: 'failed to fetch URL', type: 'not_found_error' } },
-        { ok: false, status: 404, statusText: 'Not Found' },
-      ),
+    const mockResponse = createMockResponse(
+      { error: { message: 'Page not found' } },
+      { ok: false, status: 404, statusText: 'Not Found' },
     );
 
-    await expect(deepseek('https://example.com', { filterOptions: {} })).rejects.toThrow(
+    const { withTimeout } = await import('../../utils/withTimeout');
+    vi.mocked(withTimeout).mockResolvedValue(mockResponse as any);
+
+    await expect(deepseek('https://example.com/404', { filterOptions: {} })).rejects.toThrow(
       PageNotFoundError,
     );
   });
 
-  it('should include the DeepSeek error body for other HTTP errors', async () => {
-    fetchMock.mockResolvedValue(
-      createMockResponse(
-        { error: { message: 'Insufficient Balance', type: 'invalid_request_error' } },
-        { ok: false, status: 402, statusText: 'Payment Required' },
-      ),
-    );
+  it('should handle timeout errors', async () => {
+    process.env.DEEPSEEK_SEARCH_API_KEY = 'test-deepseek-key';
+
+    const { withTimeout } = await import('../../utils/withTimeout');
+    const timeoutError = new TimeoutError('Request timeout');
+    vi.mocked(withTimeout).mockRejectedValue(timeoutError);
 
     await expect(deepseek('https://example.com', { filterOptions: {} })).rejects.toThrow(
-      'DeepSeek request failed with status 402: Payment Required. Response: {"error":{"message":"Insufficient Balance"',
+      TimeoutError,
     );
   });
 
-  it('should throw NetworkConnectionError for fetch failures', async () => {
-    fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+  it('should handle network connection errors', async () => {
+    process.env.DEEPSEEK_SEARCH_API_KEY = 'test-deepseek-key';
+
+    const { withTimeout } = await import('../../utils/withTimeout');
+    const fetchError = new TypeError('fetch failed');
+    vi.mocked(withTimeout).mockRejectedValue(fetchError);
 
     await expect(deepseek('https://example.com', { filterOptions: {} })).rejects.toThrow(
       NetworkConnectionError,

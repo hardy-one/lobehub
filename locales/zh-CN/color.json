@@ -1,5 +1,9 @@
 {
   "blue": "拂晓蓝",
+  "catppuccin-frappe": "Catppuccin Frappé",
+  "catppuccin-latte": "Catppuccin Latte",
+  "catppuccin-macchiato": "Catppuccin Macchiato",
+  "catppuccin-mocha": "Catppuccin Mocha",
   "custom": "自定义",
   "cyan": "明青",
   "default": "默认",
@@ -16,6 +20,7 @@
   "sage": "鼠尾草绿",
   "sand": "沙滩",
   "slate": "石板灰",
+  "solarized": "Solarized",
   "volcano": "火山",
   "yellow": "日出"
 }

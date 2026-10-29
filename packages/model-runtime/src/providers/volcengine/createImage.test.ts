@@ -377,6 +377,7 @@ describe('createVolcengineImage', () => {
       expect(OpenAI.default).toHaveBeenCalledWith({
         apiKey: 'test-api-key',
         baseURL: 'https://custom-endpoint.com/api/v1',
+        defaultHeaders: { 'User-Agent': expect.stringMatching(/^lobehub\//) },
       });
     });
 
@@ -394,6 +395,7 @@ describe('createVolcengineImage', () => {
       expect(OpenAI.default).toHaveBeenCalledWith({
         apiKey: 'test-api-key',
         baseURL: 'https://ark.ap-southeast.bytepluses.com/api/v3',
+        defaultHeaders: { 'User-Agent': expect.stringMatching(/^lobehub\//) },
       });
     });
 
@@ -410,6 +412,7 @@ describe('createVolcengineImage', () => {
       expect(OpenAI.default).toHaveBeenCalledWith({
         apiKey: 'test-api-key',
         baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
+        defaultHeaders: { 'User-Agent': expect.stringMatching(/^lobehub\//) },
       });
     });
 

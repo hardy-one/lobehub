@@ -3,6 +3,7 @@ import type {
   HeterogeneousAgentModel,
   HeterogeneousProviderConfig,
   HeterogeneousReasoningEffort,
+  HeterogeneousReasoningEffortLevel,
   HeterogeneousSpeedMode,
   HeterogeneousTopicPin,
   HeteroSelection,
@@ -127,6 +128,7 @@ export const buildSelectorView = ({
   capability,
   models,
   provider,
+  runtimeEffortLevels,
   t,
   topicPin,
   topicScoped = false,
@@ -135,6 +137,11 @@ export const buildSelectorView = ({
   models?: HeterogeneousAgentModel[];
   /** The effective config, with any topic pins already applied. */
   provider: HeterogeneousProviderConfig;
+  /**
+   * Levels the current model actually serves, when the host could probe them.
+   * Omitted (or empty) falls back to the capability's static vocabulary.
+   */
+  runtimeEffortLevels?: readonly HeterogeneousReasoningEffortLevel[];
   t: Translate;
   /** The active topic's raw pins, used only to label each value's source. */
   topicPin?: HeterogeneousTopicPin;
@@ -206,7 +213,14 @@ export const buildSelectorView = ({
     });
   }
 
-  if (capability.effort && effort) {
+  // The runtime list is the model's real capability set; the capability's own
+  // list is only the fallback used while no probe has answered.
+  const effortLevels =
+    runtimeEffortLevels && runtimeEffortLevels.length > 0
+      ? runtimeEffortLevels
+      : (capability.effort?.levels(model) ?? []);
+  // A single level means this model cannot think — there is nothing to pick.
+  if (capability.effort && effort && effortLevels.length > 1) {
     dimensions.push({
       current: effort,
       key: 'reasoning',
@@ -214,7 +228,7 @@ export const buildSelectorView = ({
       source: getSource(topicPin?.effort !== undefined),
       options: [
         { label: defaultLabel, value: HETEROGENEOUS_AGENT_DEFAULT_SELECTION },
-        ...capability.effort.levels(model).map((level) => ({
+        ...effortLevels.map((level) => ({
           label: t(effortLabelKeys[level]),
           value: level,
         })),

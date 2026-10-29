@@ -10,11 +10,20 @@ import Token from './Token/TokenTag';
 
 const tokenMocks = vi.hoisted(() => ({
   useTokenBreakdown: vi.fn(),
+  isMobile: true,
 }));
 
 vi.mock('@lobehub/ui/chat', () => ({
-  TokenTag: ({ value }: { value: number }) =>
-    createElement('div', { 'data-testid': 'token-tag' }, value),
+  TokenTag: ({ value, size }: { value: number; size?: { blockSize?: number; size?: number } }) =>
+    createElement(
+      'div',
+      {
+        'data-block-size': size?.blockSize,
+        'data-icon-size': size?.size,
+        'data-testid': 'token-tag',
+      },
+      value,
+    ),
 }));
 
 vi.mock('@/store/user', () => ({
@@ -25,9 +34,20 @@ vi.mock('@/store/user/selectors', () => ({
   userGeneralSettingsSelectors: { config: () => ({ isDevMode: true }) },
 }));
 
+vi.mock('@/hooks/useIsMobile', () => ({
+  useIsMobile: () => tokenMocks.isMobile,
+}));
+
 vi.mock('./components/ActionPopover', () => ({
-  default: ({ children, content }: { children?: ReactNode; content?: ReactNode }) =>
-    createElement('div', {}, children, content),
+  default: ({
+    children,
+    content,
+    trigger,
+  }: {
+    children?: ReactNode;
+    content?: ReactNode;
+    trigger?: string;
+  }) => createElement('div', { 'data-popover-trigger': trigger }, children, content),
 }));
 
 vi.mock('./Token/TokenProgress', () => ({
@@ -45,6 +65,7 @@ vi.mock('./Token/useTokenBreakdown', () => ({
 
 beforeEach(() => {
   tokenMocks.useTokenBreakdown.mockReset();
+  tokenMocks.isMobile = true;
 });
 
 describe('filterChatOnlyActions', () => {
@@ -93,6 +114,33 @@ describe('Context window token', () => {
 
     expect(tokenMocks.useTokenBreakdown).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('token-tag')).toHaveTextContent('6000');
+    expect(screen.getByTestId('token-tag')).toHaveAttribute('data-block-size', '24');
+    expect(screen.getByTestId('token-tag')).toHaveAttribute('data-icon-size', '16');
+    expect(screen.getByTestId('token-tag').parentElement).toHaveAttribute(
+      'data-popover-trigger',
+      'click',
+    );
     expect(screen.getByTestId('token-progress-used')).toHaveTextContent('used:6000,rest:2000');
+  });
+
+  it('keeps the desktop popover trigger unchanged', () => {
+    tokenMocks.isMobile = false;
+    tokenMocks.useTokenBreakdown.mockReturnValue({
+      chatsToken: 3000,
+      historySummaryToken: 500,
+      maxTokens: 8000,
+      systemRoleToken: 1500,
+      toolsToken: 1000,
+      totalToken: 6000,
+    });
+
+    render(createElement(Token));
+
+    expect(screen.getByTestId('token-tag')).toHaveAttribute('data-block-size', '28');
+    expect(screen.getByTestId('token-tag')).toHaveAttribute('data-icon-size', '18');
+    expect(screen.getByTestId('token-tag').parentElement).toHaveAttribute(
+      'data-popover-trigger',
+      'hover',
+    );
   });
 });

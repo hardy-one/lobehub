@@ -49,6 +49,7 @@ import { ChatInputAction } from '../components/ChatInputAction';
 import SubmenuChevron from '../components/SubmenuChevron';
 import { useDetailPopoverState } from '../components/useDetailPopoverState';
 import { useControls as useKnowledgeControls } from '../Knowledge/useControls';
+import Controls from '../Params/Controls';
 import { useControls as useToolsControls } from '../Tools/useControls';
 
 const styles = stylex.create({
@@ -107,6 +108,21 @@ const styles = stylex.create({
     },
   },
   labelWithChip: { display: 'inline-flex', gap: '8px', alignItems: 'center' },
+  // The mobile advanced-parameters panel is rendered inside DropdownMenuHeader.
+  // Keep it inside the header's content box; the submenu owns the viewport-sized
+  // width/height and Controls.body owns the vertical scroll.
+  paramsSubmenuContent: {
+    boxSizing: 'border-box',
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100%',
+    maxWidth: '100%',
+    minHeight: 0,
+    minWidth: 0,
+    overscrollBehavior: 'contain',
+    overflow: 'hidden',
+    width: '100%',
+  },
 });
 
 type DropdownItemWithPopover = NonNullable<ActionDropdownMenuItems>[number] & {
@@ -217,6 +233,7 @@ const usePlusMenuItems = ({ close }: { close: () => void }): ActionDropdownMenuI
   const upload = useChatInputUpload();
   const { enableKnowledgeBase } = useServerConfigStore(featureFlagsSelectors);
   const enableGatewayMode = useServerConfigStore(serverConfigSelectors.enableGatewayMode);
+  const isMobile = useServerConfigStore(serverConfigSelectors.isMobile);
   const defaultDisableGatewayMode = useUserStore(
     (s) => settingsSelectors.defaultAgentConfig(s).chatConfig?.disableGatewayMode,
   );
@@ -417,6 +434,35 @@ const usePlusMenuItems = ({ close }: { close: () => void }): ActionDropdownMenuI
     // so this menu only owns the route to them.
     const coreItems: ActionDropdownMenuItems = canConfigureResource ? [...toolsItems] : [];
 
+    const paramsItems: ActionDropdownMenuItems = canConfigureResource
+      ? isMobile
+        ? [
+            {
+              children: [],
+              extra: <SubmenuChevron />,
+              header: (
+                <div
+                  className={`lobe-params-submenu-content ${stylex.props(styles.paramsSubmenuContent).className}`}
+                >
+                  <Controls variant={'sidebar'} />
+                </div>
+              ),
+              icon: Settings2Icon,
+              key: 'params',
+              label: tSetting('settingModel.params.title'),
+              type: 'submenu',
+            } as ActionDropdownMenuItems[number],
+          ]
+        : [
+            {
+              icon: Settings2Icon,
+              key: 'params',
+              label: renderActive(tSetting('settingModel.params.title'), isParamsPanelActive),
+              onClick: handleToggleParams,
+            } as ActionDropdownMenuItems[number],
+          ]
+      : [];
+
     // Formatting toolbar is always available; Agent Gateway + advanced params
     // only when the user can configure resources.
     const formatItems: ActionDropdownMenuItems = [
@@ -431,17 +477,7 @@ const usePlusMenuItems = ({ close }: { close: () => void }): ActionDropdownMenuI
       },
       // Agent Gateway directly below the formatting toolbar.
       ...gatewayItem,
-      // Advanced parameter settings — only when resources can be configured.
-      ...(canConfigureResource
-        ? [
-            {
-              icon: Settings2Icon,
-              key: 'params',
-              label: renderActive(tSetting('settingModel.params.title'), isParamsPanelActive),
-              onClick: handleToggleParams,
-            } as ActionDropdownMenuItems[number],
-          ]
-        : []),
+      ...paramsItems,
     ];
 
     // "Add Attachments..." merges file upload with the knowledge base (libraries / files).
@@ -521,6 +557,7 @@ const usePlusMenuItems = ({ close }: { close: () => void }): ActionDropdownMenuI
     handleToggleParams,
     isAgentModeEnabled,
     isDark,
+    isMobile,
     isGatewayModeEnabled,
     isParamsPanelActive,
     isSkillPolicyMenuOpen,
@@ -554,6 +591,7 @@ const usePlusMenuItems = ({ close }: { close: () => void }): ActionDropdownMenuI
 const PlusAction = memo(() => {
   const { t } = useTranslation('chat');
 
+  const isMobile = useServerConfigStore(serverConfigSelectors.isMobile);
   return (
     <ChatInputAction
       icon={PlusIcon}
@@ -563,6 +601,15 @@ const PlusAction = memo(() => {
       dropdown={{
         menu: { useItems: usePlusMenuItems },
         minWidth: 220,
+        popupProps: isMobile
+          ? {
+              style: {
+                maxWidth: 'calc(100vw - 32px)',
+                minWidth: 0,
+                width: 'min(320px, calc(100vw - 32px))',
+              },
+            }
+          : undefined,
         placement: 'topLeft',
       }}
     />

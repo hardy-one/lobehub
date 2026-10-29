@@ -5,6 +5,7 @@ import type {
   Tool as GoogleFunctionCallTool,
 } from '@google/genai';
 import { GoogleGenAI } from '@google/genai';
+import { LOBE_USER_AGENT } from '@lobechat/const';
 import debug from 'debug';
 
 import type { LobeRuntimeAI } from '../../core/BaseAI';
@@ -84,10 +85,10 @@ const normalizeThinkingConfig = (config?: ThinkingConfig): ThinkingConfig | unde
 };
 
 export interface GoogleModelCard {
-  displayName: string;
-  inputTokenLimit: number;
+  displayName?: string;
+  inputTokenLimit?: number;
   name: string;
-  outputTokenLimit: number;
+  outputTokenLimit?: number;
 }
 
 enum HarmCategory {
@@ -149,9 +150,10 @@ export class LobeGoogleAI implements LobeRuntimeAI {
   }: LobeGoogleAIParams = {}) {
     if (!apiKey) throw AgentRuntimeError.createError(AgentRuntimeErrorType.InvalidProviderAPIKey);
 
-    const httpOptions = baseURL
-      ? ({ baseUrl: baseURL, headers: defaultHeaders } as HttpOptions)
-      : undefined;
+    const httpOptions = {
+      ...(baseURL ? { baseUrl: baseURL } : {}),
+      headers: { 'User-Agent': LOBE_USER_AGENT, ...defaultHeaders },
+    } as HttpOptions;
 
     this.apiKey = apiKey;
     this.client = client ?? new GoogleGenAI({ apiKey, httpOptions });
@@ -610,12 +612,17 @@ export class LobeGoogleAI implements LobeRuntimeAI {
 
       const processedModels = modelList.map((model) => {
         const id = model.name.replace(/^models\//, '');
+        const contextWindowTokens = (model.inputTokenLimit || 0) + (model.outputTokenLimit || 0);
 
+        // Relay gateways that proxy `/v1beta/models` often omit token limits and
+        // display names. Absent fields must stay absent here: `processModelList`
+        // merges remote-first (`model.X ?? knownModel?.X`), so a synthesized 0 or
+        // id-equal name would override the model-bank card instead of falling back to it.
         return {
-          contextWindowTokens: (model.inputTokenLimit || 0) + (model.outputTokenLimit || 0),
-          displayName: model.displayName || id,
+          ...(contextWindowTokens > 0 && { contextWindowTokens }),
+          ...(model.displayName && { displayName: model.displayName }),
           id,
-          maxOutput: model.outputTokenLimit || undefined,
+          ...(model.outputTokenLimit && { maxOutput: model.outputTokenLimit }),
         };
       });
 

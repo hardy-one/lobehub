@@ -11,6 +11,7 @@ import { MessageCircleQuestion } from 'lucide-react';
 import { memo } from 'react';
 
 import SafeBoundary from '@/components/ErrorBoundary';
+import { type MetaData } from '@/types/meta';
 
 import ExecutionTime from './ExecutionTime';
 import StatusIndicator from './StatusIndicator';
@@ -39,6 +40,8 @@ interface InspectorProps {
   isToolCalling?: boolean;
   /** Owning message; native tool ids such as Codex `item_1` repeat across messages. */
   messageId: string;
+  /** Resolved once per tool list by the parent instead of per row. */
+  pluginMeta?: MetaData;
   result?: { content: string | null; error?: any; state?: any };
   toolCallId: string;
   toolCallStartTime?: number;
@@ -55,6 +58,7 @@ const Inspectors = memo<InspectorProps>(
     isExpanded,
     isToolCalling,
     messageId,
+    pluginMeta,
     toolCallId,
     toolCallStartTime,
   }) => {
@@ -93,7 +97,10 @@ const Inspectors = memo<InspectorProps>(
     const statusSuccessIcon = apiName === 'askUserQuestion' ? MessageCircleQuestion : undefined;
 
     const args = safeParseJSON(argsStr);
-    const partialJson = safeParsePartialJSON(argsStr);
+    // Only fall back to the partial parser when the arguments are not complete
+    // JSON yet: its character-level state machine is far more expensive than
+    // JSON.parse, and once the arguments parse the two results agree.
+    const partialJson = args ? undefined : safeParsePartialJSON(argsStr);
 
     // Collapsed rows read as one plain sentence ("<action> <keyword>") so a
     // finished run scans as prose; expanding a row is an explicit ask for the
@@ -153,6 +160,7 @@ const Inspectors = memo<InspectorProps>(
             isAborted={isAborted}
             isLoading={isTitleLoading}
             partialArgs={partialJson || undefined}
+            pluginMeta={pluginMeta}
             result={result}
           />
         )}

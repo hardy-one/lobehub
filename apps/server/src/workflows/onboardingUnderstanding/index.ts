@@ -1,4 +1,4 @@
-import { appEnv } from '@/envs/app';
+import { getQStashCallbackBaseUrl } from '@/envs/qstash';
 import { injectActiveTraceHeaders } from '@/libs/observability/traceparent';
 import { workflowClient } from '@/libs/qstash';
 
@@ -30,7 +30,9 @@ export class UnderstandingWorkflowUnavailableError extends Error {
 
 export class OnboardingUnderstandingWorkflow {
   static assertAvailable() {
-    const baseUrl = appEnv.INTERNAL_APP_URL || appEnv.APP_URL;
+    // The queue calls back over QSTASH_CALLBACK_BASE_URL when set (a self-hosted
+    // queue on the deployment network); hosted QStash uses the public APP_URL.
+    const baseUrl = getQStashCallbackBaseUrl();
     if (!process.env.QSTASH_TOKEN || !baseUrl) {
       throw new UnderstandingWorkflowUnavailableError();
     }

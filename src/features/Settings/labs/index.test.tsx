@@ -159,10 +159,12 @@ describe('Labs settings page', () => {
     const betaTags = screen.getAllByText('stage.beta.label');
     // Every toggle carries exactly one stage tag — counted against the registry
     // rather than a literal, so adding an experiment does not fail this test for
-    // the wrong reason.
-    expect(alphaTags.length + betaTags.length).toBe(
-      LAB_FEATURES.filter((feature) => !feature.workspaceOnly).length,
+    // the wrong reason. Experiments gated on a capability or a workspace the
+    // default test store does not offer are not rendered.
+    const offeredFeatures = LAB_FEATURES.filter(
+      (feature) => !feature.serverFlag && !feature.workspaceOnly,
     );
+    expect(alphaTags.length + betaTags.length).toBe(offeredFeatures.length);
   });
 
   it('does not render an empty workspace group', () => {

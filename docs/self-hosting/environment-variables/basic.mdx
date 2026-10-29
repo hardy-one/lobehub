@@ -122,6 +122,15 @@ For specific content, please refer to the [Feature Flags](/docs/self-hosting/adv
 
 Business builds enable Gateway Mode automatically. Self-hosted deployments can set `ENABLE_AGENT_GATEWAY=1` together with `AGENT_GATEWAY_URL` to expose Gateway Mode to clients.
 
+### `OSS_ENABLE_ARTIFACT_DEPLOYMENT`
+
+- Type: Optional
+- Description: Hosts published Artifacts on this deployment. Turns on the publish surfaces in chat, stores the built files under the `artifacts/` prefix of the S3 bucket configured above, and serves them back through `/artifact-render/<id>/`.
+- Default: `0`
+- Example: `1`
+
+Off by default because it puts user-authored pages on the public internet. Turning it back off hides the publish surfaces **and stops published links from resolving**; the objects stay in the bucket, so switching it on again restores them. The `OSS_` prefix marks it as an open-source-only switch — LobeHub Cloud ships the capability instead of offering a switch for it.
+
 ### `AGENT_GATEWAY_URL`
 
 - Type: Optional

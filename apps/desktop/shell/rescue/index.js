@@ -14,17 +14,20 @@ const readJson = (file) => {
 
 const resolveChannel = ({ resourcesPath, userData }) => {
   const stored = readJson(path.join(userData, 'lobehub-settings.json'))?.updateChannel;
+  if (stored === 'HARDY' || stored === 'hardy' || stored === 'Hardy') return 'HARDY';
   if (stored != null) return stored === 'canary' ? 'canary' : 'stable';
-  let built = readJson(path.join(resourcesPath, 'core.asar', 'manifest.json'))?.channel;
-  if (built == null) {
-    try {
-      built = /\/(stable|nightly|canary|beta)\/?['"]?\s*$/m.exec(
-        fs.readFileSync(path.join(resourcesPath, 'app-update.yml'), 'utf8'),
-      )?.[1];
-    } catch {
-      // A missing core still has its packaged feed; without either, use Stable.
-    }
+  let appUpdateYml;
+  try {
+    appUpdateYml = fs.readFileSync(path.join(resourcesPath, 'app-update.yml'), 'utf8');
+  } catch {
+    // A missing app-update.yml is handled by the packaged core manifest below.
   }
+  if (appUpdateYml && /owner:\s*['"]?hardy-one\b/.test(appUpdateYml)) return 'HARDY';
+  let built = readJson(path.join(resourcesPath, 'core.asar', 'manifest.json'))?.channel;
+  if (built == null) built = appUpdateYml;
+  if (built === 'canary' || built === 'beta') return 'canary';
+  if (typeof built === 'string')
+    built = /\/(stable|nightly|canary|beta)\/?['"]?\s*$/m.exec(built)?.[1];
   return built === 'canary' || built === 'beta' ? 'canary' : 'stable';
 };
 
@@ -44,7 +47,10 @@ const configureUpdater = (autoUpdater, { channel, feedUrl, logger }) => {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.allowPrerelease = channel !== 'stable';
-  if (feedUrl) {
+  if (channel === 'HARDY') {
+    autoUpdater.channel = channel;
+    autoUpdater.setFeedURL({ owner: 'hardy-one', provider: 'github', repo: 'lobe-release' });
+  } else if (feedUrl) {
     autoUpdater.channel = channel;
     autoUpdater.setFeedURL({ provider: 'generic', url: feedUrl });
   }

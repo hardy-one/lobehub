@@ -1231,7 +1231,7 @@ describe('GeneralChatAgent', () => {
           { content: 'Existing summary', role: 'compressedGroup' },
           {
             content: '',
-            metadata: { usage: { totalOutputTokens: 34_000 } },
+            metadata: { usage: { totalOutputTokens: 42_000 } },
             role: 'assistant',
           },
           { content: 'Large tool result', role: 'tool', tool_call_id: 'call-1' },

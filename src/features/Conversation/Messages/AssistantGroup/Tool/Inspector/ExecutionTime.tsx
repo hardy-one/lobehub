@@ -1,6 +1,6 @@
 import { formatDuration } from '@lobechat/utils';
 import { Text } from '@lobehub/ui';
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useState, useSyncExternalStore } from 'react';
 
 interface ExecutionTimeProps {
   isExecuting: boolean;
@@ -12,6 +12,37 @@ const UPDATE_INTERVAL_MS = 100;
 const START_TIME_CACHE_TTL_MS = 60_000;
 const executionStartTimeCache = new Map<string, number>();
 const executionStartTimeCleanupTimers = new Map<string, number>();
+
+// One clock shared by every running row. Rows used to each own a 100ms
+// `setInterval` plus its own state; with a long tool list that is hundreds of
+// state updates per second landing while the list is already re-rendering.
+const clockListeners = new Set<() => void>();
+let clockInterval: number | undefined;
+let clockNow = Date.now();
+
+const emitClockTick = () => {
+  clockNow = Date.now();
+  for (const listener of clockListeners) listener();
+};
+
+const subscribeClock = (listener: () => void) => {
+  clockListeners.add(listener);
+  if (clockInterval === undefined) {
+    clockNow = Date.now();
+    clockInterval = window.setInterval(emitClockTick, UPDATE_INTERVAL_MS);
+  }
+  return () => {
+    clockListeners.delete(listener);
+    if (clockListeners.size === 0 && clockInterval !== undefined) {
+      window.clearInterval(clockInterval);
+      clockInterval = undefined;
+    }
+  };
+};
+
+const getClockNow = () => clockNow;
+
+const noopSubscribe = () => () => {};
 
 const clearExecutionStartTimeCleanup = (timerKey: string) => {
   const cleanupTimer = executionStartTimeCleanupTimers.get(timerKey);
@@ -42,30 +73,30 @@ const formatElapsedTime = (ms: number): string => {
 };
 
 const ExecutionTime = memo<ExecutionTimeProps>(({ isExecuting, startTime, timerKey }) => {
-  const [elapsed, setElapsed] = useState(0);
+  const now = useSyncExternalStore(
+    isExecuting ? subscribeClock : noopSubscribe,
+    getClockNow,
+    getClockNow,
+  );
+
+  // Resolved once per execution instead of on every tick: the start time is
+  // fixed for the duration of the call, so it must not be recomputed per render.
+  const [resolvedStartTime, setResolvedStartTime] = useState(0);
 
   useEffect(() => {
     if (!isExecuting) {
       clearExecutionStartTimeCleanup(timerKey);
       executionStartTimeCache.delete(timerKey);
-      setElapsed(0);
+      setResolvedStartTime(0);
       return;
     }
 
     clearExecutionStartTimeCleanup(timerKey);
-
-    const resolvedStartTime = startTime ?? executionStartTimeCache.get(timerKey) ?? Date.now();
-    executionStartTimeCache.set(timerKey, resolvedStartTime);
-
-    const update = () => {
-      setElapsed(Math.max(0, Date.now() - resolvedStartTime));
-    };
-
-    update();
-    const interval = window.setInterval(update, UPDATE_INTERVAL_MS);
+    const startedAt = startTime ?? executionStartTimeCache.get(timerKey) ?? Date.now();
+    executionStartTimeCache.set(timerKey, startedAt);
+    setResolvedStartTime(startedAt);
 
     return () => {
-      window.clearInterval(interval);
       scheduleExecutionStartTimeCleanup(timerKey);
     };
   }, [isExecuting, startTime, timerKey]);
@@ -74,7 +105,7 @@ const ExecutionTime = memo<ExecutionTimeProps>(({ isExecuting, startTime, timerK
 
   return (
     <Text fontSize={12} style={{ flexShrink: 0, whiteSpace: 'nowrap' }} type="secondary">
-      {formatElapsedTime(elapsed)}
+      {formatElapsedTime(resolvedStartTime > 0 ? Math.max(0, now - resolvedStartTime) : 0)}
     </Text>
   );
 });

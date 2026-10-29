@@ -18,8 +18,10 @@ import type {
   CodexCollaborationMode,
   HeterogeneousAgentModelCatalog,
   HeteroPermissionMode,
+  HeterogeneousThinkingLevels,
   HeteroSessionImportMessage,
   ListHeterogeneousAgentModelsParams,
+  ProbeHeterogeneousThinkingLevelsParams,
 } from '@lobechat/types';
 
 import { ensureElectronIpc } from '@/utils/electron/ipc';
@@ -39,6 +41,7 @@ class HeterogeneousAgentService {
     cwd?: string;
     env?: Record<string, string>;
     initialModel?: string;
+    initialThinkingLevel?: string;
     providerBinding?: HeterogeneousProviderBindingReference;
     resumeSessionId?: string;
     useClaudeCodeSdk?: boolean;
@@ -92,6 +95,18 @@ class HeterogeneousAgentService {
     sessionId: string;
   }): Promise<{ deliveredText?: string; status: 'accepted' | 'rejected' | 'unsupported' }> {
     return this.ipc.heterogeneousAgent.steerSession(params);
+  }
+
+  async steerPiSession(
+    sessionId: string,
+    message: string,
+    imageList?: Array<{ id: string; url: string }>,
+  ) {
+    return this.ipc.heterogeneousAgent.steerPiSession({ imageList, sessionId, message });
+  }
+
+  async executePiSteerQueue(sessionId: string) {
+    return this.ipc.heterogeneousAgent.executePiSteerQueue({ sessionId });
   }
 
   async cancelSession(sessionId: string) {
@@ -165,6 +180,17 @@ class HeterogeneousAgentService {
 
   async getAntigravityQuota(params?: AntigravityQuotaParams): Promise<AntigravityQuotaSnapshot> {
     return this.ipc.heterogeneousAgent.getAntigravityQuota(params);
+  }
+
+  /**
+   * Thinking levels the selected model serves, probed in the main process.
+   * Only Pi answers this; other types return an `unsupported_client` error and
+   * callers fall back to the static vocabulary.
+   */
+  async getThinkingLevels(
+    params: ProbeHeterogeneousThinkingLevelsParams,
+  ): Promise<HeterogeneousThinkingLevels> {
+    return this.ipc.heterogeneousAgent.getThinkingLevels(params);
   }
 
   async getCodexQuota(params?: {

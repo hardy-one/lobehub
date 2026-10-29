@@ -5,9 +5,6 @@ import { readArtifactObject } from '@/server/services/artifactDeployment';
 
 const log = debug('lobe-artifact:render');
 
-/** The file a request with no path of its own resolves to. */
-export const DEFAULT_ENTRY = 'index.html';
-
 // No `allow-same-origin`: the page is model-written content, so it must run in an
 // opaque origin even though it is served from our own host.
 export const SANDBOX_CSP =
@@ -22,12 +19,17 @@ const RESPONSE_HEADERS_BASE = {
   'X-Content-Type-Options': 'nosniff',
 };
 
+const IMMUTABLE_CACHE = 'public, max-age=31536000, immutable';
+
 /**
- * Segments that name the deployment's own entry file. Those are revalidated on
- * every visit because a publish moves what they point at; every other object is
- * addressed by revision and can be cached for good.
+ * Whether a response may be cached for a year. HTML documents are served from
+ * stable, non-content-addressed URLs: the entry (whatever file name the publish
+ * used) and any page linked from it move on every redeploy, so they must be
+ * revalidated. Every other object is a static asset, which a build names after
+ * its content and can therefore keep for good.
  */
-export const isEntryPath = (path: string) => path === '' || path === DEFAULT_ENTRY;
+export const isImmutableAsset = (object: { contentType: string; isEntry: boolean }) =>
+  !object.isEntry && !object.contentType.toLowerCase().startsWith('text/html');
 
 /**
  * Resolve a request path to an object key, or `null` when it can leave the
@@ -65,7 +67,7 @@ export const respondWithArtifact = async (id: string, objectPath: string): Promi
   return new Response(object.bytes, {
     headers: {
       ...RESPONSE_HEADERS_BASE,
-      'Cache-Control': isEntryPath(objectPath) ? 'no-cache' : 'public, max-age=31536000, immutable',
+      'Cache-Control': isImmutableAsset(object) ? IMMUTABLE_CACHE : 'no-cache',
       'Content-Type': object.contentType || 'application/octet-stream',
     },
   });

@@ -683,6 +683,7 @@ export default {
   'groupWizard.searchTemplates': 'Search templates...',
   'groupWizard.title': 'Create Group',
   'groupWizard.useTemplate': 'Use Template',
+  'heteroAgent.defaultName': "{{owner}}'s {{product}}",
   'heteroAgent.permissionMode.label': 'Permission mode',
   'heteroAgent.permissionMode.tooltip':
     'How Claude Code asks before acting. Applies to this topic; a new topic in this directory starts with your last pick.',
@@ -881,6 +882,8 @@ export default {
   'heteroAgent.modelSelector.reasoning.low': 'Low',
   'heteroAgent.modelSelector.reasoning.max': 'Max',
   'heteroAgent.modelSelector.reasoning.medium': 'Medium',
+  'heteroAgent.modelSelector.reasoning.minimal': 'Minimal',
+  'heteroAgent.modelSelector.reasoning.off': 'Off',
   'heteroAgent.modelSelector.reasoning.ultra': 'Ultra',
   'heteroAgent.modelSelector.reasoning.xhigh': 'Extra High',
   'heteroAgent.modelSelector.source.agent': 'Agent default',
@@ -1925,6 +1928,8 @@ export default {
   'followUpPlaceholderHeterogeneous': 'Follow up.',
   'sendPlaceholder': 'Ask, create, or start a task, <hotkey><hotkey/>',
   'sendPlaceholderChat': 'Ask, search, or brainstorm, <hotkey><hotkey/>',
+  'sendPlaceholderChatMobile': 'Ask, search, or brainstorm…',
+  'sendPlaceholderMobile': 'Ask, create, or start a task…',
   'sendPlaceholderChatWithAgentAssignment':
     'Ask, search, or brainstorm. @ to bring in other agents.',
   'sendPlaceholderHeterogeneous': 'Describe a task or ask a question to {{name}}',

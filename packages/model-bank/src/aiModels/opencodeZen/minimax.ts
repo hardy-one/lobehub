@@ -1,0 +1,80 @@
+import { type AIChatModelCard } from '../../types/aiModel';
+
+export const minimaxChatModels: AIChatModelCard[] = [
+  {
+    abilities: { functionCall: true, reasoning: true },
+    contextWindowTokens: 204_800,
+    description: 'MiniMax model for chat, coding, office work, and agentic tasks',
+    displayName: 'MiniMax-M2.5',
+    enabled: false,
+    family: 'minimax',
+    generation: 'minimax-m2.5',
+    id: 'minimax-m2.5',
+    knowledgeCutoff: '2025-01',
+    maxOutput: 131_072,
+    organization: 'MiniMax',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 0.3, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 1.2, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.06, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-02-12',
+    settings: { extendParams: ['reasoningBudgetToken32k'] },
+    sdkType: 'openai',
+    type: 'chat',
+  },
+  {
+    abilities: { functionCall: true, reasoning: true },
+    contextWindowTokens: 204_800,
+    description: 'MiniMax model for chat, coding, office work, and agentic tasks',
+    displayName: 'MiniMax-M2.7',
+    enabled: false,
+    family: 'minimax',
+    generation: 'minimax-m2.7',
+    id: 'minimax-m2.7',
+    knowledgeCutoff: '2025-01',
+    maxOutput: 131_072,
+    organization: 'MiniMax',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 0.3, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 1.2, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.06, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-03-18',
+    sdkType: 'openai',
+    type: 'chat',
+  },
+  {
+    abilities: { functionCall: true, reasoning: true, video: true, vision: true },
+    contextWindowTokens: 512_000,
+    description: 'MiniMax multimodal model for long-context coding, perception, and agent planning',
+    displayName: 'MiniMax-M3',
+    enabled: false,
+    family: 'minimax',
+    generation: 'minimax-m3',
+    id: 'minimax-m3',
+    knowledgeCutoff: '2025-01',
+    maxOutput: 128_000,
+    organization: 'MiniMax',
+    pricing: {
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 0.3, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 1.2, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.06, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    releasedAt: '2026-06-01',
+    settings: { extendParams: ['enableReasoning'] },
+    sdkType: 'openai',
+    type: 'chat',
+  },
+];
+
+export default minimaxChatModels;

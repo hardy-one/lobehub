@@ -837,7 +837,10 @@ describe('file operations', () => {
 
       expect(result).toHaveProperty('success');
       expect(result).toHaveProperty('matches');
-      expect(result.matches).toContain('./search.txt');
+      // The fallback chain normalises every engine's `./`-relative output to
+      // absolute paths, so the caller sees one path shape regardless of which
+      // tool answered.
+      expect(result.matches).toContain(path.join(tmpDir, 'search.txt'));
     });
 
     it('should return matching lines in content mode', async () => {
@@ -845,7 +848,7 @@ describe('file operations', () => {
 
       const result = await grepContent({ cwd: tmpDir, output_mode: 'content', pattern: 'hello' });
 
-      expect(result.matches[0]).toContain('./search.txt:1:1:hello world');
+      expect(result.matches[0]).toContain(`search.txt:1:hello world`);
     });
 
     it('should handle no matches', async () => {
@@ -876,6 +879,31 @@ describe('file operations', () => {
       });
 
       expect(result.hint).toBeUndefined();
+    });
+
+    it('should delegate to the fallback chain so a host without rg still answers', async () => {
+      // Regression: the wrapper used to spawn `rg` directly. On a machine
+      // without ripgrep every search died as a bare `success: false`, which the
+      // tool pipeline collapsed to "[UNKNOWN_EXEC_ERROR] Tool execution
+      // failed". Pinning the engine here proves the chain is wired (and stays
+      // greppable without rg installed).
+      await writeFile(path.join(tmpDir, 'search.txt'), 'hello world');
+
+      const result = await grepContent({ cwd: tmpDir, pattern: 'hello', tool: 'grep' });
+
+      expect(result.success).toBe(true);
+      expect(result.engine).toBe('grep');
+      expect(result.matches).toContain(path.join(tmpDir, 'search.txt'));
+    });
+
+    it('should report the failure reason instead of an errorless failure', async () => {
+      const result = await grepContent({
+        cwd: path.join(tmpDir, 'no-such-dir'),
+        pattern: 'hello',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('does not exist');
     });
   });
 

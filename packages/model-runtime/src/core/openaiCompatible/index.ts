@@ -1,3 +1,4 @@
+import { LOBE_USER_AGENT } from '@lobechat/const';
 import debug from 'debug';
 import type OpenAI from 'openai';
 
@@ -37,6 +38,7 @@ import {
 } from '../../utils/signatureScope';
 import type { LobeRuntimeAI } from '../BaseAI';
 import { normalizeToolsParameters } from '../contextBuilders/normalizeToolSchema';
+import type { LocalObjectReader } from '../contextBuilders/localObject';
 import { chatViaChatCompletions } from '../protocols/openaiChatCompletions/chat';
 import { chatViaResponses } from '../protocols/openaiResponses/chat';
 import { convertOpenAITranscriptionUsage, convertOpenAIUsage } from '../usageConverters/openai';
@@ -73,6 +75,18 @@ export type {
   OpenAICompatibleFactoryOptions,
 } from './factoryOptions';
 export { CHAT_MODELS_BLOCK_LIST } from './models';
+
+const withLobeUserAgent = <T extends Record<string, any>>(
+  options: T,
+): Omit<T, 'defaultHeaders'> & { defaultHeaders: Record<string, string> } => {
+  const { defaultHeaders, ...rest } = options;
+  return Object.assign(rest, {
+    defaultHeaders: {
+      'User-Agent': LOBE_USER_AGENT,
+      ...(defaultHeaders as Record<string, string>),
+    },
+  });
+};
 
 export const createOpenAICompatibleRuntime = <T extends Record<string, any> = any>(
   factory: OpenAICompatibleFactoryOptions<T>,
@@ -130,7 +144,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
 
       if (!apiKey) throw AgentRuntimeError.createError(ErrorType?.invalidAPIKey);
 
-      const initOptions = { apiKey, baseURL, ...constructorOptions, ...res };
+      const initOptions = withLobeUserAgent({ apiKey, baseURL, ...constructorOptions, ...res });
 
       // if the custom client is provided, use it as client
       if (customClient?.createClient) {
@@ -159,6 +173,17 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
             provider: this.id,
           });
       }
+    }
+
+    /**
+     * Constructor options may carry a deployment-specific reader; it takes precedence
+     * over the factory-level reader so runtime-scoped storage access stays local.
+     */
+    private get localObjectReader(): LocalObjectReader | undefined {
+      const instanceChat = (this._options as any).chatCompletion as
+        { localObjectReader?: LocalObjectReader } | undefined;
+
+      return instanceChat?.localObjectReader ?? chatCompletion?.localObjectReader;
     }
 
     /**
@@ -238,6 +263,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
     private get context(): OpenAICompatibleRuntimeContext {
       return {
         _options: this._options,
+        localObjectReader: this.localObjectReader,
         baseURL: this.baseURL,
         client: this.client,
         getMappedModelId: (model) => this.getMappedModelId(model),
@@ -302,12 +328,12 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
         baseURL: targetBaseURL,
       } as ConstructorOptions<T>;
 
-      const initOptions = {
+      const initOptions = withLobeUserAgent({
         apiKey: sanitizedApiKey,
         baseURL: targetBaseURL,
         ...constructorOptions,
         ...restOptions,
-      } as ConstructorOptions<T> & Record<string, any>;
+      }) as ConstructorOptions<T> & Record<string, any>;
 
       this._options = nextOptions;
 

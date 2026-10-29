@@ -1,6 +1,6 @@
 import Anthropic, { type ClientOptions } from '@anthropic-ai/sdk';
 import type { Stream } from '@anthropic-ai/sdk/streaming';
-import { CURRENT_VERSION } from '@lobechat/const';
+import { LOBE_USER_AGENT } from '@lobechat/const';
 import type { ChatModelCard } from '@lobechat/types';
 import debug from 'debug';
 import type { Pricing } from 'model-bank';
@@ -36,6 +36,7 @@ import {
   buildAnthropicTools,
   buildSearchTool,
 } from '../contextBuilders/anthropic';
+import type { LocalObjectReader } from '../contextBuilders/localObject';
 import { resolveModelSamplingParameters } from '../parameterResolver';
 import { AnthropicStream, type AnthropicStreamOptions } from '../streams';
 import { readableFromAsyncIterable } from '../streams/protocol';
@@ -114,6 +115,11 @@ export interface AnthropicCompatibleFactoryOptions<T extends Record<string, any>
         payload,
       }: { callbacks?: ChatStreamCallbacks; inputStartAt?: number; payload?: ChatStreamPayload },
     ) => ReadableStream;
+    /**
+     * Reads objects this deployment owns straight from storage, so base64
+     * conversions do not fetch the server's own presigned URL back over HTTP.
+     */
+    localObjectReader?: LocalObjectReader;
   };
   constructorOptions?: ConstructorOptions<T>;
   customClient?: CustomClientOptions<T>;
@@ -154,6 +160,10 @@ export interface AnthropicCompatibleParamsInput<T extends Record<string, any> = 
  */
 export const buildDefaultAnthropicPayload = async (
   payload: ChatStreamPayload,
+  options?: ConstructorOptions & {
+    localObjectReader?: LocalObjectReader;
+    providerModels?: { id: string; maxOutput?: number }[];
+  },
 ): Promise<Anthropic.MessageCreateParams> => {
   const {
     messages,
@@ -173,7 +183,7 @@ export const buildDefaultAnthropicPayload = async (
   const resolvedMaxTokens = await resolveMaxTokens({
     max_tokens,
     model,
-    providerModels: anthropicModels,
+    providerModels: options?.providerModels ?? anthropicModels,
     thinking,
   });
 
@@ -197,7 +207,10 @@ export const buildDefaultAnthropicPayload = async (
 
   const postMessages = stripUnsupportedClaudeAssistantPrefill(
     model,
-    await buildAnthropicMessages(userMessages, { enabledContextCaching }),
+    await buildAnthropicMessages(userMessages, {
+      enabledContextCaching,
+      localObjectReader: options?.localObjectReader,
+    }),
   );
 
   let postTools = buildAnthropicTools(tools, { enabledContextCaching }) as
@@ -291,7 +304,7 @@ export const createDefaultAnthropicClient = <T extends Record<string, any> = any
   const betaHeaders = process.env.ANTHROPIC_BETA_HEADERS;
   const baseURL = normalizeAnthropicCompatibleBaseURL(options.baseURL);
   const defaultHeaders = {
-    'User-Agent': `lobehub/${CURRENT_VERSION}`,
+    'User-Agent': LOBE_USER_AGENT,
     ...options.defaultHeaders,
     ...(betaHeaders ? { 'anthropic-beta': betaHeaders } : {}),
   };
@@ -499,6 +512,17 @@ export const createAnthropicCompatibleRuntime = <T extends Record<string, any> =
     baseURL!: string;
     protected _options: ConstructorOptions<T>;
 
+    /**
+     * `chatCompletion` from the factory config is static, but the constructor
+     * options carry per-deployment values, so a deployment-supplied reader wins.
+     */
+    private get localObjectReader(): LocalObjectReader | undefined {
+      const instanceChat = (this._options as any).chatCompletion as
+        { localObjectReader?: LocalObjectReader } | undefined;
+
+      return instanceChat?.localObjectReader ?? chatCompletion?.localObjectReader;
+    }
+
     constructor(options: ClientOptions & Record<string, any> = {}) {
       const { modelIdMapping, ...inputOptions } = options as ClientOptions &
         Record<string, any> &
@@ -540,7 +564,7 @@ export const createAnthropicCompatibleRuntime = <T extends Record<string, any> =
       if (customClient?.createClient) {
         this.client = customClient.createClient(initOptions as ConstructorOptions<T>);
       } else {
-        this.client = new Anthropic(initOptions as ConstructorOptions<T>);
+        this.client = createDefaultAnthropicClient(initOptions);
       }
 
       this.baseURL = finalBaseURL || this.client.baseURL;
@@ -573,7 +597,10 @@ export const createAnthropicCompatibleRuntime = <T extends Record<string, any> =
 
         log('chat called with model: %s, stream: %s', payload.model, payload.stream ?? true);
 
-        const postPayload = await chatCompletion.handlePayload(payload, this._options);
+        const postPayload = await chatCompletion.handlePayload(payload, {
+          ...this._options,
+          localObjectReader: this.localObjectReader,
+        });
         const shouldStream = postPayload.stream ?? payload.stream ?? true;
         const finalPayload = { ...postPayload, stream: shouldStream };
         const requestPayload = this.withMappedRequestModel(finalPayload, payload.model);

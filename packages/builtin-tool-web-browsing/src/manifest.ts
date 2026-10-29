@@ -6,7 +6,8 @@ import { WebBrowsingApiName } from './types';
 export const WebBrowsingManifest: BuiltinToolManifest = {
   api: [
     {
-      description: 'Search the web with automatic engine selection.',
+      description:
+        'Search the web with automatic engine selection. Results may carry a `score` (0-3, where 1.5 or above marks a high-quality hit) and an `authority` (0-4, where 3 or above marks a highly authoritative source); when sources conflict, prefer the higher-authority one.',
       name: WebBrowsingApiName.search,
       parameters: {
         properties: {

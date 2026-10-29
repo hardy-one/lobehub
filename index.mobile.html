@@ -2,16 +2,49 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <link rel="icon" href="/favicon.ico" />
     <link rel="shortcut icon" href="/favicon-32x32.ico" />
     <!--SEO_META-->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=1" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="LobeHub" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#f8f8f8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1a1b1d" media="(prefers-color-scheme: dark)" />
     <style>
-      html body {
-        background: #f8f8f8;
+      html {
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+        color-scheme: light dark;
+        background-color: #f8f8f8;
       }
-      html[data-theme='dark'] body {
-        background-color: #000;
+      html,
+      html body,
+      html #root {
+        background-color: #f8f8f8;
+      }
+      @media (prefers-color-scheme: dark) {
+        html:not([data-theme='light']),
+        html:not([data-theme='light']) body,
+        html:not([data-theme='light']) #root {
+          color-scheme: dark;
+          background-color: #1a1b1d;
+        }
+      }
+      html[data-theme='light'],
+      html[data-theme='light'] body,
+      html[data-theme='light'] #root {
+        color-scheme: light;
+        background-color: #f8f8f8;
+      }
+      html[data-theme='dark'],
+      html[data-theme='dark'] body,
+      html[data-theme='dark'] #root {
+        color-scheme: dark;
+        background-color: #1a1b1d;
       }
     </style>
     <script>
@@ -42,6 +75,16 @@
         var resolvedTheme = theme === 'system' ? systemTheme : theme;
         if (resolvedTheme === 'dark' || resolvedTheme === 'light') {
           document.documentElement.setAttribute('data-theme', resolvedTheme);
+          var themeColor = resolvedTheme === 'dark' ? '#1a1b1d' : '#f8f8f8';
+          var metas = document.head.querySelectorAll('meta[name="theme-color"]');
+          for (var i = 0; i < metas.length; i++) {
+            if (i === 0) {
+              metas[i].removeAttribute('media');
+              metas[i].setAttribute('content', themeColor);
+            } else {
+              metas[i].remove();
+            }
+          }
         }
 
         var hl = new URLSearchParams(location.search).get('hl');

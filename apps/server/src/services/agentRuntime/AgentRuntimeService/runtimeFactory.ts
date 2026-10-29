@@ -7,6 +7,7 @@ import { type UIChatMessage } from '@lobechat/types';
 import { RequestTrigger } from '@lobechat/types';
 import debug from 'debug';
 
+import { AiModelModel } from '@/database/models/aiModel';
 import {
   createRuntimeExecutors,
   type RuntimeExecutorContext,
@@ -123,6 +124,50 @@ export async function getLlmExecutor(
 }
 
 /**
+ * The model's context window, for the compression budget.
+ *
+ * The user's own `ai_models` row wins: a custom provider has no bundled card at
+ * all, and even a builtin id can carry a user-edited window. Only when the row
+ * is missing (or holds no value) does the bundled model-bank card apply — it
+ * resolves by id alone as a last resort, which is why it can serve a different
+ * provider's card than the one running.
+ *
+ * Without the row read, every custom model resolves to `undefined` and the
+ * compression budget falls back to the 128k default, so a long-window model
+ * summarizes far earlier than it should.
+ */
+async function resolveContextWindowTokens(
+  deps: RuntimeFactoryDeps,
+  model: string | undefined,
+  provider: string | undefined,
+): Promise<number | undefined> {
+  if (!model || !provider) return undefined;
+
+  if (deps.serverDB && deps.userId) {
+    try {
+      const row = await new AiModelModel(
+        deps.serverDB,
+        deps.userId,
+        deps.workspaceId,
+      ).findByIdAndProvider(model, provider);
+
+      if (typeof row?.contextWindowTokens === 'number') return row.contextWindowTokens;
+    } catch (error) {
+      // A failed row read must not kill the turn; the bundled card below still
+      // yields a usable window for most models.
+      log(
+        '[contextWindowTokens] user-row lookup failed for %s:%s; falling back to the bundled card: %O',
+        provider,
+        model,
+        error,
+      );
+    }
+  }
+
+  return getModelPropertyWithFallback<number | undefined>(model, 'contextWindowTokens', provider);
+}
+
+/**
  * Create Agent Runtime instance
  */
 export async function createAgentRuntime(
@@ -150,14 +195,11 @@ export async function createAgentRuntime(
 ) {
   const state = agentState as AgentState | undefined;
   const modelRuntimeConfig = state?.modelRuntimeConfig;
-  const contextWindowTokens =
-    modelRuntimeConfig?.model && modelRuntimeConfig?.provider
-      ? await getModelPropertyWithFallback<number | undefined>(
-          modelRuntimeConfig.model,
-          'contextWindowTokens',
-          modelRuntimeConfig.provider,
-        )
-      : undefined;
+  const contextWindowTokens = await resolveContextWindowTokens(
+    deps,
+    modelRuntimeConfig?.model,
+    modelRuntimeConfig?.provider,
+  );
 
   const world = state?.world;
   const origin = state?.origin;

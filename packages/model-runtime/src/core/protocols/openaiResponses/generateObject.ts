@@ -64,6 +64,7 @@ export const generateObjectViaResponses = async (
   const input = await convertOpenAIResponseInputs(messages as any, {
     forceImageBase64: factory.chatCompletion?.forceImageBase64,
     forceVideoBase64: factory.chatCompletion?.forceVideoBase64,
+    localObjectReader: runtime.localObjectReader,
     provider: runtime.id,
     strictToolPairing: true,
   });
@@ -118,6 +119,7 @@ export const generateToolCallsViaResponses = async (
   const input = await convertOpenAIResponseInputs(messages as any, {
     forceImageBase64: factory.chatCompletion?.forceImageBase64,
     forceVideoBase64: factory.chatCompletion?.forceVideoBase64,
+    localObjectReader: runtime.localObjectReader,
     provider: runtime.id,
     reasoningSignatureScope,
     strictToolPairing: true,

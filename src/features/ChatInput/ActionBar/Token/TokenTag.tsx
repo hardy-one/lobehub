@@ -2,12 +2,15 @@ import { TokenTag } from '@lobehub/ui/chat';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useIsMobile } from '@/hooks/useIsMobile';
+
 import ActionPopover from '../components/ActionPopover';
 import TokenDetails from './TokenDetails';
 import { useTokenBreakdown } from './useTokenBreakdown';
 
 const Token = memo(() => {
   const { t } = useTranslation('chat');
+  const isMobile = useIsMobile();
 
   const breakdown = useTokenBreakdown();
   const { maxTokens, totalToken } = breakdown;
@@ -17,15 +20,12 @@ const Token = memo(() => {
   if (maxTokens > 0 && totalToken / maxTokens <= 0.5) return null;
 
   return (
-    <ActionPopover content={content}>
+    <ActionPopover content={content} trigger={isMobile ? 'click' : 'hover'}>
       <TokenTag
         maxValue={maxTokens}
         mode={'used'}
+        size={isMobile ? { blockSize: 24, size: 16 } : { blockSize: 28, size: 18 }}
         value={totalToken}
-        size={{
-          blockSize: 28,
-          size: 18,
-        }}
         text={{
           overload: t('tokenTag.overload'),
           remained: t('tokenTag.remained'),

@@ -1,7 +1,7 @@
 import { getBuiltinRender } from '@lobechat/builtin-tools/renders';
 import { getBuiltinStreaming } from '@lobechat/builtin-tools/streamings';
 import { Accordion, Divider, Flexbox, Skeleton } from '@lobehub/ui';
-import { memo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 
 import SafeBoundary from '@/components/ErrorBoundary';
 import { getMcpAppFromState } from '@/libs/mcp/mcpApp';
@@ -87,12 +87,18 @@ const Tool = memo<GroupToolProps>(({ assistantMessageId, disableEditing, id }) =
   // at or focused, so a list of hundreds of finished calls mounts titles only.
   const { armed: actionsArmed, armProps } = useArmOnInteraction();
 
-  let isArgumentsStreaming = false;
-  try {
-    JSON.parse(requestArgs || '{}');
-  } catch {
-    isArgumentsStreaming = true;
-  }
+  // Arguments only stop being complete JSON while they are still streaming,
+  // so cache the parse result per string instead of re-parsing on every render
+  // of every row in a long tool list.
+  const isArgumentsStreaming = useMemo(() => {
+    if (!requestArgs) return false;
+    try {
+      JSON.parse(requestArgs);
+      return false;
+    } catch {
+      return true;
+    }
+  }, [requestArgs]);
 
   const hasStreamingRenderer = !!getBuiltinStreaming(identifier, apiName);
   const forceShowStreamingRender = isArgumentsStreaming && hasStreamingRenderer;

@@ -379,6 +379,38 @@ describe('applyModelExtendParams', () => {
     });
   });
 
+  // MiMo exposes the effort directly on its Responses API; `none` is the value
+  // that turns thinking off, so it must reach the payload unchanged.
+  it('maps mimoReasoningEffort none to reasoning_effort none', () => {
+    const result = applyModelExtendParams({
+      chatConfig: chatConfig({ mimoReasoningEffort: 'none' }),
+      extendParams: ['mimoReasoningEffort'],
+      model: 'mimo-v2.6-pro',
+    });
+
+    expect(result).toEqual({ reasoning_effort: 'none' });
+  });
+
+  it('maps mimoReasoningEffort medium to reasoning_effort medium', () => {
+    const result = applyModelExtendParams({
+      chatConfig: chatConfig({ mimoReasoningEffort: 'medium' }),
+      extendParams: ['mimoReasoningEffort'],
+      model: 'mimo-v2.6-pro',
+    });
+
+    expect(result).toEqual({ reasoning_effort: 'medium' });
+  });
+
+  it('ignores mimoReasoningEffort for models that do not declare it', () => {
+    const result = applyModelExtendParams({
+      chatConfig: chatConfig({ mimoReasoningEffort: 'none' }),
+      extendParams: ['enableReasoning'],
+      model: 'gpt-4',
+    });
+
+    expect(result.reasoning_effort).toBeUndefined();
+  });
+
   it('respects Claude Sonnet 5 adaptive thinking default when unset', () => {
     const result = applyModelExtendParams({
       chatConfig: chatConfig({}),

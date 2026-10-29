@@ -24,6 +24,9 @@ export default {
     'Public deployment limit reached ({{used}} / {{limit}}). Unpublish a project or upgrade your plan.',
   'artifacts.deploy.open': 'Open deployment',
   'artifacts.deploy.outdated': 'Older version live',
+  'artifacts.deploy.phase.building': 'Building…',
+  'artifacts.deploy.phase.installing': 'Installing dependencies…',
+  'artifacts.deploy.phase.uploading': 'Uploading…',
   'artifacts.deploy.publish': 'Publish',
   'artifacts.deploy.publishNewVersion': 'Publish this version',
   'artifacts.deploy.quotaUnavailable':

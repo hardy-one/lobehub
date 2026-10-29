@@ -20,6 +20,7 @@ import type {
   CreateVideoOptions,
   CustomClientOptions,
 } from '../openaiCompatibleFactory';
+import type { ModelSdkRoutingOptions } from '../../utils/modelSdkRouting';
 import type { ApiType, RuntimeClass } from './apiTypes';
 import type { RouteAttemptFinished, RouteAttemptResult } from './routeAttempt';
 
@@ -32,6 +33,9 @@ export interface ProviderIniOptions extends Record<string, any> {
   baseURLOrAccountID?: string;
   dangerouslyAllowBrowser?: boolean;
   modelIdMapping?: Record<string, string>;
+  modelSdkOverrides?: ModelSdkRoutingOptions['modelSdkOverrides'];
+  modelSdkTypes?: ModelSdkRoutingOptions['modelSdkTypes'];
+  providerSdkType?: ModelSdkRoutingOptions['providerSdkType'];
   region?: string;
   sdkType?: string;
   sessionToken?: string;

@@ -8,6 +8,7 @@ import type {
   HeteroSelectorCapability,
   ListHeterogeneousAgentModelsParams,
 } from '@lobechat/types';
+import { HETEROGENEOUS_AGENT_DEFAULT_SELECTION } from '@lobechat/types';
 import {
   DropdownMenuPopup,
   DropdownMenuPortal,
@@ -16,7 +17,7 @@ import {
   DropdownMenuTrigger,
   renderDropdownMenuItems,
 } from '@lobehub/ui';
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { buildSelectorSubmenu } from '../../components/buildSelectorSubmenu';
@@ -24,6 +25,7 @@ import Trigger from '../../components/SelectorTrigger';
 import { ModelCatalogSelector } from './ModelCatalogSelector';
 import { buildSelectorView, resolveModelSwitchSelection } from './selectorView';
 import { useTargetModelCatalog } from './useTargetModelCatalog';
+import { useThinkingLevels } from './useThinkingLevels';
 
 interface SelectorMenuProps {
   agentId?: string;
@@ -39,17 +41,49 @@ const SelectorMenu = memo<SelectorMenuProps>(
   ({ agentId, capability, patch, permissionReason, provider, topicPin, topicScoped }) => {
     const { t } = useTranslation('chat');
     const [open, setOpen] = useState(false);
-    const { data } = useTargetModelCatalog({
+    const type = provider.type as ListHeterogeneousAgentModelsParams['type'];
+    const { cwd, data, deviceId, targetReady } = useTargetModelCatalog({
       agentId,
       enabled: !!capability.speed,
       open,
-      type: provider.type as ListHeterogeneousAgentModelsParams['type'],
+      type,
     });
     const models = data?.models;
 
+    const effort = capability.effort?.resolve(provider);
+    const probesLevels = capability.effort?.source === 'runtime';
+    // Only probe while the menu is open on a target that can answer: the probe
+    // costs a CLI process start, and a device target keeps the static list.
+    const { levels: runtimeEffortLevels } = useThinkingLevels({
+      cwd,
+      deviceId,
+      enabled: open && probesLevels && targetReady,
+      provider,
+      type,
+    });
+
+    // A level the model does not serve would be clamped by the CLI, leaving the
+    // menu claiming a setting the run never used — drop it once we know better.
+    useEffect(() => {
+      if (!runtimeEffortLevels || !effort || effort === HETEROGENEOUS_AGENT_DEFAULT_SELECTION)
+        return;
+      if (runtimeEffortLevels.includes(effort)) return;
+
+      void patch({ effort: HETEROGENEOUS_AGENT_DEFAULT_SELECTION });
+    }, [effort, patch, runtimeEffortLevels]);
+
     const view = useMemo(
-      () => buildSelectorView({ capability, models, provider, t, topicPin, topicScoped }),
-      [capability, models, provider, t, topicPin, topicScoped],
+      () =>
+        buildSelectorView({
+          capability,
+          models,
+          provider,
+          runtimeEffortLevels,
+          t,
+          topicPin,
+          topicScoped,
+        }),
+      [capability, models, provider, runtimeEffortLevels, t, topicPin, topicScoped],
     );
 
     const select = useCallback(
@@ -89,6 +123,7 @@ const SelectorMenu = memo<SelectorMenuProps>(
           <Trigger
             ariaLabel={view.ariaLabel}
             fast={view.isFastSpeed}
+            modelId={view.model}
             secondaryText={view.triggerLabel.secondaryText}
             text={view.triggerLabel.text}
           />

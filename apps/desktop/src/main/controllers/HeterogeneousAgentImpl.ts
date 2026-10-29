@@ -38,7 +38,10 @@ import type {
   LobeBuiltinMcpServer,
   McpToolResult,
 } from '@lobechat/heterogeneous-agents/builtinMcp';
-import { listHeterogeneousAgentModels } from '@lobechat/heterogeneous-agents/models';
+import {
+  listHeterogeneousAgentModels,
+  probeHeterogeneousThinkingLevels,
+} from '@lobechat/heterogeneous-agents/models';
 import type {
   HeteroExecImageRef,
   HeterogeneousAgentCancellationResult,
@@ -116,7 +119,9 @@ import {
 } from '@lobechat/heterogeneous-agents/workingDirectory';
 import type {
   HeterogeneousAgentModelCatalog,
+  HeterogeneousThinkingLevels,
   ListHeterogeneousAgentModelsParams,
+  ProbeHeterogeneousThinkingLevelsParams,
 } from '@lobechat/types';
 import {
   managedProcessEnvironment,
@@ -301,6 +306,8 @@ interface StartSessionParams {
   env?: Record<string, string>;
   /** Protocol-native model selected after session setup (TRAE ACP only). */
   initialModel?: string;
+  /** Protocol-native thinking level applied after session setup (Pi RPC only). */
+  initialThinkingLevel?: string;
   /** Credential-free LobeHub Provider reference. Desktop main resolves its secrets. */
   providerBinding?: HeterogeneousProviderBindingReference;
   /** Session ID to resume (for multi-turn) */
@@ -456,6 +463,9 @@ export default class HeterogeneousAgentCtr {
   ) {
     this.remoteServerAuth = remoteServerAuth ?? {
       getAccessToken: async () => (await this.remoteServerConfigCtr?.getAccessToken()) ?? null,
+      // Device traffic (agent runs and their event streams) prefers the address
+      // the deployment provides for its devices; `getRemoteServerUrl` stays the
+      // configured server, used for account/config calls.
       getServerUrl: async () => (await this.remoteServerConfigCtr?.getRemoteServerUrl()) ?? null,
     };
     this.piRpcPool = new PiRpcPool({
@@ -1626,6 +1636,7 @@ export default class HeterogeneousAgentCtr {
           ? params.providerBinding.apiConfig
           : undefined,
       model,
+      initialThinkingLevel: params.initialThinkingLevel,
       sessionId,
       resumeSessionId,
       useClaudeCodeSdk: params.useClaudeCodeSdk,
@@ -2735,6 +2746,13 @@ export default class HeterogeneousAgentCtr {
           });
         }
       },
+      onQueueUpdate: (event) => {
+        this.broadcast('heteroAgentPiQueueUpdate', {
+          followUp: event.followUp ?? [],
+          sessionId: session.sessionId,
+          steering: event.steering ?? [],
+        });
+      },
       onRuntimeStatus: (status) => {
         this.broadcast('heteroAgentRuntimeStatus', status);
       },
@@ -2830,6 +2848,16 @@ export default class HeterogeneousAgentCtr {
     // rebind to THIS run's IPC session / trace or events would broadcast to
     // a stale sessionId.
     if (pooledSession) pooledSession.rebind(callbacks);
+    // A thinking level is a protocol value, not a launch flag: Pi applies it
+    // through `set_thinking_level` on the session about to run, so a reused
+    // process moves in place instead of being recycled.
+    if (session.initialThinkingLevel) {
+      try {
+        await rpcSession.setThinkingLevel(session.initialThinkingLevel);
+      } catch (error) {
+        logger.warn('Failed to apply the Pi thinking level:', error);
+      }
+    }
     session.piRpcSession = rpcSession;
 
     logger.info(pooledSession ? 'Reusing pooled Pi RPC process:' : 'Starting Pi RPC session:', {
@@ -3512,6 +3540,29 @@ export default class HeterogeneousAgentCtr {
     });
   }
 
+  /**
+   * Thinking levels the selected pi model serves, probed over the RPC transport.
+   *
+   * Pi answers this per session, so the probe spawns `pi --mode rpc` with the
+   * same args a run would use (including `--model`) and closes it again. The
+   * renderer caches per model; only a cache miss pays a process start.
+   */
+  async getThinkingLevels(
+    params: ProbeHeterogeneousThinkingLevelsParams,
+  ): Promise<HeterogeneousThinkingLevels> {
+    const env = {
+      ...buildInheritedSpawnEnv(),
+      ...buildProxyEnv(this.app.storeManager.get('networkProxy')),
+      ...params.env,
+    };
+
+    return probeHeterogeneousThinkingLevels({
+      ...params,
+      cwd: params.cwd || electronApp.getPath('desktop'),
+      env,
+    });
+  }
+
   async getCodexQuota(params: GetCodexQuotaParams = {}): Promise<CodexQuotaSnapshot> {
     const command = params.command?.trim() || 'codex';
     const sourceEnv = {
@@ -3741,6 +3792,42 @@ export default class HeterogeneousAgentCtr {
    * Throws:
    * - When a CLI process remains active after the bounded SIGKILL escalation.
    */
+  async steerPiSession(params: {
+    imageList?: Array<{ id: string; url: string }>;
+    message: string;
+    sessionId: string;
+  }): Promise<void> {
+    const session = this.sessions.get(params.sessionId);
+    if (session?.agentType !== 'pi' || !session.piRpcSession?.isRunning) {
+      throw new Error('Pi session is not actively running');
+    }
+    const images = await Promise.all(
+      (params.imageList ?? []).map(async ({ id, url }) => {
+        const image = await normalizeImage(
+          { id, type: 'url', url },
+          { cacheDir: this.fileCacheDir },
+        );
+        return {
+          data: image.buffer.toString('base64'),
+          mimeType: image.mediaType,
+          type: 'image' as const,
+        };
+      }),
+    );
+    await session.piRpcSession.steer(params.message, images);
+  }
+
+  /** Abort the current Pi work while preserving its queued steering messages. */
+  async executePiSteerQueue(params: { sessionId: string }): Promise<void> {
+    const session = this.sessions.get(params.sessionId);
+    if (session?.agentType !== 'pi' || !session.piRpcSession?.isRunning) {
+      throw new Error('Pi session is not actively running');
+    }
+    // Unlike cancelSession, this deliberately does not set cancelledByUs: Pi
+    // continues processing messages already held in its steering queue.
+    await session.piRpcSession.abort();
+  }
+
   async cancelSession(params: CancelSessionParams): Promise<void> {
     const session = this.sessions.get(params.sessionId);
     if (!session) return;

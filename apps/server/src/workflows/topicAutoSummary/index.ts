@@ -1,7 +1,7 @@
 import type { FlowControl } from '@upstash/qstash';
 import type { Client } from '@upstash/workflow';
 
-import { appEnv } from '@/envs/app';
+import { getQStashCallbackBaseUrl } from '@/envs/qstash';
 import { OtelWorkflowClient } from '@/libs/qstash';
 
 import type { DispatchTopicAutoSummaryPayload, ExecuteTopicAutoSummaryPayload } from './types';
@@ -18,7 +18,9 @@ const getClient = (): Client => {
 };
 
 const getUrl = (path: string) => {
-  const baseUrl = appEnv.INTERNAL_APP_URL || appEnv.APP_URL;
+  // The queue calls back over QSTASH_CALLBACK_BASE_URL when set (a self-hosted
+  // queue on the deployment network); hosted QStash uses the public APP_URL.
+  const baseUrl = getQStashCallbackBaseUrl();
   if (!baseUrl) throw new Error('APP_URL is required to trigger topic auto-summary workflows');
   return new URL(path, baseUrl).toString();
 };

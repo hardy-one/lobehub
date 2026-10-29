@@ -4,7 +4,12 @@ const manifest = async (): Promise<MetadataRoute.Manifest> => {
   // Skip heavy module compilation in development
   if (process.env.NODE_ENV === 'development') {
     return {
-      background_color: '#000000',
+      background_color: '#1a1b1d',
+      // @ts-expect-error - spec member not yet in Next's MetadataRoute.Manifest
+      color_scheme_dark: {
+        background_color: '#1a1b1d',
+        theme_color: '#1a1b1d',
+      },
       description: 'LobeHub Development',
       display: 'standalone',
       icons: [
@@ -17,7 +22,7 @@ const manifest = async (): Promise<MetadataRoute.Manifest> => {
       name: 'LobeHub',
       short_name: 'LobeHub',
       start_url: '/',
-      theme_color: '#000000',
+      theme_color: '#1a1b1d',
     };
   }
 
@@ -38,19 +43,9 @@ const manifest = async (): Promise<MetadataRoute.Manifest> => {
         url: '/app-icons/icon-192x192.png',
       },
       {
-        purpose: 'maskable',
-        sizes: '192x192',
-        url: '/app-icons/icon-192x192.maskable.png',
-      },
-      {
         purpose: 'any',
         sizes: '512x512',
         url: '/app-icons/icon-512x512.png',
-      },
-      {
-        purpose: 'maskable',
-        sizes: '512x512',
-        url: '/app-icons/icon-512x512.maskable.png',
       },
     ],
     id: kebabCase(BRANDING_NAME),

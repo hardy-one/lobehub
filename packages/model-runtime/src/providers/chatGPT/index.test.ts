@@ -33,7 +33,7 @@ describe('LobeChatGPTAI', () => {
     expect(headers).toEqual(
       expect.objectContaining({
         'ChatGPT-Account-Id': 'account-id',
-        'User-Agent': `LobeHub/${CURRENT_VERSION}`,
+        'User-Agent': `lobehub/${CURRENT_VERSION}`,
         'originator': 'lobehub',
         'session-id': expect.any(String),
         'version': CURRENT_VERSION,

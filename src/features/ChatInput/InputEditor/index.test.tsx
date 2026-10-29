@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => {
       chatInputState.inputCompletionErrorDismissed = true;
     }),
     getMessages: vi.fn(() => []),
+    handleSendButton: vi.fn(),
     inputCompletionError: undefined as { message: string } | undefined,
     inputCompletionErrorDismissed: false,
     pauseInputCompletion: vi.fn((error: { message: string }) => {
@@ -33,6 +34,11 @@ const mocks = vi.hoisted(() => {
   return {
     chainInputCompletion: vi.fn(),
     chatInputState,
+    // The composer editor instance the store hands to InputEditor; assert on it
+    // to check which command an Enter press dispatches.
+    editor: {
+      dispatchCommand: vi.fn(),
+    },
     generateJSON: vi.fn(),
     inputCompletionConfig: {
       enabled: false,
@@ -52,6 +58,20 @@ type AutoCompleteProps = {
     input: string;
     suggestionId: string;
   }) => Promise<string | null>;
+};
+
+type PressEnterProps = { event: KeyboardEvent; editor: unknown };
+
+const getStoreEditor = () => mocks.editor;
+
+const getPressEnter = async (): Promise<(params: PressEnterProps) => boolean | undefined> => {
+  const { Editor } = await import('@lobehub/editor/react');
+  const props = vi.mocked(Editor).mock.lastCall?.[0] as
+    { onPressEnter?: (params: PressEnterProps) => boolean | undefined } | undefined;
+
+  expect(props?.onPressEnter).toBeDefined();
+
+  return props!.onPressEnter!;
 };
 
 const getAutoCompleteProps = async (): Promise<AutoCompleteProps> => {
@@ -129,7 +149,10 @@ vi.mock('fuse.js', () => ({
     }
   },
 }));
-vi.mock('lexical', () => ({ KEY_ESCAPE_COMMAND: 'escape' }));
+vi.mock('lexical', () => ({
+  INSERT_PARAGRAPH_COMMAND: 'insert-paragraph',
+  KEY_ESCAPE_COMMAND: 'escape',
+}));
 vi.mock('react-hotkeys-hook', () => ({
   useHotkeysContext: () => ({
     disableScope: vi.fn(),
@@ -141,7 +164,7 @@ vi.mock('@/components/DragUploadZone', () => ({
   usePasteFile: vi.fn(),
   useUploadFiles: () => ({ handleUploadFiles: vi.fn() }),
 }));
-vi.mock('@/hooks/useEnterToSend', () => ({ useEnterToSend: () => vi.fn(() => false) }));
+vi.mock('@/hooks/useEnterToSend', () => ({ useEnterToSend: () => vi.fn(() => true) }));
 vi.mock('@/hooks/useIMECompositionEvent', () => ({
   useIMECompositionEvent: () => ({
     compositionProps: {
@@ -210,15 +233,12 @@ vi.mock('../hooks/useLargeFileLocalPath', () => ({
   useLargeFileLocalPath: () => (files: File[]) => files,
 }));
 vi.mock('../store', () => {
-  const editor = {
-    dispatchCommand: vi.fn(),
-  };
   const state = {
     disableMention: true,
     disableSlash: true,
-    editor,
+    editor: mocks.editor,
     expand: false,
-    handleSendButton: vi.fn(),
+    handleSendButton: mocks.chatInputState.handleSendButton,
     slashMenuRef: { current: null },
     slashPlacement: 'top',
     updateMarkdownContent: vi.fn(),
@@ -305,6 +325,36 @@ describe('ChatInput InputEditor', () => {
     render(<InputEditor />);
 
     expect((await getEditorStyle())?.fontSize).toBeUndefined();
+  });
+
+  it('inserts a paragraph on Enter on mobile without sending', async () => {
+    permission.allowed = true;
+    platform.isMobile = true;
+
+    render(<InputEditor />);
+
+    const onPressEnter = await getPressEnter();
+    const editor = getStoreEditor();
+
+    // Returning true suppresses the browser default, so this handler must insert
+    // the newline itself — otherwise the press does nothing on a soft keyboard.
+    expect(onPressEnter({ editor, event: { key: 'Enter' } as KeyboardEvent })).toBe(true);
+
+    expect(editor.dispatchCommand).toHaveBeenCalledWith('insert-paragraph', undefined);
+    expect(mocks.chatInputState.handleSendButton).not.toHaveBeenCalled();
+  });
+
+  it('sends on Enter on desktop', async () => {
+    permission.allowed = true;
+
+    render(<InputEditor />);
+
+    const onPressEnter = await getPressEnter();
+
+    expect(onPressEnter({ editor: undefined, event: { key: 'Enter' } as KeyboardEvent })).toBe(
+      true,
+    );
+    expect(mocks.chatInputState.handleSendButton).toHaveBeenCalledTimes(1);
   });
 
   it('tags autocomplete requests with the input completion trigger', async () => {

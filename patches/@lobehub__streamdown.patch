@@ -1,0 +1,21 @@
+diff --git a/es/latex.mjs b/es/latex.mjs
+index b221a55..aefe9a4 100644
+--- a/es/latex.mjs
++++ b/es/latex.mjs
+@@ -187,6 +187,7 @@ const isLastFormulaRenderable = (text) => {
+ 	try {
+ 		renderToString(pending.formula, {
+ 			displayMode: pending.displayMode,
++			strict: false,
+ 			throwOnError: true
+ 		});
+ 		return true;
+@@ -260,7 +261,7 @@ function validateLatexExpressions(text) {
+ 		try {
+ 			renderToString(formula, {
+ 				displayMode: isDisplay,
+-				strict: "warn",
++				strict: false,
+ 				throwOnError: true,
+ 				trust: false
+ 			});

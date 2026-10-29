@@ -75,6 +75,39 @@ export interface HeterogeneousAgentModelCatalogFailure {
 export type HeterogeneousAgentModelCatalog =
   HeterogeneousAgentModelCatalogFailure | HeterogeneousAgentModelCatalogSuccess;
 
+/**
+ * Parameters for probing the thinking levels a heterogeneous CLI serves for
+ * the selected model. Same routing as the model catalog: a bound device answers
+ * through the device gateway, the local Desktop answers over IPC.
+ */
+export type ProbeHeterogeneousThinkingLevelsParams = ListHeterogeneousAgentModelsParams;
+
+export interface HeterogeneousThinkingLevelsSuccess {
+  /** Levels the bound model serves, in the CLI's own order (may be one level). */
+  levels: string[];
+  status: 'success';
+  /** Level the probe session sits on — the CLI's own default when none was requested. */
+  thinkingLevel?: string;
+  updatedAt: number;
+}
+
+export interface HeterogeneousThinkingLevelsFailure {
+  error: {
+    code: HeterogeneousAgentModelCatalogErrorCode;
+    message: string;
+  };
+  status: 'error';
+  updatedAt: number;
+}
+
+/**
+ * Thinking levels a heterogeneous CLI serves for one model. Pi answers this per
+ * session (`get_available_thinking_levels`), so an entry only ever describes
+ * the model the probe was bound to.
+ */
+export type HeterogeneousThinkingLevels =
+  HeterogeneousThinkingLevelsFailure | HeterogeneousThinkingLevelsSuccess;
+
 /** Authentication source used by a heterogeneous agent CLI. */
 export type HeterogeneousAuthMode = 'api' | 'subscription';
 

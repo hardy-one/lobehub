@@ -80,6 +80,7 @@ export const chatViaResponses = async (
   const input = await convertOpenAIResponseInputs(inputMessages, {
     forceImageBase64: factory.chatCompletion?.forceImageBase64,
     forceVideoBase64: factory.chatCompletion?.forceVideoBase64,
+    localObjectReader: runtime.localObjectReader,
     provider: runtime.id,
     reasoningSignatureScope,
     strictToolPairing: true,

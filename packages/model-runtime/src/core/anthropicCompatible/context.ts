@@ -1,5 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
 
+import type { LocalObjectReader } from '../contextBuilders/localObject';
 import type { ConstructorOptions } from './index';
 
 /**
@@ -7,6 +8,7 @@ import type { ConstructorOptions } from './index';
  * per call, so its own members stay private and subclasses keep overriding `handleError`.
  */
 export interface AnthropicCompatibleRuntimeContext {
+  localObjectReader?: LocalObjectReader;
   _options: ConstructorOptions;
   baseURL: string;
   client: Anthropic;

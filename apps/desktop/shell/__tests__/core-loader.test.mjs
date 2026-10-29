@@ -81,6 +81,28 @@ afterEach(() => {
 });
 
 describe('resolveCore', () => {
+  it('uses the builtin core for Hardy builds before settings are initialized', () => {
+    const resourcesPath = path.join(tmp, 'resources');
+    fs.mkdirSync(resourcesPath, { recursive: true });
+    fs.writeFileSync(
+      path.join(resourcesPath, 'app-update.yml'),
+      'provider: github\nowner: hardy-one\nrepo: lobe-release\n',
+    );
+    writePointer({ channel: 'stable', current: 'external', previous: null, staged: null });
+
+    const result = resolveCore({
+      abi: ABI,
+      builtinDir,
+      platform: 'linux',
+      publicKey: publicKeyPem,
+      resourcesPath,
+      userData,
+    });
+
+    expect(result.source).toBe('builtin');
+    expect(result.log).toContain('Hardy uses full updates only; ignoring external core');
+  });
+
   it('drops an older shell namespace after a full update even when its OTA seq is higher', () => {
     writeCore(builtinDir, '1.0.2-canary.1', { channel: 'canary', seq: 0, schemaVersion: 4 });
     writeExternal('1.0.1-canary.1-core.101', { channel: 'canary', seq: 101, schemaVersion: 4 });

@@ -12,7 +12,7 @@ export interface TokenCountOptions {
   driftMultiplier?: number;
   /** Model's max context window token count */
   maxWindowToken?: number;
-  /** Threshold ratio for triggering compression, default 0.5 */
+  /** Threshold ratio for triggering compression, default 0.75 */
   thresholdRatio?: number;
   /**
    * Optional top-level tool definitions for the upcoming LLM call. When
@@ -26,8 +26,13 @@ export interface TokenCountOptions {
 /** Default max context window (128k tokens) */
 export const DEFAULT_MAX_CONTEXT = 128_000;
 
-/** Default threshold ratio (50% of max context) */
-export const DEFAULT_THRESHOLD_RATIO = 0.5;
+/**
+ * Default threshold ratio (75% of max context). The remaining quarter of the
+ * window is what the trigger cannot see: the server-side context engineering
+ * (system role, knowledge, memories, skills) is assembled after this budget is
+ * taken, and the completion still needs room under the same window.
+ */
+export const DEFAULT_THRESHOLD_RATIO = 0.75;
 
 /**
  * Calculate the compression threshold based on max context window

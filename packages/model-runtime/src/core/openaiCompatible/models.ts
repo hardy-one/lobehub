@@ -1,6 +1,7 @@
 import type { ChatModelCard } from '@lobechat/types';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
+import type OpenAI from 'openai';
 import debug from 'debug';
 import type { AiModelType } from 'model-bank';
 import { LOBE_DEFAULT_MODEL_LIST } from 'model-bank';
@@ -22,6 +23,14 @@ export const CHAT_MODELS_BLOCK_LIST = [
   'whisper',
   'dall-e',
 ];
+
+
+type OpenAIModelWithProviderMetadata = OpenAI.Model & {
+  context_length?: number;
+  max_output_tokens?: number;
+  max_tokens?: number;
+  name?: string;
+};
 
 export const listOpenAICompatibleModels = async (
   runtime: OpenAICompatibleRuntimeContext,
@@ -64,16 +73,29 @@ export const listOpenAICompatibleModels = async (
           return dayjs.utc(item.created * 1000).format('YYYY-MM-DD');
         };
 
-        // TODO: should refactor after remove v1 user/modelList code
+        const providerModel = item as OpenAIModelWithProviderMetadata;
+        const contextWindowTokens = providerModel.context_length;
+        const maxOutput = providerModel.max_tokens ?? providerModel.max_output_tokens;
+        const remoteModelMetadata = {
+          ...(contextWindowTokens === undefined ? {} : { contextWindowTokens }),
+          ...(maxOutput === undefined ? {} : { maxOutput }),
+          ...(providerModel.name ? { displayName: providerModel.name } : {}),
+        };
+
+        // Model-bank card is authoritative for known models; keep provider data as fallback
+        // for metadata this endpoint exposes or for unknown models.
         const knownModel = LOBE_DEFAULT_MODEL_LIST.find((model) => model.id === item.id);
 
         if (knownModel) {
-          const releasedAt = knownModel.releasedAt ?? toReleasedAt();
-
-          return { ...knownModel, releasedAt };
+          return {
+            ...remoteModelMetadata,
+            ...knownModel,
+            releasedAt: toReleasedAt() ?? knownModel.releasedAt,
+          };
         }
 
         return {
+          ...remoteModelMetadata,
           id: item.id,
           releasedAt: toReleasedAt(),
         };

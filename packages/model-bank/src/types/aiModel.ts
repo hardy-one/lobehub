@@ -293,6 +293,12 @@ export interface ModelRating {
   writing?: ModelBenchmarkScore;
 }
 
+/**
+ * API protocol a provider expects for a model. `openai-responses` is the
+ * OpenAI Responses endpoint rather than Chat Completions.
+ */
+export type ModelSdkType = 'anthropic' | 'google' | 'openai' | 'openai-responses';
+
 export interface AIBaseModelCard {
   /**
    * the context window (or input + output tokens limit)
@@ -338,6 +344,8 @@ export interface AIBaseModelCard {
   organization?: string;
 
   releasedAt?: string;
+  /** Provider-sourced API protocol for this model. */
+  sdkType?: ModelSdkType;
   /**
    * Whether the model should be shown in user-facing model lists.
    * Runtime-only aliases can set this to false while staying enabled and resolvable.
@@ -523,6 +531,9 @@ export interface AiModelConfig {
    * qwen series model enabled search
    */
   enabledSearch?: boolean;
+
+  /** Explicit per-model API protocol override; never synchronized from model lists. */
+  sdkType?: ModelSdkType | null;
 }
 
 export type ModelSearchImplementType = 'tool' | 'params' | 'internal';
@@ -556,6 +567,7 @@ export type ExtendParamsType =
   | 'grok4_7ReasoningEffort'
   | 'hy3ReasoningEffort'
   | 'kimiK3ReasoningEffort'
+  | 'mimoReasoningEffort'
   | 'ring2_6ReasoningEffort'
   | 'codexMaxReasoningEffort'
   | 'opus47Effort'
@@ -584,6 +596,8 @@ export interface AiModelSettings {
    */
   disabledParams?: DisabledParamType[];
   extendParams?: ExtendParamsType[];
+  /** Provider-sourced API protocol for this exact provider/model pair. */
+  sdkType?: ModelSdkType;
   /**
    * How the model layer implements search
    */
@@ -620,6 +634,7 @@ export const ExtendParamsTypeSchema = z.enum([
   'grok4_7ReasoningEffort',
   'hy3ReasoningEffort',
   'kimiK3ReasoningEffort',
+  'mimoReasoningEffort',
   'ring2_6ReasoningEffort',
   'codexMaxReasoningEffort',
   'opus47Effort',
@@ -649,6 +664,7 @@ export const DisabledParamTypeSchema = z.enum([
 ]);
 
 export const AiModelSettingsSchema = z.object({
+  sdkType: z.enum(['anthropic', 'google', 'openai', 'openai-responses']).optional(),
   disabledParams: z.array(DisabledParamTypeSchema).optional(),
   extendParams: z.array(ExtendParamsTypeSchema).optional(),
   searchImpl: ModelSearchImplementTypeSchema.optional(),
@@ -796,6 +812,7 @@ export interface AiProviderModelListItem {
   parameters?: ModelParamsSchema;
   pricing?: Pricing;
   releasedAt?: string;
+  sdkType?: ModelSdkType;
   settings?: AiModelSettings;
   source?: AiModelSourceType;
   type: AiModelType;
@@ -811,6 +828,7 @@ export const UpdateAiModelSchema = z.object({
   config: z
     .object({
       deploymentName: z.string().optional(),
+      sdkType: z.enum(['anthropic', 'google', 'openai', 'openai-responses']).nullish(),
     })
     .optional(),
   contextWindowTokens: z.number().nullish(),
@@ -883,6 +901,7 @@ export interface EnabledAiModel {
   pricing?: Pricing;
   providerId: string;
   releasedAt?: string;
+  sdkType?: ModelSdkType;
   settings?: AiModelSettings;
   sort?: number;
   type: AiModelType;

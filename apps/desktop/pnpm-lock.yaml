@@ -539,6 +539,9 @@ importers:
       '@lobechat/agent-gateway-client':
         specifier: workspace:*
         version: link:../agent-gateway-client
+      '@lobechat/const':
+        specifier: workspace:*
+        version: link:../const
       '@lobechat/types':
         specifier: workspace:*
         version: link:../types

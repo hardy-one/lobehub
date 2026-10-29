@@ -17,8 +17,8 @@ import { userGeneralSettingsSelectors, userProfileSelectors } from '@/store/user
 import { ReactionDisplay } from '../../components/Reaction';
 import ErrorMessageExtra, { useErrorContent } from '../../Error';
 import { useAgentMeta, useDoubleClickEdit } from '../../hooks';
+import { usePreparedMessage } from '../../hooks/usePreparedMessage';
 import { dataSelectors, messageStateSelectors, useConversationStore } from '../../store';
-import { normalizeThinkTags, processWithArtifact } from '../../utils/markdown';
 import MessageBranch from '../components/MessageBranch';
 import RefreshingIndicator from '../components/RefreshingIndicator';
 import {
@@ -102,7 +102,8 @@ const AssistantMessage = memo<AssistantMessageProps>(
     const errorContent = useErrorContent(error);
 
     // remove line breaks in artifact tag to make the ast transform easier
-    const message = !editing ? normalizeThinkTags(processWithArtifact(content)) : content;
+    const preparedMessage = usePreparedMessage(content);
+    const message = editing ? content : preparedMessage;
 
     const onDoubleClick = useDoubleClickEdit({ disableEditing, error, id, role });
     const setMessageItemActionElementPortialContext =

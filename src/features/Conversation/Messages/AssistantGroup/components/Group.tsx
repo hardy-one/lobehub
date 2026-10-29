@@ -29,7 +29,7 @@ import SteerMessage from './SteerMessage';
 import type { WorkflowExpandLevelDefault } from './WorkflowCollapse';
 
 const styles = stylex.create({
-  container: { width: { 'default': null, ':has(.tool-blocks)': '100%' } },
+  container: { width: '100%' },
 });
 
 const ACTIVE_OPERATION_STATUSES = new Set<OperationStatus>(['pending', 'paused', 'running']);

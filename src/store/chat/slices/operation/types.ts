@@ -341,6 +341,8 @@ export interface QueuedMessage {
    * fallback send does not queue behind it again.
    */
   heldBehindOperationId?: string;
+  /** Active Pi RPC session that already owns this queued steering message. */
+  heterogeneousPiSessionId?: string;
   id: string;
   interruptMode: 'soft' | 'hard';
   metadata?: MessageMetadata;

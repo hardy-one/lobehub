@@ -14,7 +14,7 @@ import { Editor, useEditorState } from '@lobehub/editor/react';
 import { createStaticStyles, cx } from '@lobehub/ui';
 import * as stylex from '@stylexjs/stylex';
 import Fuse from 'fuse.js';
-import { KEY_ESCAPE_COMMAND } from 'lexical';
+import { INSERT_PARAGRAPH_COMMAND, KEY_ESCAPE_COMMAND } from 'lexical';
 import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -684,6 +684,16 @@ const InputEditor = memo<{
             return true;
           }
           if (e.shiftKey || isComposingRef.current) return;
+          // On touch devices the software keyboard has no reliable "send" gesture, so
+          // Enter inserts a line break and sending goes through the send button. The
+          // newline is inserted here instead of deferring to the browser default: a
+          // soft keyboard may dispatch the key without a default editing action (or
+          // the editor has already claimed the key), and returning true without
+          // inserting leaves the press doing nothing at all.
+          if (mobile) {
+            editor?.dispatchCommand(INSERT_PARAGRAPH_COMMAND, undefined);
+            return true;
+          }
           // In fullscreen mode, Enter inserts newline; only Cmd/Ctrl+Enter sends
           if (expand) {
             if (isCommandPressed(e)) {

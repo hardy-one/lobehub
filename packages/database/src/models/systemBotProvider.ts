@@ -101,6 +101,27 @@ export class SystemBotProviderModel {
     return Promise.all(rows.map((r) => decryptRow(r, gateKeeper)));
   };
 
+  /**
+   * The same rows with the credential column left out of the query entirely.
+   *
+   * Provisioners diff their declared platforms against what a deployment stores,
+   * so this must neither return nor attempt to decrypt the ciphertext.
+   */
+  static listSummaries = async (
+    db: LobeChatDatabase,
+  ): Promise<
+    { applicationId: string | null; enabled: boolean; platform: string; updatedAt: Date }[]
+  > => {
+    return db
+      .select({
+        applicationId: systemBotProviders.applicationId,
+        enabled: systemBotProviders.enabled,
+        platform: systemBotProviders.platform,
+        updatedAt: systemBotProviders.updatedAt,
+      })
+      .from(systemBotProviders);
+  };
+
   // --------------- Mutation ---------------
 
   /**

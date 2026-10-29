@@ -74,6 +74,7 @@ try {
         builtinDir,
         deferBoot: startupUpdate.pending,
         publicKey: abi.publicKey,
+        resourcesPath: process.resourcesPath,
         userData: app.getPath('userData'),
       })
     : {

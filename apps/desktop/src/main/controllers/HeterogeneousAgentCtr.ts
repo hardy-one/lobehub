@@ -104,6 +104,11 @@ export default class HeterogeneousAgentCtr extends ControllerModule {
   }
 
   @IpcMethod()
+  async getThinkingLevels(...args: Parameters<Implementation['getThinkingLevels']>) {
+    return (await this.getImplementation()).getThinkingLevels(...args);
+  }
+
+  @IpcMethod()
   async getCodexQuota(...args: Parameters<Implementation['getCodexQuota']>) {
     return (await this.getImplementation()).getCodexQuota(...args);
   }
@@ -174,6 +179,15 @@ export default class HeterogeneousAgentCtr extends ControllerModule {
     return (await this.getImplementation()).getKimiCodeQuota(...args);
   }
 
+  @IpcMethod()
+  async steerPiSession(...args: Parameters<Implementation['steerPiSession']>) {
+    return (await this.getImplementation()).steerPiSession(...args);
+  }
+
+  @IpcMethod()
+  async executePiSteerQueue(...args: Parameters<Implementation['executePiSteerQueue']>) {
+    return (await this.getImplementation()).executePiSteerQueue(...args);
+  }
   @IpcMethod()
   async cancelSession(...args: Parameters<Implementation['cancelSession']>) {
     return (await this.getImplementation()).cancelSession(...args);

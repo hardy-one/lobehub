@@ -128,6 +128,13 @@ export interface PiRpcEvent {
   type: string;
 }
 
+/** Authoritative queue snapshot emitted whenever Pi's steering/follow-up queues change. */
+export interface PiQueueUpdateEvent extends PiRpcEvent {
+  followUp: string[];
+  steering: string[];
+  type: 'queue_update';
+}
+
 /** The `session` event that reports the native pi session id at startup. */
 export interface PiSessionEvent extends PiRpcEvent {
   id: string;
@@ -166,6 +173,11 @@ export interface PiMessageEndEvent extends PiRpcEvent {
     [key: string]: any;
   };
   type: 'message_end';
+}
+
+/** Response payload of `get_available_thinking_levels` — what the bound model serves. */
+export interface PiRpcThinkingLevelsData {
+  levels: string[];
 }
 
 /** First npm release with agent_settled, idle abort and --session-id open-or-create. */

@@ -354,8 +354,6 @@ export default class GatewayConnectionCtr extends ControllerModule {
     await this.service.connect();
   }
 
-  // ─── Agent Run Routing ───
-
   // ─── Tool Call Routing ───
 
   /**
@@ -413,6 +411,8 @@ export default class GatewayConnectionCtr extends ControllerModule {
       copyAssetForPublish: (params) => this.localFileCtr.copyAssetForPublish(params),
       getProjectFileIndex: (params) => this.localFileCtr.getProjectFileIndex(params),
       listHeterogeneousAgentModels: (params) => this.heterogeneousAgentCtr.listModels(params),
+      probeHeterogeneousThinkingLevels: (params) =>
+        this.heterogeneousAgentCtr.getThinkingLevels(params),
       searchProjectFiles: (params) => this.localFileCtr.searchProjectFiles(params),
       // Remote "delete" goes to this machine's trash (`shell.trashItem`), same
       // as the local Files tree, so it stays recoverable.

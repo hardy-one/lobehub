@@ -188,6 +188,121 @@ const QSTASH_SCHEDULES = [
   },
 ];
 
+// Schedules beyond the two above that every deployment also needs but cannot
+// afford on the free Upstash plan: each cron tick costs quota, and a
+// minute-granularity widget tick alone would starve the dispatch schedules.
+// On a self-hosted queue there is no quota, so `QSTASH_PROVIDER=hellostash`
+// registers this full set instead — every sweep/watchdog/purge handler in the
+// server is documented as expecting a QStash Schedule pointing at it.
+// Cadences are the safety-net defaults for a personal instance: these are
+// recovery nets over event-driven fast paths, so hourly granularity is enough.
+const HELLOSTASH_EXTRA_SCHEDULES = [
+  {
+    cron: '*/10 * * * *',
+    id: 'lobe-task-scheduled-topic-dispatch',
+    path: '/api/workflows/task/scheduled-topic-dispatch',
+  },
+  {
+    cron: '15 * * * *',
+    id: 'lobe-task-watchdog',
+    path: '/api/workflows/task/watchdog',
+  },
+  {
+    cron: '30 * * * *',
+    id: 'lobe-verify-sweep',
+    path: '/api/workflows/verify/sweep',
+  },
+  {
+    cron: '45 * * * *',
+    id: 'lobe-trash-purge',
+    path: '/api/workflows/trash/purge',
+  },
+  {
+    cron: '0 * * * *',
+    id: 'lobe-agent-signal-nightly-self-review',
+    path: '/api/workflows/agent-signal/cron-hourly-nightly-self-review',
+  },
+  {
+    cron: '5 * * * *',
+    id: 'lobe-memory-hourly-analysis',
+    path: '/api/workflows/memory-user-memory/call-cron-hourly-analysis',
+  },
+  {
+    cron: '* * * * *',
+    id: 'lobe-widget-tick',
+    path: '/api/workflows/widget/tick',
+  },
+];
+
+// hellostash ships no web UI, so the boot log is the only place an operator can
+// confirm the queue is wired correctly: probe the server, then reconcile the
+// registered schedules against the expected set (missing / stale / wrong
+// destination / paused). Stale rows usually mean hand-created schedules from
+// before auto-registration; they double-fire alongside the managed set.
+const auditHellostashSchedules = async (qstashUrl, token, appUrl, expected) => {
+  try {
+    const health = await fetch(`${qstashUrl}/v2/health`);
+    if (!health.ok) {
+      console.error(`❌ HelloStash: /v2/health returned ${health.status}.`);
+      return;
+    }
+    console.log('✅ HelloStash: server reachable.');
+  } catch (err) {
+    console.error(
+      `❌ HelloStash: server unreachable — check the hellostash container and QSTASH_URL: ${err.message}`,
+    );
+    return;
+  }
+
+  try {
+    const res = await fetch(`${qstashUrl}/v2/schedules`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      console.error(`❌ HelloStash: listing schedules returned ${res.status}.`);
+      return;
+    }
+    const rows = await res.json();
+    const byId = new Map(rows.map((row) => [row.scheduleId, row]));
+
+    const missing = expected.filter((schedule) => !byId.has(schedule.id));
+    const expectedIds = new Set(expected.map((schedule) => schedule.id));
+    const stale = rows
+      .filter((row) => !expectedIds.has(row.scheduleId))
+      .map((row) => row.scheduleId);
+    const misplaced = expected.filter((schedule) => {
+      const row = byId.get(schedule.id);
+      return row && row.destination !== `${appUrl}${schedule.path}`;
+    });
+    const paused = expected.filter((schedule) => byId.get(schedule.id)?.isPaused);
+
+    for (const schedule of missing) {
+      console.error(`❌ HelloStash: schedule ${schedule.id} is missing.`);
+    }
+    for (const schedule of misplaced) {
+      console.error(
+        `❌ HelloStash: schedule ${schedule.id} destination "${byId.get(schedule.id).destination}" does not match the callback base + ${schedule.path} — check QSTASH_CALLBACK_BASE_URL / APP_URL.`,
+      );
+    }
+    for (const schedule of paused) {
+      console.warn(`⚠️ HelloStash: schedule ${schedule.id} is paused.`);
+    }
+    for (const id of stale) {
+      console.warn(
+        `⚠️ HelloStash: unmanaged schedule ${id} — delete it (DELETE /v2/schedules/${id}) unless it is intentional; it may double-fire.`,
+      );
+    }
+
+    if (missing.length === 0 && misplaced.length === 0) {
+      console.log(
+        `✅ HelloStash: all ${expected.length} schedules registered against ${appUrl}${stale.length === 0 ? '.' : ` (${stale.length} unmanaged).`}`,
+      );
+    }
+  } catch (err) {
+    console.error(`❌ HelloStash: schedule audit failed: ${err.message}`);
+  }
+};
+
 // Function to create the recurring QStash schedules the server relies on
 const createQstashSchedule = async () => {
   const QSTASH_URL = process.env.QSTASH_URL || 'https://qstash-eu-central-1.upstash.io';
@@ -198,13 +313,23 @@ const createQstashSchedule = async () => {
     return;
   }
 
-  const APP_URL = process.env.APP_URL;
+  // The queue calls back into this deployment: hosted QStash over APP_URL, a
+  // self-hosted queue (hellostash) over QSTASH_CALLBACK_BASE_URL when it shares
+  // the deployment network and the public URL would hairpin through the edge.
+  const APP_URL = process.env.QSTASH_CALLBACK_BASE_URL || process.env.APP_URL;
   if (!APP_URL) {
-    console.warn('⚠️ QStash: APP_URL not set. Skipping schedule creation.');
+    console.warn('⚠️ QStash: APP_URL is not set. Skipping schedule creation.');
     return;
   }
 
-  for (const schedule of QSTASH_SCHEDULES) {
+  // hellostash upserts by Upstash-Schedule-Id, so re-registering on every boot
+  // converges instead of piling up duplicates.
+  const schedules =
+    process.env.QSTASH_PROVIDER === 'hellostash'
+      ? [...QSTASH_SCHEDULES, ...HELLOSTASH_EXTRA_SCHEDULES]
+      : QSTASH_SCHEDULES;
+
+  for (const schedule of schedules) {
     const url = `${QSTASH_URL}/v2/schedules/${APP_URL}${schedule.path}`;
 
     try {
@@ -228,6 +353,10 @@ const createQstashSchedule = async () => {
     } catch (err) {
       console.error(`❌ QStash: Error creating schedule ${schedule.id}:`, err);
     }
+  }
+
+  if (process.env.QSTASH_PROVIDER === 'hellostash') {
+    await auditHellostashSchedules(QSTASH_URL, QSTASH_TOKEN, APP_URL, schedules);
   }
 };
 
@@ -287,6 +416,13 @@ const runServer = async () => {
 
   // Start gateway in background after server is ready
   startGateway();
+
+  // A self-hosted queue that calls back over the internal network needs the
+  // workflow SDK's step chain on that network too; UPSTASH_WORKFLOW_URL wins in
+  // the SDK, so mirror the callback base unless the operator set it explicitly.
+  if (process.env.QSTASH_CALLBACK_BASE_URL && !process.env.UPSTASH_WORKFLOW_URL) {
+    process.env.UPSTASH_WORKFLOW_URL = process.env.QSTASH_CALLBACK_BASE_URL;
+  }
 
   // Create QStash schedule for workflow task dispatching
   createQstashSchedule();

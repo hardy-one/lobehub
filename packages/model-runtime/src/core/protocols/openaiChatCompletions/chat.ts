@@ -69,6 +69,7 @@ export const chatViaChatCompletions = async (
   const messages = await convertOpenAIMessages(postPayload.messages, {
     forceImageBase64: factory.chatCompletion?.forceImageBase64,
     forceVideoBase64: factory.chatCompletion?.forceVideoBase64,
+    localObjectReader: runtime.localObjectReader,
     model: postPayload.model,
     supportsAudioInput: factory.chatCompletion?.supportsAudioInput,
     thoughtSignatureScope,

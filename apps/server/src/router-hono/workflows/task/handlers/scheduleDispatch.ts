@@ -5,6 +5,7 @@ import type { Context } from 'hono';
 import { TaskModel } from '@/database/models/task';
 import { getServerDB } from '@/database/server';
 import { appEnv } from '@/envs/app';
+import { getQStashCallbackBaseUrl } from '@/envs/qstash';
 import { qstashClient } from '@/libs/qstash';
 import { runScheduleTick } from '@/server/services/taskRunner/scheduleTick';
 
@@ -200,10 +201,11 @@ const fanout = async (db: ServerDB, due: DueTask[]): Promise<number> => {
   // and runs in an isolated handler invocation. Locally, just run inline so
   // dev / electron can exercise the path without QStash.
   if (appEnv.enableQueueAgentRuntime) {
-    if (!process.env.APP_URL) {
+    const baseUrl = getQStashCallbackBaseUrl();
+    if (!baseUrl) {
       throw new Error('APP_URL is required to fan out scheduled task executions via QStash');
     }
-    const url = `${process.env.APP_URL.replace(/\/$/, '')}${SCHEDULE_EXECUTE_PATH}`;
+    const url = `${baseUrl.replace(/\/$/, '')}${SCHEDULE_EXECUTE_PATH}`;
 
     const results = await Promise.allSettled(
       due.map((d) =>

@@ -2,6 +2,7 @@ import debug from 'debug';
 
 import { getServerDB } from '@/database/server';
 import { appEnv } from '@/envs/app';
+import { getQStashCallbackBaseUrl } from '@/envs/qstash';
 import { workflowClient } from '@/libs/qstash';
 import { ExpertiseIngestionService } from '@/server/services/expertise/ingestion';
 
@@ -68,8 +69,10 @@ export class ExpertiseRejectionWorkflow {
         return;
       }
 
-      const baseUrl = appEnv.INTERNAL_APP_URL || appEnv.APP_URL;
-      if (!baseUrl) throw new Error('INTERNAL_APP_URL or APP_URL is required');
+      // The queue calls back over QSTASH_CALLBACK_BASE_URL when set (a self-hosted
+      // queue on the deployment network); hosted QStash uses the public APP_URL.
+      const baseUrl = getQStashCallbackBaseUrl();
+      if (!baseUrl) throw new Error('APP_URL or INTERNAL_APP_URL is required');
       await workflowClient.trigger({
         body: payload,
         // One distillation at a time per lesson catalog: two rounds settling together would race

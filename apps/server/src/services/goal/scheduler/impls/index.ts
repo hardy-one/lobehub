@@ -1,4 +1,5 @@
 import { appEnv } from '@/envs/app';
+import { getQStashCallbackBaseUrl } from '@/envs/qstash';
 import { qstashClient } from '@/libs/qstash';
 
 import { LocalGoalScheduler } from './local';
@@ -20,7 +21,7 @@ export const createGoalSchedulerModule = (): GoalSchedulerImpl => {
   if (cached) return cached;
 
   if (appEnv.enableQueueAgentRuntime) {
-    const baseUrl = process.env.APP_URL;
+    const baseUrl = getQStashCallbackBaseUrl();
     if (!baseUrl) throw new Error('APP_URL is required to schedule goal advances via QStash');
     cached = new QStashGoalScheduler({ baseUrl, qstashClient });
     return cached;

@@ -4,7 +4,7 @@ import { chunk } from 'es-toolkit/compat';
 
 import { listConsolidatedUserIds } from '@/database/models/userMemory/consolidation';
 import { getServerDB } from '@/database/server';
-import { appEnv } from '@/envs/app';
+import { getQStashCallbackBaseUrl } from '@/envs/qstash';
 import { parseMemoryExtractionConfig } from '@/server/globalConfig/parseMemoryExtractionConfig';
 import {
   buildWorkflowPayloadInput,
@@ -29,7 +29,10 @@ const WORKFLOW_PATH = 'api/workflows/memory-user-memory/call-cron-hourly-analysi
 
 const { webhook, upstashWorkflowExtraHeaders } = parseMemoryExtractionConfig();
 
-const resolveBaseUrl = () => webhook.baseUrl || appEnv.INTERNAL_APP_URL || appEnv.APP_URL;
+const resolveBaseUrl = () =>
+  // The explicit memory webhook override wins; otherwise the queue callback base
+  // (an internal address for a self-hosted queue) falls back to APP_URL.
+  webhook.baseUrl || getQStashCallbackBaseUrl();
 
 /**
  * Starts the nightly incremental consolidation of every consolidated user, once per day, on the

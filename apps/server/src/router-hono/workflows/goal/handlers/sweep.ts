@@ -4,6 +4,7 @@ import type { Context } from 'hono';
 import { GoalModel } from '@/database/models/goal';
 import { getServerDB } from '@/database/server';
 import { appEnv } from '@/envs/app';
+import { getQStashCallbackBaseUrl } from '@/envs/qstash';
 import { qstashClient } from '@/libs/qstash';
 import { advanceGoal } from '@/server/services/goal/advanceGoal';
 import { GOAL_ADVANCE_PATH } from '@/server/services/goal/scheduler';
@@ -106,10 +107,11 @@ const fanout = async (goals: StalledGoal[]): Promise<number> => {
 };
 
 const publishAll = async (goals: StalledGoal[]) => {
-  if (!process.env.APP_URL) {
+  const baseUrl = getQStashCallbackBaseUrl();
+  if (!baseUrl) {
     throw new Error('APP_URL is required to fan out goal advances via QStash');
   }
-  const url = `${process.env.APP_URL.replace(/\/$/, '')}${GOAL_ADVANCE_PATH}`;
+  const url = `${baseUrl.replace(/\/$/, '')}${GOAL_ADVANCE_PATH}`;
 
   return Promise.allSettled(goals.map((body) => qstashClient.publishJSON({ body, url })));
 };

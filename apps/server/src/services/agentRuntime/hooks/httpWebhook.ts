@@ -7,6 +7,7 @@ import {
 import { readBlobWithLimit } from '@lobechat/utils/readBlobWithLimit';
 import { QstashError } from '@upstash/qstash';
 
+import { getQStashCallbackBaseUrl } from '@/envs/qstash';
 import { OtelQstashClient } from '@/libs/qstash';
 
 import type { AgentHookWebhook } from './types';
@@ -30,9 +31,13 @@ class HookHttpError extends Error {
   }
 }
 
-function resolveUrl(url: string): string {
+function resolveUrl(url: string, delivery: 'fetch' | 'qstash' = 'fetch'): string {
   try {
-    const resolved = new URL(url, process.env.INTERNAL_APP_URL || process.env.APP_URL || undefined);
+    const baseUrl =
+      delivery === 'qstash'
+        ? getQStashCallbackBaseUrl()
+        : process.env.INTERNAL_APP_URL || process.env.APP_URL;
+    const resolved = new URL(url, baseUrl || undefined);
     if (
       !['http:', 'https:'].includes(resolved.protocol) ||
       resolved.username ||
@@ -47,7 +52,11 @@ function resolveUrl(url: string): string {
 }
 
 function isApplicationOrigin(url: string): boolean {
-  return [process.env.INTERNAL_APP_URL, process.env.APP_URL].some((base) => {
+  return [
+    process.env.INTERNAL_APP_URL,
+    process.env.APP_URL,
+    process.env.QSTASH_CALLBACK_BASE_URL,
+  ].some((base) => {
     if (!base) return false;
     try {
       return new URL(base).origin === new URL(url).origin;
@@ -154,7 +163,7 @@ export async function deliverWebhook(
     return;
   }
 
-  const url = resolveUrl(webhook.url);
+  const url = resolveUrl(webhook.url, 'qstash');
   const headers = resolveWebhookHeaders(webhook);
   try {
     if (!process.env.QSTASH_TOKEN)

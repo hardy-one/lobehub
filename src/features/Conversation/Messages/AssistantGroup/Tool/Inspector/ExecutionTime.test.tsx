@@ -164,4 +164,35 @@ describe('ExecutionTime', () => {
     renderTool('message-a');
     expect(screen.getByText('3.5s')).toBeTruthy();
   });
+
+  it('advances concurrent timers independently from one shared clock', () => {
+    // Rows no longer own an interval. A shared clock must still give each row
+    // its own elapsed value, and stopping one must not freeze the others.
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+
+    const { rerender } = render(
+      <ExecutionTime isExecuting startTime={10_000} timerKey="shared-clock-a" />,
+    );
+    render(<ExecutionTime isExecuting startTime={8000} timerKey="shared-clock-b" />);
+
+    expect(screen.getByText('0ms')).toBeTruthy();
+    expect(screen.getByText('2.0s')).toBeTruthy();
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(screen.getByText('1.5s')).toBeTruthy();
+    expect(screen.getByText('3.5s')).toBeTruthy();
+
+    rerender(<ExecutionTime isExecuting={false} startTime={10_000} timerKey="shared-clock-a" />);
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(screen.queryByText('2.5s')).toBeNull();
+    expect(screen.getByText('4.5s')).toBeTruthy();
+  });
 });

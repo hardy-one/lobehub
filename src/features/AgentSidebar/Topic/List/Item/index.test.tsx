@@ -458,7 +458,7 @@ describe('TopicItem active state', () => {
     expect(screen.getByTestId('topic-actions')).toHaveAttribute('data-show-inline-archive', 'true');
   });
 
-  it('keeps idle topics iconless', () => {
+  it('shows a hash placeholder for idle topics', () => {
     useTopicNavigationMock.mockReturnValue({
       isInAgentSubRoute: false,
       isInTopicContextRoute: false,
@@ -468,7 +468,7 @@ describe('TopicItem active state', () => {
 
     render(<TopicItem id="tpc_test" title="Topic" />);
 
-    expect(screen.queryByTestId('topic-item-icon')).not.toBeInTheDocument();
+    expect(screen.getByTestId('topic-item-icon')).toHaveAttribute('data-icon', 'Hash');
   });
 
   it('prefetches messages when a topic is an unread completion', async () => {

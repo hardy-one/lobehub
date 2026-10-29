@@ -118,6 +118,15 @@ LobeHub 在部署时提供了一些额外的配置项，你可以使用环境变
 
 商业版本会自动启用 Gateway Mode。自托管部署可以同时设置 `ENABLE_AGENT_GATEWAY=1` 和 `AGENT_GATEWAY_URL`，让客户端显示 Gateway Mode。
 
+### `OSS_ENABLE_ARTIFACT_DEPLOYMENT`
+
+- 类型：可选
+- 描述：在本部署上托管已发布的 Artifact。开启后会话里出现发布入口，构建产物存放在上面配置的 S3 存储桶的 `artifacts/` 前缀下，并通过 `/artifact-render/<id>/` 对外提供访问。
+- 默认值：`0`
+- 示例：`1`
+
+默认关闭，因为它会把用户自己写出的页面放到公网上。关闭后发布入口消失，**已发布的链接也不再解析**；对象仍留在存储桶里，重新开启即可恢复。`OSS_` 前缀表示这是开源版专属开关 ——LobeHub Cloud 直接提供该能力，不设开关。
+
 ### `AGENT_GATEWAY_URL`
 
 - 类型：可选

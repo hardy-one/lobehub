@@ -374,8 +374,6 @@ export default class GatewayConnectionCtr extends ControllerModule {
     await this.service.connect();
   }
 
-  // ─── Agent Run Routing ───
-
   // ─── Tool Call Routing ───
 
   /**

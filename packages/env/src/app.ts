@@ -50,6 +50,14 @@ export const getAppConfig = () => {
 
       APP_URL: z.string(),
       INTERNAL_APP_URL: z.string().optional(),
+      /**
+       * Base URL the queue uses to call back into this deployment.
+       *
+       * Hosted QStash reaches the public APP_URL. A self-hosted queue that shares
+       * the deployment network (hellostash) sets this to an internal address so
+       * deliveries never leave the network. Falls back to APP_URL.
+       */
+      QSTASH_CALLBACK_BASE_URL: z.string().optional(),
       VIDEO_GENERATION_PREFER_WEBHOOK: z.boolean().optional(),
       WEBHOOK_PROXY_URL: z.string().url().optional(),
       VERCEL_EDGE_CONFIG: z.string().optional(),
@@ -81,11 +89,22 @@ export const getAppConfig = () => {
       AGENT_GATEWAY_SERVICE_TOKEN: z.string().optional(),
       ENABLE_AGENT_GATEWAY: z.boolean().optional(),
       /**
+      /**
        * Realtime page collaboration through the gateway's document rooms
        * (LobeHub Cloud only; the self-hosted gateway has no rooms). Off: pages
        * save over HTTP and the page agent writes back to the stored row.
        */
       ENABLE_PAGE_COLLAB: z.boolean().optional(),
+      /**
+       * Self-hosted switch for Artifact deployment: publishing a chat Artifact
+       * to a URL this deployment hosts. Off by default, because it exposes
+       * user-authored pages on the public internet; serving is gated by the
+       * same value, so turning it off also stops published links resolving.
+       *
+       * `OSS_`-prefixed because it belongs to the open-source build only: cloud
+       * deployments ship the capability instead of offering a switch for it.
+       */
+      OSS_ENABLE_ARTIFACT_DEPLOYMENT: z.boolean().optional(),
       /**
        * Server-to-server Agent Gateway endpoint, e.g. a Docker Compose service
        * name the browser cannot resolve. Falls back to AGENT_GATEWAY_URL.
@@ -153,6 +172,7 @@ export const getAppConfig = () => {
       AGENT_GATEWAY_SERVICE_TOKEN: process.env.AGENT_GATEWAY_SERVICE_TOKEN,
       ENABLE_AGENT_GATEWAY: process.env.ENABLE_AGENT_GATEWAY === '1',
       ENABLE_PAGE_COLLAB: process.env.ENABLE_PAGE_COLLAB === '1',
+      OSS_ENABLE_ARTIFACT_DEPLOYMENT: process.env.OSS_ENABLE_ARTIFACT_DEPLOYMENT === '1',
       AGENT_GATEWAY_URL: process.env.AGENT_GATEWAY_URL,
       AGENT_GATEWAY_PROTOCOL: process.env.AGENT_GATEWAY_PROTOCOL || undefined,
       AGENT_GATEWAY_INTERNAL_URL: process.env.AGENT_GATEWAY_INTERNAL_URL || undefined,

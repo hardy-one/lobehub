@@ -120,6 +120,7 @@ COPY --from=builder /app/public/_spa-share /app/public/_spa-share
 COPY --from=builder /app/public/_spa-workbench /app/public/_spa-workbench
 # Copy database migrations
 COPY --from=builder /app/packages/database/migrations /app/migrations
+COPY --from=builder /app/packages/database/migrations-fork /app/migrations-fork
 COPY --from=builder /app/scripts/migrateServerDB/docker.cjs /app/docker.cjs
 COPY --from=builder /app/scripts/migrateServerDB/errorHint.js /app/errorHint.js
 COPY --from=builder /app/scripts/migrateServerDB/pgSearchGuard.js /app/pgSearchGuard.js
@@ -185,6 +186,7 @@ ENV KEY_VAULTS_SECRET="" \
 ENV AUTH_SECRET="" \
     AUTH_SSO_PROVIDERS="" \
     AUTH_ALLOWED_EMAILS="" \
+    AUTH_INVITATION_CODES="" \
     AUTH_ADDITIONAL_TRUSTED_ORIGINS="" \
     AUTH_TRUSTED_ORIGINS="" \
     AUTH_DISABLE_EMAIL_PASSWORD="" \

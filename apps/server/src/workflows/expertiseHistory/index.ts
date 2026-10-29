@@ -1,6 +1,7 @@
 import debug from 'debug';
 
 import { appEnv } from '@/envs/app';
+import { getQStashCallbackBaseUrl } from '@/envs/qstash';
 
 import { runExpertiseHistoryWorkflow } from './run';
 import type {
@@ -10,6 +11,14 @@ import type {
 
 const log = debug('lobe-server:workflows:expertise-history');
 const localRuns = new Map<string, Promise<void>>();
+
+/**
+ * Base URL for queue entry points.
+ *
+ * Hosted QStash calls back over the public APP_URL; a self-hosted queue on the
+ * deployment network uses QSTASH_CALLBACK_BASE_URL instead.
+ */
+const getQueueWorkflowBaseUrl = (): string | undefined => getQStashCallbackBaseUrl();
 
 export class ExpertiseHistoryWorkflow {
   static async trigger(payload: ExpertiseHistoryWorkflowPayload) {
@@ -40,8 +49,8 @@ export class ExpertiseHistoryWorkflow {
       return { workflowRunId: `local-${runId}` };
     }
 
-    const baseUrl = appEnv.INTERNAL_APP_URL || appEnv.APP_URL;
-    if (!baseUrl) throw new Error('INTERNAL_APP_URL or APP_URL is required');
+    const baseUrl = getQueueWorkflowBaseUrl();
+    if (!baseUrl) throw new Error('APP_URL or INTERNAL_APP_URL is required');
     const { workflowClient } = await import('@/libs/qstash');
     return workflowClient.trigger({
       body: payload,
@@ -54,8 +63,8 @@ export class ExpertiseHistoryWorkflow {
   }
 
   static async triggerTopic(payload: ExpertiseHistoryTopicWorkflowPayload) {
-    const baseUrl = appEnv.INTERNAL_APP_URL || appEnv.APP_URL;
-    if (!baseUrl) throw new Error('INTERNAL_APP_URL or APP_URL is required');
+    const baseUrl = getQueueWorkflowBaseUrl();
+    if (!baseUrl) throw new Error('APP_URL or INTERNAL_APP_URL is required');
     const { workflowClient } = await import('@/libs/qstash');
     return workflowClient.trigger({
       body: payload,

@@ -484,6 +484,7 @@
   "sync.status.unconnected": "Connection Failed",
   "sync.title": "Sync Status",
   "sync.unconnected.tip": "Signaling server connection failed, and peer-to-peer communication channel cannot be established. Please check the network and try again.",
+  "tab.agents": "Agents",
   "tab.audio": "Audio",
   "tab.chat": "Chat",
   "tab.community": "Community",

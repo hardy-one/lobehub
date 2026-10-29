@@ -5,6 +5,8 @@ import { ChevronDownIcon, ZapIcon } from 'lucide-react';
 import type { ComponentPropsWithRef } from 'react';
 import { memo } from 'react';
 
+import { ModelIcon } from '@/components/LobeIcons';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { sx } from '@/styles/sx';
 
 const styles = stylex.create({
@@ -14,6 +16,15 @@ const styles = stylex.create({
     maxWidth: '200px',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
+  },
+  // A known model on a narrow screen shows only its icon: stop the chip from
+  // shrinking and tighten the gap/padding around the icon + chevron.
+  mobileTrigger: {
+    flexGrow: '0',
+    flexShrink: '0',
+    flexBasis: 'auto',
+    gap: '3px',
+    paddingInline: '4px',
   },
   // Dims one step while the trigger (the default marker) is idle, and follows it on hover.
   secondary: {
@@ -48,8 +59,10 @@ const styles = stylex.create({
 
 /**
  * The chip both composer model selectors open from — the heterogeneous one and
- * the standard model + reasoning-effort one. Text only by design: the label
- * already names the model, so an icon would only add noise next to Send.
+ * the standard model + reasoning-effort one. On wide screens it is text only by
+ * design: the label already names the model, so an icon would only add noise
+ * next to Send. On narrow screens a known `modelId` collapses the chip to the
+ * model icon and chevron, so the send area keeps its width.
  *
  * The chip reads as two halves, the way the Codex composer does ("5.6 Sol 极高"):
  * `text` is the model, `secondaryText` the reasoning effort. Only the model half
@@ -66,23 +79,41 @@ const styles = stylex.create({
 interface TriggerProps extends ComponentPropsWithRef<'div'> {
   ariaLabel: string;
   fast?: boolean;
+  modelId?: string;
   secondaryText?: string;
   text: string;
 }
 
 const SelectorTrigger = memo<TriggerProps>(
-  ({ ariaLabel, className, fast, secondaryText, style, text, ...rest }) => (
-    <div
-      {...rest}
-      aria-label={ariaLabel}
-      {...sx(styles.trigger, stylex.defaultMarker(), className, style)}
-    >
-      {fast && <Icon icon={ZapIcon} size={12} />}
-      <span {...stylex.props(styles.label)}>{text}</span>
-      {secondaryText && <span {...stylex.props(styles.secondary)}>{secondaryText}</span>}
-      <Icon icon={ChevronDownIcon} size={12} />
-    </div>
-  ),
+  ({ ariaLabel, className, fast, modelId, secondaryText, style, text, ...rest }) => {
+    const isMobile = useIsMobile();
+
+    if (isMobile && modelId) {
+      return (
+        <div
+          {...rest}
+          aria-label={ariaLabel}
+          {...sx(styles.trigger, styles.mobileTrigger, stylex.defaultMarker(), className, style)}
+        >
+          <ModelIcon model={modelId} size={18} />
+          <Icon icon={ChevronDownIcon} size={12} />
+        </div>
+      );
+    }
+
+    return (
+      <div
+        {...rest}
+        aria-label={ariaLabel}
+        {...sx(styles.trigger, stylex.defaultMarker(), className, style)}
+      >
+        {fast && <Icon icon={ZapIcon} size={12} />}
+        <span {...stylex.props(styles.label)}>{text}</span>
+        {secondaryText && <span {...stylex.props(styles.secondary)}>{secondaryText}</span>}
+        <Icon icon={ChevronDownIcon} size={12} />
+      </div>
+    );
+  },
 );
 
 SelectorTrigger.displayName = 'SelectorTrigger';

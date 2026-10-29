@@ -235,11 +235,12 @@ const getRowLatestMessageWithoutTools = (id: string) => (s: State) => {
 };
 
 /**
- * Find an assistant content block by its id anywhere in displayMessages
- * (including compressed groups and agentCouncil members). Used to let tool
- * subtrees self-subscribe to their own data instead of receiving it as props
- * from the message-level renderer. O(1) per call: the index is built once per
- * displayMessages snapshot (see `messageIndex.ts`).
+ * Resolve an assistant content block by id.
+ *
+ * Tool and content rows subscribe by block id, so this runs once per row on
+ * every snapshot. The block index answers the common case in one lookup;
+ * standalone assistant rows are projected on demand and cached per message
+ * object (see `messageIndex.ts`).
  */
 const findBlockById = (
   blockId: string,

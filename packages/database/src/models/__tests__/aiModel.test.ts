@@ -635,6 +635,80 @@ describe('AiModelModel', () => {
       expect(allModels.find((m) => m.id === 'new-model')?.displayName).toBe('New Model');
     });
 
+    it('persists SDK metadata and refreshes it without overwriting a user protocol override', async () => {
+      const providerId = 'sdk-provider';
+      const id = 'same-model';
+      await aiProviderModel.batchUpdateAiModels(providerId, [
+        { id, enabled: false, source: 'remote', type: 'chat', sdkType: 'anthropic' },
+      ]);
+      expect((await aiProviderModel.getModelListByProviderId(providerId))[0].sdkType).toBe(
+        'anthropic',
+      );
+      await aiProviderModel.update(id, providerId, { config: { sdkType: 'google' } });
+      await aiProviderModel.batchUpdateAiModels(providerId, [
+        { id, enabled: false, source: 'remote', type: 'chat', sdkType: 'openai' },
+      ]);
+      const stored = await aiProviderModel.findByIdAndProvider(id, providerId);
+      expect(stored?.settings?.sdkType).toBe('openai');
+      expect(stored?.config).toMatchObject({ sdkType: 'google' });
+      expect((await aiProviderModel.getModelListByProviderId(providerId))[0].sdkType).toBe(
+        'google',
+      );
+      await aiProviderModel.batchUpdateAiModels(providerId, [
+        { id, enabled: false, source: 'remote', type: 'chat' },
+      ]);
+      expect((await aiProviderModel.findByIdAndProvider(id, providerId))?.settings?.sdkType).toBe(
+        'openai',
+      );
+    });
+
+    it('keeps SDK metadata isolated by user, workspace and provider', async () => {
+      const row = {
+        id: 'same-model',
+        enabled: false,
+        source: 'remote' as const,
+        type: 'chat' as const,
+      };
+      const otherUser = new AiModelModel(serverDB, 'user2');
+      await aiProviderModel.batchUpdateAiModels('sdk-a', [{ ...row, sdkType: 'anthropic' }]);
+      await workspaceAiModelModel.batchUpdateAiModels('sdk-a', [{ ...row, sdkType: 'google' }]);
+      await otherUser.batchUpdateAiModels('sdk-a', [{ ...row, sdkType: 'openai' }]);
+      await aiProviderModel.batchUpdateAiModels('sdk-b', [{ ...row, sdkType: 'openai-responses' }]);
+      expect((await aiProviderModel.getModelListByProviderId('sdk-a'))[0].sdkType).toBe(
+        'anthropic',
+      );
+      expect((await workspaceAiModelModel.getModelListByProviderId('sdk-a'))[0].sdkType).toBe(
+        'google',
+      );
+      expect((await otherUser.getModelListByProviderId('sdk-a'))[0].sdkType).toBe('openai');
+      expect((await aiProviderModel.getModelListByProviderId('sdk-b'))[0].sdkType).toBe(
+        'openai-responses',
+      );
+    });
+
+    it('refreshes generated remote model names and provider settings', async () => {
+      const modelId = 'deepseek/deepseek-v4-pro';
+      await aiProviderModel.create({
+        displayName: modelId,
+        id: modelId,
+        providerId: 'newapi',
+        settings: {},
+        source: 'remote',
+      });
+
+      await aiProviderModel.batchUpdateAiModels('newapi', [
+        {
+          displayName: 'DeepSeek V4 Pro',
+          id: modelId,
+          settings: { extendParams: ['deepseekV4GAReasoningEffort'] },
+          source: 'remote',
+        },
+      ] as AiProviderModelListItem[]);
+
+      const model = await aiProviderModel.findById(modelId);
+      expect(model?.displayName).toBe('DeepSeek V4 Pro');
+      expect(model?.settings).toEqual({ extendParams: ['deepseekV4GAReasoningEffort'] });
+    });
     it('should fill NULL user-editable fields from incoming data', async () => {
       // Create a model with no displayName, contextWindowTokens, abilities, parameters, or type override
       await serverDB.insert(aiModels).values({

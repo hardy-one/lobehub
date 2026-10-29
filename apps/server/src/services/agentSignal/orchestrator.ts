@@ -12,6 +12,7 @@ import { createSourceEvent } from '@lobechat/agent-signal/source';
 
 import type { WakeDecision } from '@/server/services/conversationWake/types';
 import { ExpertiseIngestionService } from '@/server/services/expertise/ingestion';
+import { resolveExpertiseModelConfig } from '@/server/services/expertise/modelConfig';
 
 import { acquireAgentSignalDailyBudget } from './budget';
 import type {
@@ -103,14 +104,23 @@ const buildRuntimeOrchestrationResult = (
   };
 };
 
-const createPolicyOptions = (
+const createPolicyOptions = async (
   context: AgentSignalExecutionContext,
   options: ExecuteAgentSignalSourceEventOptions,
   procedurePolicyOptions: NonNullable<CreateDefaultAgentSignalPoliciesOptions['procedure']>,
-): CreateDefaultAgentSignalPoliciesOptions => {
+): Promise<CreateDefaultAgentSignalPoliciesOptions> => {
   // Nightly review writes proposal Daily Briefs in-run via the builtin review
   // serverRuntime primitive; the completion handler only writes the ideas brief.
   const policyOptions = options.policyOptions;
+
+  let expertiseModelConfig: { model: string; provider: string } | undefined;
+  if (context.db && context.userId) {
+    try {
+      expertiseModelConfig = await resolveExpertiseModelConfig(context.db, context.userId);
+    } catch {
+      // Fallback silently if settings cannot be read
+    }
+  }
 
   return {
     completion: {
@@ -141,6 +151,8 @@ const createPolicyOptions = (
     },
     feedbackDomainJudge: {
       db: context.db,
+      model: expertiseModelConfig?.model,
+      provider: expertiseModelConfig?.provider,
       ...policyOptions?.feedbackDomainJudge,
       userId: context.userId,
       workspaceId: context.workspaceId,
@@ -158,6 +170,8 @@ const createPolicyOptions = (
               }),
           }),
       db: context.db,
+      model: expertiseModelConfig?.model,
+      provider: expertiseModelConfig?.provider,
       ...policyOptions?.feedbackSatisfactionJudge,
       userId: context.userId,
       workspaceId: context.workspaceId,
@@ -182,6 +196,8 @@ const createPolicyOptions = (
     },
     skillIntentClassifier: {
       db: context.db,
+      model: expertiseModelConfig?.model,
+      provider: expertiseModelConfig?.provider,
       ...policyOptions?.skillIntentClassifier,
       userId: context.userId,
       workspaceId: context.workspaceId,
@@ -215,7 +231,7 @@ const executeAgentSignalSourceEventCore = async <TSourceType extends AgentSignal
     const policies =
       scenarioId === AGENT_SIGNAL_SCENARIO_IDS.selfIteration
         ? createDefaultAgentSignalPolicies(
-            createPolicyOptions(context, options, procedurePolicyOptions),
+            await createPolicyOptions(context, options, procedurePolicyOptions),
           )
         : createScenarioPolicies(scenarioId, {
             botWake: {

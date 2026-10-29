@@ -5,6 +5,7 @@ import { rejectsDisabledThinkingAtEffort } from '../../../providers/anthropic/mo
 import type { ChatStreamPayload } from '../../../types';
 import { resolveModelSamplingParameters } from '../../parameterResolver';
 import { type ComputeChatCostOptions } from '../../usageConverters/utils/computeChatCost';
+import { type LocalObjectReader } from '../../contextBuilders/localObject';
 import { buildAnthropicMessages, buildAnthropicTools, buildSearchTool } from './messages';
 import { resolveCacheTTL } from './resolveCacheTTL';
 import { resolveMaxTokens } from './resolveMaxTokens';
@@ -17,7 +18,10 @@ type AnthropicTools = Anthropic.Tool | Anthropic.WebSearchTool20250305;
  */
 export const buildDefaultAnthropicPayload = async (
   payload: ChatStreamPayload,
-  options: { providerModels?: { id: string; maxOutput?: number }[] } = {},
+  options: {
+    localObjectReader?: LocalObjectReader;
+    providerModels?: { id: string; maxOutput?: number }[];
+  } = {},
 ): Promise<Anthropic.MessageCreateParams> => {
   const {
     messages,
@@ -61,7 +65,10 @@ export const buildDefaultAnthropicPayload = async (
 
   const postMessages = stripUnsupportedClaudeAssistantPrefill(
     model,
-    await buildAnthropicMessages(userMessages, { enabledContextCaching }),
+    await buildAnthropicMessages(userMessages, {
+      enabledContextCaching,
+      localObjectReader: options.localObjectReader,
+    }),
   );
 
   let postTools = buildAnthropicTools(tools, { enabledContextCaching }) as

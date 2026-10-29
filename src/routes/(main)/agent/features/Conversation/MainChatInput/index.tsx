@@ -20,6 +20,7 @@ import { useUserStore } from '@/store/user';
 import { userGeneralSettingsSelectors } from '@/store/user/selectors';
 
 import AgentConfigError from './AgentConfigError';
+import { getMainChatInputLeftActions } from './getMainChatInputLeftActions';
 import { useSendMenuItems } from './useSendMenuItems';
 
 // Single-row editor for the channel composer; it still grows with content.
@@ -55,8 +56,10 @@ const MainChatInput = memo(() => {
     : contextWindowRightActions;
 
   // The model chip lives on the right, next to Send (see rightActions); the
-  // left bar keeps the "+" menu, dictation and the expand toggle.
-  const leftActions: ActionKeys[] = useMemo(() => ['plus', 'voiceDictation'], []);
+  // left bar keeps the plus menu and dictation action. Advanced parameters are
+  // available from the plus menu's secondary panel on mobile and its working
+  // sidebar on desktop.
+  const leftActions = useMemo(() => getMainChatInputLeftActions(), []);
   // `im_layout` opens conversations as channels: the slim composer preset of
   // the side panels (small actions and send button, no control bar).
   const imLayout = useImLayout();

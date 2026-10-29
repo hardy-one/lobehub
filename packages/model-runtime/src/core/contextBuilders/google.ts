@@ -469,10 +469,6 @@ export const sanitizeGeminiSchema = (schema: any): any => {
       !Array.isArray(sanitized.enum) ||
       sanitized.enum.length === 0
     ) {
-      console.warn(
-        '[google] sanitizeGeminiSchema stripped enum — not allowed for non-STRING type, empty, or no valid string members',
-        { type: sanitized.type, enumLength: sanitized.enum?.length },
-      );
       delete sanitized.enum;
     }
   }
@@ -485,10 +481,6 @@ export const sanitizeGeminiSchema = (schema: any): any => {
       !Array.isArray(sanitized.required) ||
       sanitized.required.length === 0)
   ) {
-    console.warn(
-      '[google] sanitizeGeminiSchema stripped required — not allowed for non-OBJECT type or empty',
-      { type: sanitized.type, requiredLength: sanitized.required?.length },
-    );
     delete sanitized.required;
   }
 

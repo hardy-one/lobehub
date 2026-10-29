@@ -192,8 +192,13 @@ export function createAppRouter(routes: RouteObject[], options?: CreateAppRouter
     [
       {
         children: routes,
+        // First paint waits on the route loaders (topic lists, access checks…).
+        // Without a root HydrateFallback React Router renders nothing for that
+        // frame and warns; the brand loading matches what `dynamicElement` /
+        // `dynamicLayout` suspend on, so the handover stays continuous.
         element: <RouterRoot />,
         errorElement: <ErrorBoundary />,
+        hydrateFallbackElement: <Loading debugId={'HydrateFallback'} />,
         path: '/',
       },
     ],

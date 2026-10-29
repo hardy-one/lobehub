@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 
 import { Command } from 'commander';
@@ -30,6 +31,12 @@ vi.mock('node:child_process', () => ({
   },
   exec: vi.fn((_cmd: string, cb: any) => cb?.(null)),
   execFile: vi.fn((_cmd: string, _args: string[], cb: any) => cb?.(null)),
+  spawn: vi.fn(() => ({
+    once: vi.fn((event: string, callback: (code: number) => void) => {
+      if (event === 'close') callback(0);
+    }),
+    unref: vi.fn(),
+  })),
 }));
 
 describe('login command', () => {
@@ -152,6 +159,25 @@ describe('login command', () => {
     );
     expect(saveSettings).toHaveBeenCalledWith({ serverUrl: 'https://app.lobehub.com' });
     expect(log.info).toHaveBeenCalledWith(expect.stringContaining('Login successful'));
+  });
+
+  it('polls for device-code authorization without waiting for the browser process', async () => {
+    vi.mocked(spawn).mockImplementationOnce(
+      () =>
+        ({
+          once: vi.fn(),
+          unref: vi.fn(),
+        }) as any,
+    );
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(deviceAuthResponse())
+      .mockResolvedValueOnce(tokenSuccessResponse());
+
+    const program = createProgram();
+    await runLoginAndAdvanceTimers(program);
+
+    expect(fetch).toHaveBeenCalledWith('https://app.lobehub.com/oidc/token', expect.any(Object));
+    expect(saveCredentials).toHaveBeenCalledOnce();
   });
 
   it('should use environment api key without storing credentials', async () => {

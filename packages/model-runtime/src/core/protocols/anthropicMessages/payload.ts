@@ -17,6 +17,7 @@ type AnthropicTools = Anthropic.Tool | Anthropic.WebSearchTool20250305;
  */
 export const buildDefaultAnthropicPayload = async (
   payload: ChatStreamPayload,
+  options: { providerModels?: { id: string; maxOutput?: number }[] } = {},
 ): Promise<Anthropic.MessageCreateParams> => {
   const {
     messages,
@@ -36,7 +37,7 @@ export const buildDefaultAnthropicPayload = async (
   const resolvedMaxTokens = await resolveMaxTokens({
     max_tokens,
     model,
-    providerModels: anthropicModels,
+    providerModels: options.providerModels ?? anthropicModels,
     thinking,
   });
 

@@ -37,7 +37,10 @@ export const chatViaMessages = async (
 
   log('chat called with model: %s, stream: %s', payload.model, payload.stream ?? true);
 
-  const postPayload = await factory.chatCompletion.handlePayload(payload, runtime._options);
+  const postPayload = await factory.chatCompletion.handlePayload(payload, {
+    ...runtime._options,
+    localObjectReader: runtime.localObjectReader,
+  });
   const shouldStream = postPayload.stream ?? payload.stream ?? true;
   const finalPayload = { ...postPayload, stream: shouldStream };
   const requestPayload = runtime.withMappedRequestModel(finalPayload, payload.model);

@@ -8,9 +8,26 @@ import {
   getHeteroSelectorCapability,
   HETEROGENEOUS_AGENT_DEFAULT_SELECTION,
   isCodexServerDefaultCustomModel,
+  isHeterogeneousReasoningEffortLevel,
   isHeteroSelectorAvailable,
   parseModelTuple,
 } from './heteroSelectorCapabilities';
+
+describe('heterogeneous reasoning-effort levels', () => {
+  it('accepts every level the provider vocabularies define', () => {
+    expect(
+      ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'].filter(
+        isHeterogeneousReasoningEffortLevel,
+      ),
+    ).toEqual(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
+  });
+
+  it('drops a probed value that no provider vocabulary defines', () => {
+    // A probe answers in the CLI's own words; `default` means "no override" and
+    // `turbo` is not a level, so neither may reach the picker as a level.
+    expect(['default', 'turbo', ''].filter(isHeterogeneousReasoningEffortLevel)).toEqual([]);
+  });
+});
 
 describe('selector availability', () => {
   it('offers an ACP model selector for DeepSeek Harness and preserves tuple selections', () => {

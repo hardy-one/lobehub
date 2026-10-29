@@ -1,5 +1,9 @@
 {
   "blue": "Dawn Blue",
+  "catppuccin-frappe": "Catppuccin Frappé",
+  "catppuccin-latte": "Catppuccin Latte",
+  "catppuccin-macchiato": "Catppuccin Macchiato",
+  "catppuccin-mocha": "Catppuccin Mocha",
   "custom": "Custom",
   "cyan": "Bright Cyan",
   "default": "Default",
@@ -16,6 +20,7 @@
   "sage": "Sage Green",
   "sand": "Beach",
   "slate": "Slate Gray",
+  "solarized": "Solarized",
   "volcano": "Volcano",
   "yellow": "Sunrise"
 }

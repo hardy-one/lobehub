@@ -6,6 +6,7 @@ import { Outlet } from 'react-router';
 
 import WorkspaceContextSlot from '@/business/client/WorkspaceContextSlot';
 import Loading from '@/components/Loading/BrandTextLoading';
+import PWAInstall from '@/features/PWAInstall';
 import { RouteMetaBridge } from '@/features/RouteMeta';
 import { useMobileNavigation } from '@/hooks/useMobileNavigation';
 import CmdkLazy from '@/layout/GlobalProvider/CmdkLazy';
@@ -22,6 +23,7 @@ const MobileMainLayout: FC = () => {
   return (
     <WorkspaceContextSlot>
       <RouteMetaBridge />
+      <PWAInstall />
       <Suspense fallback={null}>{showCloudPromotion && <CloudBanner mobile />}</Suspense>
       <Suspense fallback={<Loading debugId="MobileMainLayout > Outlet" />}>
         <Outlet />

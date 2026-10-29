@@ -8,7 +8,7 @@ export const WebBrowsingManifest: BuiltinToolManifest = {
   api: [
     {
       description:
-        'a search service with automatic engine selection. Useful for when you need to answer questions about current events. Input should be a search query. Output is a JSON array of the query results. An empty result is a completed search, not an error: never resend the same query — rewrite it instead (fewer quoted phrases, no site:/language modifiers, more general keywords).',
+        'a search service with automatic engine selection. Useful for when you need to answer questions about current events. Input should be a search query. Output is a JSON array of the query results. An empty result is a completed search, not an error: never resend the same query — rewrite it instead (fewer quoted phrases, no site:/language modifiers, more general keywords). Results may carry a `score` (0-3, where 1.5 or above marks a high-quality hit) and an `authority` (0-4, where 3 or above marks a highly authoritative source); when sources conflict, prefer the higher-authority one.',
       name: WebBrowsingApiName.search,
       parameters: {
         properties: {

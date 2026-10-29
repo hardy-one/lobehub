@@ -23,6 +23,7 @@ describe('deepseek crawler', () => {
     vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockReset();
     delete process.env.DEEPSEEK_SEARCH_API_KEY;
+    delete process.env.DEEPSEEK_SEARCH_API_URL;
     delete process.env.DEEPSEEK_API_KEY;
   });
 
@@ -63,6 +64,29 @@ describe('deepseek crawler', () => {
     await deepseek('https://example.com', { filterOptions: {} });
 
     expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer model-key');
+  });
+
+  it('should support a custom DEEPSEEK_SEARCH_API_URL and normalize trailing slashes', async () => {
+    process.env.DEEPSEEK_SEARCH_API_KEY = 'search-key';
+    process.env.DEEPSEEK_SEARCH_API_URL = 'https://custom.deepseek.proxy/';
+    fetchMock.mockResolvedValue(createMockResponse({ content: markdown, title: 'Custom Title' }));
+
+    const result = await deepseek('https://example.com', { filterOptions: {} });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://custom.deepseek.proxy/v1/tools/fetch',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(result?.title).toBe('Custom Title');
+  });
+
+  it('should fall back to the hostname when the page has no title', async () => {
+    fetchMock.mockResolvedValue(createMockResponse({ content: markdown }));
+
+    const result = await deepseek('https://example.com/page', { filterOptions: {} });
+
+    expect(result?.siteName).toBe('example.com');
+    expect(result?.title).toBe('example.com');
   });
 
   it('should undo the backslash escapes DeepSeek adds to the page text', async () => {

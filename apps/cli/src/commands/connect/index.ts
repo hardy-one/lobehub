@@ -12,8 +12,15 @@ import {
 } from '@lobechat/device-control';
 import { createTerminalDeps, TerminalSessionManager } from '@lobechat/device-control/terminal';
 import { GatewayClient } from '@lobechat/device-gateway-client';
-import { listHeterogeneousAgentModels } from '@lobechat/heterogeneous-agents/models';
-import { createRuntimeProbeCache } from '@lobechat/heterogeneous-agents/runtimeProbeCache';
+import {
+  listHeterogeneousAgentModels,
+  probeHeterogeneousThinkingLevels,
+} from '@lobechat/heterogeneous-agents/models';
+import {
+  createRuntimeProbeCache,
+  type RuntimeProbeCache,
+} from '@lobechat/heterogeneous-agents/runtimeProbeCache';
+import { executeDeviceOperation } from '@lobechat/local-file-shell/shell';
 import type { Command } from 'commander';
 
 import { createLambdaClient } from '../../api/client';
@@ -606,6 +613,11 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
         env: { ...process.env, ...params.env },
       }),
     restartCli: maintenance.restart,
+    probeHeterogeneousThinkingLevels: (params) =>
+      probeHeterogeneousThinkingLevels({
+        ...params,
+        env: { ...process.env, ...params.env },
+      }),
     searchProjectFiles: defaultSearchProjectFiles,
   };
 

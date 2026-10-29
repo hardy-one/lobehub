@@ -405,6 +405,13 @@ export interface DeviceControlDeps extends SkillDirectoryDeps, WorkspaceScanDeps
    * dispatcher fails the RPC with {@link MCP_UNSUPPORTED_MESSAGE}.
    */
   listMcpTools?: (params: ListMcpToolsParams) => Promise<ListedMcpServerTool[]>;
+  /**
+   * Thinking levels this host's heterogeneous CLI serves for one model. Pi
+   * answers per session, so the caller passes the run's args (incl. `--model`).
+   */
+  probeHeterogeneousThinkingLevels?: (
+    params: ProbeHeterogeneousThinkingLevelsParams,
+  ) => Promise<HeterogeneousThinkingLevels>;
   /** Read raw bytes after the user explicitly approved an external publish closure. */
   readExternalAssetForPublish?: (
     params: ExternalAssetForPublishParams,
@@ -520,6 +527,37 @@ export type HeterogeneousAgentModelCatalog =
   | {
       models: HeterogeneousAgentModelCatalogItem[];
       status: 'success';
+      updatedAt: number;
+    };
+
+// ─── Heterogeneous agent thinking levels ───
+
+/**
+ * Structural mirror of the canonical `@lobechat/types` thinking-level probe
+ * contract, kept local for the same reason as the catalog mirrors above.
+ */
+export type ProbeHeterogeneousThinkingLevelsParams = ListHeterogeneousAgentModelsParams;
+
+export type HeterogeneousThinkingLevels =
+  | {
+      error: {
+        code:
+          | 'cli_not_found'
+          | 'command_failed'
+          | 'device_unavailable'
+          | 'timeout'
+          | 'unsupported_client'
+          | 'unsupported_configuration';
+        message: string;
+      };
+      status: 'error';
+      updatedAt: number;
+    }
+  | {
+      levels: string[];
+      status: 'success';
+      /** Level the probe session sits on — the CLI's own default when none was requested. */
+      thinkingLevel?: string;
       updatedAt: number;
     };
 

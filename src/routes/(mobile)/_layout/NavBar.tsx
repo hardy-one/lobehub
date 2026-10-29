@@ -8,16 +8,14 @@ import {
 import { type TabBarProps } from '@lobehub/ui/mobile';
 import { TabBar } from '@lobehub/ui/mobile';
 import * as stylex from '@stylexjs/stylex';
-import { Compass, MessageSquare, User } from 'lucide-react';
+import { MessageSquare, User } from 'lucide-react';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { MOBILE_TABBAR_HEIGHT } from '@/const/layoutTokens';
-import { getMarketplaceEntryPath } from '@/features/Marketplace/paths';
 import { useWorkspaceAwareNavigate } from '@/features/Workspace/useWorkspaceAwareNavigate';
 import { useMobileNavigation } from '@/hooks/useMobileNavigation';
 import { SidebarTabKey } from '@/store/global/initialState';
-import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
 import { sx } from '@/styles/sx';
 
 const styles = stylex.create({
@@ -56,8 +54,6 @@ const NavBar = memo(() => {
   const { activeKey } = useMobileNavigation();
   const navigate = useWorkspaceAwareNavigate();
 
-  const { showMarket } = useServerConfigStore(featureFlagsSelectors);
-
   const items: TabBarProps['items'] = useMemo(
     () =>
       [
@@ -69,19 +65,7 @@ const NavBar = memo(() => {
           onClick: () => {
             navigate('/agent');
           },
-          title: t('tab.chat'),
-        },
-        // Always shown: installed skills and connectors live in the Marketplace,
-        // so with the market off it opens straight on the installed skills.
-        {
-          icon: (active: boolean) => (
-            <Icon className={active ? fallback.active : undefined} icon={Compass} />
-          ),
-          key: SidebarTabKey.Community,
-          onClick: () => {
-            navigate(getMarketplaceEntryPath(showMarket));
-          },
-          title: t('tab.marketplace'),
+          title: t('tab.agents'),
         },
         {
           icon: (active: boolean) => (
@@ -94,7 +78,7 @@ const NavBar = memo(() => {
           title: t('tab.me'),
         },
       ].filter(Boolean) as TabBarProps['items'],
-    [navigate, showMarket, t],
+    [navigate, t],
   );
 
   return (

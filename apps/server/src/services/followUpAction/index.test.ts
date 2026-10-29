@@ -81,8 +81,17 @@ describe('FollowUpActionService.extract', () => {
         sessions.push(new Headers(init?.headers).get('x-opencode-session'));
         return Response.json({
           choices: [
-            { finish_reason: 'stop', message: { content: '{"chips":[]}', role: 'assistant' } },
+            {
+              finish_reason: 'stop',
+              index: 0,
+              message: { content: '{"chips":[]}', role: 'assistant' },
+            },
           ],
+          created: 0,
+          id: 'chatcmpl-test',
+          model: 'test',
+          object: 'chat.completion',
+          usage: { completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 },
         });
       }),
     );

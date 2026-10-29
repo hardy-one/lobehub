@@ -1,5 +1,6 @@
 import type { GoogleGenAIOptions } from '@google/genai';
 import { GoogleGenAI } from '@google/genai';
+import { LOBE_USER_AGENT } from '@lobechat/const';
 
 import { AgentRuntimeErrorType } from '../../types/error';
 import { AgentRuntimeError } from '../../utils/createError';
@@ -15,6 +16,13 @@ export class LobeVertexAI extends LobeGoogleAI {
       const { modelIdMapping, ...googleOptions } = params ?? {};
       const client = new GoogleGenAI({
         ...googleOptions,
+        httpOptions: {
+          ...googleOptions.httpOptions,
+          headers: {
+            'User-Agent': LOBE_USER_AGENT,
+            ...googleOptions.httpOptions?.headers,
+          },
+        },
         location: googleOptions.location ?? DEFAULT_VERTEXAI_LOCATION, // @google/genai throws an error if location is not provided
         vertexai: true,
       });

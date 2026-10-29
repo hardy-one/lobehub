@@ -30,6 +30,7 @@ import { reapOperations } from './handlers/reapOperations';
 import { runStep, runStepHealth } from './handlers/runStep';
 import { shellExpire } from './handlers/shellExpire';
 import { subAgentCallback } from './handlers/subAgentCallback';
+import { listSystemBotProviders, upsertSystemBotProvider } from './handlers/systemBotProvider';
 import { toolResult } from './handlers/toolResult';
 import { bearerSecretAuth } from './middlewares/bearerSecretAuth';
 import { deviceGatewayServiceAuth } from './middlewares/deviceGatewayServiceAuth';
@@ -126,6 +127,12 @@ app.post('/gateway/callback', gatewayCallback);
 // payloads it should hold, so it can rebuild itself after a restart.
 // (auth is inline for the same reason as the callback above)
 app.post('/gateway/desired-connections', gatewayDesiredConnections);
+
+// POST /api/agent/system-bots — upsert a deployment-level SystemBot provider
+// GET  /api/agent/system-bots — list providers (never the credentials)
+// (auth is inline, mirroring the gateway routes above)
+app.post('/system-bots', upsertSystemBotProvider);
+app.get('/system-bots', listSystemBotProviders);
 
 // POST /api/agent/webhooks/bot-callback — agent step/completion webhooks (QStash)
 app.post('/webhooks/bot-callback', qstashAuth(), botCallback);

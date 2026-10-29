@@ -55,6 +55,7 @@ const convertGenerateObjectMessages = async (
   return convertOpenAIMessages(messages as any, {
     forceImageBase64: factory.chatCompletion?.forceImageBase64,
     forceVideoBase64: factory.chatCompletion?.forceVideoBase64,
+    localObjectReader: runtime.localObjectReader,
     model,
     thoughtSignatureScope: await runtime.getSignatureScope(
       runtime.getMappedModelId(model),

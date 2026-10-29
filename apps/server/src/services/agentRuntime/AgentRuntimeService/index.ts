@@ -5,7 +5,7 @@ import urlJoin from 'url-join';
 import { AgentOperationModel } from '@/database/models/agentOperation';
 import { MessageModel } from '@/database/models/message';
 import { type LobeChatDatabase } from '@/database/type';
-import { appEnv } from '@/envs/app';
+import { getQStashCallbackBaseUrl } from '@/envs/qstash';
 import { AgentRuntimeCoordinator, createStreamEventManager } from '@/server/modules/AgentRuntime';
 import { type IStreamEventManager } from '@/server/modules/AgentRuntime/types';
 import { mcpService } from '@/server/services/mcp';
@@ -135,7 +135,10 @@ export class AgentRuntimeService {
   private readonly traceRecorder: OperationTraceRecorder;
   private readonly toolExecutionService: ToolExecutionService;
   private get baseURL() {
-    const baseUrl = process.env.AGENT_RUNTIME_BASE_URL || appEnv.APP_URL || 'http://localhost:3010';
+    const baseUrl =
+      process.env.AGENT_RUNTIME_BASE_URL ||
+      getQStashCallbackBaseUrl() ||
+      'http://localhost:3010';
 
     return urlJoin(baseUrl, '/api/agent');
   }

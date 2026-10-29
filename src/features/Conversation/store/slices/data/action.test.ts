@@ -773,6 +773,48 @@ describe('DataSlice', () => {
       ]);
     });
 
+    it('finds blocks nested in task completions and group children', () => {
+      const store = createTestStore();
+
+      store.getState().replaceMessages([
+        {
+          id: 'task-group',
+          content: '',
+          role: 'assistantGroup',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          children: [
+            {
+              id: 'child-block',
+              content: 'Child block content',
+              tools: [{ id: 'child-tool' }],
+            },
+          ],
+          taskCompletions: [
+            {
+              id: 'task-completion-block',
+              content: 'Task completion content',
+              tools: [{ id: 'task-tool' }],
+            },
+          ],
+        },
+      ] as any);
+
+      expect(dataSelectors.getBlockContent('child-block')(store.getState())).toBe(
+        'Child block content',
+      );
+      expect(dataSelectors.getToolsInBlock('child-block')(store.getState())).toEqual([
+        { id: 'child-tool' },
+      ]);
+
+      expect(dataSelectors.getBlockContent('task-completion-block')(store.getState())).toBe(
+        'Task completion content',
+      );
+      expect(dataSelectors.getToolsInBlock('task-completion-block')(store.getState())).toEqual([
+        { id: 'task-tool' },
+      ]);
+    });
+
     it('getDbMessageById should find message from dbMessages', () => {
       const store = createTestStore();
 

@@ -48,16 +48,22 @@ declare global {
       AUTH_FEISHU_APP_ID?: string;
 
       AUTH_FEISHU_APP_SECRET?: string;
+
       AUTH_GENERIC_OIDC_ID?: string;
       AUTH_GENERIC_OIDC_ISSUER?: string;
-
       AUTH_GENERIC_OIDC_SECRET?: string;
+
       AUTH_GITHUB_ID?: string;
       AUTH_GITHUB_SECRET?: string;
-
       // ===== Auth Provider Credentials ===== //
       AUTH_GOOGLE_ID?: string;
+
       AUTH_GOOGLE_SECRET?: string;
+      /**
+       * Comma-separated invitation codes. When set, creating an account requires
+       * one of them; leave unset to keep sign-up open.
+       */
+      AUTH_INVITATION_CODES?: string;
       AUTH_KEYCLOAK_ID?: string;
 
       AUTH_KEYCLOAK_ISSUER?: string;
@@ -122,6 +128,7 @@ export const getAuthConfig = () => {
       AUTH_ENABLE_MAGIC_LINK: z.boolean().optional().default(false),
       AUTH_ALLOWED_EMAILS: z.string().optional(),
       AUTH_DISABLE_EMAIL_PASSWORD: z.boolean().optional().default(false),
+      AUTH_INVITATION_CODES: z.string().optional(),
 
       AUTH_GOOGLE_ID: z.string().optional(),
       AUTH_GOOGLE_SECRET: z.string().optional(),
@@ -213,6 +220,7 @@ export const getAuthConfig = () => {
       AUTH_SSO_PROVIDERS: process.env.AUTH_SSO_PROVIDERS,
       AUTH_TRUSTED_ORIGINS: process.env.AUTH_TRUSTED_ORIGINS,
       AUTH_ALLOWED_EMAILS: process.env.AUTH_ALLOWED_EMAILS,
+      AUTH_INVITATION_CODES: process.env.AUTH_INVITATION_CODES,
       AUTH_DISABLE_EMAIL_PASSWORD: process.env.AUTH_DISABLE_EMAIL_PASSWORD === '1',
 
       // Cognito provider specific env vars

@@ -1,3 +1,4 @@
+import { LOBE_USER_AGENT } from '@lobechat/const';
 import debug from 'debug';
 import { ModelProvider } from 'model-bank';
 import type OpenAI from 'openai';
@@ -263,6 +264,7 @@ export class LobeAzureOpenAI extends BaseAzureOpenAI {
   protected getTranscriptionClient(): OpenAI {
     this.transcriptionClient ??= new AzureOpenAI({
       ...this._options,
+      defaultHeaders: { 'User-Agent': LOBE_USER_AGENT, ...this._options.defaultHeaders },
       apiKey: this._options.apiKey,
       apiVersion: AZURE_TRANSCRIPTION_API_VERSION,
       baseURL: this.transcriptionBaseURL,

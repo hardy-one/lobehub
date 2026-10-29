@@ -18,7 +18,7 @@ import { useUserStore } from '@/store/user';
 import { settingsSelectors } from '@/store/user/selectors';
 import { type UserGeneralConfig } from '@/types/user/settings';
 
-type UpdateChannelValue = 'canary' | 'stable';
+type UpdateChannelValue = 'canary' | 'stable' | 'HARDY';
 
 const Page = memo<{ showSettingHeader?: boolean }>(({ showSettingHeader = true }) => {
   const { t } = useTranslation('setting');
@@ -132,6 +132,7 @@ const Page = memo<{ showSettingHeader?: boolean }>(({ showSettingHeader = true }
   const channelOptions = [
     { label: t('tab.advanced.updateChannel.stable'), value: 'stable' as const },
     { label: t('tab.advanced.updateChannel.canary'), value: 'canary' as const },
+    { label: t('tab.advanced.updateChannel.hardy'), value: 'HARDY' as const },
   ];
 
   const updateChannelGroup: FormGroupItem<UserGeneralConfig> = {

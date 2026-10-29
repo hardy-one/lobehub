@@ -1,4 +1,4 @@
-export type UpdateChannel = 'stable' | 'canary';
+export type UpdateChannel = 'stable' | 'canary' | 'HARDY';
 export type UpdateKind = 'app' | 'renderer' | 'core-reload' | 'core-relaunch';
 
 export interface ReleaseNoteInfo {

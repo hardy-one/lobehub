@@ -358,6 +358,12 @@ export const applyModelExtendParams = (ctx: ApplyModelExtendParamsContext): Mode
     extendParams.reasoning_effort = chatConfig.kimiK3ReasoningEffort;
   }
 
+  if (modelExtendParams.includes('mimoReasoningEffort') && chatConfig.mimoReasoningEffort) {
+    // MiMo's Responses API reads the effort straight off `reasoning.effort`, where
+    // `none` is what disables thinking.
+    extendParams.reasoning_effort = chatConfig.mimoReasoningEffort;
+  }
+
   if (modelExtendParams.includes('ring2_6ReasoningEffort') && chatConfig.ring2_6ReasoningEffort) {
     extendParams.reasoning_effort = chatConfig.ring2_6ReasoningEffort;
   }

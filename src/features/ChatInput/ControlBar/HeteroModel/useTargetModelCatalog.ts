@@ -46,7 +46,7 @@ export const useTargetModelCatalog = ({
   const targetDeviceId = resolveTargetDeviceId(agencyConfig, currentDeviceId, { workspaceScoped });
   const useLocalIpc = isDesktop && executionTarget === 'local';
   const deviceId = useLocalIpc ? undefined : targetDeviceId;
-  const targetReady = enabled && (useLocalIpc || (executionTarget === 'device' && !!deviceId));
+  const targetReady = useLocalIpc || (executionTarget === 'device' && !!deviceId);
   const catalog = useModelCatalog({
     cwd,
     deviceId,
@@ -54,7 +54,7 @@ export const useTargetModelCatalog = ({
     isPreferenceLoading,
     open,
     provider,
-    targetReady,
+    targetReady: enabled && targetReady,
     type,
   });
   const data = useMemo(
@@ -64,5 +64,8 @@ export const useTargetModelCatalog = ({
         : catalog.data,
     [catalog.data, type],
   );
-  return { ...catalog, data, targetReady };
+
+  // `cwd`, `deviceId` and `targetReady` are returned un-gated by `enabled`: the
+  // thinking-level probe reuses this same target while the catalog stays off.
+  return { ...catalog, cwd, data, deviceId, targetReady };
 };

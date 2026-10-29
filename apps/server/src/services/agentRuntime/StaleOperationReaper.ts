@@ -11,6 +11,7 @@ import urlJoin from 'url-join';
 import { AgentOperationModel } from '@/database/models/agentOperation';
 import { agentOperations } from '@/database/schemas';
 import type { LobeChatDatabase } from '@/database/type';
+import { getQStashCallbackBaseUrl } from '@/envs/qstash';
 import { AgentRuntimeCoordinator } from '@/server/modules/AgentRuntime/AgentRuntimeCoordinator';
 import { QueueService } from '@/server/services/queue';
 
@@ -156,7 +157,7 @@ export class StaleOperationReaper {
   }
 
   private get baseURL() {
-    const baseUrl = process.env.AGENT_RUNTIME_BASE_URL || process.env.APP_URL;
+    const baseUrl = process.env.AGENT_RUNTIME_BASE_URL || getQStashCallbackBaseUrl();
 
     return urlJoin(baseUrl || 'http://localhost:3010', '/api/agent');
   }

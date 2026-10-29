@@ -7,6 +7,12 @@ const EMPTY_PROVIDERS: string[] = [];
 export const serverConfigSelectors = {
   agentIdentityProviders: (s: ServerConfigStore) =>
     s.serverConfig.agentIdentityProviders ?? EMPTY_PROVIDERS,
+  /**
+   * Self-hosted switch for Artifact deployment. Cloud never sets it: there the
+   * capability ships with the deployment instead of being opt-in.
+   */
+  enableArtifactDeployment: (s: ServerConfigStore) =>
+    s.serverConfig.enableArtifactDeployment || false,
   disableEmailPassword: (s: ServerConfigStore) => s.serverConfig.disableEmailPassword || false,
   enableBusinessFeatures: (s: ServerConfigStore) => s.serverConfig.enableBusinessFeatures || false,
   enableEmailVerification: (s: ServerConfigStore) =>

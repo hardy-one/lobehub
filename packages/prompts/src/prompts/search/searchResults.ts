@@ -1,9 +1,11 @@
 import { escapeXmlAttr, escapeXmlContent } from './xmlEscape';
 
 export interface SearchResultItem {
+  authority?: number | null;
   content?: string;
   imgSrc?: string;
   publishedDate?: string | null;
+  score?: number | null;
   thumbnail?: string | null;
   title: string;
   url: string;
@@ -44,6 +46,14 @@ export const searchResultsPrompt = (results: SearchResultItem[]): string => {
 
       if (item.publishedDate) {
         attrs.push(`publishedDate="${escapeXmlAttr(item.publishedDate)}"`);
+      }
+
+      if (typeof item.score === 'number') {
+        attrs.push(`score="${item.score}"`);
+      }
+
+      if (typeof item.authority === 'number' && item.authority >= 0) {
+        attrs.push(`authority="${item.authority}"`);
       }
 
       if (item.imgSrc) {

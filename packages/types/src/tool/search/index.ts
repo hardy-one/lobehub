@@ -13,15 +13,18 @@ export interface SearchQuery extends SearchParams {
 export const SEARCH_SEARXNG_NOT_CONFIG = 'SearXNG is not configured';
 
 export interface SearchContent {
+  authority?: number | null;
   content?: string;
   img_src?: string;
   publishedDate?: string | null;
+  score?: number | null;
   thumbnail?: string | null;
   title: string;
   url: string;
 }
 
 export interface UniformSearchResult {
+  authority?: number;
   category?: string;
   content: string;
   engines: string[];

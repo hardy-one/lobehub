@@ -310,6 +310,8 @@ export default {
     'For Gemini 3 image generation models; controls resolution of generated images.',
   'providerModels.item.modelConfig.extendParams.options.imageResolution2.hint':
     'For Gemini 3.1 Flash Image models; controls resolution of generated images (supports 512px).',
+  'providerModels.item.modelConfig.extendParams.options.mimoReasoningEffort.hint':
+    'For MiMo models; controls thinking via `reasoning.effort`. `none` disables thinking, while every other level enables it (MiMo currently treats low / medium / high the same).',
   'providerModels.item.modelConfig.extendParams.options.opus47Effort.hint':
     'For Claude Opus 4.7 and later; controls effort level (low/medium/high/xhigh/max).',
   'providerModels.item.modelConfig.extendParams.options.preserveThinking.hint':

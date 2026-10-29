@@ -1,0 +1,36 @@
+diff --git a/es/react/SendButton/components/StopIcon.js b/es/react/SendButton/components/StopIcon.js
+--- a/es/react/SendButton/components/StopIcon.js
++++ b/es/react/SendButton/components/StopIcon.js
+@@ -58,18 +58,21 @@
+ 				x: "386",
+ 				y: "386"
+ 			})]
+-		}), /* @__PURE__ */ jsx("svg", {
++		}), /* @__PURE__ */ jsx("span", {
+ 			className: cx(styles.layer, styles.spinner),
+-			fill: "none",
+-			height: size,
+-			viewBox: "0 0 1024 1024",
+-			width: size,
+-			xmlns: "http://www.w3.org/2000/svg",
+-			children: /* @__PURE__ */ jsx("path", {
+-				d: "M938.667 512C938.667 276.359 747.64 85.333 512 85.333",
+-				stroke: "currentColor",
+-				strokeLinecap: "round",
+-				strokeWidth: "73"
++			children: /* @__PURE__ */ jsx("svg", {
++				className: styles.layer,
++				fill: "none",
++				height: size,
++				viewBox: "0 0 1024 1024",
++				width: size,
++				xmlns: "http://www.w3.org/2000/svg",
++				children: /* @__PURE__ */ jsx("path", {
++					d: "M938.667 512C938.667 276.359 747.64 85.333 512 85.333",
++					stroke: "currentColor",
++					strokeLinecap: "round",
++					strokeWidth: "73"
++				})
+ 			})
+ 		})]
+ 	});

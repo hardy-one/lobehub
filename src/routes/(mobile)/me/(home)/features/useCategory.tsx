@@ -2,11 +2,14 @@ import { LOBE_CHAT_CLOUD, UTM_SOURCE } from '@lobechat/business-const';
 import { DOCUMENTS, DOWNLOAD_URL, FEEDBACK, OFFICIAL_URL } from '@lobechat/const';
 import {
   Book,
+  Bot,
   CircleUserRound,
   Cloudy,
+  Compass,
   Download,
   Feather,
   FileClockIcon,
+  ListTodo,
   Settings2,
 } from 'lucide-react';
 import { useMemo } from 'react';
@@ -16,6 +19,7 @@ import { useNavigate } from 'react-router';
 import useBusinessMeCells from '@/business/client/features/User/useBusinessMeCells';
 import { type CellProps } from '@/components/Cell';
 import { openChangelogModal } from '@/components/ChangelogModal';
+import { MARKETPLACE_INSTALLED_SKILLS_PATH, MARKETPLACE_PATH } from '@/features/Marketplace/paths';
 import { usePlatform } from '@/hooks/usePlatform';
 import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
 import { useUserStore } from '@/store/user';
@@ -24,7 +28,7 @@ import { authSelectors } from '@/store/user/selectors';
 export const useCategory = () => {
   const navigate = useNavigate();
   const { t } = useTranslation(['common', 'setting', 'auth']);
-  const { showCloudPromotion, hideDocs } = useServerConfigStore(featureFlagsSelectors);
+  const { showCloudPromotion, showMarket, hideDocs } = useServerConfigStore(featureFlagsSelectors);
   const [isLoginWithAuth] = useUserStore((s) => [authSelectors.isLoginWithAuth(s)]);
   const { isIOS, isAndroid } = usePlatform();
   const businessMeCells = useBusinessMeCells();
@@ -55,6 +59,26 @@ export const useCategory = () => {
       type: 'divider',
     },
   ];
+  const secondaryNavigation: CellProps[] = [
+    {
+      icon: Bot,
+      key: 'agents',
+      label: t('tab.agents'),
+      onClick: () => navigate('/agents'),
+    },
+    {
+      icon: ListTodo,
+      key: 'tasks',
+      label: t('tab.tasks'),
+      onClick: () => navigate('/tasks'),
+    },
+    {
+      icon: Compass,
+      key: 'marketplace',
+      label: t('tab.marketplace'),
+      onClick: () => navigate(showMarket ? MARKETPLACE_PATH : MARKETPLACE_INSTALLED_SKILLS_PATH),
+    },
+  ].filter(Boolean) as CellProps[];
 
   const getDesktopApp: CellProps[] = [
     {
@@ -101,6 +125,7 @@ export const useCategory = () => {
     },
     ...(isLoginWithAuth ? profile : []),
     ...(isLoginWithAuth ? settings : []),
+    ...(isLoginWithAuth ? secondaryNavigation : []),
     ...(isLoginWithAuth ? businessMeCells : []),
     ...getDesktopApp,
     ...(!hideDocs ? helps : []),

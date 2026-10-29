@@ -258,6 +258,9 @@ export function defineConfig() {
     '/market-auth-callback',
     // public share pages
     '/share(.*)',
+    // Deployed Artifact renderer — the deployment id is the capability, and the
+    // page is embedded in a sandboxed iframe on a visitor's share page.
+    '/artifact-render(.*)',
     // retired standalone report links (/verify/:runId) — they now redirect to
     // the run's acceptance round, and must stay reachable without a session:
     // the run id is still the read capability, enforced by the run's own

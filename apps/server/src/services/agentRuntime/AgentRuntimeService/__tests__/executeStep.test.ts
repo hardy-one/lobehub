@@ -46,6 +46,13 @@ vi.mock('@/database/models/plugin', (...args) =>
   ),
 );
 
+const findByIdAndProviderMock = vi.fn();
+vi.mock('@/database/models/aiModel', () => ({
+  AiModelModel: vi.fn(function AiModelModel() {
+    return { findByIdAndProvider: findByIdAndProviderMock };
+  }),
+}));
+
 // Mock ModelRuntime to avoid server-side env access
 vi.mock('@/server/modules/ModelRuntime', (...args) =>
   import('./testUtils').then((m) =>
@@ -117,6 +124,10 @@ describe('AgentRuntimeService', () => {
       AgentRuntimeService,
       mockUserId,
     ));
+    // The user model row is the primary source for the compression budget; a
+    // leaked value from a previous case would silently change this one's window.
+    findByIdAndProviderMock.mockReset();
+    findByIdAndProviderMock.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -188,7 +199,80 @@ describe('AgentRuntimeService', () => {
     });
 
     it('should pass resolved contextWindowTokens into compressionConfig', async () => {
+      findByIdAndProviderMock.mockResolvedValue(null);
       vi.mocked(getModelPropertyWithFallback).mockResolvedValueOnce(200_000);
+
+      let capturedConfig: any;
+      const serviceWithFactory = new AgentRuntimeService(mockDb, mockUserId, {
+        agentFactory: (config) => {
+          capturedConfig = config;
+          return { runner: vi.fn() } as any;
+        },
+      });
+
+      await (serviceWithFactory as any).createAgentRuntime({
+        agentState: {
+          world: { agent: { chatConfig: { enableContextCompression: true } } as any },
+          modelRuntimeConfig: { model: 'gpt-4o-mini', provider: 'openai' },
+        },
+        operationId: 'test-operation-1',
+        stepIndex: 1,
+      });
+
+      expect(findByIdAndProviderMock).toHaveBeenCalledWith('gpt-4o-mini', 'openai');
+      expect(getModelPropertyWithFallback).toHaveBeenCalledWith(
+        'gpt-4o-mini',
+        'contextWindowTokens',
+        'openai',
+      );
+      expect(capturedConfig).toEqual(
+        expect.objectContaining({
+          compressionConfig: expect.objectContaining({
+            enabled: true,
+            maxWindowToken: 200_000,
+          }),
+        }),
+      );
+    });
+
+    // A custom provider's model has no bundled card, so resolving the window
+    // from model-bank alone yields `undefined` and the compression budget
+    // silently drops to the 128k default — a 1M model then summarizes at ~120k.
+    it('should read contextWindowTokens from the user model row for a custom provider', async () => {
+      findByIdAndProviderMock.mockResolvedValue({ contextWindowTokens: 1_000_000 });
+
+      let capturedConfig: any;
+      const serviceWithFactory = new AgentRuntimeService(mockDb, mockUserId, {
+        agentFactory: (config) => {
+          capturedConfig = config;
+          return { runner: vi.fn() } as any;
+        },
+      });
+
+      await (serviceWithFactory as any).createAgentRuntime({
+        agentState: {
+          world: { agent: { chatConfig: { enableContextCompression: true } } as any },
+          modelRuntimeConfig: { model: 'workbuddy/step-5-preview', provider: 'magpie' },
+        },
+        operationId: 'test-operation-1',
+        stepIndex: 1,
+      });
+
+      expect(findByIdAndProviderMock).toHaveBeenCalledWith('workbuddy/step-5-preview', 'magpie');
+      expect(getModelPropertyWithFallback).not.toHaveBeenCalled();
+      expect(capturedConfig).toEqual(
+        expect.objectContaining({
+          compressionConfig: expect.objectContaining({
+            enabled: true,
+            maxWindowToken: 1_000_000,
+          }),
+        }),
+      );
+    });
+
+    it('should fall back to the bundled card when the user row lookup fails', async () => {
+      findByIdAndProviderMock.mockRejectedValue(new Error('db unavailable'));
+      vi.mocked(getModelPropertyWithFallback).mockResolvedValueOnce(256_000);
 
       let capturedConfig: any;
       const serviceWithFactory = new AgentRuntimeService(mockDb, mockUserId, {
@@ -215,14 +299,14 @@ describe('AgentRuntimeService', () => {
       expect(capturedConfig).toEqual(
         expect.objectContaining({
           compressionConfig: expect.objectContaining({
-            enabled: true,
-            maxWindowToken: 200_000,
+            maxWindowToken: 256_000,
           }),
         }),
       );
     });
 
     it('should fall back to undefined maxWindowToken when model lookup misses', async () => {
+      findByIdAndProviderMock.mockResolvedValue(null);
       vi.mocked(getModelPropertyWithFallback).mockResolvedValueOnce(undefined);
 
       let capturedConfig: any;

@@ -33,13 +33,15 @@ import * as stylex from '@stylexjs/stylex';
 import {
   CheckIcon,
   ChevronDownIcon,
-  ChevronRightIcon,
   LoaderCircleIcon,
   RefreshCwIcon,
   SearchIcon,
 } from 'lucide-react';
 import { memo, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+
+import { ModelIcon } from '@/components/LobeIcons';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 import { useMenuContentLifecycle } from '../useMenuContentLifecycle';
 import { useModelCatalogView } from './useModelCatalogView';
@@ -95,6 +97,7 @@ const styles = stylex.create({
     backgroundImage: { 'default': null, ':hover': 'none' },
   },
   triggerDisabled: { cursor: 'not-allowed', opacity: 0.5 },
+  triggerMobile: { gap: '3px', paddingInline: '4px' },
   triggerLabel: { whiteSpace: 'nowrap' },
 });
 
@@ -120,6 +123,24 @@ const getCatalogErrorKey = (name: string) => {
     }
   }
 };
+
+/**
+ * Match the submenu arrow glyph that @lobehub/ui's own submenu rows draw, so a
+ * catalog model row sits next to the reasoning-effort row without a mismatched
+ * arrow. The library keeps the glyph private, so it is re-drawn here.
+ */
+const SubmenuArrow = () => (
+  <svg
+    aria-hidden
+    fill="currentColor"
+    stroke="currentColor"
+    strokeLinejoin="round"
+    strokeWidth={1.5}
+    viewBox="0 0 16 16"
+  >
+    <path d="M6 5l4 3-4 3z" />
+  </svg>
+);
 
 interface ModelCatalogSelectorProps {
   agentId?: string;
@@ -178,9 +199,16 @@ export const ModelCatalogSelector = memo<ModelCatalogSelectorProps>(
       [completeOpenChange],
     );
 
+    const isMobile = useIsMobile();
+    const isNamedModel = currentModel !== HETEROGENEOUS_AGENT_DEFAULT_SELECTION;
+
     const trigger = (
       <div
-        {...stylex.props(styles.trigger, disabled && styles.triggerDisabled)}
+        {...stylex.props(
+          styles.trigger,
+          isMobile && isNamedModel && styles.triggerMobile,
+          disabled && styles.triggerDisabled,
+        )}
         aria-label={t('heteroAgent.cliModel.ariaLabel', {
           name: agentName,
           model:
@@ -189,11 +217,15 @@ export const ModelCatalogSelector = memo<ModelCatalogSelectorProps>(
               : currentModel,
         })}
       >
-        <span {...stylex.props(styles.triggerLabel)}>
-          {currentModel === HETEROGENEOUS_AGENT_DEFAULT_SELECTION
-            ? t('heteroAgent.modelSelector.default')
-            : currentModel}
-        </span>
+        {isMobile && isNamedModel ? (
+          <ModelIcon model={currentModel} size={18} />
+        ) : (
+          <span {...stylex.props(styles.triggerLabel)}>
+            {currentModel === HETEROGENEOUS_AGENT_DEFAULT_SELECTION
+              ? t('heteroAgent.modelSelector.default')
+              : currentModel}
+          </span>
+        )}
         <Icon icon={ChevronDownIcon} size={12} />
       </div>
     );
@@ -348,7 +380,7 @@ export const ModelCatalogSelector = memo<ModelCatalogSelectorProps>(
                   : currentModel}
               </DropdownMenuItemExtra>
               <DropdownMenuSubmenuArrow>
-                <Icon icon={ChevronRightIcon} size={12} />
+                <SubmenuArrow />
               </DropdownMenuSubmenuArrow>
             </DropdownMenuItemContent>
           </DropdownMenuSubmenuTrigger>

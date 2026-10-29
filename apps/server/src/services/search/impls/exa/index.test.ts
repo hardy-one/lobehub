@@ -60,13 +60,13 @@ describe('ExaImpl', () => {
       expect(result.resultNumbers).toBe(2);
       expect(result.results).toHaveLength(2);
       expect(result.results[0]).toMatchObject({
-        title: 'Example Title',
-        url: 'https://example.com/page',
+        category: 'general',
         content: 'Example content text',
         engines: ['exa'],
-        category: 'general',
-        score: 0.95,
         parsedUrl: 'example.com',
+        score: 2.85,
+        title: 'Example Title',
+        url: 'https://example.com/page',
       });
     });
 

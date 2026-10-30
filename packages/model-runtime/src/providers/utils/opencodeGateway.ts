@@ -13,24 +13,32 @@ import { LobeGoogleAI } from '../google';
  *   https://opencode.ai/inference/anthropic/v1/messages
  *   https://opencode.ai/inference/google/v1beta/models/{model}:generateContent
  *
- * The unified legacy prefixes that the OpenAI and Anthropic routes still use
- * (`/zen/v1` and `/zen/go/v1`) expose chat/completions, responses and messages only:
- * a Gemini model pointed there asks for `<base>/v1beta/models/...`, which the gateway
- * answers with 404. The native Gemini surface lives under `/inference[/go]/google`.
+ * The OpenAI and Anthropic routes reach the same gateway through its unified
+ * prefixes — the legacy `/zen/v1` and `/zen/go/v1`, or the documented
+ * `/inference/openai/v1` and `/inference/go/openai/v1`. A unified prefix
+ * translates chat/completions, responses and messages, but it has no `/v1beta`
+ * surface: a Gemini model pointed there asks for `<base>/v1beta/models/...`,
+ * which the gateway answers with 404. The native Gemini surface is the `google`
+ * family prefix beside it.
  *
- * ref: https://opencode.ai/v2/docs/console/api/inference/
+ * refs:
+ * - https://opencode.ai/v2/docs/console/api/inference/
+ * - models.dev `opencode` / `opencode-go`: their Gemini models declare
+ *   `@ai-sdk/google` with `.../inference[/go]/google/v1beta`
  */
-const ZEN_UNION_SUFFIX = '/zen/v1';
-const GO_UNION_SUFFIX = '/zen/go/v1';
-const ZEN_GEMINI_SUFFIX = '/inference/google';
-const GO_GEMINI_SUFFIX = '/inference/go/google';
+const GEMINI_FAMILY_PREFIXES = [
+  // Go first: `/zen/go/v1` also carries the `/zen/` segment the Zen rewrite looks at.
+  { gemini: '/inference/go/google', union: ['/zen/go/v1', '/inference/go/openai/v1'] },
+  { gemini: '/inference/google', union: ['/zen/v1', '/inference/openai/v1'] },
+];
 
 export const DEFAULT_OPENCODE_GEMINI_BASE_URL = 'https://opencode.ai/inference/google';
 
 /**
  * Map the configured gateway base URL onto the native Gemini family prefix.
  *
- * - `/zen/v1` → `/inference/google`, `/zen/go/v1` → `/inference/go/google`
+ * - a unified gateway prefix (`/zen/v1`, `/inference/openai/v1`, `/zen/go/v1`,
+ *   `/inference/go/openai/v1`) → the Gemini family prefix beside it
  * - a base URL that already names a Gemini surface is kept as-is
  * - any other custom proxy base URL is left untouched, so a deployment that
  *   serves `/v1beta` under its own root keeps working
@@ -39,12 +47,9 @@ export const resolveOpenCodeGeminiBaseURL = (baseURL?: string): string => {
   const trimmed = baseURL?.trim().replace(/\/+$/, '');
   if (!trimmed) return DEFAULT_OPENCODE_GEMINI_BASE_URL;
 
-  // Go first: `/zen/go/v1` also contains the `/zen/` segment the Zen rewrite looks at.
-  if (trimmed.endsWith(GO_UNION_SUFFIX)) {
-    return `${trimmed.slice(0, -GO_UNION_SUFFIX.length)}${GO_GEMINI_SUFFIX}`;
-  }
-  if (trimmed.endsWith(ZEN_UNION_SUFFIX)) {
-    return `${trimmed.slice(0, -ZEN_UNION_SUFFIX.length)}${ZEN_GEMINI_SUFFIX}`;
+  for (const { gemini, union } of GEMINI_FAMILY_PREFIXES) {
+    const matched = union.find((suffix) => trimmed.endsWith(suffix));
+    if (matched) return `${trimmed.slice(0, -matched.length)}${gemini}`;
   }
 
   return trimmed;

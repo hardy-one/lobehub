@@ -8,6 +8,7 @@ const create = vi.fn();
 const findByArtifact = vi.fn();
 const findById = vi.fn();
 const getRevision = vi.fn();
+const reserveRevision = vi.fn();
 const listByTopic = vi.fn();
 const listRevisions = vi.fn();
 const update = vi.fn();
@@ -56,6 +57,7 @@ vi.mock('@/database/models/artifactDeployment', () => ({
       getRevision,
       listByTopic,
       listRevisions,
+      reserveRevision,
       update,
     };
   }),
@@ -87,6 +89,7 @@ const deploymentRow = (overrides: Record<string, unknown> = {}) => ({
   id: 'dep_1',
   identifier: 'art_1',
   kind: 'html',
+  nextRevision: 2,
   slug: null,
   status: 'published',
   title: 'Demo',
@@ -142,6 +145,7 @@ beforeEach(() => {
   getFileContent.mockResolvedValue('<html>');
   getPublishedDeployment.mockResolvedValue(undefined);
   getRevision.mockResolvedValue(revisionRow());
+  reserveRevision.mockResolvedValue(2);
   listByTopic.mockResolvedValue([]);
   listRevisions.mockResolvedValue([]);
   update.mockResolvedValue(undefined);
@@ -151,6 +155,7 @@ beforeEach(() => {
 describe('ArtifactDeploymentService.prepareUpload', () => {
   it('sizes the presigned targets from the keys the revision will be served from', async () => {
     findByArtifact.mockResolvedValue(deploymentRow({ currentRevision: 3, id: 'dep_3' }));
+    reserveRevision.mockResolvedValue(4);
 
     const prepared = await service().prepareUpload({
       files: [
@@ -210,8 +215,34 @@ describe('ArtifactDeploymentService.prepareUpload', () => {
     });
     // A build that dies after this point must not leave a half-published deployment.
     expect(create).not.toHaveBeenCalled();
+    // Nothing exists to allocate against yet: revision 1 is the whole history.
+    expect(reserveRevision).not.toHaveBeenCalled();
     expect(addRevision).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it('allocates a revision that was never used after a rollback, not the served one plus one', async () => {
+    // v1..v3 exist and the panel rolled the served revision back to v1.
+    findByArtifact.mockResolvedValue(
+      deploymentRow({ currentRevision: 1, id: 'dep_1', nextRevision: 4 }),
+    );
+    reserveRevision.mockResolvedValue(4);
+
+    const prepared = await service().prepareUpload({
+      files: [{ contentType: 'text/html', path: 'index.html', sizeBytes: 12 }],
+      identifier: 'art_1',
+      kind: 'html',
+      topicId: 'tpc_1',
+    });
+
+    // Deriving the number from `currentRevision` would hand out v2 again: it would
+    // overwrite the v2 objects before the (deploymentId, revision) unique index
+    // rejected the insert.
+    expect(prepared.revision).toBe(4);
+    expect(prepared.objectPrefix).toBe('artifacts/dep_1/v4');
+    expect(prepared.uploadId).toBe('artifacts/dep_1/v4');
+    expect(reserveRevision).toHaveBeenCalledWith('dep_1');
+    expect(createPreSignedUpload).toHaveBeenCalledWith('artifacts/dep_1/v4/index.html', 12);
   });
 
   it('rejects an upload that breaks a deploy limit', async () => {
@@ -374,6 +405,51 @@ describe('ArtifactDeploymentService.commitUpload', () => {
     });
   });
 
+  it('reports a revision another commit already recorded as a conflict instead of a unique-index failure', async () => {
+    findById.mockResolvedValue(deploymentRow());
+    addRevision.mockRejectedValue(
+      Object.assign(new Error('duplicate key value violates unique constraint'), {
+        code: '23505',
+        constraint: 'artifact_deployment_revisions_deployment_id_revision_unique',
+      }),
+    );
+
+    await expect(
+      service().commitUpload({
+        identifier: 'art_1',
+        kind: 'html',
+        manifest: { 'index.html': { contentType: 'text/html', size: 12 } },
+        topicId: 'tpc_1',
+        uploadId: 'artifacts/dep_1/v2',
+      }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    // A rejected commit must not move what the share link serves.
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('reports two first publishes of one Artifact racing each other as a conflict', async () => {
+    findById.mockResolvedValue(undefined);
+    create.mockRejectedValue(
+      Object.assign(new Error('duplicate key value violates unique constraint'), {
+        code: '23505',
+        constraint: 'artifact_deployments_user_id_topic_id_identifier_unique',
+      }),
+    );
+
+    await expect(
+      service().commitUpload({
+        identifier: 'art_1',
+        kind: 'html',
+        manifest: { 'index.html': { contentType: 'text/html', size: 12 } },
+        topicId: 'tpc_1',
+        uploadId: 'artifacts/generated-deployment-id/v1',
+      }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    expect(addRevision).not.toHaveBeenCalled();
+  });
+
   it('creates the deployment for a commit whose upload started one', async () => {
     findById.mockResolvedValue(undefined);
 
@@ -394,6 +470,7 @@ describe('ArtifactDeploymentService.commitUpload', () => {
       id: 'generated-deployment-id',
       identifier: 'art_1',
       kind: 'html',
+      nextRevision: 2,
       slug: null,
       status: 'offline',
       title: 'Fresh',

@@ -67,6 +67,7 @@ vi.mock('@/business/client/hooks/useBusinessSignin', () => ({
 }));
 
 let mockEnableBusinessFeatures = false;
+let mockEnableInvitationCode = false;
 let mockEnableMagicLink = false;
 vi.mock('@/features/AuthShell/AuthServerConfigProvider', () => ({
   useAuthServerConfigStore: (selector: (s: any) => any) =>
@@ -74,6 +75,7 @@ vi.mock('@/features/AuthShell/AuthServerConfigProvider', () => ({
       serverConfig: {
         disableEmailPassword: false,
         enableBusinessFeatures: mockEnableBusinessFeatures,
+        enableInvitationCode: mockEnableInvitationCode,
         enableMagicLink: mockEnableMagicLink,
         oAuthSSOProviders: ['google', 'github'],
       },
@@ -105,7 +107,9 @@ describe('useSignIn', () => {
     mockLocalStorage.clear();
     mockSearchParamsGet.mockReturnValue(null);
     mockEnableBusinessFeatures = false;
+    mockEnableInvitationCode = false;
     mockEnableMagicLink = false;
+    mockForm.getValue.mockReset();
     mockBusinessSignin.ssoProviders = [];
     mockBusinessSignin.getAdditionalData.mockResolvedValue({});
     mockBusinessSignin.preSocialSigninCheck.mockResolvedValue(true);
@@ -617,6 +621,76 @@ describe('useSignIn', () => {
   });
 
   describe('magic link', () => {
+    it('should send the invitation code with a new user magic link', async () => {
+      mockEnableInvitationCode = true;
+      mockEnableMagicLink = true;
+      mockSignInMagicLink.mockResolvedValue({ error: null });
+      mockForm.getValue.mockImplementation((name: string) =>
+        name === 'invitationCode' ? '  INVITE-1  ' : undefined,
+      );
+      mockFetch.mockResolvedValueOnce({
+        json: async () => ({ exists: false }),
+        ok: true,
+      });
+
+      const { result } = renderHook(() => useSignIn());
+
+      await act(async () => {
+        await result.current.handleCheckUser({ email: 'new@example.com' });
+      });
+
+      expect(mockNavigate).not.toHaveBeenCalled();
+      expect(mockSignInMagicLink).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'new@example.com',
+          fetchOptions: { headers: { 'x-invitation-code': 'INVITE-1' } },
+        }),
+      );
+      expect(result.current.step).toBe('emailSent');
+      expect(result.current.sentInfo).toEqual(
+        expect.objectContaining({ email: 'new@example.com', invitationCode: 'INVITE-1' }),
+      );
+    });
+
+    it('should keep a new user on the email step when the invitation code is missing', async () => {
+      mockEnableInvitationCode = true;
+      mockEnableMagicLink = true;
+      mockForm.getValue.mockReturnValue(undefined);
+      mockFetch.mockResolvedValueOnce({
+        json: async () => ({ exists: false }),
+        ok: true,
+      });
+
+      const { result } = renderHook(() => useSignIn());
+
+      await act(async () => {
+        await result.current.handleCheckUser({ email: 'new@example.com' });
+      });
+
+      expect(mockSignInMagicLink).not.toHaveBeenCalled();
+      expect(mockForm.setErrors).toHaveBeenCalledWith({
+        invitationCode: expect.any(String),
+      });
+      expect(result.current.step).toBe('email');
+    });
+
+    it('should still send new users to signup when the gate is off', async () => {
+      mockEnableMagicLink = true;
+      mockFetch.mockResolvedValueOnce({
+        json: async () => ({ exists: false }),
+        ok: true,
+      });
+
+      const { result } = renderHook(() => useSignIn());
+
+      await act(async () => {
+        await result.current.handleCheckUser({ email: 'new@example.com' });
+      });
+
+      expect(mockSignInMagicLink).not.toHaveBeenCalled();
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('/signup?'));
+    });
+
     it('should land on email-sent state when a passwordless user triggers magic link', async () => {
       mockEnableMagicLink = true;
       mockSignInMagicLink.mockResolvedValue({ error: null });

@@ -7,6 +7,13 @@
       "when": 1793195269032,
       "tag": "0000_artifact_deployment",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793365384056,
+      "tag": "0001_artifact_deployment_next_revision",
+      "breakpoints": true
     }
   ],
   "version": "7"

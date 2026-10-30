@@ -52,7 +52,8 @@ describe('isolated fork database migrations', () => {
     expect(await hasTable(client, 'public.artifact_deployments')).toBe(true);
     expect(await hasTable(client, 'drizzle.__lobehub_fork_migrations')).toBe(true);
     await migrate(db, forkConfig);
+    const journal = JSON.parse(await readFile(path.join(fork, 'meta/_journal.json'), 'utf8'));
     const rows = await client.query('select * from drizzle.__lobehub_fork_migrations');
-    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows).toHaveLength(journal.entries.length);
   }, 60_000);
 });

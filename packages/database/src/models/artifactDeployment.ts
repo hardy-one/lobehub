@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 
 import {
   type ArtifactDeploymentItem,
@@ -118,6 +118,39 @@ export class ArtifactDeploymentModel {
     const [result] = await this.db.insert(artifactDeploymentRevisions).values(values).returning();
 
     return result;
+  };
+
+  /**
+   * Hand out the next revision number for a deployment. One `UPDATE` is what
+   * makes this safe under concurrent publishes: two uploads can never receive
+   * the same number, so they can never write into the same object prefix or
+   * collide on (deploymentId, revision) after their objects are already stored.
+   *
+   * The number is allocated when the upload is prepared, so a build that never
+   * commits leaves a gap rather than a reusable number.
+   */
+  reserveRevision = async (id: string): Promise<number> => {
+    // `GREATEST(..., max + 1)` keeps the counter authoritative even for a row
+    // whose counter lags its revisions (an import, or a row written before the
+    // counter existed): a number that a revision already holds is never handed out.
+    const nextRevision = sql`GREATEST(
+      ${artifactDeployments.nextRevision},
+      COALESCE((
+        SELECT MAX(${artifactDeploymentRevisions.revision})
+        FROM ${artifactDeploymentRevisions}
+        WHERE ${artifactDeploymentRevisions.deploymentId} = ${artifactDeployments.id}
+      ), 0) + 1
+    ) + 1`;
+
+    const [result] = await this.db
+      .update(artifactDeployments)
+      .set({ nextRevision, updatedAt: new Date() })
+      .where(and(eq(artifactDeployments.id, id), this.ownership()))
+      .returning({ nextRevision: artifactDeployments.nextRevision });
+
+    if (!result) throw new Error(`Artifact deployment not found: ${id}`);
+
+    return result.nextRevision - 1;
   };
 
   /** Revisions of a deployment owned by the caller, newest first. */

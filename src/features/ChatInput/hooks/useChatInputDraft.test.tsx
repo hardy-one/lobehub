@@ -7,6 +7,13 @@ import { getDraft, saveDraft } from '../draftStorage';
 import { createStore, Provider } from '../store';
 import { useChatInputDraft } from './useChatInputDraft';
 
+/**
+ * The composer reads its text via `getLexicalEditor().getEditorState().read()`,
+ * so every fake editor has to answer that call with the same markdown it exposes
+ * through `getDocument`.
+ */
+const lexicalReader = (read: () => string) => ({ getEditorState: () => ({ read }) });
+
 const createFakeEditor = () => {
   let json: Record<string, unknown> | undefined;
 
@@ -15,7 +22,7 @@ const createFakeEditor = () => {
       json = undefined;
     }),
     focus: vi.fn(),
-    getLexicalEditor: () => ({}),
+    getLexicalEditor: () => lexicalReader(() => (json?.text as string) ?? ''),
     getDocument: vi.fn((type: string) =>
       type === 'markdown' ? ((json?.text as string) ?? '') : json,
     ),
@@ -70,7 +77,7 @@ describe('useChatInputDraft', () => {
   it('flushes the pending debounced draft save on unmount', () => {
     const draftJson = { root: { children: [{ text: 'latest edit' }] } };
     const editor = {
-      getLexicalEditor: () => ({}),
+      getLexicalEditor: () => lexicalReader(() => 'latest edit'),
       getDocument: vi.fn((type: string) => (type === 'markdown' ? 'latest edit' : draftJson)),
     } as unknown as IEditor;
     const store = createStore({ draftKey: 'main_agent_topic', editor });
@@ -200,7 +207,7 @@ describe('useChatInputDraft', () => {
     const draftJson = { root: { children: [{ text: 'draft' }] } };
     const setDocument = vi.fn();
     const editor = {
-      getLexicalEditor: () => ({}),
+      getLexicalEditor: () => lexicalReader(() => ''),
       getDocument: vi.fn(),
       isEmpty: true,
       setDocument,
@@ -231,7 +238,7 @@ describe('useChatInputDraft', () => {
         empty = true;
       }),
       focus: vi.fn(),
-      getLexicalEditor: () => ({}),
+      getLexicalEditor: () => lexicalReader(() => markdown),
       getDocument: vi.fn((type: string) => (type === 'markdown' ? markdown : oldJson)),
       get isEmpty() {
         return empty;
@@ -268,7 +275,7 @@ describe('useChatInputDraft', () => {
     const editor = {
       cleanDocument: vi.fn(),
       focus,
-      getLexicalEditor: () => ({}),
+      getLexicalEditor: () => lexicalReader(() => ''),
       getDocument: vi.fn((type: string) => (type === 'markdown' ? '' : undefined)),
       isEmpty: true,
       setDocument: vi.fn(),
@@ -294,7 +301,7 @@ describe('useChatInputDraft', () => {
     const editor = {
       cleanDocument: vi.fn(),
       focus,
-      getLexicalEditor: () => ({}),
+      getLexicalEditor: () => lexicalReader(() => ''),
       getDocument: vi.fn((type: string) => (type === 'markdown' ? '' : undefined)),
       isEmpty: true,
       setDocument: vi.fn(),
@@ -377,7 +384,7 @@ describe('useChatInputDraft', () => {
   it('does not overwrite current editor input when restoring a draft', () => {
     const setDocument = vi.fn();
     const editor = {
-      getLexicalEditor: () => ({}),
+      getLexicalEditor: () => lexicalReader(() => ''),
       getDocument: vi.fn(),
       isEmpty: false,
       setDocument,

@@ -2,6 +2,8 @@ import { Button, createModal, ModalFooter, Text, useModalContext } from '@lobehu
 import { lazy, memo, type ReactNode, Suspense, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { readEditorText } from '@/libs/editor/readEditorText';
+
 import type { EditorBridge } from './type';
 import { useEditorBridgeReady } from './useEditorBridgeReady';
 
@@ -31,7 +33,10 @@ const EditorModalFooter = memo<EditorModalFooterProps>((props) => {
 
     setConfirmLoading(true);
     try {
-      const finalValue = (editor.getDocument('markdown') as unknown as string) || '';
+      // The same projection the composer sends with: `getDocument('markdown')`
+      // re-serializes through remark, which backslash-escapes characters the
+      // person typed literally, and a re-edited message must keep its text.
+      const finalValue = readEditorText(editor);
       const editorData = editor.getDocument('json');
       await onConfirm?.(finalValue, editorData);
       close();

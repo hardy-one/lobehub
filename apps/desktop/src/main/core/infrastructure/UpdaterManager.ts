@@ -10,7 +10,12 @@ import semver from 'semver';
 
 import { isDev, isWindows } from '@/const/env';
 import { UPDATE_CHANNEL, UPDATE_SERVER_URL, updaterConfig } from '@/modules/updater/configs';
-import { createUpdateEngine, type UpdateEngine } from '@/modules/updater/engine';
+import {
+  createUpdateEngine,
+  resolveUpdateEngineKind,
+  type UpdateEngine,
+  type UpdateEngineKind,
+} from '@/modules/updater/engine';
 import { extractRestoreRoute } from '@/modules/updater/utils';
 import { createLogger } from '@/utils/logger';
 
@@ -32,7 +37,12 @@ export class UpdaterManager {
   private downloading: boolean = false;
   private updateAvailable: boolean = false;
   private currentChannel: UpdateChannel = UPDATE_CHANNEL;
+  /** Engine currently driving checks; it always belongs to `currentChannel`. */
   private engine?: UpdateEngine;
+  /** Engines built so far, keyed by the kind the platform serves that channel with. */
+  private engines = new Map<UpdateEngineKind, UpdateEngine>();
+  /** Serializes engine selection so overlapping switches cannot pick a stale one. */
+  private engineQueue: Promise<void> = Promise.resolve();
   /** Incremented on each channel switch to invalidate in-flight checks */
   private checkGeneration: number = 0;
   /** Generation at the start of the current active check */
@@ -111,14 +121,12 @@ export class UpdaterManager {
     this.currentChannel = this.app.storeManager.get('updateChannel') ?? UPDATE_CHANNEL;
 
     try {
-      this.engine = await createUpdateEngine(this.currentChannel);
-      this.engine.configure(this.currentChannel);
+      await this.syncEngine();
     } catch (error) {
       logger.error('Failed to initialize updater:', error);
       this.setStage('error', { error: error instanceof Error ? error.message : String(error) });
       return;
     }
-    this.registerEvents();
 
     if (updaterConfig.app.autoCheckUpdate) {
       setTimeout(() => this.checkForUpdates(), 60 * 1000);
@@ -151,36 +159,78 @@ export class UpdaterManager {
   };
 
   /**
+   * Build the engine this channel needs (once per engine kind) and make it the
+   * current one. The macOS build resolves a different module than the shared
+   * one, so the platform decides which kinds exist at all.
+   */
+  private selectEngineForChannel = async () => {
+    const channel = this.currentChannel;
+    const kind = resolveUpdateEngineKind(channel);
+
+    let engine = this.engines.get(kind);
+    if (!engine) {
+      logger.info(`Creating the ${kind} update engine for channel ${channel}`);
+      engine = await createUpdateEngine(channel);
+      this.engines.set(kind, engine);
+      this.bindEngine(engine);
+    }
+
+    engine.configure(channel);
+    this.engine = engine;
+  };
+
+  /**
+   * Serialized so two quick switches cannot finish out of order and leave the
+   * older channel's engine selected.
+   */
+  private syncEngine = (): Promise<void> => {
+    const run = this.engineQueue.then(() => this.selectEngineForChannel());
+    this.engineQueue = run.catch(() => undefined);
+    return run;
+  };
+
+  /** Whether the current engine is the one this channel is served by. */
+  private engineMatchesChannel = () =>
+    this.engine?.kind === resolveUpdateEngineKind(this.currentChannel);
+
+  /**
    * Check for updates
    */
   public checkForUpdates = async ({ manual = false }: { manual?: boolean } = {}) => {
     if (manual) void this.app.coreUpdateManager.checkForUpdates({ manual: true });
-    if (!this.engine || this.checking || this.downloading) return;
-
-    // electron-updater has no updater implementation for every Linux
-    // distribution format we ship: snap refreshes through snapd, the `tar.gz`
-    // archive has no installer at all, and AppImageUpdater needs the APPIMAGE
-    // env only the AppImage runtime exports. For those, `checkForUpdates()`
-    // resolves `null` without emitting a single event, which would leave the
-    // UI spinning on "checking" forever. Say so instead.
-    if (!this.engine.isActive()) {
-      logger.warn(
-        'Updater is inactive for this installation (unsupported distribution format or unpacked build) — in-app update is unavailable',
-      );
-      this.setStage('unsupported');
-      return;
-    }
+    if (this.checking || this.downloading) return;
 
     this.checking = true;
     this.activeGeneration = this.checkGeneration;
 
-    logger.info(
-      `${manual ? 'Manually checking' : 'Auto checking'} for updates... (gen=${this.activeGeneration})`,
-    );
-
-    this.setStage('checking');
-
     try {
+      // The check has to run on the engine the current channel is served by,
+      // which changes at runtime when the user switches to or from HARDY.
+      // Only pay the rebuild when the channel moved to a different engine; a
+      // check on an engine that already matches stays synchronous as before.
+      if (!this.engineMatchesChannel()) await this.syncEngine();
+      if (!this.engine) return;
+
+      // electron-updater has no updater implementation for every Linux
+      // distribution format we ship: snap refreshes through snapd, the `tar.gz`
+      // archive has no installer at all, and AppImageUpdater needs the APPIMAGE
+      // env only the AppImage runtime exports. For those, `checkForUpdates()`
+      // resolves `null` without emitting a single event, which would leave the
+      // UI spinning on "checking" forever. Say so instead.
+      if (!this.engine.isActive()) {
+        logger.warn(
+          'Updater is inactive for this installation (unsupported distribution format or unpacked build) — in-app update is unavailable',
+        );
+        this.setStage('unsupported');
+        return;
+      }
+
+      logger.info(
+        `${manual ? 'Manually checking' : 'Auto checking'} for updates... (gen=${this.activeGeneration}, engine=${this.engine.kind})`,
+      );
+
+      this.setStage('checking');
+
       this.engine.configure(this.currentChannel);
       await this.engine.checkForUpdates();
     } catch (error) {
@@ -414,10 +464,6 @@ export class UpdaterManager {
       }
     }, 300);
   };
-
-  private registerEvents() {
-    if (this.engine) this.bindEngine(this.engine);
-  }
 
   private bindEngine(engine: UpdateEngine) {
     engine.on('checking-for-update', () => {

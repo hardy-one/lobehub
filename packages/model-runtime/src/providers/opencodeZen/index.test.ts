@@ -47,6 +47,12 @@ describe('LobeOpenCodeZenAI', () => {
         'https://proxy.example.com/v1/gateway',
         'https://proxy.example.com/v1/gateway',
       ],
+      // The gateway's documented OpenAI-compatible base URL.
+      [
+        'https://opencode.ai/inference/openai/v1',
+        'https://opencode.ai/inference/openai/v1',
+        'https://opencode.ai/inference/google',
+      ],
     ])(
       'configures one route per protocol with baseURL=%s',
       (baseURL, expectedURL, expectedGeminiURL) => {

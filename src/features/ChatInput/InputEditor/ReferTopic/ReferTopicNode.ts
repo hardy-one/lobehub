@@ -14,6 +14,8 @@ import {
 } from 'lexical';
 import { createElement } from 'react';
 
+import type { TagFormNode } from '@/libs/editor/readEditorText';
+
 import { ReferTopicView } from './ReferTopicView';
 
 export type SerializedReferTopicNode = Spread<
@@ -24,7 +26,10 @@ export type SerializedReferTopicNode = Spread<
   SerializedLexicalNode
 >;
 
-export class ReferTopicNode extends DecoratorNode<any> implements HeadlessRenderableNode {
+export class ReferTopicNode
+  extends DecoratorNode<any>
+  implements HeadlessRenderableNode, TagFormNode
+{
   __topicId: string;
   __topicTitle: string;
 
@@ -72,6 +77,15 @@ export class ReferTopicNode extends DecoratorNode<any> implements HeadlessRender
 
   getTextContent(): string {
     return this.__topicTitle;
+  }
+
+  /**
+   * The tag form carried by the message text (`TagFormNode`). The runtime parses
+   * it back out to load the referenced conversation, so the send path must emit
+   * it instead of the title.
+   */
+  toTag(): string {
+    return `<refer_topic name="${this.__topicTitle}" id="${this.__topicId}" />`;
   }
 
   isInline(): true {

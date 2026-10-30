@@ -1,7 +1,12 @@
-import type { IEditor } from '@lobehub/editor';
-import { CommonPlugin, Kernel, MarkdownPlugin } from '@lobehub/editor';
+import { CodePlugin, CommonPlugin, type IEditor, Kernel, MarkdownPlugin } from '@lobehub/editor';
 import { toast } from '@lobehub/ui';
-import { $createParagraphNode, $createTextNode, $getRoot, KEY_ESCAPE_COMMAND } from 'lexical';
+import {
+  $createParagraphNode,
+  $createTextNode,
+  $getRoot,
+  $isParagraphNode,
+  KEY_ESCAPE_COMMAND,
+} from 'lexical';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { installMarketMentions, MarketMentionInstallError } from '@/services/mentionMarketInstall';
@@ -12,6 +17,7 @@ import type { UploadFileItem } from '@/types/files/upload';
 
 import { getDraft, saveDraft } from '../draftStorage';
 import { SYNC_IMAGE_REF_TAGS_COMMAND } from '../InputEditor/ImageRefTag/ImageRefTagPlugin';
+import { $createReferTopicNode, ReferTopicNode } from '../InputEditor/ReferTopic/ReferTopicNode';
 import { getInputHistory } from '../inputHistoryStorage';
 import { createStore, selectors } from '.';
 
@@ -28,11 +34,20 @@ const createHelloEditor = () => ({
   getDocument: vi.fn((type: string) => (type === 'markdown' ? 'Hello' : { root: {} })),
 });
 
-const createComposerEditor = (text: string) => {
-  const editor = new Kernel() as unknown as IEditor;
-  editor.registerPlugins([CommonPlugin]);
+const createComposerEditor = (
+  text: string,
+  {
+    nodes = [],
+    plugins = [CommonPlugin],
+    type = 'text',
+  }: { nodes?: any[]; plugins?: any[]; type?: 'markdown' | 'text' } = {},
+) => {
+  const kernel = new Kernel();
+  if (nodes.length) kernel.registerNodes(nodes);
+  const editor = kernel as unknown as IEditor;
+  editor.registerPlugins(plugins);
   editor.initNodeEditor();
-  editor.setDocument('text', text);
+  editor.setDocument(type, text);
   return editor;
 };
 
@@ -62,6 +77,47 @@ describe('ChatInput store actions', () => {
     const store = createStore({ editor: undefined });
 
     expect(store.getState().getMarkdownContent()).toBe('');
+  });
+
+  it('sends the formatting and paragraphs the bubble shows', () => {
+    // `getMarkdownContent` is the text the send path hands the model, while the
+    // bubble renders the same document from its JSON. Bold, inline code and the
+    // paragraph break therefore have to survive the projection, and the caret
+    // placeholder inside a code span must not.
+    const editor = createComposerEditor('**bold** and `pnpm test`\n\n1_000_000 total', {
+      plugins: [CommonPlugin, MarkdownPlugin, CodePlugin],
+      type: 'markdown',
+    });
+    const store = createStore({ editor });
+
+    const message = store.getState().getMarkdownContent();
+
+    expect(message).toBe('**bold** and `pnpm test`\n\n1_000_000 total');
+    expect(message).not.toContain('\uFEFF');
+  });
+
+  it('sends a topic reference as the tag the runtime parses', () => {
+    const editor = createComposerEditor('read', { nodes: [ReferTopicNode] });
+
+    // `discrete` commits before the assertion reads the editor state.
+    editor.getLexicalEditor()!.update(
+      () => {
+        const paragraph = $getRoot().getLastChild();
+        if (!$isParagraphNode(paragraph)) throw new Error('expected a paragraph');
+        // The text projection keeps the decorator's tag form instead of its
+        // title, because the referenced conversation is loaded by parsing that
+        // tag back out of the sent message.
+        paragraph.append($createTextNode(' '));
+        paragraph.append($createReferTopicNode('tpc_referenced', 'Other topic'));
+      },
+      { discrete: true },
+    );
+
+    const store = createStore({ editor });
+
+    expect(store.getState().getMarkdownContent()).toBe(
+      'read <refer_topic name="Other topic" id="tpc_referenced" />',
+    );
   });
 
   it('keeps action lists usable when a host omits them', () => {
@@ -375,14 +431,15 @@ describe('ChatInput store actions', () => {
         type: 'root',
       },
     };
-    const marketEditor = () => ({
+    const marketMarkdown = () => '<mention name="Writer" id="market:writer" /> hi';
+    const marketEditor = (markdown: () => string = marketMarkdown) => ({
       cleanDocument: vi.fn(),
       dispatchCommand: vi.fn(),
       focus: vi.fn(),
-      getDocument: vi.fn((type: string) =>
-        type === 'markdown' ? '<mention name="Writer" id="market:writer" /> hi' : marketDoc,
-      ),
-      getLexicalEditor: () => ({}),
+      getDocument: vi.fn((type: string) => (type === 'markdown' ? markdown() : marketDoc)),
+      // The sent text is projected from the lexical document, so the double
+      // answers that read with the same Markdown `getDocument` returns.
+      getLexicalEditor: () => ({ getEditorState: () => ({ read: markdown }) }),
     });
 
     beforeEach(() => {
@@ -432,13 +489,11 @@ describe('ChatInput store actions', () => {
         },
       });
       let current: typeof marketDoc = marketDoc;
+      const currentMarkdown = () =>
+        `<mention name="${current.root.children[0].children[0].label}" id="${current.root.children[0].children[0].metadata.id}" /> hi`;
       const editor = {
-        ...marketEditor(),
-        getDocument: vi.fn((type: string) =>
-          type === 'markdown'
-            ? `<mention name="${current.root.children[0].children[0].label}" id="${current.root.children[0].children[0].metadata.id}" /> hi`
-            : current,
-        ),
+        ...marketEditor(currentMarkdown),
+        getDocument: vi.fn((type: string) => (type === 'markdown' ? currentMarkdown() : current)),
       };
       vi.mocked(installMarketMentions)
         .mockImplementationOnce(async () => {

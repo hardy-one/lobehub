@@ -1,7 +1,13 @@
 import type { IEditor } from '@lobehub/editor';
 import { CommonPlugin, Kernel, MarkdownPlugin } from '@lobehub/editor';
 import { toast } from '@lobehub/ui';
-import { $createParagraphNode, $createTextNode, $getRoot, KEY_ESCAPE_COMMAND } from 'lexical';
+import {
+  $createParagraphNode,
+  $createTextNode,
+  $getRoot,
+  $isParagraphNode,
+  KEY_ESCAPE_COMMAND,
+} from 'lexical';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { installMarketMentions, MarketMentionInstallError } from '@/services/mentionMarketInstall';
@@ -9,6 +15,7 @@ import { useAgentStore } from '@/store/agent';
 import { systemAgentSelectors } from '@/store/user/selectors';
 
 import { getDraft, saveDraft } from '../draftStorage';
+import { $createReferTopicNode, ReferTopicNode } from '../InputEditor/ReferTopic/ReferTopicNode';
 import { getInputHistory } from '../inputHistoryStorage';
 import { createStore, selectors } from '.';
 
@@ -17,8 +24,10 @@ vi.mock('@/services/mentionMarketInstall', async (importOriginal) => ({
   installMarketMentions: vi.fn(),
 }));
 
-const createComposerEditor = (text: string) => {
-  const editor = new Kernel() as unknown as IEditor;
+const createComposerEditor = (text: string, nodes: any[] = []) => {
+  const kernel = new Kernel();
+  if (nodes.length) kernel.registerNodes(nodes);
+  const editor = kernel as unknown as IEditor;
   editor.registerPlugins([CommonPlugin]);
   editor.initNodeEditor();
   editor.setDocument('text', text);
@@ -51,6 +60,30 @@ describe('ChatInput store actions', () => {
     const store = createStore({ editor: undefined });
 
     expect(store.getState().getMarkdownContent()).toBe('');
+  });
+
+  it('sends a topic reference as the tag the runtime parses', () => {
+    const editor = createComposerEditor('read', [ReferTopicNode]);
+
+    // `discrete` commits before the assertion reads the editor state.
+    editor.getLexicalEditor()!.update(
+      () => {
+        const paragraph = $getRoot().getLastChild();
+        if (!$isParagraphNode(paragraph)) throw new Error('expected a paragraph');
+        // The text projection keeps the decorator's tag form instead of its
+        // title, because the referenced conversation is loaded by parsing that
+        // tag back out of the sent message.
+        paragraph.append($createTextNode(' '));
+        paragraph.append($createReferTopicNode('tpc_referenced', 'Other topic'));
+      },
+      { discrete: true },
+    );
+
+    const store = createStore({ editor });
+
+    expect(store.getState().getMarkdownContent()).toBe(
+      'read <refer_topic name="Other topic" id="tpc_referenced" />',
+    );
   });
 
   it('keeps action lists usable when a host omits them', () => {

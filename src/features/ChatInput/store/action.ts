@@ -3,6 +3,7 @@ import { t } from 'i18next';
 import { KEY_ESCAPE_COMMAND } from 'lexical';
 import { type StateCreator } from 'zustand/vanilla';
 
+import { readEditorText } from '@/libs/editor/readEditorText';
 import { installMarketMentions, MarketMentionInstallError } from '@/services/mentionMarketInstall';
 import { useAgentStore } from '@/store/agent';
 import { fileChatSelectors, useFileStore } from '@/store/file';
@@ -10,7 +11,7 @@ import { useUserStore } from '@/store/user';
 import { systemAgentSelectors, userProfileSelectors } from '@/store/user/selectors';
 
 import { removeDraft } from '../draftStorage';
-import { canSerialize, readDocument, writeDocument } from '../editorDocument';
+import { readDocument, writeDocument } from '../editorDocument';
 import { getInstalledSkillIdentifiers } from '../InputEditor/ActionTag/useInstalledSkillsAndTools';
 import {
   PRUNE_UNATTACHED_IMAGE_REFS_COMMAND,
@@ -21,7 +22,6 @@ import {
   collectPendingMarketAgents,
   collectPendingMarketSkills,
 } from '../InputEditor/marketMention';
-import { projectDocumentText } from '../InputEditor/projectDocumentText';
 import { addInputHistory } from '../inputHistoryStorage';
 import { getImageUploadRefs } from '../utils/imageUploads';
 import { type PublicState, type State } from './initialState';
@@ -82,16 +82,7 @@ export const store: CreateStore = (publicState) => (set, get) => ({
   getJSONState: () => {
     return readDocument(get().editor, 'json') as Record<string, any> | undefined;
   },
-  getMarkdownContent: () => {
-    const editor = get().editor;
-    if (!canSerialize(editor)) return '';
-
-    return editor!
-      .getLexicalEditor()!
-      .getEditorState()
-      .read(() => projectDocumentText())
-      .trimEnd();
-  },
+  getMarkdownContent: () => readEditorText(get().editor),
   handleSendButton: () => {
     const editor = get().editor;
     if (!editor) return;

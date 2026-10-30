@@ -296,6 +296,36 @@ describe('ArtifactDeploymentModel', () => {
     });
   });
 
+  describe('reserveRevision', () => {
+    it('hands out the revision after the newest one, even after a rollback', async () => {
+      await createDeployment(deploymentModel, 'dep-reserve', { currentRevision: 1 });
+      for (const revision of [1, 2, 3]) {
+        await deploymentModel.addRevision(revisionValues('dep-reserve', revision));
+      }
+      // The panel restored v1; `currentRevision` is no longer the high-water mark.
+      await deploymentModel.update('dep-reserve', { currentRevision: 1 });
+
+      expect(await deploymentModel.reserveRevision('dep-reserve')).toBe(4);
+      expect(await deploymentModel.reserveRevision('dep-reserve')).toBe(5);
+    });
+
+    it('gives concurrent allocations distinct numbers', async () => {
+      await createDeployment(deploymentModel, 'dep-race');
+
+      const revisions = await Promise.all(
+        Array.from({ length: 8 }, () => deploymentModel.reserveRevision('dep-race')),
+      );
+
+      expect(new Set(revisions).size).toBe(8);
+    });
+
+    it('does not allocate for a deployment the caller cannot see', async () => {
+      await createDeployment(deploymentModel, 'dep-reserve-other');
+
+      await expect(otherDeploymentModel.reserveRevision('dep-reserve-other')).rejects.toThrow();
+    });
+  });
+
   describe('getPublishedDeployment', () => {
     it('returns the deployment with the revision currentRevision points at', async () => {
       await createDeployment(deploymentModel, 'dep-published', { currentRevision: 2 });

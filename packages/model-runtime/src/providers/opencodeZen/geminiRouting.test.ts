@@ -199,6 +199,20 @@ describe('OpenCode Zen Gemini routing', () => {
     );
   });
 
+  it('routes the documented OpenAI base URL to the Gemini surface', async () => {
+    await new LobeOpenCodeZenAI({
+      apiKey: 'test-key',
+      baseURL: 'https://opencode.ai/inference/openai/v1',
+    }).chat(
+      { messages, model: 'gemini-3.5-flash' },
+      { metadata: { topicId: 'topic-documented' } },
+    );
+
+    expect(captured[0].url).toBe(
+      'https://opencode.ai/inference/google/v1beta/models/gemini-3.5-flash:streamGenerateContent?alt=sse',
+    );
+  });
+
   it.each([
     // openai-compatible models stay on the gateway's Chat Completions endpoint
     ['glm-5.3', `${ZEN_BASE_URL}/chat/completions`],

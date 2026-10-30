@@ -1,8 +1,9 @@
 import { toast } from '@lobehub/ui';
 import { t } from 'i18next';
-import { $getRoot, KEY_ESCAPE_COMMAND } from 'lexical';
+import { KEY_ESCAPE_COMMAND } from 'lexical';
 import { type StateCreator } from 'zustand/vanilla';
 
+import { readEditorText } from '@/libs/editor/readEditorText';
 import { installMarketMentions, MarketMentionInstallError } from '@/services/mentionMarketInstall';
 import { useAgentStore } from '@/store/agent';
 import { fileChatSelectors, useFileStore } from '@/store/file';
@@ -10,7 +11,7 @@ import { useUserStore } from '@/store/user';
 import { systemAgentSelectors, userProfileSelectors } from '@/store/user/selectors';
 
 import { removeDraft } from '../draftStorage';
-import { canSerialize, readDocument, writeDocument } from '../editorDocument';
+import { readDocument, writeDocument } from '../editorDocument';
 import { getInstalledSkillIdentifiers } from '../InputEditor/ActionTag/useInstalledSkillsAndTools';
 import {
   PRUNE_UNATTACHED_IMAGE_REFS_COMMAND,
@@ -81,26 +82,7 @@ export const store: CreateStore = (publicState) => (set, get) => ({
   getJSONState: () => {
     return readDocument(get().editor, 'json') as Record<string, any> | undefined;
   },
-  getMarkdownContent: () => {
-    const editor = get().editor;
-    if (!canSerialize(editor)) return '';
-
-    // The root node's own text projection adds a newline at every paragraph
-    // boundary and repeats it around an empty paragraph, so a single typed blank
-    // line came back as four newlines and every send grew the message. Project
-    // the top-level nodes instead and join them with one newline, which is the
-    // exact inverse of the text data source splitting a document on newlines.
-    return editor!
-      .getLexicalEditor()!
-      .getEditorState()
-      .read(() =>
-        $getRoot()
-          .getChildren()
-          .map((node) => node.getTextContent())
-          .join('\n'),
-      )
-      .trimEnd();
-  },
+  getMarkdownContent: () => readEditorText(get().editor),
   handleSendButton: () => {
     const editor = get().editor;
     if (!editor) return;

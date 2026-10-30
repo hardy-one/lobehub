@@ -74,6 +74,14 @@ export class ReferTopicNode extends DecoratorNode<any> implements HeadlessRender
     return this.__topicTitle;
   }
 
+  /**
+   * The tag form carried by the message text. The runtime parses it back out to
+   * load the referenced conversation, so the send path must emit it.
+   */
+  toTag(): string {
+    return `<refer_topic name="${this.__topicTitle}" id="${this.__topicId}" />`;
+  }
+
   isInline(): true {
     return true;
   }

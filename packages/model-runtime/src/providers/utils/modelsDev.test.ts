@@ -540,18 +540,16 @@ describe('models.dev cold-cache first response', () => {
   });
 
   it('keeps the Zen and Go catalogs isolated', async () => {
-    global.fetch = vi
-      .fn()
-      .mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          opencode: {
-            models: {
-              'bank-a': { id: 'bank-a', name: 'Zen Only', limit: { context: 111_111 } },
-            },
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        opencode: {
+          models: {
+            'bank-a': { id: 'bank-a', name: 'Zen Only', limit: { context: 111_111 } },
           },
-        }),
-      }) as any;
+        },
+      }),
+    }) as any;
     await fetchModelsDevApi();
 
     const go = await resolveModelsDevModelList({

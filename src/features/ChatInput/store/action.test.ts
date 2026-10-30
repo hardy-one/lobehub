@@ -1,4 +1,4 @@
-import { CommonPlugin, type IEditor, Kernel } from '@lobehub/editor';
+import { CodePlugin, CommonPlugin, type IEditor, Kernel, MarkdownPlugin } from '@lobehub/editor';
 import { $createTextNode, $getRoot, $isParagraphNode, KEY_ESCAPE_COMMAND } from 'lexical';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -10,13 +10,20 @@ import { $createReferTopicNode, ReferTopicNode } from '../InputEditor/ReferTopic
 import { getInputHistory } from '../inputHistoryStorage';
 import { createStore, selectors } from '.';
 
-const createComposerEditor = (text: string, nodes: any[] = []) => {
+const createComposerEditor = (
+  text: string,
+  {
+    nodes = [],
+    plugins = [CommonPlugin],
+    type = 'text',
+  }: { nodes?: any[]; plugins?: any[]; type?: 'markdown' | 'text' } = {},
+) => {
   const kernel = new Kernel();
   if (nodes.length) kernel.registerNodes(nodes);
   const editor = kernel as unknown as IEditor;
-  editor.registerPlugins([CommonPlugin]);
+  editor.registerPlugins(plugins);
   editor.initNodeEditor();
-  editor.setDocument('text', text);
+  editor.setDocument(type, text);
   return editor;
 };
 
@@ -48,8 +55,25 @@ describe('ChatInput store actions', () => {
     expect(store.getState().getMarkdownContent()).toBe('');
   });
 
+  it('sends the formatting and paragraphs the bubble shows', () => {
+    // `getMarkdownContent` is the text the send path hands the model, while the
+    // bubble renders the same document from its JSON. Bold, inline code and the
+    // paragraph break therefore have to survive the projection, and the caret
+    // placeholder inside a code span must not.
+    const editor = createComposerEditor('**bold** and `pnpm test`\n\n1_000_000 total', {
+      plugins: [CommonPlugin, MarkdownPlugin, CodePlugin],
+      type: 'markdown',
+    });
+    const store = createStore({ editor });
+
+    const message = store.getState().getMarkdownContent();
+
+    expect(message).toBe('**bold** and `pnpm test`\n\n1_000_000 total');
+    expect(message).not.toContain('\uFEFF');
+  });
+
   it('sends a topic reference as the tag the runtime parses', () => {
-    const editor = createComposerEditor('read', [ReferTopicNode]);
+    const editor = createComposerEditor('read', { nodes: [ReferTopicNode] });
 
     // `discrete` commits before the assertion reads the editor state.
     editor.getLexicalEditor()!.update(

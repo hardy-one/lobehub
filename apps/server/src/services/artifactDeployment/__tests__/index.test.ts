@@ -554,6 +554,28 @@ describe('readArtifactObject', () => {
     expect(result).toEqual({
       bytes: new Uint8Array([1, 2, 3]),
       contentType: 'text/html; charset=utf-8',
+      isEntry: true,
+    });
+  });
+
+  it('marks the deployment entry as the entry whatever file name it was published under', async () => {
+    getPublishedDeployment.mockResolvedValue({
+      deployment: deploymentRow({ entry: 'home.html' }),
+      revision: revisionRow({
+        manifest: {
+          'assets/app.js': { contentType: 'text/javascript', size: 3 },
+          'home.html': { contentType: 'text/html; charset=utf-8', size: 3 },
+        },
+      }),
+    });
+
+    await expect(readArtifactObject(db, 'dep_1', 'home.html')).resolves.toMatchObject({
+      isEntry: true,
+    });
+    // A bare deployment URL resolves to the same entry, so it must be marked too.
+    await expect(readArtifactObject(db, 'dep_1', '')).resolves.toMatchObject({ isEntry: true });
+    await expect(readArtifactObject(db, 'dep_1', 'assets/app.js')).resolves.toMatchObject({
+      isEntry: false,
     });
   });
 

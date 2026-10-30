@@ -43,6 +43,7 @@ describe('respondWithArtifact', () => {
     vi.mocked(readArtifactObject).mockResolvedValue({
       bytes: new TextEncoder().encode('<html>hi</html>'),
       contentType: 'text/html',
+      isEntry: true,
     } as any);
 
     const response = await serve('');
@@ -64,9 +65,37 @@ describe('respondWithArtifact', () => {
     vi.mocked(readArtifactObject).mockResolvedValue({
       bytes: new Uint8Array([1]),
       contentType: 'text/html',
+      isEntry: true,
     } as any);
 
     const response = await serve('index.html');
+
+    expect(response.headers.get('cache-control')).toBe('no-cache');
+  });
+
+  it('revalidates a custom entry file the deployment was published under', async () => {
+    vi.mocked(readArtifactObject).mockResolvedValue({
+      bytes: new TextEncoder().encode('<html>home</html>'),
+      contentType: 'text/html; charset=utf-8',
+      isEntry: true,
+    } as any);
+
+    const response = await serve('home.html');
+
+    // The object is written under a revision prefix, but the URL a visitor loads
+    // is stable, so it moves when the Artifact is republished.
+    expect(response.headers.get('cache-control')).toBe('no-cache');
+    expect(readArtifactObject).toHaveBeenCalledWith(db, ID, 'home.html');
+  });
+
+  it('revalidates an HTML document that is not the entry either', async () => {
+    vi.mocked(readArtifactObject).mockResolvedValue({
+      bytes: new TextEncoder().encode('<html>about</html>'),
+      contentType: 'text/html; charset=utf-8',
+      isEntry: false,
+    } as any);
+
+    const response = await serve('about.html');
 
     expect(response.headers.get('cache-control')).toBe('no-cache');
   });
@@ -75,6 +104,7 @@ describe('respondWithArtifact', () => {
     vi.mocked(readArtifactObject).mockResolvedValue({
       bytes: new Uint8Array([1, 2, 3]),
       contentType: 'text/javascript',
+      isEntry: false,
     } as any);
 
     const response = await serve('assets/app.js');

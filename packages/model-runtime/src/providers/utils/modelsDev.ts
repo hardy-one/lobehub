@@ -445,7 +445,8 @@ export const resolveModelsDevModelList = async ({
   providerId,
 }: ResolveModelsDevModelListOptions) => {
   let modelsDev = getCachedModelsDevProvider(modelsDevProvider);
-  if (Object.keys(modelsDev).length === 0) {
+  const coldCache = Object.keys(modelsDev).length === 0;
+  if (coldCache) {
     // Cold cache: wait for models.dev for at most MODELS_DEV_COLD_BUDGET_MS, then
     // answer from the in-repo bank. The request is not cancelled: it keeps running
     // in the background (single-flight, bounded by MODELS_DEV_TIMEOUT_MS), so a
@@ -453,8 +454,12 @@ export const resolveModelsDevModelList = async ({
     // can no longer hold the model list for the whole download timeout.
     await waitAtMost(fetchModelsDevApi(), MODELS_DEV_COLD_BUDGET_MS);
     modelsDev = getCachedModelsDevProvider(modelsDevProvider);
+  } else {
+    // Warm cache: answer immediately and refresh the catalog in the background.
+    // The cold path already issued its request, so refreshing there would only
+    // duplicate it (one request per model-list call, as before).
+    refreshModelsDevApi();
   }
-  refreshModelsDevApi();
   const bankById = new Map(bankModels.map((m) => [m.id, m]));
   const bankByIdLower = new Map(bankModels.map((m) => [m.id.toLowerCase(), m]));
 

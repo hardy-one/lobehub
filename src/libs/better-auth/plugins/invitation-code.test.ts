@@ -42,8 +42,11 @@ const getCreateBefore = () => {
 
 const USER = { email: 'user@example.com' };
 
-const signUpContext = (options: { code?: string; path?: string } = {}) => ({
-  headers: new Headers(options.code ? { 'x-invitation-code': options.code } : {}),
+const signUpContext = (options: { code?: string; cookie?: string; path?: string } = {}) => ({
+  headers: new Headers({
+    ...(options.code ? { 'x-invitation-code': options.code } : {}),
+    ...(options.cookie ? { cookie: options.cookie } : {}),
+  }),
   path: options.path ?? '/sign-up/email',
 });
 
@@ -72,6 +75,28 @@ describe('invitationCode plugin', () => {
     const before = getCreateBefore();
 
     await expect(before(USER, signUpContext({ code: 'CODE2' }))).resolves.toEqual({ data: USER });
+  });
+
+  it('should accept the code the magic-link request stored in the browser', async () => {
+    setCodes('CODE1');
+    const before = getCreateBefore();
+    const context = signUpContext({
+      cookie: 'lobe-invitation-code=CODE1',
+      path: '/magic-link/verify',
+    });
+
+    await expect(before(USER, context)).resolves.toEqual({ data: USER });
+  });
+
+  it('should refuse an invalid code carried by the cookie', async () => {
+    setCodes('CODE1');
+    const before = getCreateBefore();
+    const context = signUpContext({
+      cookie: 'lobe-invitation-code=CODE2',
+      path: '/magic-link/verify',
+    });
+
+    expect(await getErrorCode(() => before(USER, context))).toBe('INVALID_INVITATION_CODE');
   });
 
   it('should refuse a creation without a code', async () => {

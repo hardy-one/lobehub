@@ -20,13 +20,21 @@ interface DisplayMessageIndex {
   groupOfBlock: Map<string, UIChatMessage>;
 }
 
+/**
+ * A turn group holds its blocks in `children`. `supervisor` is the group-chat
+ * flavour of the same shape, so leaving it out leaves every block of a
+ * supervisor turn unresolvable, and those rows render as still loading.
+ */
+const isTurnGroup = (message: UIChatMessage) =>
+  message.role === 'assistantGroup' || message.role === 'supervisor';
+
 const buildIndex = (messages: UIChatMessage[]): DisplayMessageIndex => {
   const byId = new Map<string, UIChatMessage>();
   const groupOfBlock = new Map<string, UIChatMessage>();
 
   for (const message of messages) {
     byId.set(message.id, message);
-    if (message.role !== 'assistantGroup') continue;
+    if (!isTurnGroup(message)) continue;
     for (const block of message.children ?? []) groupOfBlock.set(block.id, message);
   }
 

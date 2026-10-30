@@ -7,6 +7,7 @@ import {
   fetchModelsDevApi,
   fetchModelsDevRoutingMetadata,
   mapReasoningOptionsToExtendParams,
+  MODELS_DEV_COLD_BUDGET_MS,
   MODELS_DEV_TIMEOUT_MS,
   resolveModelsDevModelList,
 } from './modelsDev';
@@ -394,5 +395,177 @@ describe('resolveModelsDevModelList', () => {
     });
 
     expect(result.map((m: any) => m.id)).toEqual(['qwen3.7-plus', 'glm-5']);
+  });
+});
+
+describe('models.dev cold-cache first response', () => {
+  const bankModels = [{ id: 'bank-a', settings: { extendParams: ['enableReasoning'] } }];
+  const catalog = {
+    opencode: {
+      models: {
+        'bank-a': {
+          id: 'bank-a',
+          name: 'Bank A',
+          reasoning: true,
+          limit: { context: 200_000, output: 8_192 },
+        },
+      },
+    },
+  };
+
+  const resolveZen = (client?: any) =>
+    resolveModelsDevModelList({
+      bankModels,
+      client,
+      modelsDevProvider: 'opencode',
+      providerId: 'opencodezen',
+    });
+
+  beforeEach(() => {
+    __resetModelsDevCacheForTests();
+  });
+
+  afterEach(() => {
+    __resetModelsDevCacheForTests();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('bounds the first response when models.dev never answers', async () => {
+    // An unreachable models.dev used to block the whole list for
+    // MODELS_DEV_TIMEOUT_MS (12s, measured 12009ms before this change).
+    expect(MODELS_DEV_COLD_BUDGET_MS).toBeLessThan(1000);
+    vi.useFakeTimers();
+    const hangingFetch = vi.fn(() => new Promise(() => {}));
+    global.fetch = hangingFetch as any;
+
+    const pending = resolveZen();
+    let settled = false;
+    void pending.then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(MODELS_DEV_COLD_BUDGET_MS - 1);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+
+    await expect(pending).resolves.toEqual([
+      { id: 'bank-a', settings: { extendParams: ['enableReasoning'] } },
+    ]);
+    expect(hangingFetch).toHaveBeenCalledOnce();
+  });
+
+  it('returns the local list quickly when the cold request is rejected', async () => {
+    global.fetch = vi.fn().mockRejectedValue(new TypeError('fetch failed')) as any;
+
+    const startedAt = performance.now();
+    const result = await resolveZen();
+    const elapsed = performance.now() - startedAt;
+
+    expect(result).toEqual([{ id: 'bank-a', settings: { extendParams: ['enableReasoning'] } }]);
+    expect(elapsed).toBeLessThan(MODELS_DEV_COLD_BUDGET_MS + 500);
+    expect(global.fetch).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['an HTTP error', { ok: false, status: 503 }],
+    [
+      'a body that is not the catalog',
+      {
+        ok: true,
+        json: async () => {
+          throw new SyntaxError('Unexpected token < in JSON at position 0');
+        },
+      },
+    ],
+  ])('returns the local list quickly on %s', async (_label, response) => {
+    global.fetch = vi.fn().mockResolvedValue(response) as any;
+
+    const startedAt = performance.now();
+    const result = await resolveZen();
+    const elapsed = performance.now() - startedAt;
+
+    expect(result).toEqual([{ id: 'bank-a', settings: { extendParams: ['enableReasoning'] } }]);
+    expect(elapsed).toBeLessThan(MODELS_DEV_COLD_BUDGET_MS + 500);
+  });
+
+  it('serves a warm catalog without another request', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => catalog });
+    global.fetch = fetchMock as any;
+
+    const cold = await resolveZen();
+    expect(cold[0].displayName).toBe('Bank A');
+
+    const startedAt = performance.now();
+    const warm = await resolveZen();
+    const elapsed = performance.now() - startedAt;
+
+    expect(elapsed).toBeLessThan(MODELS_DEV_COLD_BUDGET_MS);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(warm[0]).toMatchObject({ displayName: 'Bank A', contextWindowTokens: 200_000 });
+  });
+
+  it('picks up the background refresh on the next call', async () => {
+    const pending: Array<(value: any) => void> = [];
+    const fetchMock = vi.fn(
+      () => new Promise((resolve) => pending.push(resolve as (value: any) => void)),
+    );
+    global.fetch = fetchMock as any;
+
+    const cold = await resolveZen();
+    // Bank-only metadata: the first response no longer waits for the download.
+    expect(cold[0].displayName).toBeUndefined();
+
+    pending[0]({ ok: true, json: async () => catalog });
+    await fetchModelsDevApi();
+
+    const warm = await resolveZen();
+    expect(warm[0]).toMatchObject({ displayName: 'Bank A', contextWindowTokens: 200_000 });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('retries on the next call after the network recovers', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce({ ok: true, json: async () => catalog });
+    global.fetch = fetchMock as any;
+
+    await resolveZen();
+    // The failure cooldown protects a catalog we already have; with nothing cached
+    // the next request must be able to pick the recovered network up immediately.
+    const recovered = await resolveZen();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(recovered[0]).toMatchObject({ displayName: 'Bank A', contextWindowTokens: 200_000 });
+  });
+
+  it('keeps the Zen and Go catalogs isolated', async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          opencode: {
+            models: {
+              'bank-a': { id: 'bank-a', name: 'Zen Only', limit: { context: 111_111 } },
+            },
+          },
+        }),
+      }) as any;
+    await fetchModelsDevApi();
+
+    const go = await resolveModelsDevModelList({
+      bankModels: [{ id: 'bank-a' }],
+      modelsDevProvider: 'opencode-go',
+      providerId: 'opencodecodingplan',
+    });
+    expect(go).toEqual([{ id: 'bank-a' }]);
+
+    const zen = await resolveModelsDevModelList({
+      bankModels: [{ id: 'bank-a' }],
+      modelsDevProvider: 'opencode',
+      providerId: 'opencodezen',
+    });
+    expect(zen[0]).toMatchObject({ displayName: 'Zen Only', contextWindowTokens: 111_111 });
   });
 });

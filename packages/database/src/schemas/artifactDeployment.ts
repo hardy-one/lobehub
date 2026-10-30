@@ -68,6 +68,13 @@ export const artifactDeployments = pgTable(
     /** Revision currently served; must exist in `artifact_deployment_revisions`. */
     currentRevision: integer('current_revision').default(1).notNull(),
 
+    /**
+     * Next revision number to hand out. It only ever moves forward: restoring an
+     * older revision moves `currentRevision` back, and a redeploy must not reuse
+     * the number (and object prefix) of a revision that already exists.
+     */
+    nextRevision: integer('next_revision').default(1).notNull(),
+
     /** File served for a directory request, relative to the deployment root. */
     entry: text('entry').default('index.html').notNull(),
 

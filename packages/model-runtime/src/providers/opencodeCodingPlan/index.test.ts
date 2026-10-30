@@ -47,6 +47,12 @@ describe('LobeOpenCodeCodingPlanAI', () => {
         'https://proxy.example.com/zen/go/v1',
         'https://proxy.example.com/inference/go/google',
       ],
+      // The gateway's documented OpenAI-compatible base URL.
+      [
+        'https://opencode.ai/inference/go/openai/v1',
+        'https://opencode.ai/inference/go/openai/v1',
+        'https://opencode.ai/inference/go/google',
+      ],
       [
         'https://proxy.example.com/v1/gateway',
         'https://proxy.example.com/v1/gateway',

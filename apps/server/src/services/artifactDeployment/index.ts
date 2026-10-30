@@ -254,6 +254,12 @@ export interface ArtifactObject {
   /** Backed by a plain ArrayBuffer, which is what `Response` accepts as a body. */
   bytes: Uint8Array<ArrayBuffer>;
   contentType: string;
+  /**
+   * Whether this object is the deployment's entry file. The entry is served from
+   * a stable URL that moves on every publish, so the route revalidates it
+   * whatever file name it was published under.
+   */
+  isEntry: boolean;
 }
 
 /**
@@ -636,7 +642,9 @@ export const readArtifactObject = async (
       await getArtifactS3().getFileByteArray(`${revision.objectPrefix}/${objectPath}`),
     );
 
-    return { bytes, contentType };
+    // The entry is whatever the deployment says it is: `index.html` for the
+    // first-party flow, but the upload contract takes any file name.
+    return { bytes, contentType, isEntry: objectPath === deployment.entry };
   } catch {
     // A missing object is an ordinary 404 for a public reader, not a server fault.
     return null;

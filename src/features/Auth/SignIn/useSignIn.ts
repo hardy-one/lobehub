@@ -7,6 +7,7 @@ import { useNavigate, useSearchParams } from 'react-router';
 import type { CheckUserResponseData } from '@/app/(backend)/api/auth/check-user/route';
 import type { ResolveUsernameResponseData } from '@/app/(backend)/api/auth/resolve-username/route';
 import { useBusinessSignin } from '@/business/client/hooks/useBusinessSignin';
+import { withInvitationCode } from '@/features/Auth/utils/authFetchOptions';
 import { useAuthAgreement } from '@/features/AuthShell/AuthAgreement';
 import { useAuthServerConfigStore } from '@/features/AuthShell/AuthServerConfigProvider';
 import { trackLoginOrSignupClicked } from '@/features/User/UserLoginOrSignup/trackLoginOrSignupClicked';
@@ -36,11 +37,14 @@ type SentEmailType = 'magicLink' | 'resetPassword';
 
 interface SentEmailInfo {
   email: string;
+  /** Only present for magic links sent while the invitation gate is on. */
+  invitationCode?: string;
   type: SentEmailType;
 }
 
 interface SignInFormValues {
   email: string;
+  invitationCode: string;
   password: string;
 }
 
@@ -55,6 +59,12 @@ export const useSignIn = () => {
   const [searchParams] = useSearchParams();
   const sessionExpired = searchParams.get('reason') === 'sessionExpired';
   const enableMagicLink = useAuthServerConfigStore((s) => s.serverConfig.enableMagicLink || false);
+  const enableInvitationCode = useAuthServerConfigStore(
+    (s) => s.serverConfig.enableInvitationCode || false,
+  );
+  // The code field only has a job when a new account can be created by clicking
+  // an email link.
+  const showInvitationCode = enableInvitationCode && enableMagicLink;
   const disableEmailPassword = useAuthServerConfigStore(
     (s) => s.serverConfig.disableEmailPassword || false,
   );
@@ -63,7 +73,7 @@ export const useSignIn = () => {
   );
   const { agreementChecked, continueWithAgreement, setAgreementChecked } = useAuthAgreement();
   const form = useForm<SignInFormValues>({
-    initialValues: { email: '', password: '' },
+    initialValues: { email: '', invitationCode: '', password: '' },
     onSubmit: (values) => {
       if (step === 'password') {
         void handleSignIn(values);
@@ -117,7 +127,11 @@ export const useSignIn = () => {
     else setSendError(message);
   };
 
-  const handleSendMagicLink = async (targetEmail?: string): Promise<boolean> => {
+  const handleSendMagicLink = async (
+    targetEmail?: string,
+    invitationCode?: string,
+    requireCode = false,
+  ): Promise<boolean> => {
     if (sending) return false;
     try {
       const emailValue =
@@ -127,6 +141,15 @@ export const useSignIn = () => {
           .then(({ valid }) => (valid ? form.getValue('email') : null)));
       if (!emailValue) return false;
 
+      const code = (invitationCode || (form.getValue('invitationCode') as string) || '').trim();
+      // Only a brand-new account is gated; an existing account signs in with the
+      // link alone, so fail on the field instead of emailing a link the gate
+      // will reject.
+      if (requireCode && !code) {
+        form.setErrors({ invitationCode: t('betterAuth.errors.invitationCodeRequired') });
+        return false;
+      }
+
       setSending(true);
       setSendError('');
       const callbackUrl = searchParams.get('callbackUrl') || '/';
@@ -134,6 +157,9 @@ export const useSignIn = () => {
       const { error } = await signIn.magicLink({
         callbackURL: toAbsoluteAuthCallbackUrl(callbackUrl, authOrigin),
         email: emailValue,
+        // The request leg can carry the code; the verification leg is a browser
+        // navigation, so the server binds it to the link it just sent.
+        fetchOptions: withInvitationCode(undefined, code),
         // First-time magic-link users are signups — land them on onboarding first
         newUserCallbackURL: toAbsoluteAuthCallbackUrl(
           buildOnboardingRedirectUrl(callbackUrl),
@@ -147,7 +173,7 @@ export const useSignIn = () => {
       }
       // Success is a forward step, not a fleeting toast: land on a persistent
       // "check your inbox" screen (ux Act §3.5).
-      setSentInfo({ email: emailValue, type: 'magicLink' });
+      setSentInfo({ email: emailValue, invitationCode: code || undefined, type: 'magicLink' });
       setStep('emailSent');
       return true;
     } catch (error) {
@@ -214,6 +240,16 @@ export const useSignIn = () => {
           form.setErrors({ email: t('betterAuth.errors.usernameNotFound') });
           return;
         }
+        // With the invitation gate and magic link both on, the email link is the
+        // intended new-account path: the code travels with the request and the
+        // verify step creates the account. Without the gate, keep sending people
+        // to the password sign-up form.
+        if (showInvitationCode) {
+          setEmail(targetEmail);
+          await handleSendMagicLink(targetEmail, undefined, true);
+          return;
+        }
+
         const callbackUrl = searchParams.get('callbackUrl') || '/';
         const signupParams = new URLSearchParams();
         signupParams.set('email', targetEmail);
@@ -413,7 +449,7 @@ export const useSignIn = () => {
     if (!sentInfo || sending) return;
     const ok =
       sentInfo.type === 'magicLink'
-        ? await handleSendMagicLink(sentInfo.email)
+        ? await handleSendMagicLink(sentInfo.email, sentInfo.invitationCode)
         : await dispatchPasswordReset(sentInfo.email);
     if (ok) toast.success(t('betterAuth.signin.emailSent.resent'));
   };
@@ -457,6 +493,7 @@ export const useSignIn = () => {
     sessionExpired,
     sentInfo,
     serverConfigInit: enableBusinessFeatures ? true : serverConfigInit,
+    showInvitationCode,
     setAgreementChecked,
     socialErrorProvider,
     socialLoading,

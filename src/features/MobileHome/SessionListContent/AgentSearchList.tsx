@@ -8,12 +8,12 @@ import LazyLoad from 'react-lazy-load';
 
 import { useAgentDropdownMenu } from '@/features/HomeSidebar/Body/Agent/List/AgentItem/useDropdownMenu';
 import Actions from '@/features/HomeSidebar/Body/Agent/List/Item/Actions';
-import { useOptionalAgentModal } from '@/features/HomeSidebar/Body/Agent/ModalProvider';
 import WorkspaceLink from '@/features/Workspace/WorkspaceLink';
 import { useServerConfigStore } from '@/store/serverConfig';
 
 import { getHeterogeneousTypeLabel } from './getHeterogeneousTypeLabel';
 import ListItem from './ListItem';
+import { useCreateGroupModal } from './useCreateGroupModal';
 import { useListNavigation } from './useListNavigation';
 
 const styles = createStaticStyles(({ css }) => ({
@@ -37,7 +37,7 @@ const AgentSearchItem = memo<AgentSearchItemProps>(({ item }) => {
   const { t } = useTranslation('chat');
   const onNavigate = useListNavigation('search');
   const isMobile = useServerConfigStore((s) => s.isMobile);
-  const agentModal = useOptionalAgentModal();
+  const openCreateGroupModal = useCreateGroupModal(item);
 
   const title = agentDisplayName(item, t('untitledAgent'));
   const heterogeneousLabel = getHeterogeneousTypeLabel(item.heterogeneousType);
@@ -47,7 +47,7 @@ const AgentSearchItem = memo<AgentSearchItemProps>(({ item }) => {
     group: undefined,
     id: item.id,
     labels: item.labels,
-    openCreateGroupModal: () => agentModal?.openCreateGroupModal(item.id, item.visibility),
+    openCreateGroupModal,
     pinned: item.pinned,
     slug: item.slug,
     title: title ?? t('untitledAgent'),
@@ -64,9 +64,9 @@ const AgentSearchItem = memo<AgentSearchItemProps>(({ item }) => {
         onClick={(event) => onNavigate(event, item)}
       >
         <ListItem
-          agentId={item.id}
           actions={<Actions dropdownMenu={dropdownMenu} />}
           addon={heterogeneousLabel ? <Tag size="small">{heterogeneousLabel}</Tag> : undefined}
+          agentId={item.id}
           avatar={item.avatar || DEFAULT_AVATAR}
           avatarBackground={item.backgroundColor || undefined}
           pin={item.pinned}

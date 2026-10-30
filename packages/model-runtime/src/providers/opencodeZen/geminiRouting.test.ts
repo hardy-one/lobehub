@@ -94,6 +94,16 @@ describe('OpenCode Zen Gemini routing', () => {
         if (target.includes(':streamGenerateContent')) {
           return new Response(geminiSSE, { headers: { 'content-type': 'text/event-stream' } });
         }
+        if (target.includes(':generateContent')) {
+          return Response.json({
+            candidates: [
+              {
+                content: { parts: [{ text: '{"ok":true}' }], role: 'model' },
+                finishReason: 'STOP',
+              },
+            ],
+          });
+        }
         if (target.endsWith('/responses')) return Response.json(responsesBody);
         if (target.endsWith('/messages')) return Response.json(anthropicBody);
 
@@ -147,6 +157,26 @@ describe('OpenCode Zen Gemini routing', () => {
     expect(text).toContain('event: stop');
   });
 
+  it('binds the session headers of a structured-output request too', async () => {
+    const result = await new LobeOpenCodeZenAI({ apiKey: 'test-key' }).generateObject(
+      {
+        messages,
+        model: 'gemini-3.5-flash',
+        schema: {
+          name: 'result',
+          schema: { properties: { ok: { type: 'boolean' } }, type: 'object' },
+        },
+      },
+      { metadata: { topicId: 'topic-object' } },
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(captured[0].url).toBe(
+      `${ZEN_GEMINI_BASE_URL}/v1beta/models/gemini-3.5-flash:generateContent`,
+    );
+    expect(captured[0].headers['x-opencode-session']).toBe('topic-object');
+  });
+
   it('keeps the Gemini family prefix when a proxied gateway base URL is configured', async () => {
     await new LobeOpenCodeZenAI({
       apiKey: 'test-key',
@@ -166,6 +196,20 @@ describe('OpenCode Zen Gemini routing', () => {
 
     expect(captured[0].url).toBe(
       'https://proxy.example.com/inference/google/v1beta/models/gemini-3.5-flash:streamGenerateContent?alt=sse',
+    );
+  });
+
+  it('routes the documented OpenAI base URL to the Gemini surface', async () => {
+    await new LobeOpenCodeZenAI({
+      apiKey: 'test-key',
+      baseURL: 'https://opencode.ai/inference/openai/v1',
+    }).chat(
+      { messages, model: 'gemini-3.5-flash' },
+      { metadata: { topicId: 'topic-documented' } },
+    );
+
+    expect(captured[0].url).toBe(
+      'https://opencode.ai/inference/google/v1beta/models/gemini-3.5-flash:streamGenerateContent?alt=sse',
     );
   });
 

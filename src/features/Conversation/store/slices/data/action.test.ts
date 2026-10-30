@@ -815,6 +815,34 @@ describe('DataSlice', () => {
       ]);
     });
 
+    it('finds blocks inside a supervisor turn', () => {
+      const store = createTestStore();
+
+      store.getState().replaceMessages([
+        {
+          id: 'supervisor-turn',
+          content: '',
+          role: 'supervisor',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          children: [
+            {
+              id: 'supervisor-block',
+              content: 'Supervisor block content',
+              tools: [{ id: 'supervisor-tool' }],
+            },
+          ],
+        },
+      ] as any);
+
+      expect(dataSelectors.getBlockContent('supervisor-block')(store.getState())).toBe(
+        'Supervisor block content',
+      );
+      expect(dataSelectors.getToolsInBlock('supervisor-block')(store.getState())).toEqual([
+        { id: 'supervisor-tool' },
+      ]);
+    });
+
     it('getDbMessageById should find message from dbMessages', () => {
       const store = createTestStore();
 

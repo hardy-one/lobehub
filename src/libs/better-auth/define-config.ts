@@ -364,6 +364,10 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
         ? [
             magicLink({
               expiresIn: MAGIC_LINK_EXPIRES_IN,
+              // The invitation gate reads the pending link by its raw token to
+              // tell a new-account link from an existing-account one before the
+              // token is consumed. Keep the stored identifier readable.
+              storeToken: 'plain',
               sendMagicLink: async ({ email, url }) => {
                 const template = getMagicLinkEmailTemplate({
                   expiresInSeconds: MAGIC_LINK_EXPIRES_IN,

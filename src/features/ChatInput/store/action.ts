@@ -1,4 +1,4 @@
-import { $getRoot, KEY_ESCAPE_COMMAND } from 'lexical';
+import { KEY_ESCAPE_COMMAND } from 'lexical';
 import { type StateCreator } from 'zustand/vanilla';
 
 import { useAgentStore } from '@/store/agent';
@@ -7,6 +7,7 @@ import { systemAgentSelectors, userProfileSelectors } from '@/store/user/selecto
 
 import { removeDraft } from '../draftStorage';
 import { canSerialize, readDocument, writeDocument } from '../editorDocument';
+import { projectDocumentText } from '../InputEditor/projectDocumentText';
 import { addInputHistory } from '../inputHistoryStorage';
 import { type PublicState, type State } from './initialState';
 import { initialState } from './initialState';
@@ -60,20 +61,10 @@ export const store: CreateStore = (publicState) => (set, get) => ({
     const editor = get().editor;
     if (!canSerialize(editor)) return '';
 
-    // The root node's own text projection adds a newline at every paragraph
-    // boundary and repeats it around an empty paragraph, so a single typed blank
-    // line came back as four newlines and every send grew the message. Project
-    // the top-level nodes instead and join them with one newline, which is the
-    // exact inverse of the text data source splitting a document on newlines.
     return editor!
       .getLexicalEditor()!
       .getEditorState()
-      .read(() =>
-        $getRoot()
-          .getChildren()
-          .map((node) => node.getTextContent())
-          .join('\n'),
-      )
+      .read(() => projectDocumentText())
       .trimEnd();
   },
   handleSendButton: () => {

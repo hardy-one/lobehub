@@ -8,6 +8,13 @@ export const MODELS_DEV_RETRY_DELAY_MS = 30 * 1000;
 // api.json is a multi-MB payload (measured ~4MB / 3.5-5s on consumer links);
 // a tight timeout here silently degrades every model to bare-id metadata.
 export const MODELS_DEV_TIMEOUT_MS = 12_000;
+// Upper bound for the *first* model-list response on a cold cache. A multi-MB
+// download cannot finish in this window on any realistic link, so it is not a
+// download budget: it only caps how long a caller may wait before the local
+// model-bank answer is returned while the catalog keeps refreshing in the
+// background. Keep it small: an unreachable models.dev must not hold the model
+// selector, and it must not be traded for another multi-second wait.
+export const MODELS_DEV_COLD_BUDGET_MS = 200;
 
 export interface ModelsDevReasoningOption {
   max?: number;
@@ -67,7 +74,11 @@ export const fetchModelsDevApi = async (): Promise<ModelsDevData | null> => {
   const now = Date.now();
   if (cachedApiJson && now < cacheExpiresAt) return cachedApiJson;
   if (fetchInFlight) return fetchInFlight;
-  if (now < nextRetryAt) return cachedApiJson;
+  // The cooldown only protects a catalog we already have. With nothing cached
+  // there is no usable list to protect, so a caller may retry immediately
+  // (single-flight keeps it to one request) and a recovered network is picked up
+  // on the next model-list request instead of being ignored for 30s.
+  if (now < nextRetryAt && cachedApiJson) return cachedApiJson;
 
   fetchInFlight = (async () => {
     try {
@@ -95,6 +106,19 @@ export const fetchModelsDevApi = async (): Promise<ModelsDevData | null> => {
 export const refreshModelsDevApi = (): void => {
   void fetchModelsDevApi();
 };
+
+/** Resolve once `task` settles, but never later than `ms`. */
+const waitAtMost = (task: Promise<unknown>, ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    const timer = setTimeout(finish, ms);
+
+    function finish() {
+      clearTimeout(timer);
+      resolve();
+    }
+
+    void task.then(finish, finish);
+  });
 
 const getCachedModelsDevData = (): ModelsDevData | null => cachedApiJson;
 
@@ -422,10 +446,12 @@ export const resolveModelsDevModelList = async ({
 }: ResolveModelsDevModelListOptions) => {
   let modelsDev = getCachedModelsDevProvider(modelsDevProvider);
   if (Object.keys(modelsDev).length === 0) {
-    // Cold cache: this is the explicit "fetch model list" path (not an inference
-    // path), so wait once for models.dev to populate before enriching. Bounded by
-    // MODELS_DEV_TIMEOUT_MS; on failure enrichment degrades to bank-only metadata.
-    await fetchModelsDevApi();
+    // Cold cache: wait for models.dev for at most MODELS_DEV_COLD_BUDGET_MS, then
+    // answer from the in-repo bank. The request is not cancelled: it keeps running
+    // in the background (single-flight, bounded by MODELS_DEV_TIMEOUT_MS), so a
+    // reachable catalog still enriches every later call, while an unreachable one
+    // can no longer hold the model list for the whole download timeout.
+    await waitAtMost(fetchModelsDevApi(), MODELS_DEV_COLD_BUDGET_MS);
     modelsDev = getCachedModelsDevProvider(modelsDevProvider);
   }
   refreshModelsDevApi();

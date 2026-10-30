@@ -32,5 +32,12 @@ export interface UpdateEngine {
   quitAndInstall: () => void;
 }
 
+/**
+ * Which engine a channel is served by. Windows and Linux only ever have
+ * electron-updater, so the channel does not change the engine there.
+ */
+export const resolveUpdateEngineKind = (_channel: UpdateChannel): UpdateEngineKind =>
+  'electron-updater';
+
 export const createUpdateEngine = async (_channel: UpdateChannel): Promise<UpdateEngine> =>
   (await import('./electronUpdaterEngine')).electronUpdaterEngine;

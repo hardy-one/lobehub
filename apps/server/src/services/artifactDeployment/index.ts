@@ -32,12 +32,38 @@ const SINGLE_FILE_KIND = 'html';
 const STATUS_PUBLISHED = 'published';
 const STATUS_OFFLINE = 'offline';
 
+/** One publish can record a revision exactly once; a second insert is a retry, not a new version. */
+const REVISION_UNIQUE_CONSTRAINT = 'artifact_deployment_revisions_deployment_id_revision_unique';
+/** (userId, topicId, identifier): two first publishes of one Artifact race on it. */
+const DEPLOYMENT_UNIQUE_CONSTRAINT = 'artifact_deployments_user_id_topic_id_identifier_unique';
+
 /** `uploadId` is the object prefix, so it carries the deployment and the revision it belongs to. */
 const UPLOAD_ID_REGEX = /^artifacts\/([^/]+)\/v(\d+)$/;
 
 const badRequest = (message: string) => new TRPCError({ code: 'BAD_REQUEST', message });
 
 const notFound = (message: string) => new TRPCError({ code: 'NOT_FOUND', message });
+
+const conflict = (message: string) => new TRPCError({ code: 'CONFLICT', message });
+
+/**
+ * Postgres unique violation, whether the driver reports it on the error or on its
+ * cause. The constraint is checked where the driver names it, so a different
+ * unique index on the same table is not read as the race this guards against.
+ */
+const isUniqueViolation = (error: unknown, constraint: string): boolean => {
+  const candidate = error as {
+    cause?: { code?: string; constraint?: string };
+    code?: string;
+    constraint?: string;
+  };
+
+  if ((candidate?.code ?? candidate?.cause?.code) !== '23505') return false;
+
+  const name = candidate?.constraint ?? candidate?.cause?.constraint;
+
+  return !name || name === constraint;
+};
 
 const objectPrefixOf = (deploymentId: string, revision: number) =>
   `${OBJECT_PREFIX_ROOT}/${deploymentId}/v${revision}`;
@@ -323,16 +349,23 @@ export class ArtifactDeploymentService {
 
   /**
    * Mint the deployment id and revision and hand back one presigned PUT per file.
-   * Nothing is written yet: a build that fails after this point must not leave the
-   * server with a deployment the conversation never published.
+   * No deployment or revision row is written: a build that fails after this point
+   * must not leave the server with a deployment the conversation never published.
+   * The revision number itself is reserved (and never handed out again), so a
+   * failed build leaves a gap instead of a number that can be reused.
    */
   async prepareUpload(input: PrepareArtifactUploadInput): Promise<PreparedArtifactUpload> {
     const { files, identifier, topicId } = input;
     assertWithinLimits(files);
 
-    const existing = await this.model().findByArtifact({ identifier, topicId });
+    const model = this.model();
+    const existing = await model.findByArtifact({ identifier, topicId });
     const deploymentId = existing?.id ?? nanoid(21);
-    const revision = (existing?.currentRevision ?? 0) + 1;
+    // Allocate from the deployment's own high-water mark, not from what it serves:
+    // restoring an older revision moves `currentRevision` back, and reusing the
+    // number it now names would overwrite that revision's objects before the
+    // (deploymentId, revision) unique index rejected the insert.
+    const revision = existing ? await model.reserveRevision(existing.id) : 1;
     const objectPrefix = objectPrefixOf(deploymentId, revision);
 
     const targets = await Promise.all(
@@ -395,32 +428,58 @@ export class ArtifactDeploymentService {
 
     // Created offline, then published once the revision row exists: in between,
     // `currentRevision` points at nothing, and a half-written deployment must stay
-    // unreadable instead of serving an incomplete site.
-    if (!existing)
-      await model.create({
-        currentRevision: revision,
-        entry: entryPath,
-        id: deploymentId,
-        identifier,
-        kind,
-        slug,
-        status: STATUS_OFFLINE,
-        title: resolvedTitle,
-        topicId,
-      });
+    // unreadable instead of serving an incomplete site. Two first publishes of the
+    // same Artifact race on (userId, topicId, identifier): the loser is told to
+    // retry instead of surfacing a unique-index failure as a server fault.
+    if (!existing) {
+      try {
+        await model.create({
+          currentRevision: revision,
+          entry: entryPath,
+          id: deploymentId,
+          identifier,
+          kind,
+          nextRevision: revision + 1,
+          slug,
+          status: STATUS_OFFLINE,
+          title: resolvedTitle,
+          topicId,
+        });
+      } catch (error) {
+        if (isUniqueViolation(error, DEPLOYMENT_UNIQUE_CONSTRAINT))
+          throw conflict(
+            'Another publish of this Artifact started at the same time. Reload it and publish again.',
+          );
 
-    await model.addRevision({
-      buildMs,
-      contentHash,
-      deploymentId,
-      fileCount: manifestEntries.length,
-      manifest: canonicalManifest,
-      messageId,
-      objectPrefix,
-      revision,
-      source,
-      totalBytes: manifestEntries.reduce((total, [, info]) => total + (info?.size ?? 0), 0),
-    });
+        throw error;
+      }
+    }
+
+    try {
+      await model.addRevision({
+        buildMs,
+        contentHash,
+        deploymentId,
+        fileCount: manifestEntries.length,
+        manifest: canonicalManifest,
+        messageId,
+        objectPrefix,
+        revision,
+        source,
+        totalBytes: manifestEntries.reduce((total, [, info]) => total + (info?.size ?? 0), 0),
+      });
+    } catch (error) {
+      // The uploadId names the revision, and a revision records exactly one upload.
+      // A row that already exists therefore belongs to an earlier attempt of this
+      // same upload, so the retry is rejected rather than allowed to move the
+      // served revision a second time.
+      if (isUniqueViolation(error, REVISION_UNIQUE_CONSTRAINT))
+        throw conflict(
+          `Revision ${revision} has already been published. Reload the Artifact before publishing again.`,
+        );
+
+      throw error;
+    }
 
     await model.update(deploymentId, {
       currentRevision: revision,

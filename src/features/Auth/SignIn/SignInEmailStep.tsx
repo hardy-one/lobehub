@@ -11,7 +11,7 @@ import {
   Text,
 } from '@lobehub/ui';
 import { Form, type FormInstance } from '@lobehub/ui/form';
-import { Mail } from 'lucide-react';
+import { Mail, Ticket } from 'lucide-react';
 import { type CSSProperties, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -47,7 +47,7 @@ export interface SignInEmailStepProps {
   agreementChecked: boolean;
   continueWithAgreement: (continueAction: () => void) => void;
   disableEmailPassword?: boolean;
-  form: FormInstance<{ email: string }>;
+  form: FormInstance<{ email: string; invitationCode?: string }>;
   isSocialOnly: boolean;
   lastAuthProvider?: string | null;
   loading: boolean;
@@ -59,6 +59,7 @@ export interface SignInEmailStepProps {
   serverConfigInit: boolean;
   sessionExpired?: boolean;
   setAgreementChecked: (checked: boolean) => void;
+  showInvitationCode?: boolean;
   socialLoading: string | null;
 }
 
@@ -73,6 +74,7 @@ export const SignInEmailStep = ({
   oAuthSSOProviders,
   serverConfigInit,
   sessionExpired,
+  showInvitationCode,
   setAgreementChecked,
   socialLoading,
   onGoToSignup,
@@ -185,6 +187,24 @@ export const SignInEmailStep = ({
               style={{ padding: 6 }}
             />
           </Form.Field>
+          {showInvitationCode && (
+            <Form.Field
+              name="invitationCode"
+              style={{ gap: 0, paddingBlock: '0 24px' }}
+              validateOn="submit"
+              validate={(value: string) => {
+                if (!value?.trim()) return t('betterAuth.errors.invitationCodeRequired');
+              }}
+            >
+              <Input
+                autoComplete="off"
+                placeholder={t('betterAuth.signup.invitationCodePlaceholder')}
+                prefix={<Icon icon={Ticket} style={{ marginInline: 6 }} />}
+                size="large"
+                style={{ padding: 6 }}
+              />
+            </Form.Field>
+          )}
           <AuthAgreement checked={agreementChecked} onChange={setAgreementChecked} />
           <Button block htmlType="submit" loading={loading} size="large" type="primary">
             {t('betterAuth.signin.nextStep')}

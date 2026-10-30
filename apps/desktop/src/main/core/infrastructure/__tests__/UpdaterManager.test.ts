@@ -1,3 +1,4 @@
+import type { UpdateChannel } from '@lobechat/electron-client-ipc';
 import { autoUpdater } from 'electron-updater';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -20,12 +21,17 @@ vi.mock('electron-sparkle-updater', () => ({ loadSparkleBridge: mockLoadSparkleB
 // Production resolves engine.mac.ts through the existing Vite platform plugin.
 vi.mock('@/modules/updater/engine', async (importOriginal) => {
   const original = await importOriginal<typeof EngineModule>();
+  const mac = await import('@/modules/updater/engine.mac');
   return {
     ...original,
-    createUpdateEngine: async (channel: 'stable' | 'canary') =>
+    createUpdateEngine: async (channel: UpdateChannel) =>
       process.platform === 'darwin'
-        ? (await import('@/modules/updater/engine.mac')).createUpdateEngine(channel)
+        ? mac.createUpdateEngine(channel)
         : original.createUpdateEngine(channel),
+    resolveUpdateEngineKind: (channel: UpdateChannel) =>
+      process.platform === 'darwin'
+        ? mac.resolveUpdateEngineKind(channel)
+        : original.resolveUpdateEngineKind(channel),
   };
 });
 
@@ -308,6 +314,61 @@ describe('UpdaterManager', () => {
       expect(autoUpdater.setFeedURL).not.toHaveBeenCalled();
     });
 
+    // Regression (S6): the engine was created once from the launch channel, so a
+    // runtime switch to HARDY kept the Sparkle engine and pointed it at
+    // `{UPDATE_SERVER_URL}/HARDY/appcast-{arch}.xml`, which no release workflow
+    // ever publishes. HARDY ships as GitHub releases through electron-updater.
+    const requestedAppcasts = () =>
+      bridge.init.mock.calls.map(([options]) => (options as { appcastUrl: string }).appcastUrl);
+
+    it('moves a runtime switch to HARDY off Sparkle and onto the GitHub updater', async () => {
+      await updaterManager.initialize();
+
+      updaterManager.switchChannel('HARDY');
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(requestedAppcasts()).toEqual([
+        `https://mock.update.server/stable/appcast-${process.arch}.xml`,
+      ]);
+      expect(autoUpdater.setFeedURL).toHaveBeenLastCalledWith({
+        owner: 'hardy-one',
+        provider: 'github',
+        repo: 'lobe-release',
+      });
+      expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+      expect(bridge.checkForUpdates).not.toHaveBeenCalled();
+    });
+
+    it('returns to the stable appcast after switching back from HARDY', async () => {
+      await updaterManager.initialize();
+
+      updaterManager.switchChannel('HARDY');
+      await vi.advanceTimersByTimeAsync(0);
+      updaterManager.switchChannel('stable');
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(requestedAppcasts()).toEqual([
+        `https://mock.update.server/stable/appcast-${process.arch}.xml`,
+      ]);
+      expect(bridge.checkForUpdates).toHaveBeenCalledTimes(1);
+      expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+    });
+
+    it('launches straight into HARDY without loading Sparkle', async () => {
+      vi.mocked(mockApp.storeManager.get).mockReturnValue('HARDY');
+
+      await updaterManager.initialize();
+      await updaterManager.checkForUpdates();
+
+      expect(mockLoadSparkleBridge).not.toHaveBeenCalled();
+      expect(autoUpdater.setFeedURL).toHaveBeenLastCalledWith({
+        owner: 'hardy-one',
+        provider: 'github',
+        repo: 'lobe-release',
+      });
+      expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+    });
+
     it('discards the old channel download and rechecks after its native cycle completes', async () => {
       vi.mocked(mockApp.storeManager.get).mockReturnValue('canary');
       bridge.checkForUpdates.mockImplementation(() => {});
@@ -412,6 +473,22 @@ describe('UpdaterManager', () => {
         provider: 'github',
         repo: 'lobe-release',
       });
+    });
+
+    it('keeps electron-updater with the generic stable feed on non-macOS after HARDY', async () => {
+      await updaterManager.initialize();
+
+      updaterManager.switchChannel('HARDY');
+      await vi.advanceTimersByTimeAsync(0);
+      updaterManager.switchChannel('stable');
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(mockLoadSparkleBridge).not.toHaveBeenCalled();
+      expect(autoUpdater.setFeedURL).toHaveBeenLastCalledWith({
+        provider: 'generic',
+        url: 'https://mock.update.server/stable',
+      });
+      expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
     });
   });
 

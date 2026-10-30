@@ -1167,6 +1167,7 @@ table artifact_deployments {
   slug text
   status text [not null, default: 'published']
   current_revision integer [not null, default: 1]
+  next_revision integer [not null, default: 1]
   entry text [not null, default: 'index.html']
   accessed_at "timestamp with time zone" [not null, default: `now()`]
   created_at "timestamp with time zone" [not null, default: `now()`]

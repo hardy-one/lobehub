@@ -35,32 +35,44 @@ describe('LobeOpenCodeZenAI', () => {
     });
 
     it.each([
-      [undefined, defaultBaseURL],
-      ['https://proxy.example.com/zen/v1', 'https://proxy.example.com/zen/v1'],
-      ['https://proxy.example.com/v1/gateway', 'https://proxy.example.com/v1/gateway'],
-    ])('configures one route per protocol with baseURL=%s', (baseURL, expectedURL) => {
-      const routers = params.routers({ apiKey: 'test', baseURL });
+      // The Gemini surface is its own family prefix on the gateway.
+      [undefined, defaultBaseURL, 'https://opencode.ai/inference/google'],
+      [
+        'https://proxy.example.com/zen/v1',
+        'https://proxy.example.com/zen/v1',
+        'https://proxy.example.com/inference/google',
+      ],
+      [
+        'https://proxy.example.com/v1/gateway',
+        'https://proxy.example.com/v1/gateway',
+        'https://proxy.example.com/v1/gateway',
+      ],
+    ])(
+      'configures one route per protocol with baseURL=%s',
+      (baseURL, expectedURL, expectedGeminiURL) => {
+        const routers = params.routers({ apiKey: 'test', baseURL });
 
-      expect(routers).toEqual([
-        // The Anthropic SDK appends /v1/messages itself, so its baseURL loses the suffix.
-        expect.objectContaining({
-          apiType: 'anthropic',
-          options: { apiKey: 'test', baseURL: stripV1(expectedURL) },
-        }),
-        expect.objectContaining({
-          apiType: 'google',
-          options: { apiKey: 'test', baseURL: expectedURL },
-        }),
-        expect.objectContaining({
-          apiType: 'openai',
-          options: { apiKey: 'test', baseURL: expectedURL, modelSdkType: 'openai-responses' },
-        }),
-        expect.objectContaining({
-          apiType: 'openai',
-          options: { apiKey: 'test', baseURL: expectedURL, modelSdkType: 'openai' },
-        }),
-      ]);
-    });
+        expect(routers).toEqual([
+          // The Anthropic SDK appends /v1/messages itself, so its baseURL loses the suffix.
+          expect.objectContaining({
+            apiType: 'anthropic',
+            options: { apiKey: 'test', baseURL: stripV1(expectedURL) },
+          }),
+          expect.objectContaining({
+            apiType: 'google',
+            options: { apiKey: 'test', baseURL: expectedGeminiURL },
+          }),
+          expect.objectContaining({
+            apiType: 'openai',
+            options: { apiKey: 'test', baseURL: expectedURL, modelSdkType: 'openai-responses' },
+          }),
+          expect.objectContaining({
+            apiType: 'openai',
+            options: { apiKey: 'test', baseURL: expectedURL, modelSdkType: 'openai' },
+          }),
+        ]);
+      },
+    );
 
     it('identifies OpenCode Zen and its default endpoint in API errors', async () => {
       vi.spyOn(OpenAI.Chat.Completions.prototype, 'create').mockRejectedValue(

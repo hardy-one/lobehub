@@ -27,6 +27,7 @@ import {
   getCachedModelsDevRoutingMetadata,
   resolveModelsDevModelList,
 } from '../utils/modelsDev';
+import { OpenCodeGeminiRuntime, resolveOpenCodeGeminiBaseURL } from '../utils/opencodeGateway';
 
 // ============================================================================
 // Constants
@@ -469,7 +470,10 @@ export const params = {
       {
         apiType: 'google',
         models: forSdk('google', routing.google),
-        options: { ...options, baseURL },
+        runtime: OpenCodeGeminiRuntime as any,
+        // Gemini has its own native Google family prefix; the `/zen/v1` union that
+        // carries the other protocols has no `/v1beta` surface.
+        options: { ...options, baseURL: resolveOpenCodeGeminiBaseURL(baseURL) },
       },
       {
         apiType: 'openai',

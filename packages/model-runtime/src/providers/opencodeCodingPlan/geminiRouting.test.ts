@@ -175,6 +175,20 @@ describe('OpenCode Go Gemini routing', () => {
     );
   });
 
+  it('routes the documented OpenAI base URL to the Gemini surface', async () => {
+    await new LobeOpenCodeCodingPlanAI({
+      apiKey: 'test-key',
+      baseURL: 'https://opencode.ai/inference/go/openai/v1',
+    }).chat(
+      { messages, model: 'gemini-4-argon-contributor' },
+      { metadata: { topicId: 'topic-documented' } },
+    );
+
+    expect(captured[0].url).toBe(
+      'https://opencode.ai/inference/go/google/v1beta/models/gemini-4-argon-contributor:streamGenerateContent?alt=sse',
+    );
+  });
+
   it.each([
     // openai-compatible models stay on the gateway's Chat Completions endpoint
     ['glm-5.3', `${GO_BASE_URL}/chat/completions`],

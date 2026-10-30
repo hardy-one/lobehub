@@ -27,6 +27,7 @@ const SignIn = () => {
     sessionExpired,
     sentInfo,
     serverConfigInit,
+    showInvitationCode,
     setAgreementChecked,
     socialLoading,
     step,
@@ -69,6 +70,7 @@ const SignIn = () => {
         serverConfigInit={serverConfigInit}
         sessionExpired={sessionExpired}
         setAgreementChecked={setAgreementChecked}
+        showInvitationCode={showInvitationCode}
         socialLoading={socialLoading}
         onGoToSignup={handleGoToSignup}
         onResetEmail={handleBackToEmail}

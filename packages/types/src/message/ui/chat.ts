@@ -351,6 +351,13 @@ export interface UIChatMessage {
    */
   taskDetail?: TaskDetail;
   /**
+   * Completion blocks a supervisor turn folds into its own row.
+   *
+   * They render inside the turn like `children` but keep their own ids, so a
+   * `#<message-id>` deep link can still reach a block the turn swallowed.
+   */
+  taskCompletions?: AssistantContentBlock[];
+  /**
    * Task messages for role='tasks' virtual message
    * Contains aggregated task messages with same parentId
    * Also used to store task execution messages (intermediate steps) from polling

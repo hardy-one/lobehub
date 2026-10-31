@@ -2,7 +2,7 @@ import {
   index,
   integer,
   jsonb,
-  pgTable,
+  pgSchema,
   text,
   uniqueIndex,
   uuid,
@@ -12,6 +12,12 @@ import {
 import { timestamps } from './_helpers';
 import { users } from './user';
 import { workspaces } from './workspace';
+
+/**
+ * Fork-owned tables live in their own schema so a table or index name can never
+ * collide with one upstream adds to `public`.
+ */
+export const hardySchema = pgSchema('hardy');
 
 /**
  * One entry of a deployed revision's manifest: the object key inside the
@@ -33,7 +39,7 @@ export type ArtifactDeploymentManifest = Record<string, ArtifactDeploymentFileIn
  * `currentRevision` advances while the older rows in
  * `artifact_deployment_revisions` stay readable.
  */
-export const artifactDeployments = pgTable(
+export const artifactDeployments = hardySchema.table(
   'artifact_deployments',
   {
     /**
@@ -95,7 +101,7 @@ export const artifactDeployments = pgTable(
  * a redeploy inserts the next `revision` and moves `artifact_deployments.currentRevision`,
  * so a share link always resolves to a complete manifest.
  */
-export const artifactDeploymentRevisions = pgTable(
+export const artifactDeploymentRevisions = hardySchema.table(
   'artifact_deployment_revisions',
   {
     id: uuid('id').defaultRandom().primaryKey().notNull(),

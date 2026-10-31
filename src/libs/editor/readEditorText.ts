@@ -15,6 +15,14 @@ type MarkdownWriter = (ctx: MarkdownWriterContext, node: LexicalNode) => boolean
 type MarkdownWriterRegistry = Record<string, MarkdownWriter>;
 
 /**
+ * Punctuation that carries no word boundary of its own: the editor pads every
+ * punctuation tail, but for these a following `**` or backtick cannot fuse into
+ * a different token, so the pad is only a space the person did not type.
+ */
+const FULL_WIDTH_PUNCTUATION_TAIL =
+  /[\u2014\u2018-\u201F\u2026\u3001-\u303F\uFF01-\uFF0F\uFF1A-\uFF20\uFF3B-\uFF40\uFF5B-\uFF65]$/;
+
+/**
  * Mirrors the editor's own writer context, so the message text is written by the
  * very writers that render the composer: a writer either appends the text of
  * the block it is in, or wraps its children.
@@ -47,6 +55,29 @@ class MarkdownWriterContext {
     this.processor = processor;
   };
 
+  /**
+   * Writes a text run through the editor's own writer, dropping the single pad
+   * the writer adds after a full-width punctuation tail: that pad exists so a
+   * following Markdown marker never fuses with the character before it, but for
+   * full-width punctuation it is a space the author never typed, and it would
+   * reach the message text as one. A trailing space the author did type is
+   * written as the run's own tail, so it is not the pad and stays.
+   */
+  writeText = (node: LexicalNode, writer: MarkdownWriter): boolean | void => {
+    const written = this.children.length;
+    const handled = writer(this, node);
+
+    if (this.children.length === written || this.children.at(-1) !== ' ') return handled;
+
+    const text = node.getTextContent();
+    if (text !== text.trimEnd()) return handled;
+    if (!FULL_WIDTH_PUNCTUATION_TAIL.test(text)) return handled;
+
+    this.children.pop();
+
+    return handled;
+  };
+
   processChild = (parentContext: MarkdownWriterContext, child: LexicalNode) => {
     // A node with a tag form is emitted as that tag instead of its label, so it
     // does not depend on the plugin having registered a writer.
@@ -62,7 +93,12 @@ class MarkdownWriterContext {
 
     const context = $isElementNode(child) ? parentContext.newChild() : parentContext;
 
-    if (this.writers[child.getType()]?.(context, child)) return;
+    const writer = this.writers[child.getType()];
+    if (writer) {
+      const handled =
+        child.getType() === 'text' ? context.writeText(child, writer) : writer(context, child);
+      if (handled) return;
+    }
 
     if ($isElementNode(child)) {
       for (const grandChild of child.getChildren()) this.processChild(context, grandChild);

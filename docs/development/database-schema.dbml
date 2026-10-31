@@ -1512,6 +1512,7 @@ table artboards {
 }
 
 table artifact_deployment_revisions {
+table hardy.artifact_deployment_revisions {
   id uuid [pk, not null, default: `gen_random_uuid()`]
   deployment_id varchar(64) [not null]
   revision integer [not null]
@@ -1533,7 +1534,7 @@ table artifact_deployment_revisions {
   }
 }
 
-table artifact_deployments {
+table hardy.artifact_deployments {
   id varchar(64) [pk, not null]
   user_id text [not null]
   workspace_id text

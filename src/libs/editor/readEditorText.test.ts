@@ -153,6 +153,39 @@ describe('readEditorText', () => {
     expect(readEditorText(editor)).toBe('A\n\nB');
   });
 
+  it('does not add a space after the full-width punctuation the author typed', () => {
+    const editor = createComposer(
+      '第一段：加粗文本 与 code() 之间各保留一个空格。\n\n第二段：结束。',
+    );
+
+    applyFormat(editor, '加粗文本', 'bold');
+    applyFormat(editor, 'code()', 'code');
+
+    // The editor's writer pads a punctuation tail: neither "：" nor "。" gained a
+    // space in what the person typed, so neither may gain one in the message.
+    expect(readEditorText(editor)).toBe(
+      '第一段：**加粗文本** 与 `code()` 之间各保留一个空格。\n\n第二段：结束。',
+    );
+  });
+
+  it('keeps a space the author did type after full-width punctuation', () => {
+    const editor = createComposer('第一段： 加粗文本');
+
+    applyFormat(editor, '加粗文本', 'bold');
+
+    expect(readEditorText(editor)).toBe('第一段： **加粗文本**');
+  });
+
+  it('keeps the pad that stops ASCII punctuation from fusing with a marker', () => {
+    const editor = createComposer('Note:bold');
+
+    applyFormat(editor, 'bold', 'bold');
+
+    // Without the pad this would be "Note:**bold**"; the ASCII colon has no
+    // spacing of its own, so the writer's pad is what separates the two.
+    expect(readEditorText(editor)).toBe('Note: **bold**');
+  });
+
   it('sends an empty string for an editor that cannot serialize', () => {
     expect(readEditorText(undefined)).toBe('');
   });

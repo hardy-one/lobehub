@@ -14,6 +14,13 @@
       "when": 1793365384056,
       "tag": "0001_artifact_deployment_next_revision",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793445041315,
+      "tag": "0002_artifact_deployments_hardy_schema",
+      "breakpoints": true
     }
   ],
   "version": "7"

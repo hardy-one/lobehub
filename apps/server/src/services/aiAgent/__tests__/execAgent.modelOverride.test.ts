@@ -1,6 +1,8 @@
+import { BUILTIN_AGENT_SLUGS } from '@lobechat/builtin-agents';
 import type * as ModelBankModule from 'model-bank';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { enqueueSelfIterationRun } from '../../agentSignal/services/selfIteration/dispatch/enqueueSelfIterationRun';
 import { AiAgentService } from '../index';
 
 const {
@@ -220,6 +222,92 @@ describe('AiAgentService.execAgent - model/provider override', () => {
     mockIsResourceAuthorOrAdmin.mockResolvedValue(false);
     mockTopicFindById.mockResolvedValue(null);
     service = new AiAgentService(mockDb, userId);
+  });
+
+  it.each([
+    BUILTIN_AGENT_SLUGS.nightlyReview,
+    BUILTIN_AGENT_SLUGS.selfReflection,
+    BUILTIN_AGENT_SLUGS.selfFeedbackIntent,
+    BUILTIN_AGENT_SLUGS.skillManagement,
+  ])(
+    'creates a %s operation with the self-evolution model instead of the saved builtin model',
+    async (slug) => {
+      mockGetAgentConfig.mockResolvedValue({
+        ...defaultAgentConfig,
+        model: 'gpt-5.6-luna',
+        provider: 'openai',
+        slug,
+      });
+      const db = {
+        query: {
+          userSettings: {
+            findFirst: vi.fn().mockResolvedValue({
+              systemAgent: { expertise: { model: 'gpt-5.6-luna', provider: 'cpa' } },
+            }),
+          },
+        },
+      };
+
+      await enqueueSelfIterationRun({
+        agentId: 'reviewed-agent',
+        db: db as never,
+        marker: { agentId: 'reviewed-agent', kind: 'nightly-review', sourceId: 'review-1' },
+        prompt: 'Review evidence',
+        slug,
+        userId,
+      });
+
+      const operation = mockCreateOperation.mock.calls[0][0];
+      expect(operation.agentConfig).toMatchObject({ model: 'gpt-5.6-luna', provider: 'cpa' });
+      expect(operation.modelRuntimeConfig).toMatchObject({
+        model: 'gpt-5.6-luna',
+        provider: 'cpa',
+      });
+      expect(operation.modelRuntimeConfig.modelFacts).toMatchObject({
+        model: 'gpt-5.6-luna',
+        provider: 'cpa',
+      });
+      expect(operation.appContext.agentId).toBe('reviewed-agent');
+    },
+  );
+
+  it('uses the self-evolution model over both the saved builtin and existing topic models', async () => {
+    mockGetAgentConfig.mockResolvedValue({
+      ...defaultAgentConfig,
+      slug: BUILTIN_AGENT_SLUGS.selfReflection,
+    });
+    mockTopicFindById.mockResolvedValue({
+      agentId: 'agent-1',
+      model: 'gpt-4',
+      provider: 'openai',
+    });
+    const db = {
+      query: {
+        userSettings: {
+          findFirst: vi.fn().mockResolvedValue({
+            systemAgent: {
+              expertise: { model: 'claude-sonnet-4-6', provider: 'anthropic' },
+            },
+          }),
+        },
+      },
+    };
+
+    await enqueueSelfIterationRun({
+      agentId: 'reviewed-agent',
+      db: db as never,
+      marker: { agentId: 'reviewed-agent', kind: 'self-reflection', sourceId: 'reflection-1' },
+      prompt: 'Review evidence',
+      slug: BUILTIN_AGENT_SLUGS.selfReflection,
+      topicId: 'topic-1',
+      userId,
+    });
+
+    const operation = mockCreateOperation.mock.calls[0][0];
+    const expected = { model: 'claude-sonnet-4-6', provider: 'anthropic' };
+    expect(operation.agentConfig).toMatchObject(expected);
+    expect(operation.modelRuntimeConfig).toMatchObject(expected);
+    expect(operation.modelRuntimeConfig.modelFacts).toMatchObject(expected);
   });
 
   it('should use agent default model/provider when no override is provided', async () => {

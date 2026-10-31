@@ -3,6 +3,7 @@ import { type AgentSignalOperationMarker, RequestTrigger, ThreadType } from '@lo
 
 import { ThreadModel } from '@/database/models/thread';
 import type { LobeChatDatabase } from '@/database/type';
+import { resolveExpertiseModelConfig } from '@/server/services/expertise/modelConfig';
 
 /** The builtin self-iteration agent slugs an execAgent run can dispatch to. */
 export type SelfIterationSlug =
@@ -63,6 +64,8 @@ export interface EnqueueSelfIterationRunResult {
 export const enqueueSelfIterationRun = async (
   input: EnqueueSelfIterationRunInput,
 ): Promise<EnqueueSelfIterationRunResult> => {
+  const { model, provider } = await resolveExpertiseModelConfig(input.db, input.userId);
+
   // Isolate the run under the triggering assistant message (when present) so its
   // messages don't flatten into the main topic — mirrors the memory-writer path.
   let threadId: string | undefined;
@@ -91,7 +94,7 @@ export const enqueueSelfIterationRun = async (
   }).execAgent({
     appContext: {
       // No agentId here — the run executes under the builtin `slug` (which
-      // supplies its tools / systemRole / model). The reviewed user agent
+      // supplies its tools / systemRole). The reviewed user agent
       // travels on `marker.agentId`; execAgent prefers it for the operation +
       // tool-execution context so resource writes (skills) and receipts both
       // attribute to the reviewed agent, not the builtin one.
@@ -104,7 +107,9 @@ export const enqueueSelfIterationRun = async (
     },
     autoStart: true,
     ...(input.maxSteps ? { maxSteps: input.maxSteps } : {}),
+    model,
     prompt: input.prompt,
+    provider,
     slug: input.slug,
     trigger: RequestTrigger.AgentSignal,
     userInterventionConfig: { approvalMode: 'headless' },

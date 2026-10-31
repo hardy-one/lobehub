@@ -1,3 +1,4 @@
+import type { UpdateChannel } from '@lobechat/electron-client-ipc';
 import log from 'electron-log';
 import { autoUpdater } from 'electron-updater';
 
@@ -8,6 +9,16 @@ import { UPDATE_SERVER_URL } from './configs';
 import type { UpdateEngine } from './engine';
 
 autoUpdater.autoInstallOnAppQuit = false;
+
+/**
+ * The app-level channel keeps the display value `HARDY`, but electron-updater
+ * resolves GitHub releases by the first prerelease identifier of the tag
+ * (`v2.2.22-hardy.12` -> `hardy`). Hand the updater the release identifier so
+ * HARDY matches a published release instead of failing with
+ * `ERR_UPDATER_NO_PUBLISHED_VERSIONS`.
+ */
+export const toUpdaterChannel = (channel: UpdateChannel): string =>
+  channel === 'HARDY' ? 'hardy' : channel;
 
 export const electronUpdaterEngine: UpdateEngine = {
   checkForUpdates: () => autoUpdater.checkForUpdates(),
@@ -22,7 +33,7 @@ export const electronUpdaterEngine: UpdateEngine = {
         /\/$/,
         '',
       );
-      autoUpdater.channel = channel;
+      autoUpdater.channel = toUpdaterChannel(channel);
       autoUpdater.setFeedURL(
         channel === 'HARDY'
           ? { owner: 'hardy-one', provider: 'github', repo: 'lobe-release' }

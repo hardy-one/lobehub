@@ -34,3 +34,19 @@ diff --git a/es/react/SendButton/components/StopIcon.js b/es/react/SendButton/co
  			})
  		})]
  	});
+diff --git a/es/plugins/markdown/plugin/index.js b/es/plugins/markdown/plugin/index.js
+index 7b5293c..edd3511 100644
+--- a/es/plugins/markdown/plugin/index.js
++++ b/es/plugins/markdown/plugin/index.js
+@@ -223,7 +223,10 @@ const MarkdownPlugin = class extends KernelPlugin {
+ 			event.preventDefault();
+ 			const data = $getClipboardDataFromSelection(selection);
+ 			setLexicalClipboardDataTransfer(clipboardData, data);
+-			clipboardData.setData("text/plain", markdown);
++			// `text/plain` must stay plain text: the serialized markdown escapes
++			// characters (`*` -> `\*`) and turns bare URLs into autolinks, which get
++			// pasted back verbatim. Textless selections (images) keep the fallback.
++			if (!data["text/plain"]) clipboardData.setData("text/plain", markdown);
+ 			clipboardData.setData("text/markdown", markdown);
+ 			this.logger.debug("copy with text/markdown:", { markdownLength: markdown.length });
+ 			return true;

@@ -1,4 +1,6 @@
 import { LayersEnum, MemorySourceType } from '@lobechat/types';
+import { WorkflowAbort } from '@upstash/workflow';
+import debug from 'debug';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createStepRunner } from '@/server/workflows/testing/stepContext';
@@ -90,6 +92,38 @@ describe('processTopicsHandler hourly task behavior', () => {
     mocks.isHourlyMemoryExtractionCancellationRequested.mockResolvedValue(false);
     mocks.triggerPersonaUpdate.mockResolvedValue({ workflowRunId: 'persona-update-run' });
     mocks.triggerProcessTopic.mockResolvedValue({ workflowRunId: 'process-topic-run' });
+  });
+
+  it('rethrows workflow step aborts without warning by default and logs them in debug mode', async () => {
+    const namespace = 'lobe-server:workflows:memory-user-memory:process-topics';
+    const previousDebug = debug.disable();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const output = vi.spyOn(debug, 'log').mockImplementation(() => {});
+    const abort = new WorkflowAbort('test-step');
+    const context = createContext({
+      sources: [MemorySourceType.ChatTopic],
+      topicIds: ['t1'],
+      userIds: ['u1'],
+    });
+    context.run = vi.fn().mockRejectedValue(abort);
+
+    try {
+      await expect(processTopicsHandler(context as never)).rejects.toBe(abort);
+      expect(warn).not.toHaveBeenCalled();
+      expect(output).not.toHaveBeenCalled();
+
+      debug.enable(namespace);
+      await expect(processTopicsHandler(context as never)).rejects.toBe(abort);
+      expect(output).toHaveBeenCalledWith(
+        expect.stringContaining('workflow aborted:'),
+        abort.message,
+      );
+    } finally {
+      debug.disable();
+      if (previousDebug) debug.enable(previousDebug);
+      warn.mockRestore();
+      output.mockRestore();
+    }
   });
 
   it('propagates hourlyTaskId and records process-topic plus persona workflow run ids', async () => {

@@ -6,6 +6,7 @@ import {
 import { LayersEnum, MemorySourceType } from '@lobechat/types';
 import { type WorkflowContext } from '@upstash/workflow';
 import { WorkflowAbort } from '@upstash/workflow';
+import debug from 'debug';
 
 import { AsyncTaskModel } from '@/database/models/asyncTask';
 import { getServerDB } from '@/database/server';
@@ -21,6 +22,7 @@ import { runStep } from '@/server/workflows/step';
 import { checkGuard, ensureWorkflowStarted } from './runGuard';
 import { appendHourlyWorkflowRunId, isHourlyMemoryExtractionCancelled } from './utils';
 
+const log = debug('lobe-server:workflows:memory-user-memory:process-topics');
 const { upstashWorkflowExtraHeaders } = parseMemoryExtractionConfig();
 const WORKFLOW_PATH = 'api/workflows/memory-user-memory/pipelines/chat-topic/process-topics';
 
@@ -238,7 +240,7 @@ export const processTopicsHandler = (context: WorkflowContext<MemoryExtractionPa
       } catch (error) {
         // NOTICE: Let WorkflowAbort bubble up (used internally by Upstash); record others
         if (error instanceof WorkflowAbort) {
-          console.warn('workflow aborted:', error.message);
+          log('workflow aborted: %s', error.message);
           throw error;
         }
 

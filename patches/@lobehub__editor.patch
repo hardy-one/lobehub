@@ -50,3 +50,19 @@ index 7b5293c..edd3511 100644
  			clipboardData.setData("text/markdown", markdown);
  			this.logger.debug("copy with text/markdown:", { markdownLength: markdown.length });
  			return true;
+
+diff --git a/es/headless.js b/es/headless.js
+--- a/es/headless.js
++++ b/es/headless.js
+@@ -5228,7 +5228,10 @@ this.register(editor.registerCommand(COPY_COMMAND, (event) => {
+ 			event.preventDefault();
+ 			const data = $getClipboardDataFromSelection(selection);
+ 			setLexicalClipboardDataTransfer(clipboardData, data);
+-			clipboardData.setData("text/plain", markdown);
++			// `text/plain` must stay plain text: the serialized markdown escapes
++			// characters (`*` -> `\*`) and turns bare URLs into autolinks, which get
++			// pasted back verbatim. Textless selections (images) keep the fallback.
++			if (!data["text/plain"]) clipboardData.setData("text/plain", markdown);
+ 			clipboardData.setData("text/markdown", markdown);
+ 			this.logger.debug("copy with text/markdown:", { markdownLength: markdown.length });
+ 			return true;

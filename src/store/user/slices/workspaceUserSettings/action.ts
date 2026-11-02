@@ -63,6 +63,14 @@ const mergePreference = (
   ...(patch.agentModelOverrides
     ? { agentModelOverrides: { ...previous.agentModelOverrides, ...patch.agentModelOverrides } }
     : {}),
+  ...(patch.agentContextModeOverrides
+    ? {
+        agentContextModeOverrides: {
+          ...previous.agentContextModeOverrides,
+          ...patch.agentContextModeOverrides,
+        },
+      }
+    : {}),
   ...(patch.agentModeOverrides
     ? { agentModeOverrides: { ...previous.agentModeOverrides, ...patch.agentModeOverrides } }
     : {}),

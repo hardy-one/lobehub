@@ -95,6 +95,14 @@ export class WorkspaceUserSettingsModel {
             },
           }
         : {}),
+      ...(patch.agentContextModeOverrides
+        ? {
+            agentContextModeOverrides: {
+              ...current.agentContextModeOverrides,
+              ...patch.agentContextModeOverrides,
+            },
+          }
+        : {}),
       ...(patch.notification
         ? { notification: mergeNotificationSettings(current.notification, patch.notification) }
         : {}),

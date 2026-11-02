@@ -9,10 +9,13 @@ import { agentByIdSelectors } from '@/store/agent/selectors';
 import { useUserStore } from '@/store/user';
 
 import { useAgentId } from './useAgentId';
+import { type ChatInputMode, resolveModeFlags } from './useEffectiveAgentMode';
 import { useUpdateAgentConfig } from './useUpdateAgentConfig';
 
+export { resolveModeFlags };
+
 /**
- * Toggle between chat mode and agent mode.
+ * Select chat, agent, or the opt-in on-demand mode.
  *
  * The flag is stored on `chatConfig.enableAgentMode` so it persists (chat_config
  * is a jsonb column) and is readable on the server. The `plugins` array is left
@@ -29,18 +32,25 @@ export const useToggleAgentMode = () => {
   const updateWorkspaceUserPreference = useUserStore((s) => s.updateWorkspaceUserPreference);
 
   return useCallback(
-    async (enable: boolean) => {
+    async (mode: ChatInputMode) => {
       if (isAccessLoading) return;
 
-      const enableAgentMode = enable && canEnableBusinessAgentMode;
+      const { contextMode, enableAgentMode } = resolveModeFlags(mode);
+      const effectiveEnableAgentMode = enableAgentMode && canEnableBusinessAgentMode;
+      const effectiveContextMode =
+        effectiveEnableAgentMode && contextMode === 'on-demand' ? 'on-demand' : 'default';
       if (usesWorkspaceMemberMode) {
         await updateWorkspaceUserPreference({
-          agentModeOverrides: { [agentId]: enableAgentMode },
+          agentContextModeOverrides: { [agentId]: effectiveContextMode },
+          agentModeOverrides: { [agentId]: effectiveEnableAgentMode },
         });
         return;
       }
 
-      await updateAgentChatConfig({ enableAgentMode });
+      await updateAgentChatConfig({
+        contextMode: effectiveContextMode,
+        enableAgentMode: effectiveEnableAgentMode,
+      });
     },
     [
       agentId,

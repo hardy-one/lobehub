@@ -1,6 +1,6 @@
 import type { DeviceExecutionTarget, ExecutionPlan } from './agencyConfig';
 import type { RuntimeEnvMode } from './agentConfig';
-import type { LobeAgentChatConfig } from './chatConfig';
+import type { AgentContextMode, LobeAgentChatConfig } from './chatConfig';
 
 /**
  * Tool-resolution mode: an explicit `toolMode` wins; otherwise derive from
@@ -61,3 +61,25 @@ export const describeLockedDevicePicker = (plan: ExecutionPlan): string | undefi
     ? `Device switching is off for this run: it is locked to device "${plan.deviceId}", where the Local System tools already run. ${switchHint}`
     : `Device switching is off for this run: it is locked to the user's bound device, which is offline. Tell the user to reconnect it (LobeHub desktop app or \`lh connect\`). ${switchHint}`;
 };
+
+export interface ResolveContextModeOptions {
+  /** Whether the effective model supports native function calling. */
+  supportToolUse: boolean;
+}
+
+/**
+ * Resolve the context strategy without changing the legacy tool-mode matrix.
+ * On-demand is opt-in and only valid together with an effective agent tool mode
+ * and a model that supports function calling; every other combination safely
+ * falls back to the legacy default context behaviour.
+ */
+export const resolveContextMode = (
+  chatConfig:
+    Pick<LobeAgentChatConfig, 'contextMode' | 'enableAgentMode' | 'toolMode'> | undefined | null,
+  { supportToolUse }: ResolveContextModeOptions,
+): AgentContextMode =>
+  chatConfig?.contextMode === 'on-demand' &&
+  resolveToolMode(chatConfig) === 'agent' &&
+  supportToolUse === true
+    ? 'on-demand'
+    : 'default';

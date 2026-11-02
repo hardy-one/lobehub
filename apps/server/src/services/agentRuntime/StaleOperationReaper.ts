@@ -58,6 +58,7 @@ const isHeterogeneousProvider = (provider: string | null | undefined): boolean =
 /** Bound how many overlapping topics one sweep reports. */
 const CONCURRENT_FOREGROUND_REPORT_LIMIT = 20;
 
+
 export interface ReapStaleOperationsParams {
   /** Silence after which a stateless heterogeneous run is retired. */
   heteroSilenceMs?: number;
@@ -192,12 +193,17 @@ export class StaleOperationReaper {
    * runs only: sub-agent children (`parentOperationId`) and thread runs
    * (`threadId`) legitimately run beside the topic's main run.
    *
-   * Only runs whose lease moved within the hetero silence window count. A
-   * `running` row frozen longer than that is dead, not spending, and the
-   * recovery above never settles a dead row past its lookback: unbounded, the
-   * same months-old topics were re-reported on every once-a-minute sweep and
-   * made up the bulk of production warn logs. Every live run refreshes its
-   * lease well inside this window (90s heartbeat, or a hetero ingest batch).
+   * Only runs whose lease is still fresh are examined (`liveSince`, the hetero
+   * silence window). A `running` row older than that cannot be executing: a run
+   * holding a step refreshes the lease every 90s (`STEP_LOCK_HEARTBEAT_MS` *
+   * `DURABLE_LEASE_HEARTBEAT_EVERY_TICKS`), and a run parked on an async tool,
+   * a client call or a human is not `running` at all. Rows no recovery path can
+   * act on stay `running` indefinitely, so without the floor the patrol
+   * re-reports the same zombie set on every tick (once a minute under the
+   * opportunistic sweep) and buries genuine live overlaps. A real overlap has
+   * both rows inside the window, so nothing live is hidden by it. As a side
+   * effect, rows filtered here no longer cost a Redis round trip each in the
+   * `isInterrupted` check below.
    */
   private async reportConcurrentForegroundRuns(liveSince: Date): Promise<number> {
     const rows = await this.db

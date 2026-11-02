@@ -62,10 +62,11 @@ const CONCURRENT_FOREGROUND_REPORT_LIMIT = 20;
  * How long a `running` row may go without a refreshed lease and still count as live for the
  * overlap patrol. Set to the widest still-alive cutoff in the system, `HETERO_SILENCE_MS`: a
  * heterogeneous run silent this long is retired by the sweep below and the gateway inactivity
- * watchdog treats it as dead, so a row past it cannot be part of a live overlap. Narrower
- * windows (the 5-minute lease, or the sweep's 24-hour lookback) answer "is this candidate worth
- * recovering", not "can this row still be running" — using the lookback here would let rows
- * frozen up to a day old keep re-reporting while the sweep no longer touches them.
+ * watchdog treats it as dead, so a row past it cannot be part of a live overlap.
+ *
+ * The sweep's 24-hour `DEFAULT_LOOKBACK_MS` answers a different question ("is this candidate
+ * worth recovering"). Rows the sweep cannot act on stay `running` for that whole window, so
+ * reusing the lookback here would keep re-reporting them until they age out.
  */
 const CONCURRENT_FOREGROUND_LIVE_MS = HETERO_SILENCE_MS;
 
@@ -202,13 +203,16 @@ export class StaleOperationReaper {
    * (`threadId`) legitimately run beside the topic's main run.
    *
    * Only runs whose lease is still fresh are examined. A `running` row older
-   * than `CONCURRENT_FOREGROUND_LIVE_MS` is definitionally dead — no recovery
-   * path touches it any more, so it never leaves `running` — and without the
-   * floor the patrol re-reports the same zombie set on every tick (once a
-   * minute under the opportunistic sweep), burying genuine live overlaps. A
-   * real overlap on the newest run always has rows younger than the floor, so
-   * nothing recoverable is hidden by it. As a side effect, rows filtered here
-   * no longer cost a Redis round trip each in the `isInterrupted` check below.
+   * than `CONCURRENT_FOREGROUND_LIVE_MS` cannot be executing: a run holding a
+   * step refreshes the lease every 90s (`STEP_LOCK_HEARTBEAT_MS` *
+   * `DURABLE_LEASE_HEARTBEAT_EVERY_TICKS`), and a run parked on an async tool,
+   * a client call or a human is not `running` at all. Rows no recovery path can
+   * act on stay `running` indefinitely, so without the floor the patrol
+   * re-reports the same zombie set on every tick (once a minute under the
+   * opportunistic sweep) and buries genuine live overlaps. A real overlap has
+   * both rows inside the window, so nothing live is hidden by it. As a side
+   * effect, rows filtered here no longer cost a Redis round trip each in the
+   * `isInterrupted` check below.
    */
   private async reportConcurrentForegroundRuns(): Promise<number> {
     const rows = await this.db

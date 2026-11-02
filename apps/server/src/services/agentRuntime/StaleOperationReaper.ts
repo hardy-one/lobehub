@@ -58,6 +58,17 @@ const isHeterogeneousProvider = (provider: string | null | undefined): boolean =
 /** Bound how many overlapping topics one sweep reports. */
 const CONCURRENT_FOREGROUND_REPORT_LIMIT = 20;
 
+/**
+ * How long a `running` row may go without a refreshed lease and still count as live for the
+ * overlap patrol. Set to the widest still-alive cutoff in the system, `HETERO_SILENCE_MS`: a
+ * heterogeneous run silent this long is retired by the sweep below and the gateway inactivity
+ * watchdog treats it as dead, so a row past it cannot be part of a live overlap. Narrower
+ * windows (the 5-minute lease, or the sweep's 24-hour lookback) answer "is this candidate worth
+ * recovering", not "can this row still be running" — using the lookback here would let rows
+ * frozen up to a day old keep re-reporting while the sweep no longer touches them.
+ */
+const CONCURRENT_FOREGROUND_LIVE_MS = HETERO_SILENCE_MS;
+
 export interface ReapStaleOperationsParams {
   /** Silence after which a stateless heterogeneous run is retired. */
   heteroSilenceMs?: number;
@@ -189,6 +200,15 @@ export class StaleOperationReaper {
    * Warn about topics where more than one foreground run is live. Top-level
    * runs only: sub-agent children (`parentOperationId`) and thread runs
    * (`threadId`) legitimately run beside the topic's main run.
+   *
+   * Only runs whose lease is still fresh are examined. A `running` row older
+   * than `CONCURRENT_FOREGROUND_LIVE_MS` is definitionally dead — no recovery
+   * path touches it any more, so it never leaves `running` — and without the
+   * floor the patrol re-reports the same zombie set on every tick (once a
+   * minute under the opportunistic sweep), burying genuine live overlaps. A
+   * real overlap on the newest run always has rows younger than the floor, so
+   * nothing recoverable is hidden by it. As a side effect, rows filtered here
+   * no longer cost a Redis round trip each in the `isInterrupted` check below.
    */
   private async reportConcurrentForegroundRuns(): Promise<number> {
     const rows = await this.db
@@ -202,6 +222,7 @@ export class StaleOperationReaper {
       .where(
         and(
           eq(agentOperations.status, 'running'),
+          gte(agentOperations.updatedAt, new Date(Date.now() - CONCURRENT_FOREGROUND_LIVE_MS)),
           isNotNull(agentOperations.topicId),
           isNull(agentOperations.threadId),
           isNull(agentOperations.parentOperationId),

@@ -1,4 +1,9 @@
-import type { UIChatMessage } from '@lobechat/types';
+import type {
+  OnDemandBootstrapIdentifier,
+  OnDemandContextMetadata,
+  OnDemandDynamicEntryMetadata,
+  UIChatMessage,
+} from '@lobechat/types';
 
 /**
  * Consumer-side metadata extensions for PipelineContext.metadata.
@@ -65,10 +70,59 @@ export interface Message {
  */
 export interface PipelineContextMetadata extends PipelineContextMetadataOverrides {
   [key: `${string}InjectedCount`]: number | undefined;
+  /** Bootstrap tools permitted by the on-demand protocol. */
+  bootstrapToolIds?: readonly OnDemandBootstrapIdentifier[];
+  /**
+   * Per-bucket system-prompt text recorded by MessagesEngine while the
+   * pipeline runs — lets the send side count exactly what was assembled
+   * (system role / tools / history summary) instead of re-estimating.
+   */
+  contextBuckets?: ContextBuckets;
+  /**
+   * Conversation rows (history + current input) captured right after
+   * history truncation and before any injection — the base of the `chats`
+   * bucket, which then also accumulates per-request injectors.
+   */
+  contextChatsBase?: string;
+  /** Context loading strategy actually used for this assembly. */
+  contextMode?: 'default' | 'on-demand';
   currentTokenCount?: number;
+  /** Every dynamic on-demand candidate and whether this first turn included it. */
+  dynamicEntries?: readonly OnDemandDynamicEntryMetadata[];
   maxTokens?: number;
   model?: string;
+  /** Shared on-demand metadata bundle for client, server, and trace consumers. */
+  onDemandContext?: OnDemandContextMetadata;
+  /** On-demand protocol version. */
+  protocolVersion?: string;
   provider?: string;
+  /** Hash of the original, unmodified Agent Prompt. */
+  rawSystemRoleHash?: string;
+  /** Stable-prefix hash for the on-demand third mode. */
+  stablePrefixHash?: string;
+}
+
+/**
+ * Named buckets of system-prompt content assembled by MessagesEngine.
+ * `chats` holds the conversation rows (history + current input) plus any
+ * per-request injectors that belong to the chat bucket.
+ */
+export interface ContextBuckets {
+  chats: string;
+  historySummary: string;
+  systemRole: string;
+  tools: string;
+}
+
+/**
+ * Token counts per bucket (tokenx estimate), computed after the pipeline
+ * has assembled the final payload. `chats` = total - recorded buckets.
+ */
+export interface ContextTokenCounts {
+  chats: number;
+  historySummary: number;
+  systemRole: number;
+  tools: number;
 }
 
 /**

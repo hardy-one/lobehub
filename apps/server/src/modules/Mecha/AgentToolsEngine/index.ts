@@ -12,6 +12,7 @@
 import { PageAgentIdentifier } from '@lobechat/builtin-tool-page-agent';
 import { builtinTools } from '@lobechat/builtin-tools';
 import { createEnableChecker, type LobeToolManifest, ToolsEngine } from '@lobechat/context-engine';
+import { ON_DEMAND_BOOTSTRAP_MANIFESTS_BY_IDENTIFIER } from '@lobechat/context-engine/onDemand';
 import { assembleManifestPool, resolveToolRules } from '@lobechat/mecha';
 import { type RuntimePlatform } from '@lobechat/types';
 import debug from 'debug';
@@ -54,6 +55,7 @@ export const createServerToolsEngine = (
     defaultToolIds,
     excludeIdentifiers,
     manifestContext,
+    manifestOverrides,
   } = config;
 
   // The pool rules (connector precedence, context-aware builtins, invalid
@@ -61,7 +63,7 @@ export const createServerToolsEngine = (
   // browser; the builtin list arrives pre-filtered by the device walls and
   // `excludeIdentifiers` closes the second half of that wall for the other
   // sources.
-  const { excludedCount, manifests } = assembleManifestPool(
+  const { excludedCount, manifests: pooledManifests } = assembleManifestPool(
     {
       additional: additionalManifests,
       builtinTools: builtinToolsOverride,
@@ -70,6 +72,9 @@ export const createServerToolsEngine = (
       ),
     },
     { excludedIdentifiers: excludeIdentifiers, manifestContext },
+  );
+  const manifests = pooledManifests.map(
+    (manifest) => manifestOverrides?.[manifest.identifier] ?? manifest,
   );
 
   log(
@@ -105,6 +110,7 @@ export const createServerAgentToolsEngine = (
     additionalManifests,
     agentConfig,
     canUseDevice = false,
+    contextMode,
     deviceContext,
     disableLocalSystem = false,
     disabledPluginIds = [],
@@ -143,7 +149,12 @@ export const createServerAgentToolsEngine = (
   // are shared with the browser through `@lobechat/mecha`; this engine only
   // assembles the server's facts.
   const resolved = resolveToolRules({
-    agent: { chatConfig: agentConfig.chatConfig, plugins: agentConfig.plugins },
+    agent: {
+      chatConfig: contextMode
+        ? { ...agentConfig.chatConfig, contextMode }
+        : agentConfig.chatConfig,
+      plugins: agentConfig.plugins,
+    },
     // Gateway facts exist only behind a gateway: without one nothing can
     // dispatch to a device, so the picker never exists. The policy / plan
     // walls apply either way.
@@ -207,6 +218,9 @@ export const createServerAgentToolsEngine = (
     excludeIdentifiers:
       resolved.excludedIdentifiers.size > 0 ? resolved.excludedIdentifiers : undefined,
     manifestContext,
+    manifestOverrides: resolved.onDemand
+      ? (ON_DEMAND_BOOTSTRAP_MANIFESTS_BY_IDENTIFIER as Readonly<Record<string, LobeToolManifest>>)
+      : undefined,
     enableChecker: createEnableChecker({
       allowExplicitActivation: resolved.allowExplicitActivation,
       rules: resolved.rules,

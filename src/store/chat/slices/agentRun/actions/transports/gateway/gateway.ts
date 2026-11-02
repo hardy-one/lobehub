@@ -23,6 +23,7 @@ import type {
   ExecAgentResult,
   MessageMetadata,
   RuntimeMentionedAgent,
+  RuntimeSelectedSkill,
 } from '@lobechat/types';
 
 import { canUseGatewayProtocolV2 } from '@/helpers/gatewayProtocol';
@@ -1002,6 +1003,12 @@ export class GatewayActionImpl {
      */
     selectedToolIds?: string[];
     /**
+     * Explicit slash-selected skills. On-demand runs auto-load their bodies as
+     * provenance-bearing suffix messages instead of relying on a second model
+     * activation call.
+     */
+    selectedSkills?: RuntimeSelectedSkill[];
+    /**
      * Agents the user @-mentioned in this message (multi-mention). Forwarded to
      * the server so the supervisor run enables the callAgent tool and injects the
      * mentioned-agents delegation context — mirrors the client runtime's
@@ -1047,6 +1054,7 @@ export class GatewayActionImpl {
       resumeToolResult,
       selectedSkillIds,
       selectedToolIds,
+      selectedSkills,
       mentionedAgents,
       tempMessageIds,
       userMessage,
@@ -1189,6 +1197,7 @@ export class GatewayActionImpl {
               resumeToolResult,
               selectedSkillIds,
               selectedToolIds,
+              selectedSkills,
               // A queued follow-up keeps its continuation mark on the row the
               // server persists, which replaces the optimistic one.
               steer: metadata?.steer,

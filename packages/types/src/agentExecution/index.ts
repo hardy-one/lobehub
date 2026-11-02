@@ -6,6 +6,7 @@ import type { DeviceUnavailableErrorData } from '../device';
 import { workingDirConfigSchema } from '../device';
 import type { ComposerUserMessage, TaskDetail, UIChatMessage } from '../message';
 import type { ChatTopic } from '../topic';
+import type { RuntimeSelectedSkill } from '../stepContext';
 
 export * from './credentialFacts';
 export * from './initRequest';
@@ -373,6 +374,8 @@ export interface ExecAgentParams {
   parentOperationId?: string;
   /** The user input/prompt */
   prompt: string;
+  /** Explicit slash-selected skills, including bodies already resolved by the caller. */
+  selectedSkills?: RuntimeSelectedSkill[];
   /** Override the agent's default provider */
   provider?: string;
   /**

@@ -22,7 +22,12 @@ import type {
 } from '@lobechat/context-engine';
 import type { AgentIdentityContext } from '@lobechat/prompts';
 import type {
+  AgentContextMode,
   ExpertiseContextSnapshot,
+  OnDemandBudgetConfig,
+  OnDemandDocumentCard,
+  OnDemandRetrievalBatch,
+  OnDemandToolCard,
   RuntimeAdditionalContextFragment,
   RuntimeInitialContext,
   RuntimeSelectedSkill,
@@ -42,6 +47,8 @@ export type ContextVariables = Record<string, string | (() => string)>;
 export interface ContextAgentSnapshot {
   /** Agent documents the agent may consult. */
   documents?: AgentContextDocument[];
+  /** Card-only document discovery; bodies stay behind readDocument. */
+  documentCards?: readonly OnDemandDocumentCard[];
   enableHistoryCount?: boolean;
   /** Undefined / true → stale tool results are trimmed (default). */
   enableStaleToolResultTrim?: boolean;
@@ -85,12 +92,23 @@ export interface ContextRunSnapshot {
   initialContext?: RuntimeInitialContext;
   messages: UIChatMessage[];
   stepContext?: RuntimeStepContext;
+  /** Explicit third-mode context strategy. Default keeps the legacy pipeline. */
+  contextMode?: AgentContextMode;
+  /** On-demand dynamic-suffix budget and server retrieval facts. */
+  onDemand?: {
+    budget?: Partial<OnDemandBudgetConfig>;
+    /** Legacy total-only override; new callers should pass `budget`. */
+    maxTokens?: number;
+    retrieval?: OnDemandRetrievalBatch;
+  };
 }
 
 /**
  * Tools and skills the turn may use, already resolved for this step.
  */
 export interface ContextToolsSnapshot {
+  /** Compact tool cards the on-demand suffix may expose without schemas. */
+  discoveryCards?: readonly OnDemandToolCard[];
   /**
    * Tool identifiers whose system roles must not be injected even though the
    * tool is enabled. Defaults to hiding the page agent unless it is enabled.

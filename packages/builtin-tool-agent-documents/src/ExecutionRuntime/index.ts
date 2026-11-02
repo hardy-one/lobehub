@@ -9,7 +9,6 @@ import {
   formatReplaceDocumentResult,
   formatUpdateLoadRuleResult,
 } from '@lobechat/prompts';
-import { appendTextWindowNotice, sliceTextWindow } from '@lobechat/prompts/textWindow';
 import type { BuiltinServerRuntimeOutput } from '@lobechat/types';
 
 import type {
@@ -31,9 +30,9 @@ import type {
 import {
   LIST_DOCUMENTS_DEFAULT_LIMIT,
   LIST_DOCUMENTS_MAX_LIMIT,
-  MAX_READ_DOCUMENT_CONTENT_CHARS,
   MOVE_DOCUMENTS_MAX_IDS,
 } from '../types';
+import { formatDocumentReadContent } from './readDocumentWindow';
 
 const clampListLimit = (limit: unknown): number => {
   const value = Math.floor(Number(limit));
@@ -411,38 +410,6 @@ export class AgentDocumentsExecutionRuntime {
     return doc.documentId === currentDocumentId;
   }
 
-  /**
-   * Returns one window of a field using the shared text-window contract. A field within the cap
-   * and read without `offset`/`limit` is returned whole, exactly as before; otherwise the window
-   * ends with the range, total size and the exact readDocument call for the next window.
-   */
-  private windowReadContent(content: string, args: ReadDocumentArgs, format: string) {
-    const paged = args.offset !== undefined || args.limit !== undefined;
-    if (!paged && content.length <= MAX_READ_DOCUMENT_CONTENT_CHARS) return content;
-
-    const window = sliceTextWindow(content, {
-      maxChars: MAX_READ_DOCUMENT_CONTENT_CHARS,
-      maxLines: args.limit,
-      offset: args.offset,
-    });
-
-    return appendTextWindowNotice(window, {
-      continueFrom: (line) =>
-        `call readDocument again with id="${args.id}", format="${format}" and offset=${line}`,
-    });
-  }
-
-  private formatDocumentReadContent(doc: AgentDocumentRecord, args: ReadDocumentArgs) {
-    const format = args.format ?? 'xml';
-    const markdown = () => this.windowReadContent(doc.content || '', args, format);
-    const xml = () => this.windowReadContent(doc.litexml || '', args, format);
-
-    if (format === 'markdown') return markdown();
-    if (format === 'both') return JSON.stringify({ markdown: markdown(), xml: xml() });
-
-    return doc.litexml ? xml() : markdown();
-  }
-
   async listDocuments(
     args: ListDocumentsArgs,
     context?: AgentDocumentOperationContext,
@@ -684,9 +651,9 @@ export class AgentDocumentsExecutionRuntime {
     const doc = await this.service.readDocument({ ...readArgs, agentId });
     if (!doc) return { content: `Document not found: ${args.id}`, success: false };
 
+    const { content, state } = formatDocumentReadContent(doc, args);
     return {
-      content: this.formatDocumentReadContent(doc, args),
-      state: { content: doc.content, id: doc.id, title: doc.title, xml: doc.litexml },
+      state,
       success: true,
     };
   }

@@ -14,6 +14,7 @@ import { mentionsTopic } from '@lobechat/context-engine';
 import { type ContextSnapshot, gatherContextFacts, runContextEngineering } from '@lobechat/mecha';
 import { historySummaryPrompt } from '@lobechat/prompts';
 import {
+  type AgentContextMode,
   agentIdentityLabel,
   type OpenAIChatMessage,
   type RuntimeAdditionalContextFragment,
@@ -62,6 +63,8 @@ interface ContextEngineeringContext {
   additionalContexts?: readonly RuntimeAdditionalContextFragment[];
   /** The agent ID that will respond (for group context injection) */
   agentId?: string;
+  /** Explicit third-mode context strategy. Default keeps the legacy pipeline. */
+  contextMode?: AgentContextMode;
   /**
    * Attachments sent as a preview plus file id because the request's attachment
    * budget is spent (planned by `shouldCompress`).
@@ -134,6 +137,7 @@ export const contextEngineering = async ({
   historyCount,
   historySummary,
   agentId,
+  contextMode,
   disabledPluginIds,
   enableAgentMode,
   groupId,
@@ -348,6 +352,7 @@ export const contextEngineering = async ({
     },
     run: {
       additionalContexts,
+      contextMode,
       // MessagesEngine force-disables skills / agent-document injectors when this
       // is `false` (chat mode). ChatService resolves it from stored user intent
       // plus the selected model's function-call ability.

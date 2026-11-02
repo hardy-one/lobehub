@@ -7,6 +7,7 @@ import { generateSystemPrompt, RemoteDeviceManifest } from '@lobechat/builtin-to
 import {
   injectSelfFeedbackIntentTool,
   SELF_FEEDBACK_INTENT_IDENTIFIER,
+  selfFeedbackIntentManifest,
   shouldExposeSelfFeedbackIntentTool,
 } from '@lobechat/builtin-tool-self-iteration';
 import { manualModeExcludeToolIds } from '@lobechat/builtin-tools';
@@ -24,8 +25,17 @@ import {
   resolveDiscoveryPool,
   resolveInvocationToolIds,
 } from '@lobechat/mecha';
-import type { BuiltinToolResolveContext, FrozenCredentialFacts } from '@lobechat/types';
-import { getActivePluginIds } from '@lobechat/types';
+import type {
+  AgentContextMode,
+  BuiltinToolResolveContext,
+  FrozenCredentialFacts,
+  OnDemandDiscoveryPool,
+} from '@lobechat/types';
+import {
+  getActivePluginIds,
+  ON_DEMAND_BOOTSTRAP_IDENTIFIERS,
+  resolveContextMode,
+} from '@lobechat/types';
 import debug from 'debug';
 
 import { loadModels } from '@/business/client/model-bank/loadModels';
@@ -138,6 +148,9 @@ export const discoverTools = async (
   let onlineDevices: DeviceAttachment[] = [];
   let activeDeviceId: string | undefined;
   let activeDeviceScope: 'personal' | 'workspace' | undefined;
+  let contextMode: AgentContextMode = 'default';
+  let discoveryPool: OnDemandDiscoveryPool | undefined;
+  let discoverablePluginIdentifiers = new Set<string>();
   let executionPlan: ExecutionPlan | undefined;
   let hasAgentDocuments = false;
   let hasEnabledKnowledgeBases = false;
@@ -327,6 +340,9 @@ export const discoverTools = async (
         lobehubSkillManifests,
         pluginsWithoutConnectors,
       }));
+    discoverablePluginIdentifiers = new Set(
+      pluginsWithoutConnectors.map((plugin) => plugin.identifier),
+    );
 
     await throwIfExecutionAborted('tool discovery');
 
@@ -361,6 +377,12 @@ export const discoverTools = async (
     const modelAbilities =
       builtinModels.find((item) => item.id === model && item.providerId === provider)?.abilities ??
       builtinModels.find((item) => item.id === model)?.abilities;
+    contextMode = resolveContextMode(
+      isGoalTurn
+        ? { ...agentConfig.chatConfig, toolMode: 'custom' as const }
+        : agentConfig.chatConfig,
+      { supportToolUse: isModelSupportToolUse(model, provider) },
+    );
     agentPlugins = [
       ...new Set([
         ...agentPlugins,
@@ -479,6 +501,7 @@ export const discoverTools = async (
         plugins: agentPlugins,
       },
       canUseDevice,
+      contextMode,
       deviceContext: gatewayConfigured
         ? {
             autoActivated: activeDeviceId ? true : undefined,
@@ -519,12 +542,19 @@ export const discoverTools = async (
 
     const isManualMode = agentConfig.chatConfig?.skillActivateMode === 'manual';
 
+    const initialToolIds =
+      contextMode === 'on-demand' ? [...ON_DEMAND_BOOTSTRAP_IDENTIFIERS] : pluginIds;
     toolsResult = toolsEngine.generateToolsDetailed({
-      excludeDefaultToolIds: isManualMode ? manualModeExcludeToolIds : undefined,
+      excludeDefaultToolIds:
+        contextMode === 'on-demand'
+          ? undefined
+          : isManualMode
+            ? manualModeExcludeToolIds
+            : undefined,
       model,
       provider,
       skipDefaultTools: !!exclusivePluginIds,
-      toolIds: pluginIds,
+      toolIds: initialToolIds,
     });
 
     tools = toolsResult.tools;
@@ -633,14 +663,20 @@ export const discoverTools = async (
           featureUserEnabled,
         })
       ) {
-        tools = tools ?? [];
-        injectSelfFeedbackIntentTool({
-          enabledToolIds: toolsResult.enabledToolIds,
-          manifestMap: toolManifestMap,
-          sourceMap: toolSourceMap,
-          tools,
-        });
-        log('execAgent: injected self-feedback intent declaration tool');
+        if (contextMode === 'on-demand') {
+          toolManifestMap[SELF_FEEDBACK_INTENT_IDENTIFIER] = selfFeedbackIntentManifest;
+          toolSourceMap[SELF_FEEDBACK_INTENT_IDENTIFIER] = 'builtin';
+          log('execAgent: queued self-feedback intent tool for on-demand discovery');
+        } else {
+          tools = tools ?? [];
+          injectSelfFeedbackIntentTool({
+            enabledToolIds: toolsResult.enabledToolIds,
+            manifestMap: toolManifestMap,
+            sourceMap: toolSourceMap,
+            tools,
+          });
+          log('execAgent: injected self-feedback intent declaration tool');
+        }
       }
     }
   }
@@ -648,17 +684,6 @@ export const discoverTools = async (
   // Inject client function tools from Response API
   const CLIENT_FN_IDENTIFIER = 'lobe-client-fn';
   if (functionTools?.length) {
-    tools ??= [];
-    for (const ft of functionTools) {
-      tools.push({
-        function: {
-          description: ft.description,
-          name: `${CLIENT_FN_IDENTIFIER}____${ft.name}`,
-          parameters: ft.parameters,
-        },
-        type: 'function',
-      });
-    }
     toolSourceMap[CLIENT_FN_IDENTIFIER] = 'client';
     toolManifestMap[CLIENT_FN_IDENTIFIER] = {
       api: functionTools.map((ft) => ({
@@ -670,7 +695,22 @@ export const discoverTools = async (
       meta: { title: 'Client Functions' },
       type: 'default',
     };
-    toolsResult.enabledToolIds.push(CLIENT_FN_IDENTIFIER);
+    toolExecutorMap[CLIENT_FN_IDENTIFIER] = 'client';
+
+    if (contextMode !== 'on-demand') {
+      tools ??= [];
+      for (const ft of functionTools) {
+        tools.push({
+          function: {
+            description: ft.description,
+            name: `${CLIENT_FN_IDENTIFIER}____${ft.name}`,
+            parameters: ft.parameters,
+          },
+          type: 'function',
+        });
+      }
+      toolsResult.enabledToolIds.push(CLIENT_FN_IDENTIFIER);
+    }
   }
 
   // Override RemoteDevice manifest's systemRole with the dynamic device
@@ -687,6 +727,37 @@ export const discoverTools = async (
     };
   }
 
+  if (contextMode === 'on-demand' && executionPlan) {
+    const bootstrapIds = new Set<string>(ON_DEMAND_BOOTSTRAP_IDENTIFIERS);
+    const nonBootstrapEnabledIds = toolsResult.enabledToolIds.filter(
+      (id) => !bootstrapIds.has(id),
+    );
+    if (nonBootstrapEnabledIds.length > 0) {
+      throw new Error(
+        `On-demand initial tool set contains non-bootstrap tools: ${nonBootstrapEnabledIds.join(', ')}`,
+      );
+    }
+
+    discoveryPool = buildOnDemandDiscoveryPool({
+      agentId: resolvedAgentId,
+      allowedIdentifiers: new Set(Object.keys(toolManifestMap)),
+      canUseDevice,
+      deviceOnline,
+      executionTarget: executionPlan.target,
+      executorMap: toolExecutorMap,
+      gatewayConfigured: deviceGateway.isConfigured,
+      manifestMap: toolManifestMap,
+      pluginIdentifiers: discoverablePluginIdentifiers,
+      sourceMap: toolSourceMap,
+      workspaceId: deps.workspaceId,
+    });
+    log(
+      'execAgent: built on-demand discovery pool with %d cards and %d bundles',
+      discoveryPool.cards.length,
+      Object.keys(discoveryPool.bundles).length,
+    );
+  }
+
   return {
     activeDeviceId,
     activeDeviceScope,
@@ -695,6 +766,8 @@ export const discoverTools = async (
     composioManifests,
     connectorManifests,
     connectorOwnershipNote,
+    contextMode,
+    discoveryPool,
     executionPlan,
     hasAgentDocuments,
     credentialFactsPromise,
@@ -713,3 +786,8 @@ export const discoverTools = async (
     toolsResult,
   };
 };
+
+export {
+  buildOnDemandDiscoveryPool,
+  type BuildOnDemandDiscoveryPoolParams,
+} from './onDemandDiscoveryPool';

@@ -1,4 +1,7 @@
 import { BUILTIN_AGENT_SLUGS } from '@lobechat/builtin-agents';
+import type { LobeToolManifest } from '@lobechat/context-engine';
+import { buildOnDemandBootstrapToolSet } from '@lobechat/context-engine/onDemand';
+import { ON_DEMAND_BOOTSTRAP_IDENTIFIERS } from '@lobechat/types';
 import type * as ModelBankModule from 'model-bank';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -10,16 +13,26 @@ const {
   mockCreateOperation,
   mockGetAgentConfig,
   mockGetPreference,
+  mockGenerateToolsDetailed,
+  mockGetEnabledPluginManifests,
   mockMessageCreate,
   mockTopicCreate,
+  mockPluginQuery,
+  mockConnectorResolveAll,
+  mockConnectorToolQueryAll,
   mockTopicFindById,
 } = vi.hoisted(() => ({
   mockIsResourceAuthorOrAdmin: vi.fn(),
   mockCreateOperation: vi.fn(),
   mockGetAgentConfig: vi.fn(),
   mockGetPreference: vi.fn(),
+  mockGenerateToolsDetailed: vi.fn(),
+  mockGetEnabledPluginManifests: vi.fn(),
   mockMessageCreate: vi.fn(),
   mockTopicCreate: vi.fn().mockResolvedValue({ id: 'topic-1' }),
+  mockPluginQuery: vi.fn(),
+  mockConnectorResolveAll: vi.fn(),
+  mockConnectorToolQueryAll: vi.fn(),
   mockTopicFindById: vi.fn(),
 }));
 
@@ -78,32 +91,27 @@ vi.mock('@/server/services/agent', () => ({
 }));
 
 vi.mock('@/database/models/plugin', () => ({
-  PluginModel: vi.fn().mockImplementation(function () {
-    return {
-      query: vi.fn().mockResolvedValue([]),
-    };
-  }),
+  PluginModel: vi.fn().mockImplementation(() => ({
+    query: mockPluginQuery,
+  })),
 }));
 
 // Builtin agents inject their own tools, so a run under a builtin slug reaches
 // connector resolution that the plain-agent cases never do.
 vi.mock('@/database/models/connector', () => ({
-  ConnectorModel: vi.fn().mockImplementation(function () {
-    return {
-      queryByIdentifiers: vi.fn().mockResolvedValue([]),
-      resolveByIdentifiers: vi.fn().mockResolvedValue([]),
-    };
-  }),
+  ConnectorModel: vi.fn().mockImplementation(() => ({
+    queryByIdentifiers: vi.fn().mockResolvedValue([]),
+    resolveAll: mockConnectorResolveAll,
+    resolveByIdentifiers: vi.fn().mockResolvedValue([]),
+  })),
 }));
 
 vi.mock('@/database/models/connectorTool', () => ({
-  ConnectorToolModel: vi.fn().mockImplementation(function () {
-    return {
-      queryAllByConnectorIds: vi.fn().mockResolvedValue([]),
-      queryByConnector: vi.fn().mockResolvedValue([]),
-      queryByConnectorIds: vi.fn().mockResolvedValue([]),
-    };
-  }),
+  ConnectorToolModel: vi.fn().mockImplementation(() => ({
+    queryAllByConnectorIds: mockConnectorToolQueryAll,
+    queryByConnector: vi.fn().mockResolvedValue([]),
+    queryByConnectorIds: vi.fn().mockResolvedValue([]),
+  })),
 }));
 
 vi.mock('@/database/models/topic', () => ({
@@ -162,8 +170,8 @@ vi.mock('@/server/services/file', () => ({
 
 vi.mock('@/server/modules/Mecha', () => ({
   createServerAgentToolsEngine: vi.fn().mockReturnValue({
-    generateToolsDetailed: vi.fn().mockReturnValue({ enabledToolIds: [], tools: [] }),
-    getEnabledPluginManifests: vi.fn().mockReturnValue(new Map()),
+    generateToolsDetailed: mockGenerateToolsDetailed,
+    getEnabledPluginManifests: mockGetEnabledPluginManifests,
   }),
   serverMessagesEngine: vi.fn().mockResolvedValue([{ content: 'test', role: 'user' }]),
 }));
@@ -219,6 +227,11 @@ describe('AiAgentService.execAgent - model/provider override', () => {
       success: true,
     });
     mockGetPreference.mockResolvedValue({});
+    mockGenerateToolsDetailed.mockReturnValue({ enabledToolIds: [], tools: [] });
+    mockGetEnabledPluginManifests.mockReturnValue(new Map());
+    mockPluginQuery.mockResolvedValue([]);
+    mockConnectorResolveAll.mockResolvedValue([]);
+    mockConnectorToolQueryAll.mockResolvedValue([]);
     mockIsResourceAuthorOrAdmin.mockResolvedValue(false);
     mockTopicFindById.mockResolvedValue(null);
     service = new AiAgentService(mockDb, userId);
@@ -893,6 +906,157 @@ describe('AiAgentService.execAgent - toolModeOverride (/mode command)', () => {
     expect(callArgs.agentConfig.chatConfig).toMatchObject({
       contextMode: 'default',
       enableAgentMode: true,
+    });
+  });
+
+  it('sends exactly the bootstrap payload while keeping a cold tool discoverable', async () => {
+    const bootstrap = buildOnDemandBootstrapToolSet();
+    const coldManifest: LobeToolManifest = {
+      api: [
+        {
+          description: 'Deploy the current release',
+          name: 'deploy',
+          parameters: {
+            properties: { version: { type: 'string' } },
+            required: ['version'],
+            type: 'object',
+          },
+        },
+      ],
+      identifier: 'cold-release-tool',
+      meta: { description: 'Cold release capability', title: 'Cold Release' },
+      systemRole: 'Never inject this manual until activation.',
+      type: 'default',
+    };
+
+    mockGetAgentConfig.mockResolvedValue({
+      ...defaultAgentConfig,
+      chatConfig: { contextMode: 'on-demand', enableAgentMode: true },
+      plugins: ['cold-release-tool'],
+    });
+    mockGenerateToolsDetailed.mockImplementation((input: { toolIds: string[] }) => {
+      expect(input.toolIds).toEqual(ON_DEMAND_BOOTSTRAP_IDENTIFIERS);
+      return {
+        enabledToolIds: bootstrap.enabledToolIds,
+        tools: bootstrap.tools,
+      };
+    });
+    mockGetEnabledPluginManifests.mockReturnValue(
+      new Map([...Object.entries(bootstrap.manifestMap), ['cold-release-tool', coldManifest]]),
+    );
+
+    await service.execAgent({
+      agentId: 'agent-1',
+      appContext: { topicId: 'topic-1' },
+      prompt: 'Deploy release 42',
+    });
+
+    const callArgs = mockCreateOperation.mock.calls[0][0];
+    expect(callArgs.toolSet.enabledToolIds).toEqual(ON_DEMAND_BOOTSTRAP_IDENTIFIERS);
+    expect(callArgs.toolSet.tools.map((tool: any) => tool.function.name)).toEqual(
+      bootstrap.tools.map((tool) => tool.function.name),
+    );
+    expect(
+      callArgs.toolSet.tools.every((tool: any) => !tool.function.name.includes('invoke')),
+    ).toBe(true);
+    expect(callArgs.toolSet.discoveryPool.cards).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          identifier: 'cold-release-tool',
+          name: 'Cold Release',
+        }),
+      ]),
+    );
+    expect(
+      callArgs.toolSet.discoveryPool.cards.some((card: any) =>
+        ON_DEMAND_BOOTSTRAP_IDENTIFIERS.includes(card.identifier),
+      ),
+    ).toBe(false);
+    expect(callArgs.toolSet.discoveryPool.bundles['cold-release-tool'].manual.content).toContain(
+      'Never inject this manual until activation.',
+    );
+  });
+
+  it('discovers installed but unpinned plugins and connectors without adding them to tools', async () => {
+    const bootstrap = buildOnDemandBootstrapToolSet();
+    const coldPlugin = {
+      customParams: {},
+      identifier: 'cold-unpinned-plugin',
+      manifest: {
+        api: [
+          {
+            description: 'Read an unpinned plugin resource',
+            name: 'readResource',
+            parameters: { properties: {}, type: 'object' },
+          },
+        ],
+        executors: ['client'],
+        identifier: 'cold-unpinned-plugin',
+        meta: { description: 'Unpinned plugin capability', title: 'Cold Plugin' },
+        type: 'default',
+      },
+      runtimeType: 'default',
+      type: 'plugin',
+    };
+    const coldConnector = {
+      credentials: null,
+      id: 'connector-cold',
+      identifier: 'cold-connector',
+      isEnabled: true,
+      mcpConnectionType: 'http',
+      mcpServerUrl: 'https://example.com/mcp',
+      metadata: {},
+      name: 'Cold Connector',
+    };
+
+    mockGetAgentConfig.mockResolvedValue({
+      ...defaultAgentConfig,
+      chatConfig: { contextMode: 'on-demand', enableAgentMode: true },
+      plugins: [],
+    });
+    mockPluginQuery.mockResolvedValue([coldPlugin]);
+    mockConnectorResolveAll.mockResolvedValue([coldConnector]);
+    mockConnectorToolQueryAll.mockResolvedValue([
+      {
+        description: 'Search the cold connector',
+        id: 'connector-tool-cold',
+        inputSchema: { properties: { query: { type: 'string' } }, type: 'object' },
+        permission: 'auto',
+        toolName: 'search',
+        userConnectorId: coldConnector.id,
+      },
+    ]);
+    mockGenerateToolsDetailed.mockImplementation((input: { toolIds: string[] }) => {
+      expect(input.toolIds).toEqual(ON_DEMAND_BOOTSTRAP_IDENTIFIERS);
+      return {
+        enabledToolIds: bootstrap.enabledToolIds,
+        tools: bootstrap.tools,
+      };
+    });
+    mockGetEnabledPluginManifests.mockReturnValue(new Map(Object.entries(bootstrap.manifestMap)));
+
+    await service.execAgent({
+      agentId: 'agent-1',
+      appContext: { topicId: 'topic-1' },
+      prompt: 'Use installed capabilities',
+    });
+
+    const callArgs = mockCreateOperation.mock.calls[0][0];
+    expect(callArgs.toolSet.tools.map((tool: any) => tool.function.name)).toEqual(
+      bootstrap.tools.map((tool) => tool.function.name),
+    );
+    expect(callArgs.toolSet.discoveryPool.cards).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ identifier: 'cold-unpinned-plugin', source: 'plugin' }),
+        expect.objectContaining({ identifier: 'cold-connector', source: 'mcp' }),
+      ]),
+    );
+    expect(callArgs.toolSet.discoveryPool.bundles['cold-unpinned-plugin'].manifest).toMatchObject({
+      identifier: 'cold-unpinned-plugin',
+    });
+    expect(callArgs.toolSet.discoveryPool.bundles['cold-connector'].manifest).toMatchObject({
+      api: [expect.objectContaining({ name: 'search' })],
+      identifier: 'cold-connector',
     });
   });
 });

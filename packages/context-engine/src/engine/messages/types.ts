@@ -1,7 +1,13 @@
 /* eslint-disable perfectionist/sort-interfaces */
 import type { AgentIdentityContext, FileContent, KnowledgeBaseInfo } from '@lobechat/prompts';
 import type {
+  AgentContextMode,
   ExpertiseContextSnapshot,
+  OnDemandBudgetConfig,
+  OnDemandContextMetadata,
+  OnDemandDocumentCard,
+  OnDemandRetrievalBatch,
+  OnDemandToolCard,
   RuntimeAdditionalContextFragment,
   RuntimeInitialContext,
   RuntimeSelectedSkill,
@@ -62,6 +68,11 @@ export interface KnowledgeConfig {
 export interface ToolsConfig {
   /** Tool identifiers that must be removed from historical tool calls in this runtime scope */
   disabledToolIdentifiers?: string[];
+  /**
+   * Compact discovery cards for the on-demand suffix. Cards never carry API
+   * schemas or manuals; those are loaded atomically on activation.
+   */
+  discoveryCards?: readonly OnDemandToolCard[];
   /** Tool manifests with systemRole and API definitions */
   manifests?: LobeToolManifest[];
   /** Enabled tool IDs (kept for compatibility) */
@@ -233,6 +244,25 @@ export interface MessagesEngineParams {
   /** Provider ID */
   provider: string;
 
+  // ========== Context loading ==========
+  /**
+   * Explicit context strategy. Undefined or `default` keeps the legacy
+   * processor pipeline byte-for-byte unchanged.
+   */
+  contextMode?: AgentContextMode;
+  /** First-turn dynamic suffix limits. */
+  onDemand?: {
+    /** Shared total/dynamic/reserve budget for the on-demand assembly. */
+    budget?: Partial<OnDemandBudgetConfig>;
+    /**
+     * Legacy total-only override. Kept for callers that predate the shared
+     * config; it maps to `{ totalTokens, dynamicTokens, reserveTokens: 0 }`.
+     */
+    maxTokens?: number;
+    /** Server/user-memory retrieval facts ranked by the shared service. */
+    retrieval?: OnDemandRetrievalBatch;
+  };
+
   // ========== System date ==========
   /** Whether to inject current date into system message (default: true) */
   enableSystemDate?: boolean;
@@ -296,6 +326,8 @@ export interface MessagesEngineParams {
   skillsConfig?: SkillsConfig;
   /** Skills explicitly selected by the user for the current request */
   selectedSkills?: RuntimeSelectedSkill[];
+  /** Card-only document discovery supplied by server retrieval or listDocuments. */
+  documentCards?: readonly OnDemandDocumentCard[];
   /** Tools explicitly selected by the user for the current request */
   selectedTools?: RuntimeSelectedTool[];
 
@@ -380,6 +412,13 @@ export interface MessagesEngineResult {
     /** Total processing time in ms */
     totalDuration: number;
   };
+}
+
+declare module '../../types' {
+  interface PipelineContextMetadataOverrides {
+    /** On-demand assembly metadata shared by client and server consumers. */
+    onDemandContext?: OnDemandContextMetadata;
+  }
 }
 
 // Re-export types for convenience

@@ -54,6 +54,7 @@ export const resolveOperationInitSlots = async ({
     searchDecision: discovery.searchDecision,
     toolSet: {
       activatableToolIds: prep.activatableToolIds,
+      discoveryPool: discovery.discoveryPool,
       enabledToolIds: discovery.toolsResult.enabledToolIds,
       executorMap: discovery.toolExecutorMap,
       manifestMap: discovery.toolManifestMap,

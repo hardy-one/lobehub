@@ -1,3 +1,8 @@
+import type {
+  OnDemandCapabilityExpectation,
+  OnDemandDiscoveryPool,
+} from '@lobechat/types';
+
 import type { ExtendedHumanInterventionConfig } from '@/types/index';
 
 export interface LobeChatPluginApi {
@@ -28,6 +33,8 @@ export interface LobeChatPluginApi {
 
 export interface LobeToolManifest {
   api: LobeChatPluginApi[];
+  /** Supported execution environments; omitted tools default to server execution. */
+  executors?: ('client' | 'server')[];
   identifier: string;
   meta: any;
   systemRole?: string;
@@ -185,6 +192,8 @@ export type ActivationSource = 'active_tools' | 'mention' | 'device' | 'discover
 export interface OperationToolSet {
   /** Tool IDs that may be restored from historical explicit activations for this run. */
   activatableToolIds?: string[];
+  /** Atomic capabilities the activator may load during this operation. */
+  discoveryPool?: OnDemandDiscoveryPool;
   enabledToolIds: string[];
   executorMap?: Record<string, ToolExecutor>;
   manifestMap: Record<string, LobeToolManifest>;
@@ -197,6 +206,8 @@ export interface OperationToolSet {
  */
 export interface ActivatedStepTool {
   activatedAtStep: number;
+  /** Exact atomic bundle identity used for on-demand activation. */
+  capability?: OnDemandCapabilityExpectation;
   id: string;
   manifest?: LobeToolManifest;
   source: ActivationSource;
@@ -208,6 +219,7 @@ export interface ActivatedStepTool {
  */
 export interface StepToolDelta {
   activatedTools: Array<{
+    capability?: OnDemandCapabilityExpectation;
     id: string;
     manifest?: LobeToolManifest;
     source: ActivationSource;

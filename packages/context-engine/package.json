@@ -13,7 +13,8 @@
   ],
   "exports": {
     ".": "./src/index.ts",
-    "./agent-document": "./src/providers/AgentDocumentInjector/shared.ts"
+    "./agent-document": "./src/providers/AgentDocumentInjector/shared.ts",
+    "./onDemand": "./src/onDemand/index.ts"
   },
   "main": "src/index.ts",
   "scripts": {
@@ -23,6 +24,11 @@
   },
   "dependencies": {
     "@lobechat/agent-templates": "workspace:*",
+    "@lobechat/builtin-tool-activator": "workspace:*",
+    "@lobechat/builtin-tool-agent-documents": "workspace:*",
+    "@lobechat/builtin-tool-skills": "workspace:*",
+    "@lobechat/const": "workspace:*",
+    "@lobechat/database": "workspace:*",
     "@lobechat/prompts": "workspace:*",
     "@lobechat/types": "workspace:*",
     "@lobechat/utils": "workspace:*",

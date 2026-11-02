@@ -11,6 +11,7 @@ import type {
   SkillListItem,
   SkillResourceContent,
 } from '@lobechat/types';
+import { sha256 } from 'js-sha256';
 
 import type {
   ActivateSkillParams,
@@ -156,6 +157,8 @@ const findByNameCI = <T extends { name: string }>(items: T[], target: string): T
   const lower = target.toLowerCase();
   return items.find((s) => s.name.toLowerCase() === lower);
 };
+
+const hashReturnedContent = (content: string): string => `sha256:${sha256(content)}`;
 
 /**
  * Hint appended to activated filesystem-skill content so the model knows how to
@@ -344,7 +347,15 @@ export class SkillsExecutionRuntime {
         const content = await this.deviceFileAccess.readFile(fullPath);
         return {
           content,
-          state: { encoding: 'utf8', fileType: 'text/plain', fullPath, path: normalized },
+          state: {
+            contentHash: hashReturnedContent(content),
+            encoding: 'utf8',
+            fileType: 'text/plain',
+            fullPath,
+            path: normalized,
+            size: content.length,
+            skillId: projectSkill.name,
+          },
           success: true,
         };
       }
@@ -370,11 +381,14 @@ export class SkillsExecutionRuntime {
         return {
           content: resource.content,
           state: {
+            contentHash: hashReturnedContent(resource.content),
             encoding: resource.encoding,
             fileType: resource.fileType,
             fullPath: resource.fullPath,
             path: resource.path,
             size: resource.size,
+            skillId: skill.id,
+            sourceVersion: resource.fileHash,
           },
           success: true,
         };
@@ -389,10 +403,13 @@ export class SkillsExecutionRuntime {
           return {
             content: meta.content,
             state: {
+              contentHash: hashReturnedContent(meta.content),
               encoding: 'utf8',
               fileType: 'text/plain',
               path,
               size: meta.size,
+              skillId: builtinSkill.identifier,
+              sourceVersion: meta.fileHash,
             },
             success: true,
           };
@@ -443,6 +460,7 @@ export class SkillsExecutionRuntime {
         return {
           content,
           state: {
+            contentHash: hashReturnedContent(content),
             hasResources: false,
             location: projectSkill.location,
             name,
@@ -475,11 +493,13 @@ export class SkillsExecutionRuntime {
       return {
         content,
         state: {
+          contentHash: hashReturnedContent(content),
           description: skill.description || undefined,
           hasResources,
           id: skill.id,
           name: skill.name,
           source: 'user',
+          ...(skill.updatedAt && { sourceVersion: skill.updatedAt.toISOString() }),
         },
         success: true,
       };
@@ -509,6 +529,7 @@ export class SkillsExecutionRuntime {
       return {
         content,
         state: {
+          contentHash: hashReturnedContent(content),
           description: builtinSkill.description,
           hasResources,
           identifier: builtinSkill.identifier,

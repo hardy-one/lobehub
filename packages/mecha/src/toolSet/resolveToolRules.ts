@@ -15,8 +15,9 @@ import {
   chatModeAllowedToolIds,
   defaultToolIds,
   groupSupervisorToolIds,
+  onDemandBootstrapToolIds,
 } from '@lobechat/builtin-tools';
-import { executionTargetToRuntimeMode, resolveToolMode } from '@lobechat/types';
+import { executionTargetToRuntimeMode, resolveContextMode, resolveToolMode } from '@lobechat/types';
 
 import {
   DEVICE_TOOL_IDENTIFIERS,
@@ -49,6 +50,8 @@ export const resolveToolRules = (request: ToolRuleRequest): ResolvedToolRules =>
   const { agent, device, deviceAccess, executionTarget, model } = request;
   const pinnedPluginIds = agent.plugins ?? [];
   const toolMode = resolveToolMode(agent.chatConfig);
+  const isOnDemandMode =
+    resolveContextMode(agent.chatConfig, { supportToolUse: model.canUseFC }) === 'on-demand';
   const runtimeMode = executionTargetToRuntimeMode(executionTarget);
   // Device tools only exist for device-capable targets: `none` means no
   // device, and `sandbox` and devices are mutually exclusive.
@@ -112,6 +115,12 @@ export const resolveToolRules = (request: ToolRuleRequest): ResolvedToolRules =>
     [RemoteDeviceManifest.identifier]: deviceCapable && !!device && !deviceLocked,
     [WebBrowsingManifest.identifier]: isSearchEnabled,
   };
+  // On-demand keeps the normal capability eligibility for discovery while
+  // exposing only the closed bootstrap protocol before activation.
+  const onDemandRules = {
+    ...agentModeRules,
+    ...enableAll(onDemandBootstrapToolIds),
+  };
 
   // Walls follow the policy and the plan, with or without a gateway; the
   // Computer Use opt-in is a gateway device's own report.
@@ -127,22 +136,27 @@ export const resolveToolRules = (request: ToolRuleRequest): ResolvedToolRules =>
   }
 
   return {
-    allowExplicitActivation: toolMode === 'agent',
+    allowExplicitActivation: toolMode === 'agent' && !isOnDemandMode,
     defaultToolIds:
       toolMode === 'custom'
         ? [...pinnedPluginIds]
-        : toolMode === 'chat'
-          ? [...chatModeAllowedToolIds]
-          : [...defaultToolIds, ...(request.isGroupSupervisor ? groupSupervisorToolIds : [])],
+        : isOnDemandMode
+          ? [...onDemandBootstrapToolIds]
+          : toolMode === 'chat'
+            ? [...chatModeAllowedToolIds]
+            : [...defaultToolIds, ...(request.isGroupSupervisor ? groupSupervisorToolIds : [])],
     deviceCapable,
     deviceLocked,
     excludedIdentifiers,
+    onDemand: isOnDemandMode,
     rules:
       toolMode === 'custom'
         ? customModeRules
-        : toolMode === 'chat'
-          ? chatModeRules
-          : agentModeRules,
+        : isOnDemandMode
+          ? onDemandRules
+          : toolMode === 'chat'
+            ? chatModeRules
+            : agentModeRules,
     runtimeMode,
     toolMode,
   };

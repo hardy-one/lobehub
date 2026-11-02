@@ -507,7 +507,7 @@ Our search service is a metasearch engine with automatic engine selection. Provi
 - If information seems outdated, note this to the user and suggest searching for more recent sources or specifying a time range.
 </error_handling>
 
-Current date: 2026-11-02
+Current date: <DATE>
 </tool.instructions>
 </tool>
 <tool name="Knowledge Base">
@@ -1314,7 +1314,7 @@ Our search service is a metasearch engine with automatic engine selection. Provi
 - If information seems outdated, note this to the user and suggest searching for more recent sources or specifying a time range.
 </error_handling>
 
-Current date: 2026-11-02
+Current date: <DATE>
 </tool.instructions>
 </tool>
 <tool name="Knowledge Base">
@@ -2224,7 +2224,7 @@ Our search service is a metasearch engine with automatic engine selection. Provi
 - If information seems outdated, note this to the user and suggest searching for more recent sources or specifying a time range.
 </error_handling>
 
-Current date: 2026-11-02
+Current date: <DATE>
 </tool.instructions>
 </tool>
 </tools>",
@@ -2597,7 +2597,7 @@ Our search service is a metasearch engine with automatic engine selection. Provi
 - If information seems outdated, note this to the user and suggest searching for more recent sources or specifying a time range.
 </error_handling>
 
-Current date: 2026-11-02
+Current date: <DATE>
 </tool.instructions>
 </tool>
 </tools>",

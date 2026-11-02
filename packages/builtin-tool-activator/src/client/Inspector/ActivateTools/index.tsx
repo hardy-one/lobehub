@@ -1,9 +1,7 @@
 'use client';
 
 import { type BuiltinInspectorProps } from '@lobechat/types';
-import { Flexbox, Icon, Tooltip } from '@lobehub/ui';
-import { Avatar } from '@lobehub/ui';
-import { createStaticStyles, cssVar } from '@lobehub/ui';
+import { Avatar, createStaticStyles, cssVar, cx, Flexbox, Icon, Tooltip } from '@lobehub/ui';
 import { AlertTriangle } from 'lucide-react';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -37,11 +35,26 @@ const styles = createStaticStyles(({ css }) => ({
 
     background: ${cssVar.colorFillTertiary};
   `,
+  toolMeta: css`
+    overflow: hidden;
+
+    max-width: 280px;
+
+    font-size: 10px;
+    color: ${cssVar.colorTextDescription};
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  `,
   toolName: css`
     overflow: hidden;
     min-width: 0;
     text-overflow: ellipsis;
     white-space: nowrap;
+  `,
+  toolText: css`
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
   `,
   tools: css`
     display: inline-flex;
@@ -116,7 +129,16 @@ export const ActivateToolsInspector = memo<
           {visibleTools.map((tool) => (
             <span className={styles.tool} key={tool.identifier}>
               {tool.avatar && <Avatar avatar={tool.avatar} size={14} title={tool.name} />}
-              <span className={styles.toolName}>{tool.name}</span>
+              <span className={styles.toolText}>
+                <span className={styles.toolName}>{tool.name}</span>
+                {tool.capabilitySummary && (
+                  <span className={styles.toolMeta} title={tool.capabilitySummary}>
+                    {[tool.source, tool.executionEnvironment, tool.capabilitySummary]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                )}
+              </span>
             </span>
           ))}
         </span>

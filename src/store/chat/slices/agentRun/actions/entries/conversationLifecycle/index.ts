@@ -22,6 +22,7 @@ import {
   getWorkingDirEffectivePath,
   getWorkingDirSourcePath,
   resolveAgentAgencyConfig,
+  resolveContextMode,
   toComposerUserMessage,
 } from '@lobechat/types';
 import { generateEntityId, nanoid } from '@lobechat/utils';
@@ -48,6 +49,7 @@ import {
   resolveWorkspaceScoped,
 } from '@/helpers/executionTarget';
 import { globalAgentContextManager } from '@/helpers/GlobalAgentContextManager';
+import { isCanUseFC } from '@/helpers/isCanUseFC';
 import { agentService } from '@/services/agent';
 import { aiAgentService, MAX_CLIENT_OPERATION_SNAPSHOT } from '@/services/aiAgent';
 import { aiChatService } from '@/services/aiChat';
@@ -617,6 +619,13 @@ export class ConversationLifecycleActionImpl {
       message,
       selectedTools,
     });
+    const contextMode = resolveContextMode(agentConfig?.chatConfig, {
+      supportToolUse: isCanUseFC(agentConfig?.model ?? '', agentConfig?.provider ?? ''),
+    });
+    const onDemandSelectedSkills =
+      contextMode === 'on-demand' && enrichedSelectedSkills.length > 0
+        ? enrichedSelectedSkills
+        : undefined;
     const requestTrigger = (metadata as Pick<MessageMetadata, 'trigger'> | undefined)?.trigger;
     const requestMetadata = requestTrigger ? { trigger: requestTrigger } : undefined;
 
@@ -1840,6 +1849,9 @@ export class ConversationLifecycleActionImpl {
           // client runtime does by persisting them into the message content.
           selectedSkillIds:
             selectedSkills.length > 0 ? selectedSkills.map((skill) => skill.identifier) : undefined,
+          // On-demand turns carry the preloaded skill bodies to the server so a
+          // slash-selected skill is available without a second activation step.
+          selectedSkills: onDemandSelectedSkills,
           // Forward @-mentioned agents so the server supervisor can delegate to
           // them (multi-mention). Mirrors the client runtime's `initialContext`
           // injection: the server enables the callAgent tool and injects the
@@ -1976,7 +1988,8 @@ export class ConversationLifecycleActionImpl {
         (t) => !previouslyMentionedTools.has(t.identifier),
       );
 
-      const skillContext = formatSelectedSkillsContext(dedupedSkills);
+      const skillContext =
+        contextMode === 'on-demand' ? null : formatSelectedSkillsContext(dedupedSkills);
       const toolContext = formatSelectedToolsContext(dedupedTools);
       const contextSuffix = [skillContext, toolContext].filter(Boolean).join('\n');
       const persistedContent = contextSuffix ? `${message}\n\n${contextSuffix}` : message;
@@ -2309,7 +2322,8 @@ export class ConversationLifecycleActionImpl {
           const activeTopicDocumentInitialContext =
             await resolveActiveTopicDocumentInitialContext(execContext);
 
-          const hasInitialContext = hasMentionedAgents || !!injectedManifests;
+          const hasInitialContext =
+            hasMentionedAgents || !!injectedManifests || !!onDemandSelectedSkills;
 
           // Note: selectedSkills and selectedTools are NOT passed here — they are
           // persisted into the user message content above so they survive across
@@ -2321,6 +2335,9 @@ export class ConversationLifecycleActionImpl {
                   // group @member mentions (including ALL_MEMBERS) leaking into agent-management
                   ...(hasMentionedAgents ? { mentionedAgents } : undefined),
                   ...(injectedManifests ? { injectedManifests } : undefined),
+                  ...(onDemandSelectedSkills
+                    ? { selectedSkills: onDemandSelectedSkills }
+                    : undefined),
                 },
                 phase: 'init' as const,
               }

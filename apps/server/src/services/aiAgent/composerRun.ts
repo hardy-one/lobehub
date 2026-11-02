@@ -39,6 +39,7 @@ export type ComposerRunRequest = Pick<
   | 'resumeApprovals'
   | 'resumeToolResult'
   | 'selectedSkillIds'
+  | 'selectedSkills'
   | 'selectedToolIds'
   | 'slug'
   | 'sourceOperationId'
@@ -169,6 +170,7 @@ export const startComposerRun = async (ctx: ComposerRunContext, input: ComposerR
     resumeApprovals: input.resumeApprovals,
     resumeToolResult: input.resumeToolResult,
     selectedSkillIds: input.selectedSkillIds,
+    selectedSkills: input.selectedSkills,
     selectedToolIds: input.selectedToolIds,
     slug: input.slug,
     agentSender: input.agentSender,

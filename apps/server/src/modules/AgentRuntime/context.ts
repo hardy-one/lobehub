@@ -4,6 +4,7 @@ import {
   type ExecSubAgentParams,
   type ExecSubAgentResult,
   type ExecVirtualSubAgentParams,
+  type OnDemandTraceMetadata,
 } from '@lobechat/types';
 
 import { type MessageModel } from '@/database/models/message';
@@ -14,6 +15,7 @@ import type {
   ExecGroupMemberResult,
   GroupActionMemberBridgeParams,
 } from '@/server/services/agentRuntime/types';
+import type { OnDemandRetrievalCache } from '@/server/services/onDemandContext/turnCache';
 import { type ToolExecutionService } from '@/server/services/toolExecution';
 
 import { type IStreamEventManager } from './types';
@@ -65,6 +67,12 @@ export interface RuntimeExecutorContext {
   loadAgentState?: (operationId: string) => Promise<AgentState | null>;
   messageModel: MessageModel;
   modelRuntimeConfig?: AgentState['modelRuntimeConfig'];
+  /**
+   * Per-operation cache for on-demand memory/expertise retrieval. It is keyed
+   * by the current user message so later tool steps reuse one retrieval while
+   * every new user turn triggers a fresh one.
+   */
+  onDemandRetrievalCache?: OnDemandRetrievalCache;
   /** Check the shared completion barrier after a startup-failure receipt is published. */
   onGroupMemberResult?: (
     params: Pick<
@@ -90,7 +98,11 @@ export interface RuntimeExecutorContext {
    * ~83% of each step. Routing CE through this callback keeps the heavy
    * payload in trace only, reducing per-step Redis state from ~3.4MB to ~6KB.
    */
-  tracingContextEngine?: (input: unknown, output: unknown, metadata?: unknown) => void;
+  tracingContextEngine?: (
+    input: unknown,
+    output: unknown,
+    metadata?: OnDemandTraceMetadata,
+  ) => void;
   userId?: string;
   /**
    * Workspace scoping for ownership filters on models/services constructed

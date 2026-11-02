@@ -1,5 +1,5 @@
 import type { ChatAudioItem, ChatFileItem, ChatVideoItem, MessagePluginItem } from '../message';
-import type { RuntimeMentionedAgent } from '../stepContext';
+import type { RuntimeMentionedAgent, RuntimeSelectedSkill } from '../stepContext';
 
 /** Attachments the turn arrived with, already ingested to storage. */
 export interface AgentRunAttachments {
@@ -111,6 +111,8 @@ export interface AgentRunInitRequest {
   runAttachments: AgentRunAttachments;
   /** Skill identifiers the composer or CLI selected for this message. */
   selectedSkillIds?: string[];
+  /** Skill bodies the caller already resolved for an on-demand turn. */
+  selectedSkills?: RuntimeSelectedSkill[];
   /** Tool identifiers the user @-mentioned in this message. */
   selectedToolIds?: string[];
   /** The Task this run executes, when it runs inside the Task system. */

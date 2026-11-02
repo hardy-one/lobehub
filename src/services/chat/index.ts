@@ -13,6 +13,7 @@ import {
   ChatErrorType,
   type ChatMessageError,
   getDisabledPluginIds,
+  resolveContextMode,
   type RequestTrigger,
   type RuntimeAdditionalContextFragment,
   type RuntimeInitialContext,
@@ -26,6 +27,7 @@ import { ModelProvider } from 'model-bank/modelProvider';
 
 import { DEFAULT_AGENT_CONFIG } from '@/const/settings';
 import { getSearchConfig } from '@/helpers/getSearchConfig';
+import { isCanUseFC } from '@/helpers/isCanUseFC';
 import { oneShotRelay } from '@/services/llmRelay';
 import { getAgentStoreState } from '@/store/agent';
 import { agentChatConfigSelectors, agentSelectors } from '@/store/agent/selectors';
@@ -194,6 +196,9 @@ class ChatService {
     const userMemorySettings = settingsSelectors.currentMemorySettings(getUserStoreState());
     const effectiveMemoryEffort =
       chatConfig.memory?.effort ?? userMemorySettings.effort ?? 'medium';
+    const contextMode = resolveContextMode(chatConfig, {
+      supportToolUse: isCanUseFC(payload.model, payload.provider!),
+    });
 
     // =================== 1.2 resolve model parameters =================== //
 
@@ -226,6 +231,7 @@ class ChatService {
     // Note: agentConfig.systemRole is already resolved by resolveAgentConfig for builtin agents
     const modelMessages = await contextEngineering({
       agentId: targetAgentId,
+      contextMode,
       // `agentConfig.plugins` is the raw (pre-filter) field — `plugins` below
       // is already pinned-only (resolved upstream in agentConfigResolver).
       disabledPluginIds: getDisabledPluginIds(agentConfig.plugins),

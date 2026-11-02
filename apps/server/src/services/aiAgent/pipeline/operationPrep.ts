@@ -5,11 +5,16 @@ import { TaskIdentifier } from '@lobechat/builtin-tool-task';
 import type { OperationSkillSet, ProjectInstructionFile } from '@lobechat/context-engine';
 import { buildExpertiseContextSnapshot } from '@lobechat/context-engine';
 import type { LobeChatDatabase } from '@lobechat/database';
-import type { LobeAgentAgencyConfig, WorkspaceInitResult } from '@lobechat/types';
+import type {
+  LobeAgentAgencyConfig,
+  RuntimeSelectedSkill,
+  WorkspaceInitResult,
+} from '@lobechat/types';
 import { getWorkingDirEffectivePath } from '@lobechat/types';
 import debug from 'debug';
 
 import type { AgentModel } from '@/database/models/agent';
+import { AgentSkillModel } from '@/database/models/agentSkill';
 import { DeviceModel } from '@/database/models/device';
 import { ExpertiseModel } from '@/database/models/expertise';
 import type { MessageModel } from '@/database/models/message';
@@ -23,6 +28,7 @@ import { redisService } from '@/server/services/redis';
 import { afterUnscoped } from '@/server/utils/scheduleAfterResponse';
 
 import { pruneRegeneratedBranch } from '../pruneRegeneratedBranch';
+import { resolveSelectedSkillIds } from '../resolveSelectedSkills';
 import { resolveDeviceWorkingDirectoryConfig } from '../resolveDeviceWorkingDirectory';
 import { applyShareGateToToolSet } from '../shareGate';
 import type {
@@ -193,6 +199,8 @@ export interface OperationPrepInput {
   runFromHistory: boolean;
   /** Skills this turn's request selected; earlier turns' come from history. */
   selectedSkillIds?: string[];
+  /** Skill bodies already resolved by the caller for an on-demand turn. */
+  selectedSkills?: RuntimeSelectedSkill[];
   /** The Task this run executes; the skills it names are trusted for this run. */
   taskId?: string;
   throwIfExecutionAborted: (stage: string) => Promise<void>;
@@ -438,6 +446,7 @@ export const prepareOperation = async (
     operationId,
     runAttachments,
     runFromHistory,
+    selectedSkills,
     throwIfExecutionAborted,
   } = input;
   const {
@@ -453,6 +462,7 @@ export const prepareOperation = async (
     toolsEngine,
     toolsResult,
     tools,
+    contextMode,
   } = discovery;
 
   // 9.4. Fetch device system info for placeholder variable replacement.
@@ -594,7 +604,9 @@ export const prepareOperation = async (
   // by itself authorize a tool in chat/custom mode or without function calls.
   const historicalActivatedToolIds = extractActivatedToolIdsFromMessages(allMessages) ?? [];
   const activatableToolIds =
-    toolsEngine && historicalActivatedToolIds.length > 0
+    contextMode === 'on-demand'
+      ? []
+      : toolsEngine && historicalActivatedToolIds.length > 0
       ? toolsEngine.generateToolsDetailed({
           context: { isExplicitActivation: true },
           model,
@@ -723,6 +735,31 @@ export const prepareOperation = async (
       initialContext: {
         ...initialContext.initialContext,
         mentionedAgents,
+      },
+    };
+  }
+
+  let effectiveSelectedSkills = selectedSkills;
+  if (contextMode === 'on-demand' && input.selectedSkillIds?.length) {
+    const skillModel = new AgentSkillModel(deps.db, deps.userId, deps.workspaceId);
+    let agentSkills: Awaited<ReturnType<AgentDocumentsService['getAgentSkills']>> | undefined;
+    effectiveSelectedSkills = await resolveSelectedSkillIds({
+      findAgentSkill: async (identifier) => {
+        agentSkills ??= await deps.agentDocumentsService.getAgentSkills(resolvedAgentId);
+        return agentSkills.find((skill) => skill.identifier === identifier);
+      },
+      findUserSkill: (identifier) => skillModel.findByIdentifier(identifier),
+      ids: input.selectedSkillIds,
+      selectedSkills,
+    });
+  }
+
+  if (contextMode === 'on-demand' && effectiveSelectedSkills?.length) {
+    initialContext = {
+      ...initialContext,
+      initialContext: {
+        ...initialContext.initialContext,
+        selectedSkills: effectiveSelectedSkills,
       },
     };
   }

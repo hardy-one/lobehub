@@ -17,6 +17,7 @@ import {
 } from '@lobechat/types';
 
 import type { MessagesEngineParams, MessagesEngineResult } from '../../engine/messages/types';
+import { CompressedGroupRoleTransformProcessor } from '../../processors/CompressedGroupRoleTransform';
 import { GroupMessageFlattenProcessor } from '../../processors/GroupMessageFlatten';
 import { ToolCallProcessor } from '../../processors/ToolCall';
 import type { ContextBuckets, PipelineContextMetadata } from '../../types';
@@ -306,12 +307,16 @@ export class OnDemandMessagesPipeline {
       messages: this.params.messages as any[],
       metadata: {},
     });
+    const roleTransformedMessages = await new CompressedGroupRoleTransformProcessor().process({
+      ...flattenedMessages,
+      messages: flattenedMessages.messages as any[],
+    });
     const preparedMessages = await new ToolCallProcessor({
       genToolCallingName: this.options.genToolCallingName,
       isCanUseFC: this.params.capabilities?.isCanUseFC,
       model: this.params.model,
       provider: this.params.provider,
-    }).process(flattenedMessages);
+    }).process(roleTransformedMessages);
     const sourceMessages = preparedMessages.messages as MessagesEngineParams['messages'];
     const rawSystemRole = this.params.systemRole ?? '';
     const stablePrefix = buildOnDemandStablePrefix({ agentPrompt: rawSystemRole });

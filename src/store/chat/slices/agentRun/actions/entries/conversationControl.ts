@@ -680,7 +680,13 @@ export class ConversationControlActionImpl {
     // 1. Get tool message and verify it exists
     const toolMessage = dbMessageSelectors.getDbMessageById(toolMessageId)(this.#get());
     if (!toolMessage) return;
-    let approvedToolCall = toolMessage.plugin;
+    // The stored plugin columns deliberately omit the call id (it lives on
+    // `tool_call_id`), but the runtime replays the approved call by id. Without
+    // this merge a client-runtime approval cannot match its pending tool row.
+    let approvedToolCall = {
+      ...toolMessage.plugin,
+      id: toolMessage.tool_call_id,
+    };
 
     // Create an operation to carry the context for optimistic updates
     // This ensures optimistic updates use the correct agentId/topicId
@@ -748,9 +754,11 @@ export class ConversationControlActionImpl {
           prepareLegacy: async () => {
             if (!options?.editedArguments) return;
             await options.onLegacyEditFallback?.();
-            approvedToolCall =
-              dbMessageSelectors.getDbMessageById(toolMessageId)(this.#get())?.plugin ??
-              approvedToolCall;
+            approvedToolCall = {
+              ...(dbMessageSelectors.getDbMessageById(toolMessageId)(this.#get())?.plugin ??
+                approvedToolCall),
+              id: toolMessage.tool_call_id,
+            };
           },
           resumeLegacy: async (params) => {
             await this.#get().executeGatewayAgent({

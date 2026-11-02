@@ -1,6 +1,12 @@
 export const HARNESS_AGENT_PROMPT =
   '  User-authored Agent Prompt\n\tkeep every byte and never rewrite this instruction.  ';
 
+export const NEXT_REPLY_LANGUAGE_SUFFIX =
+  '\n\nPreferred reply language: en-US. Use this language unless the user explicitly asks to switch.';
+
+export const nextReplyLanguageSystemRole = (agentPrompt: string): string =>
+  `${agentPrompt}${NEXT_REPLY_LANGUAGE_SUFFIX}`;
+
 export const HARNESS_BUDGET_AGENT_PROMPT = 'T105 budget-pressure control prompt.';
 
 export const HARNESS_BASELINE_USER_MESSAGE =
@@ -88,7 +94,6 @@ export const PROMPT_SCENARIOS: readonly PromptScenario[] = [
   {
     agentId: ON_DEMAND_AGENT_ID,
     agentPrompt: HARNESS_AGENT_PROMPT,
-    afterFixturePaths: ['scripts/promptHarness/fixtures/memoryExpertiseCleanup.sql'],
     beforeFixturePaths: ['scripts/promptHarness/fixtures/memoryExpertise.sql'],
     expectation: {
       dynamicKinds: [
@@ -107,6 +112,7 @@ export const PROMPT_SCENARIOS: readonly PromptScenario[] = [
   {
     agentId: ON_DEMAND_AGENT_ID,
     agentPrompt: HARNESS_AGENT_PROMPT,
+    afterFixturePaths: ['scripts/promptHarness/fixtures/memoryExpertiseCleanup.sql'],
     expectation: {
       dynamicKinds: ['preference'],
       minCapturedRequests: 1,

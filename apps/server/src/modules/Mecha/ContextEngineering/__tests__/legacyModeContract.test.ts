@@ -59,6 +59,11 @@ const modes = {
   custom: { enableAgentMode: true, toolMode: 'custom' as const },
 };
 
+const normalizeToolDates = <T>(value: T): T =>
+  JSON.parse(
+    JSON.stringify(value).replaceAll(/Current date: \d{4}-\d{2}-\d{2}/g, 'Current date: <DATE>'),
+  ) as T;
+
 const buildContract = async (mode: keyof typeof modes) => {
   const chatConfig = modes[mode];
   const toolsEngine = createServerAgentToolsEngine(
@@ -130,6 +135,6 @@ describe('legacy chat/agent/custom mode contract', () => {
       custom: await buildContract('custom'),
     };
 
-    expect(contract).toMatchSnapshot();
+    expect(normalizeToolDates(contract)).toMatchSnapshot();
   });
 });

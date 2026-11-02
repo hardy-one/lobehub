@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   resolveEffectiveAgentMode,
+  resolveModeFlags,
   useAgentDefaultModelAgentMode,
   useEffectiveAgentMode,
 } from './useEffectiveAgentMode';

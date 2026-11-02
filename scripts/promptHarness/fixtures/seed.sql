@@ -11,7 +11,7 @@ VALUES
     'gpt-4o',
     'openai',
     '[]'::jsonb,
-    '{"toolMode":"agent","promptMode":"full","contextMode":"on-demand","selfIteration":{"enabled":false},"enableAgentMode":true,"enableStreaming":true,"enableHistoryCount":false,"enableFollowUpChips":false}'::jsonb,
+    '{"toolMode":"agent","promptMode":"full","contextMode":"on-demand","selfIteration":{"enabled":false},"enableAgentMode":true,"enableStreaming":true,"enableContextCompression":false,"enableHistoryCount":false,"enableFollowUpChips":false}'::jsonb,
     '{}'::jsonb,
     '[]'::jsonb,
     'private'
@@ -24,7 +24,7 @@ VALUES
     'gpt-4o',
     'openai',
     '[]'::jsonb,
-    '{"toolMode":"agent","promptMode":"full","contextMode":"default","selfIteration":{"enabled":false},"enableAgentMode":true,"enableStreaming":true,"enableHistoryCount":false,"enableFollowUpChips":false}'::jsonb,
+    '{"toolMode":"agent","promptMode":"full","contextMode":"default","selfIteration":{"enabled":false},"enableAgentMode":true,"enableStreaming":true,"enableContextCompression":false,"enableHistoryCount":false,"enableFollowUpChips":false}'::jsonb,
     '{}'::jsonb,
     '[]'::jsonb,
     'private'
@@ -37,7 +37,7 @@ VALUES
     'gpt-4o',
     'openai',
     '[]'::jsonb,
-    '{"toolMode":"chat","promptMode":"full","contextMode":"default","selfIteration":{"enabled":false},"enableAgentMode":false,"enableStreaming":true,"enableHistoryCount":false,"enableFollowUpChips":false}'::jsonb,
+    '{"toolMode":"chat","promptMode":"full","contextMode":"default","selfIteration":{"enabled":false},"enableAgentMode":false,"enableStreaming":true,"enableContextCompression":false,"enableHistoryCount":false,"enableFollowUpChips":false}'::jsonb,
     '{}'::jsonb,
     '[]'::jsonb,
     'private'
@@ -50,7 +50,7 @@ VALUES
     'gpt-4o',
     'openai',
     '[]'::jsonb,
-    '{"toolMode":"agent","promptMode":"full","contextMode":"on-demand","selfIteration":{"enabled":false},"enableAgentMode":true,"enableStreaming":true,"enableHistoryCount":false,"enableFollowUpChips":false}'::jsonb,
+    '{"toolMode":"agent","promptMode":"full","contextMode":"on-demand","selfIteration":{"enabled":false},"enableAgentMode":true,"enableStreaming":true,"enableContextCompression":false,"enableHistoryCount":false,"enableFollowUpChips":false}'::jsonb,
     '{}'::jsonb,
     '[]'::jsonb,
     'private'
@@ -63,7 +63,7 @@ VALUES
     'gpt-4o',
     'openai',
     '["lobe-user-interaction"]'::jsonb,
-    '{"toolMode":"agent","promptMode":"full","contextMode":"on-demand","selfIteration":{"enabled":false},"enableAgentMode":true,"enableStreaming":true,"enableHistoryCount":false,"enableFollowUpChips":false}'::jsonb,
+    '{"toolMode":"agent","promptMode":"full","contextMode":"on-demand","selfIteration":{"enabled":false},"enableAgentMode":true,"enableStreaming":true,"enableContextCompression":false,"enableHistoryCount":false,"enableFollowUpChips":false}'::jsonb,
     '{}'::jsonb,
     '[]'::jsonb,
     'private'
@@ -76,7 +76,7 @@ VALUES
     'gpt-4o',
     'openai',
     '[]'::jsonb,
-    '{"toolMode":"agent","promptMode":"full","contextMode":"on-demand","selfIteration":{"enabled":false},"enableAgentMode":true,"enableStreaming":true,"enableHistoryCount":false,"enableFollowUpChips":false}'::jsonb,
+    '{"toolMode":"agent","promptMode":"full","contextMode":"on-demand","selfIteration":{"enabled":false},"enableAgentMode":true,"enableStreaming":true,"enableContextCompression":false,"enableHistoryCount":false,"enableFollowUpChips":false}'::jsonb,
     '{}'::jsonb,
     '[]'::jsonb,
     'private'
@@ -89,7 +89,7 @@ VALUES
     'gpt-4o',
     'openai',
     '["lobe-calculator"]'::jsonb,
-    '{"toolMode":"agent","promptMode":"full","contextMode":"on-demand","selfIteration":{"enabled":false},"enableAgentMode":true,"enableStreaming":true,"enableHistoryCount":false,"enableFollowUpChips":false}'::jsonb,
+    '{"toolMode":"agent","promptMode":"full","contextMode":"on-demand","selfIteration":{"enabled":false},"enableAgentMode":true,"enableStreaming":true,"enableContextCompression":false,"enableHistoryCount":false,"enableFollowUpChips":false}'::jsonb,
     '{}'::jsonb,
     '[]'::jsonb,
     'private'

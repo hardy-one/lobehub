@@ -118,10 +118,10 @@ export interface AgentConfigSnapshot {
   groupMembers?: { id: string; isSupervisor?: boolean; title?: string | null }[];
   /** Development build — reaches builtin agents as a prompt flag. */
   isDev?: boolean;
-  /** Workspace member's own model pick, when one applies. */
-  memberModelOverride?: AgentModelOverride | null;
   /** Workspace member's own context strategy, when one applies. */
   memberContextModeOverride?: LobeAgentChatConfig['contextMode'];
+  /** Workspace member's own model pick, when one applies. */
+  memberModelOverride?: AgentModelOverride | null;
   /** Workspace member's own mode pick, when one applies. */
   memberModeOverride?: LobeAgentChatConfig['enableAgentMode'];
   /**

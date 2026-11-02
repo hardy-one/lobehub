@@ -3,7 +3,8 @@ import type { ServerResponse } from 'node:http';
 import { createServer } from 'node:http';
 import path from 'node:path';
 
-import { hashPromptRequest, redactHeaders } from './canonical';
+import { hashPromptRequest, PROMPT_HARNESS_CANONICALIZATION, redactHeaders } from './canonical';
+import { readDocumentWindowNotice } from './documentWindow';
 
 interface ToolCall {
   args: Record<string, unknown>;
@@ -79,16 +80,10 @@ const toolResult = (
   );
 
 const documentContinuation = (content: string): { limit: number; offset: number } => {
-  const match = content.match(
-    /<document_read_metadata>\s*(\{[\s\S]*?\})\s*<\/document_read_metadata>/,
-  );
-  if (!match)
-    throw new Error(`Document result has no continuation metadata: ${content.slice(0, 500)}`);
-  const metadata = JSON.parse(match[1]) as { hasMore?: boolean; nextOffset?: number };
-  if (!metadata.hasMore || typeof metadata.nextOffset !== 'number') {
-    throw new Error('Document result does not expose a next offset.');
-  }
-  return { limit: 4000, offset: metadata.nextOffset };
+  const window = readDocumentWindowNotice(content);
+  if (!window?.nextOffset)
+    throw new Error(`Document result has no continuation notice: ${content.slice(0, 500)}`);
+  return { limit: 4000, offset: window.nextOffset };
 };
 
 const findToolName = (
@@ -680,7 +675,7 @@ const server = createServer(async (req, res) => {
   const response = isResponse ? undefined : completion(request, requestNumber, action);
   const envelope = {
     capturedAt,
-    hashAlgorithm: 'prompt-harness-canonical-json-v1',
+    hashAlgorithm: PROMPT_HARNESS_CANONICALIZATION,
     hashes: hashPromptRequest(request),
     headers: redactHeaders(req.headers),
     method: req.method,

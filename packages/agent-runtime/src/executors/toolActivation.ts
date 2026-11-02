@@ -1,15 +1,8 @@
 import { validateAtomicCapabilityBundle } from '@lobechat/context-engine/onDemand';
-import type {
-  OnDemandCapabilityExpectation,
-  OnDemandDiscoveryPool,
-} from '@lobechat/types';
+import type { OnDemandCapabilityExpectation, OnDemandDiscoveryPool } from '@lobechat/types';
 
 import type { ToolRunResult } from '../transport';
 import type { AgentState } from '../types';
-
-interface ActivatedToolResult {
-  data: ToolRunResult;
-}
 
 const resolveOnDemandActivation = (
   discoveryPool: OnDemandDiscoveryPool,
@@ -40,7 +33,7 @@ const resolveOnDemandActivation = (
   return validation.ok ? { capability, manifest: validation.bundle.manifest } : undefined;
 };
 
-export const persistActivatedTools = ({
+export const persistActivatedTools = <T extends { data: ToolRunResult }>({
   effectiveManifestMap,
   newState,
   results,
@@ -48,7 +41,7 @@ export const persistActivatedTools = ({
 }: {
   effectiveManifestMap: Record<string, any>;
   newState: AgentState;
-  results: ActivatedToolResult[];
+  results: readonly T[];
   stepCount: number;
 }) => {
   const existingIds = new Set((newState.activatedStepTools ?? []).map((tool) => tool.id));

@@ -2,10 +2,15 @@ import { createHash } from 'node:crypto';
 
 type JsonValue = boolean | null | number | string | JsonValue[] | { [key: string]: JsonValue };
 
+export const PROMPT_HARNESS_CANONICALIZATION = 'prompt-harness-canonical-json-v2';
+
+const normalizeVolatileLocalOrigin = (value: string): string =>
+  value.replaceAll(/https?:\/\/(?:127\.0\.0\.1|localhost):\d+/g, 'http://loopback.invalid');
+
 const canonicalize = (value: unknown): JsonValue | undefined => {
   if (value === undefined) return undefined;
   if (value === null || typeof value === 'boolean' || typeof value === 'number') return value;
-  if (typeof value === 'string') return value;
+  if (typeof value === 'string') return normalizeVolatileLocalOrigin(value);
   if (Array.isArray(value)) {
     return value.map((item) => canonicalize(item) ?? null);
   }
@@ -35,9 +40,10 @@ export interface PromptRequestHashes {
 }
 
 /**
- * Prompt-harness canonical-json-v1: recursively sorted object keys, array
- * order preserved, compact JSON, then SHA-256. The schema/version is part of
- * every fixture so a hash change has an explicit cause.
+ * Prompt-harness canonical-json-v2: recursively sorted object keys, array
+ * order preserved, volatile loopback test origins normalized, compact JSON,
+ * then SHA-256. The schema/version is part of every fixture so a hash change
+ * has an explicit cause.
  */
 export const hashPromptRequest = (
   request: { messages?: unknown; tools?: unknown } & Record<string, unknown>,

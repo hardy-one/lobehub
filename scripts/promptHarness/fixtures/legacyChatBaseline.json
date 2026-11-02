@@ -1,21 +1,21 @@
 {
   "agentId": "agt_T106CHAT01",
   "agentPrompt": "  User-authored Agent Prompt\n\tkeep every byte and never rewrite this instruction.  ",
-  "canonicalization": "prompt-harness-canonical-json-v1",
+  "canonicalization": "prompt-harness-canonical-json-v2",
   "hashes": {
-    "full": "sha256:614b78ec0c16f45d0db47441e6e09b0cb7ef02b8640ab97b84456197930d72a6",
-    "messages": "sha256:58341ead86f72a1b14ec55dc8a6e2faefdd077e754234e218f827e1e76c3a174",
-    "messagesAndTools": "sha256:2c3ca02ca9058898307615201dede546156f0529893fe4fb1a7e092e4e1a2c84",
-    "tools": "sha256:c32e972a835fc9cc96c0b51ec91b387b010077849f1a1d23dfc3bdab4c0bed88"
+    "full": "sha256:7e3dac5b95896f1aada2f080f37691ef43d1c09109c41dff2d9e056482a44af0",
+    "messages": "sha256:6331bfb35803cc407611742eb8d8e8469d3a0ebb92d77c2d94762139f892d143",
+    "messagesAndTools": "sha256:38cc7d7f06b37d6567c4efcc1c8576cdedd649f13c383d813e847a82cb37bd02",
+    "tools": "sha256:2fcdd34bf6d6101c71255cd7d13a15407f58bf46c2269cf76e69c6d4f4d230d8"
   },
   "provenance": {
-    "capturedAt": "2026-11-02T16:15:21.811Z",
+    "capturedAt": "2026-11-02T21:27:08.867Z",
     "frozenTime": "2026-11-02T12:00:00.000Z",
-    "note": "Frozen from the pre-change origin/canary merge-base worktree at commit 420fa1b80057cbc186e3c78e7d358929b2db7c06 using the same isolated mock-provider request surface and fixture. This is the authoritative pre-change chat control available to T106; no historical Task 0 artifact was found.",
+    "note": "Frozen from this T-113 clean origin/next isolated mock-provider run; this replaces the canary-era control for the next rebase. Hashes use v2, which normalizes only the volatile loopback test origin.",
     "requestCount": 1,
     "scenario": "baseline-chat",
-    "source": "bash scripts/promptHarness/stack.sh --scenario=baseline-chat,baseline-legacy --keep",
-    "sourceCommit": "420fa1b80057cbc186e3c78e7d358929b2db7c06"
+    "source": "bun --no-env-file scripts/promptHarness/run.ts --scenario=baseline-chat,baseline-legacy --keep",
+    "sourceCommit": "ff85bfa1dff2ec7d1a6eba2f6a0c13b040cce338"
   },
   "userMessage": "T105_BASELINE compare identical Agent Prompt and user turn"
 }

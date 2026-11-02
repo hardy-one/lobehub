@@ -110,6 +110,25 @@ export const cloneDatabase = async ({
   });
 };
 
+export const migrateDatabase = async ({
+  databaseUrl,
+  repoRoot,
+}: {
+  databaseUrl: string;
+  repoRoot: string;
+}): Promise<void> => {
+  await execFileAsync('bun', ['scripts/migrateServerDB/index.ts'], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      DATABASE_DRIVER: 'node',
+      DATABASE_URL: databaseUrl,
+      MIGRATION_DB: '1',
+    },
+    maxBuffer: 16 * 1024 * 1024,
+  });
+};
+
 export const seedDatabase = async ({
   container,
   database,

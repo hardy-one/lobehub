@@ -1,6 +1,8 @@
 import type {
   OnDemandBootstrapIdentifier,
+  OnDemandCapabilityExpectation,
   OnDemandContextMetadata,
+  OnDemandDiscoveryPool,
   OnDemandDynamicEntryMetadata,
   UIChatMessage,
 } from '@lobechat/types';
@@ -317,3 +319,4 @@ export class PipelineError extends Error {
 }
 
 export type { UIChatMessage } from '@lobechat/types';
+export type { OnDemandCapabilityExpectation, OnDemandDiscoveryPool };

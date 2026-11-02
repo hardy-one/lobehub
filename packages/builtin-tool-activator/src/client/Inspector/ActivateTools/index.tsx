@@ -1,7 +1,7 @@
 'use client';
 
 import { type BuiltinInspectorProps } from '@lobechat/types';
-import { Avatar, createStaticStyles, cssVar, cx, Flexbox, Icon, Tooltip } from '@lobehub/ui';
+import { Avatar, createStaticStyles, cssVar, Flexbox, Icon, Tooltip } from '@lobehub/ui';
 import { AlertTriangle } from 'lucide-react';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';

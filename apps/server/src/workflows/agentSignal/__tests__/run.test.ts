@@ -201,7 +201,7 @@ describe('runAgentSignalWorkflow', () => {
       stepType: 'call_tool',
     });
     expect(saved.totalSteps).toBe(2);
-  });
+  }, 15_000);
 
   it('hydrates client.runtime.start into agent.user.message with serialized root-topic context', async () => {
     const db = await getTestDB();

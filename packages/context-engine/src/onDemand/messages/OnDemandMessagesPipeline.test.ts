@@ -738,7 +738,7 @@ describe('OnDemandMessagesPipeline', () => {
     const params = createParams({
       messages: [message({ content: 'deploy with rollback', id: 'u1', role: 'user' })],
       onDemand: {
-        budget: { dynamicTokens: 1_400, reserveTokens: 0, totalTokens: 1_400 },
+        budget: { dynamicTokens: 1_400, reserveTokens: 0, totalTokens: 2_400 },
         retrieval: {
           candidates: [
             retrievalCandidate({
@@ -748,7 +748,7 @@ describe('OnDemandMessagesPipeline', () => {
               relevance: 1,
             }),
             retrievalCandidate({
-              content: `Low relevance deployment note ${'x'.repeat(2_000)}`,
+              content: `Low relevance deployment note ${'x'.repeat(4_000)}`,
               id: 'low-memory',
               relevance: 0.2,
             }),
@@ -778,7 +778,7 @@ describe('OnDemandMessagesPipeline', () => {
       recoveryRef: expect.stringContaining('memory:low-memory'),
     });
     expect(appended.map((entry) => entry.content).join('\n')).toContain('<on_demand_summary');
-    expect(result.metadata.onDemandContext?.budget.totalTokens).toBeLessThanOrEqual(1_400);
+    expect(result.metadata.onDemandContext?.budget.totalTokens).toBeLessThanOrEqual(2_400);
     expect(result.metadata.onDemandContext?.retrieval).toMatchObject({
       degradedCount: 1,
       includedCount: 2,
@@ -797,7 +797,7 @@ describe('OnDemandMessagesPipeline', () => {
       ],
       messages: [message({ content: 'deploy the release safely', id: 'u1', role: 'user' })],
       onDemand: {
-        budget: { dynamicTokens: 1_400, reserveTokens: 0, totalTokens: 1_400 },
+        budget: { dynamicTokens: 1_400, reserveTokens: 0, totalTokens: 2_400 },
       },
       selectedSkills: [
         {
@@ -841,7 +841,7 @@ describe('OnDemandMessagesPipeline', () => {
         }),
       ]),
     );
-    expect(result.metadata.onDemandContext?.budget.totalTokens).toBeLessThanOrEqual(1_400);
+    expect(result.metadata.onDemandContext?.budget.totalTokens).toBeLessThanOrEqual(2_400);
   });
 
   it('keeps a large shared retrieval batch within budget without exposing bodies in metadata', async () => {
@@ -883,6 +883,28 @@ describe('OnDemandMessagesPipeline', () => {
     ).toBe(true);
     expect(JSON.stringify(result.metadata.onDemandContext)).not.toContain(privateBodyMarker);
     expect(JSON.stringify(budget)).not.toContain('deployment memory deployment memory');
+  });
+
+  it('transforms compressed group history into a user message before wire serialization', async () => {
+    const compressedContent = 'Earlier conversation compressed into this summary.';
+    const params = createParams({
+      messages: [
+        message({
+          content: compressedContent,
+          id: 'compressed-1',
+          role: 'compressedGroup' as UIChatMessage['role'],
+        }),
+        message({ content: '  continue from the compressed history  ', id: 'u2', role: 'user' }),
+      ],
+    });
+
+    const result = await processOnDemandMessages(params);
+
+    expect(result.messages[1]).toEqual({
+      content: `<compressed_history_summary>\n${compressedContent}\n</compressed_history_summary>`,
+      role: 'user',
+    });
+    expect(result.messages[2].content).toBe('  continue from the compressed history  ');
   });
 
   it('leaves legacy assembly on the existing whole-memory injector', async () => {

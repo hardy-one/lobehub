@@ -150,9 +150,7 @@ export const createServerAgentToolsEngine = (
   // assembles the server's facts.
   const resolved = resolveToolRules({
     agent: {
-      chatConfig: contextMode
-        ? { ...agentConfig.chatConfig, contextMode }
-        : agentConfig.chatConfig,
+      chatConfig: contextMode ? { ...agentConfig.chatConfig, contextMode } : agentConfig.chatConfig,
       plugins: agentConfig.plugins,
     },
     // Gateway facts exist only behind a gateway: without one nothing can

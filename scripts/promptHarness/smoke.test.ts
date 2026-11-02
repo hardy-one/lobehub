@@ -6,10 +6,13 @@ import { describe, expect, it } from 'vitest';
 
 import { canonicalHash, findSensitiveHeader, hashPromptRequest, redactHeaders } from './canonical';
 import { buildDatabaseUrl, parseDatabaseUrl } from './database';
+import { readDocumentWindowNotice } from './documentWindow';
 import {
   getScenario,
   HARNESS_AGENT_PROMPT,
   HARNESS_BASELINE_USER_MESSAGE,
+  NEXT_REPLY_LANGUAGE_SUFFIX,
+  nextReplyLanguageSystemRole,
   PROMPT_SCENARIOS,
 } from './fixtures';
 import { assertHarnessPort } from './ports';
@@ -61,10 +64,15 @@ describe('prompt harness smoke', () => {
     expect(getScenario('memory-expertise').beforeFixturePaths).toEqual([
       'scripts/promptHarness/fixtures/memoryExpertise.sql',
     ]);
-    expect(getScenario('memory-expertise').afterFixturePaths).toEqual([
+    expect(getScenario('memory-expertise').afterFixturePaths).toBeUndefined();
+    expect(getScenario('memory-follow-up').afterFixturePaths).toEqual([
       'scripts/promptHarness/fixtures/memoryExpertiseCleanup.sql',
     ]);
     expect(HARNESS_AGENT_PROMPT.startsWith('  User-authored Agent Prompt\n\t')).toBe(true);
+    expect(NEXT_REPLY_LANGUAGE_SUFFIX).toBe(
+      '\n\nPreferred reply language: en-US. Use this language unless the user explicitly asks to switch.',
+    );
+    expect(nextReplyLanguageSystemRole('prompt')).toBe(`prompt${NEXT_REPLY_LANGUAGE_SUFFIX}`);
   });
 
   it('canonicalizes object keys but preserves message and tool array order', () => {
@@ -98,6 +106,21 @@ describe('prompt harness smoke', () => {
       'X-Api-Key': `[${redactedMark}]`,
     });
     expect(findSensitiveHeader(redactHeaders(raw))).toBeUndefined();
+  });
+
+  it('reads the real document continuation notice without requiring a metadata envelope', () => {
+    const notice = readDocumentWindowNotice(
+      '[Showing lines 1-1197 of 2201 lines, 368493 characters. To continue, call readDocument again with id="doc-1", format="markdown" and offset=1198.]',
+    );
+
+    expect(notice).toEqual({
+      endLine: 1197,
+      nextOffset: 1198,
+      startLine: 1,
+      totalChars: 368493,
+      totalLines: 2201,
+    });
+    expect(readDocumentWindowNotice('complete document')).toBeUndefined();
   });
 
   it('rejects shared ports and preserves database credentials when cloning the URL', () => {

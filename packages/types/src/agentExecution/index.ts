@@ -5,8 +5,8 @@ import type { CreateThreadWithMessageParams } from '../aiChat';
 import type { DeviceUnavailableErrorData } from '../device';
 import { workingDirConfigSchema } from '../device';
 import type { ComposerUserMessage, TaskDetail, UIChatMessage } from '../message';
-import type { ChatTopic } from '../topic';
 import type { RuntimeSelectedSkill } from '../stepContext';
+import type { ChatTopic } from '../topic';
 
 export * from './credentialFacts';
 export * from './initRequest';
@@ -374,8 +374,6 @@ export interface ExecAgentParams {
   parentOperationId?: string;
   /** The user input/prompt */
   prompt: string;
-  /** Explicit slash-selected skills, including bodies already resolved by the caller. */
-  selectedSkills?: RuntimeSelectedSkill[];
   /** Override the agent's default provider */
   provider?: string;
   /**
@@ -383,6 +381,8 @@ export interface ExecAgentParams {
    * accepts the handoff only while the topic marker still belongs to this id.
    */
   replacesOperationId?: string;
+  /** Explicit slash-selected skills, including bodies already resolved by the caller. */
+  selectedSkills?: RuntimeSelectedSkill[];
   /** The agent slug to run (either agentId or slug is required) */
   slug?: string;
   /**

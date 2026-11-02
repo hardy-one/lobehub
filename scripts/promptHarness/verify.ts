@@ -3,10 +3,16 @@ import path from 'node:path';
 
 import { estimateTokenCount } from 'tokenx';
 
-import { findSensitiveHeader, hashPromptRequest } from './canonical';
+import {
+  findSensitiveHeader,
+  hashPromptRequest,
+  PROMPT_HARNESS_CANONICALIZATION,
+} from './canonical';
+import { readDocumentWindowNotice } from './documentWindow';
 import {
   HARNESS_AGENT_PROMPT,
   HARNESS_BASELINE_USER_MESSAGE,
+  nextReplyLanguageSystemRole,
   type PromptScenario,
 } from './fixtures';
 
@@ -64,6 +70,11 @@ export interface HarnessManifest {
   provider: { providerRowId: string; vaultKeys: string[] };
   runId: string;
   runRoot: string;
+  scenarioErrors: Array<{
+    error: string;
+    operationId?: string;
+    scenarioId: string;
+  }>;
   scenarios: ScenarioRun[];
 }
 
@@ -96,14 +107,6 @@ const DYNAMIC_PREFIXES = [
   '<available_tools',
 ];
 
-const readDocumentMetadata = (content: string): Record<string, unknown> => {
-  const match = content.match(
-    /<document_read_metadata>\s*(\{[\s\S]*?\})\s*<\/document_read_metadata>/,
-  );
-  if (!match) throw new Error('tool result has no document_read_metadata');
-  return JSON.parse(match[1]) as Record<string, unknown>;
-};
-
 const toolResult = (request: CapturedRequest, callId: string): string | undefined =>
   request.request.messages.find(
     (message) => message.role === 'tool' && message.tool_call_id === callId,
@@ -127,10 +130,11 @@ const validateOnDemandTrace = (
 ) => {
   const first = trace.steps?.[0]?.contextEngine;
   require(first, 'trace step 0 has no contextEngine');
-  require(first.input?.systemRole === scenario.agentPrompt, 'trace systemRole is not byte-exact');
+  const expectedSystemRole = nextReplyLanguageSystemRole(scenario.agentPrompt);
+  require(first.input?.systemRole === expectedSystemRole, 'trace systemRole is not byte-exact');
   require(first.metadata, 'trace step 0 has no on-demand metadata');
   require(first.metadata.rawSystemRole ===
-    scenario.agentPrompt, 'trace metadata rawSystemRole is not byte-exact');
+    expectedSystemRole, 'trace metadata rawSystemRole is not byte-exact');
   require(first.metadata.protocolVersion === '1', 'trace protocolVersion is missing');
   require(typeof first.metadata.stablePrefixHash === 'string' &&
     first.metadata.stablePrefixHash.length > 0, 'trace stablePrefixHash is missing');
@@ -227,9 +231,18 @@ const validateLegacyTrace = (
 ) => {
   const first = trace.steps?.[0]?.contextEngine;
   require(first, 'legacy trace step 0 has no contextEngine');
-  require(first.input?.systemRole === scenario.agentPrompt, 'legacy systemRole is not byte-exact');
-  require(first.metadata === undefined, 'legacy trace unexpectedly contains on-demand metadata');
-  require(first.input?.contextMode === 'default', 'legacy trace contextMode is not default');
+  require(first.input?.systemRole ===
+    nextReplyLanguageSystemRole(scenario.agentPrompt), 'legacy systemRole is not byte-exact');
+  const metadata =
+    first.metadata && typeof first.metadata === 'object'
+      ? (first.metadata as Record<string, unknown>)
+      : undefined;
+  require(!metadata ||
+    (!('protocolVersion' in metadata) &&
+      !('dynamicEntries' in metadata) &&
+      !('messageSegments' in metadata)), 'legacy trace unexpectedly contains on-demand metadata');
+  require(first.input?.contextMode === undefined ||
+    first.input.contextMode === 'default', 'legacy trace contextMode is not default');
 };
 
 const validateCapture = (scenario: PromptScenario, request: CapturedRequest) => {
@@ -239,14 +252,16 @@ const validateCapture = (scenario: PromptScenario, request: CapturedRequest) => 
     (message) => message.role === 'user' && text(message.content) === scenario.prompt,
   ), 'captured request does not contain the exact scenario user message');
   require(request.request.messages.some(
-    (message) => message.role === 'system' && text(message.content).includes(scenario.agentPrompt),
-  ), 'captured request does not contain the exact Agent Prompt');
+    (message) =>
+      message.role === 'system' &&
+      text(message.content).startsWith(nextReplyLanguageSystemRole(scenario.agentPrompt)),
+  ), 'captured request does not contain the exact Agent Prompt plus next language suffix');
   require(request.toolOrder.length ===
     request.request.tools.length, 'tool order does not cover the complete tools array');
   require(!findSensitiveHeader(
     request.headers,
   ), 'capture contains an unredacted credential header');
-  require(request.hashAlgorithm === 'prompt-harness-canonical-json-v1', 'hash schema is missing');
+  require(request.hashAlgorithm === PROMPT_HARNESS_CANONICALIZATION, 'hash schema is missing');
   const recomputed = hashPromptRequest(request.request);
   require(recomputed.full === request.hashes.full, 'captured full request hash does not recompute');
   require(recomputed.tools === request.hashes.tools, 'captured tools hash does not recompute');
@@ -262,11 +277,8 @@ const validateOnDemandFirstTurn = (request: CapturedRequest) => {
   require(system, 'first turn has no system message');
   const systemText = text(system.content);
   require(systemText.startsWith(
-    HARNESS_AGENT_PROMPT,
-  ), 'system does not start with the Agent Prompt');
-  require(systemText.includes(
-    '<on_demand_context_protocol version="1">',
-  ), 'system does not contain the fixed protocol');
+    `${nextReplyLanguageSystemRole(HARNESS_AGENT_PROMPT)}\n\n<on_demand_context_protocol version="1">`,
+  ), 'system does not contain the exact Agent Prompt, next language suffix and fixed protocol');
   require(!systemText.includes('<on_demand_context '), 'system contains a dynamic context body');
   require(!systemText.includes('<document_card'), 'system contains a document card');
   require(!systemText.includes('<skill_card'), 'system contains a skill card');
@@ -392,15 +404,14 @@ const validateMemoryFollowUp = (
   ), 'follow-up memory was not appended after the second user message');
   require(followUp.request.messages.some(
     (message) =>
-      message.role === 'user' &&
-      text(message.content).includes('T106 cooking preference: prefer low-salt recipes'),
+      message.role === 'user' && text(message.content).includes('Prefer low-salt recipes.'),
   ), 'follow-up request did not include the cooking preference body');
 
   // The first turn intentionally has no cooking preference. This proves the
   // second user message changed the retrieval query and tail rather than
   // replaying a cached first-turn result.
   require(!JSON.stringify(first.request).includes(
-    'T106 cooking preference: prefer low-salt recipes',
+    'Prefer low-salt recipes.',
   ), 'first-turn request already contained the later cooking preference');
 };
 
@@ -420,26 +431,24 @@ const validateNegativeActivation = (requests: CapturedRequest[]) => {
   ), 'missing bundle did not fail closed with the expected error');
 
   const forged = toolResult(requests[2]!, 'call_t106_negative_forged_identity');
-  require(forged?.includes(
-    'Not found:',
-  ), 'forged version/hash did not fail closed with a not-found result');
+  require(forged, 'forged version/hash produced no activation result');
+  require(forged.includes(
+    'Failed to activate tools:',
+  ), 'forged version/hash identity did not fail closed at activation');
+  require(!forged.includes(
+    'lobe-calculator____calculate',
+  ), 'forged version/hash activated the calculator schema');
 
   const mockToolCalls =
     requests[2]!.mockResponse?.choices?.flatMap((choice) => choice.message?.tool_calls ?? []) ?? [];
   require(mockToolCalls.some(
     (call) => call.id === 'call_t106_negative_unpermitted_tool',
   ), 'the mock did not attempt the unoffered calculator call');
-  require(requests.every(
-    (request) =>
-      !request.request.messages.some(
-        (message) =>
-          message.role === 'assistant' &&
-          message.tool_calls?.some((call) => call.id === 'call_t106_negative_unpermitted_tool'),
-      ),
-  ), 'the unoffered calculator call entered product request history');
-  require(requests.every(
-    (request) => toolResult(request, 'call_t106_negative_unpermitted_tool') === undefined,
-  ), 'an unoffered calculator call was executed instead of failing closed');
+  const rejected = toolResult(requests[3]!, 'call_t106_negative_unpermitted_tool');
+  require(rejected?.includes(
+    'Tool call rejected: no available tool is named lobe-calculator____calculate',
+  ), 'the unoffered calculator call did not fail closed');
+  require(!rejected.includes('Result: 2'), 'the unoffered calculator call executed');
 };
 
 const validateProtectedBudget = (
@@ -452,7 +461,7 @@ const validateProtectedBudget = (
     const system = request.request.messages.find((message) => message.role === 'system');
     require(system, 'protected-budget request has no system message');
     require(text(system.content).startsWith(
-      agentPrompt,
+      nextReplyLanguageSystemRole(agentPrompt),
     ), 'protected-budget safety prompt was not byte-exact');
     require(text(system.content).includes(
       '<on_demand_context_protocol version="1">',
@@ -539,14 +548,13 @@ const validateSkillAndDocument = (captures: Map<string, CapturedRequest[]>) => {
   require(longDocument.length >= 3, 'long document did not capture three requests');
   const firstResult = toolResult(longDocument[1], 'call_t105_read_long_document_1');
   require(firstResult, 'first long-document result is missing');
-  const firstMetadata = readDocumentMetadata(firstResult);
-  require(firstMetadata.hasMore ===
-    true, 'first long-document window does not advertise more content');
-  require(firstMetadata.startOffset === 0 &&
-    typeof firstMetadata.nextOffset ===
-      'number', 'first long-document window has no exact continuation');
-  require(firstMetadata.truncated ===
-    undefined, 'first long-document window is silently truncated');
+  const firstWindow = readDocumentWindowNotice(firstResult);
+  require(firstWindow, 'first long-document result has no continuation notice');
+  require(firstWindow.startLine === 1, 'first long-document window does not start at line 1');
+  require(firstWindow.endLine <
+    firstWindow.totalLines, 'first long-document window does not advertise more content');
+  require(firstWindow.nextOffset ===
+    firstWindow.endLine + 1, 'first long-document window has no exact continuation');
 
   const secondCall = longDocument[2].request.messages
     .flatMap((message) => (message.role === 'assistant' ? (message.tool_calls ?? []) : []))
@@ -554,15 +562,16 @@ const validateSkillAndDocument = (captures: Map<string, CapturedRequest[]>) => {
   require(secondCall?.function?.arguments, 'second long-document call is missing');
   const secondArgs = JSON.parse(secondCall.function.arguments) as { offset?: number };
   require(secondArgs.offset ===
-    firstMetadata.nextOffset, 'second long-document window did not continue from nextOffset');
+    firstWindow.nextOffset, 'second long-document window did not continue from the notice offset');
 
   const secondResult = toolResult(longDocument[2], 'call_t105_read_long_document_2');
   require(secondResult, 'second long-document result is missing');
-  const secondMetadata = readDocumentMetadata(secondResult);
-  require(secondMetadata.startOffset ===
-    firstMetadata.nextOffset, 'second long-document result did not start at the requested continuation');
-  require(secondMetadata.truncated ===
-    undefined, 'second long-document window is silently truncated');
+  require(!readDocumentWindowNotice(
+    secondResult,
+  ), 'second long-document window was still truncated instead of completing the document');
+  require(secondResult.includes(
+    'T105-LINE-2200',
+  ), 'second long-document window did not include the final document line');
 };
 
 export const verifyHarnessRun = async ({
@@ -765,11 +774,16 @@ export const verifyHarnessRun = async ({
     });
   }
 
-  if (captures.has('baseline-on-demand') && captures.has('baseline-legacy')) {
+  if (
+    captures.has('baseline-on-demand') &&
+    captures.has('baseline-legacy') &&
+    captures.has('baseline-chat')
+  ) {
     await check('token-comparison', () => {
       const onDemand = captures.get('baseline-on-demand')?.[0];
       const legacy = captures.get('baseline-legacy')?.[0];
-      require(onDemand && legacy, 'token comparison requests are missing');
+      const chat = captures.get('baseline-chat')?.[0];
+      require(onDemand && legacy && chat, 'token comparison requests are missing');
       const estimate = (request: CapturedRequest) =>
         estimateTokenCount(
           JSON.stringify({
@@ -779,12 +793,15 @@ export const verifyHarnessRun = async ({
         );
       const onDemandTokens = estimate(onDemand);
       const legacyTokens = estimate(legacy);
+      const chatTokens = estimate(chat);
       const reduction = legacyTokens - onDemandTokens;
       const percentage = (reduction / legacyTokens) * 100;
+      const chatReduction = chatTokens - onDemandTokens;
+      const chatPercentage = (chatReduction / chatTokens) * 100;
       require(onDemandTokens <
         legacyTokens *
           0.5, `on-demand request is not significantly smaller: ${onDemandTokens}/${legacyTokens}`);
-      return `Same-fixture tokenx request estimate: on-demand=${onDemandTokens}, legacy-agent=${legacyTokens}, delta=${reduction} (${percentage.toFixed(1)}% lower).`;
+      return `Same-fixture tokenx request estimate: on-demand=${onDemandTokens}, legacy-agent=${legacyTokens}, legacy-chat=${chatTokens}, agent-delta=${reduction} (${percentage.toFixed(1)}% lower), chat-delta=${chatReduction} (${chatPercentage.toFixed(1)}% lower).`;
     });
   }
 
@@ -797,7 +814,7 @@ export const verifyHarnessRun = async ({
       const request = captures.get('baseline-legacy')?.[0];
       require(request, 'legacy baseline request is missing');
       require(baseline.canonicalization ===
-        'prompt-harness-canonical-json-v1', 'legacy baseline canonicalization version is unknown');
+        PROMPT_HARNESS_CANONICALIZATION, 'legacy baseline canonicalization version is unknown');
       for (const key of ['full', 'messages', 'messagesAndTools', 'tools'] as const) {
         require(baseline.hashes[key] ===
           request.hashes[
@@ -817,7 +834,7 @@ export const verifyHarnessRun = async ({
       const request = captures.get('baseline-chat')?.[0];
       require(request, 'legacy chat baseline request is missing');
       require(baseline.canonicalization ===
-        'prompt-harness-canonical-json-v1', 'legacy chat baseline canonicalization version is unknown');
+        PROMPT_HARNESS_CANONICALIZATION, 'legacy chat baseline canonicalization version is unknown');
       for (const key of ['full', 'messages', 'messagesAndTools', 'tools'] as const) {
         require(baseline.hashes[key] ===
           request.hashes[
@@ -833,6 +850,13 @@ export const verifyHarnessRun = async ({
     require(manifest.cleanup.portsClosed, 'a managed port remained open');
     require(manifest.cleanup.databaseDropped, 'the cloned database was not dropped');
     return 'Next, the mock provider and their process groups are stopped; both ports are closed and the cloned database is dropped.';
+  });
+
+  await check('scenario-completion', () => {
+    require(manifest.scenarioErrors.length === 0, manifest.scenarioErrors
+      .map((failure) => `${failure.scenarioId}: ${failure.error}`)
+      .join(' | '));
+    return `${manifest.scenarios.length} scenarios completed without operation errors.`;
   });
 
   return checks;

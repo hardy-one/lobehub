@@ -9,6 +9,7 @@ import {
   buildDatabaseUrl,
   cloneDatabase,
   dropDatabase,
+  migrateDatabase,
   parseDatabaseUrl,
   repointMockProvider,
   seedDatabase,
@@ -31,6 +32,16 @@ import {
 const execFileAsync = promisify(execFile);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../..');
+
+class ScenarioRunError extends Error {
+  constructor(
+    message: string,
+    readonly operationId: string,
+    readonly topicId: string,
+  ) {
+    super(message);
+  }
+}
 
 const parseArgs = (argv: string[]) => {
   let scenarioIds = PROMPT_SCENARIOS.map((scenario) => scenario.id);
@@ -66,20 +77,27 @@ const readCaptureFiles = async (captureDir: string): Promise<string[]> =>
 const isAgentPromptCapture = async (captureDir: string, file: string): Promise<boolean> => {
   const capture = JSON.parse(await readFile(path.join(captureDir, file), 'utf8')) as {
     mockResponse?: { object?: string; protocol?: string };
-    rawRequest?: { messages?: unknown };
+    rawRequest?: { messages?: unknown; tools?: unknown };
   };
   // Agent Signal uses the Responses API for auxiliary classification. Those
-  // calls are not the product request under test and have no Chat Completions
-  // messages envelope.
+  // calls are not the product request under test. Compression side calls also
+  // use Chat Completions but omit the native tool catalogue.
   return (
     capture.mockResponse?.protocol !== 'responses' &&
     capture.mockResponse?.object === 'chat.completion' &&
-    Array.isArray(capture.rawRequest?.messages)
+    Array.isArray(capture.rawRequest?.messages) &&
+    Array.isArray(capture.rawRequest?.tools)
   );
 };
 
 const parseOperationId = (stdout: string): string => {
-  const events = JSON.parse(stdout) as Array<{ operationId?: string; type?: string }>;
+  const parsed = JSON.parse(stdout) as
+    Array<{ operationId?: string; type?: string }> | { operationId?: string };
+  if (!Array.isArray(parsed)) {
+    if (!parsed.operationId) throw new Error('CLI JSON did not contain an operation id.');
+    return parsed.operationId;
+  }
+  const events = parsed;
   const operation = events.find((event) => event.type === 'connected' && event.operationId);
   if (!operation?.operationId)
     throw new Error('CLI JSON did not contain a connected operation id.');
@@ -87,10 +105,19 @@ const parseOperationId = (stdout: string): string => {
 };
 
 const parseTopicId = (stdout: string, operationId: string): string => {
-  const events = JSON.parse(stdout) as Array<{
-    data?: { topicId?: string; uiMessages?: Array<{ topicId?: string }> };
-    type?: string;
-  }>;
+  const parsed = JSON.parse(stdout) as
+    | Array<{
+        data?: { topicId?: string; uiMessages?: Array<{ topicId?: string }> };
+        type?: string;
+      }>
+    | { topicId?: string };
+  if (!Array.isArray(parsed)) {
+    if (parsed.topicId) return parsed.topicId;
+    const fromOperation = operationId.match(/tpc_[A-Za-z0-9]+/)?.[0];
+    if (fromOperation) return fromOperation;
+    throw new Error(`Could not resolve a topic id from CLI JSON for ${operationId}.`);
+  }
+  const events = parsed;
   const fromEvent =
     events.find((event) => event.type === 'agent_runtime_init')?.data?.topicId ??
     events
@@ -130,6 +157,84 @@ const assertTestEnvironment = () => {
   }
 };
 
+const waitForOperation = async ({
+  cliHome,
+  operationId,
+  runRoot,
+  scenarioId,
+  serverUrl,
+}: {
+  cliHome: string;
+  operationId: string;
+  runRoot: string;
+  scenarioId: string;
+  serverUrl: string;
+}): Promise<void> => {
+  const apiKey = requireEnv('LOBEHUB_CLI_API_KEY');
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    LOBE_API_KEY: apiKey,
+    LOBEHUB_CLI_API_KEY: apiKey,
+    LOBEHUB_CLI_HOME: cliHome,
+    LOBEHUB_JWT: '',
+    LOBEHUB_SERVER: serverUrl,
+  };
+  delete env.LOBEHUB_JWT;
+  delete env.LOBEHUB_JWT_FILE;
+  delete env.LOBEHUB_OPERATION_ID;
+  delete env.LOBEHUB_AGENT_ID;
+  delete env.LOBEHUB_ASSISTANT_MESSAGE_ID;
+  delete env.LOBEHUB_TASK_ID;
+  delete env.LOBEHUB_TOPIC_ID;
+  delete env.LOBEHUB_WORKSPACE_ID;
+  delete env.LOBEHUB_HETERO_EXEC_INHERIT_PROCESS_GROUP;
+
+  const deadline = Date.now() + 180_000;
+  let lastStatus = '';
+  while (Date.now() < deadline) {
+    const result = await execFileAsync(
+      'bun',
+      ['src/index.ts', 'agent', 'status', operationId, '--json'],
+      {
+        cwd: path.join(repoRoot, 'apps/cli'),
+        env,
+        maxBuffer: 8 * 1024 * 1024,
+      },
+    );
+    const status = JSON.parse(result.stdout) as {
+      currentState?: { error?: unknown; status?: string };
+      error?: unknown;
+      needsHumanInput?: boolean;
+      status?: string;
+    };
+    const current = status.currentState?.status ?? status.status;
+    if (current && current !== lastStatus) {
+      lastStatus = current;
+      console.log(`${scenarioId} operation status: ${current}`);
+    }
+    if (['completed', 'done', 'success'].includes(current ?? '')) {
+      await writeFile(
+        path.join(runRoot, 'runs', `${scenarioId}.status.json`),
+        JSON.stringify(status, null, 2),
+      );
+      return;
+    }
+    if (
+      ['aborted', 'canceled', 'cancelled', 'error', 'failed', 'interrupted'].includes(current ?? '')
+    ) {
+      const error = status.currentState?.error ?? status.error;
+      throw new Error(
+        `${scenarioId} operation ${operationId} ended as ${current}: ${JSON.stringify(error)}`,
+      );
+    }
+    if (status.needsHumanInput) {
+      throw new Error(`${scenarioId} operation ${operationId} is waiting for human input`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  throw new Error(`${scenarioId} operation ${operationId} did not finish within 180 seconds`);
+};
+
 const runScenario = async ({
   cliHome,
   scenario,
@@ -153,6 +258,14 @@ const runScenario = async ({
     LOBEHUB_SERVER: serverUrl,
   };
   delete env.LOBEHUB_JWT;
+  delete env.LOBEHUB_JWT_FILE;
+  delete env.LOBEHUB_OPERATION_ID;
+  delete env.LOBEHUB_AGENT_ID;
+  delete env.LOBEHUB_ASSISTANT_MESSAGE_ID;
+  delete env.LOBEHUB_TASK_ID;
+  delete env.LOBEHUB_TOPIC_ID;
+  delete env.LOBEHUB_WORKSPACE_ID;
+  delete env.LOBEHUB_HETERO_EXEC_INHERIT_PROCESS_GROUP;
 
   const args = [
     'src/index.ts',
@@ -162,7 +275,7 @@ const runScenario = async ({
     scenario.agentId,
     '-p',
     scenario.prompt,
-    '--sse',
+    '--detach',
     '--json',
   ];
   if (topicId) args.push('-t', topicId);
@@ -181,10 +294,26 @@ const runScenario = async ({
   }
 
   const operationId = parseOperationId(result.stdout);
+  const resolvedTopicId = parseTopicId(result.stdout, operationId);
+  try {
+    await waitForOperation({
+      cliHome,
+      operationId,
+      runRoot,
+      scenarioId: scenario.id,
+      serverUrl,
+    });
+  } catch (error) {
+    throw new ScenarioRunError(
+      error instanceof Error ? error.message : String(error),
+      operationId,
+      resolvedTopicId,
+    );
+  }
   return {
     operationId,
     runOutputPath,
-    topicId: parseTopicId(result.stdout, operationId),
+    topicId: resolvedTopicId,
   };
 };
 
@@ -208,6 +337,14 @@ const inspectTrace = async ({
     LOBEHUB_SERVER: serverUrl,
   };
   delete env.LOBEHUB_JWT;
+  delete env.LOBEHUB_JWT_FILE;
+  delete env.LOBEHUB_OPERATION_ID;
+  delete env.LOBEHUB_AGENT_ID;
+  delete env.LOBEHUB_ASSISTANT_MESSAGE_ID;
+  delete env.LOBEHUB_TASK_ID;
+  delete env.LOBEHUB_TOPIC_ID;
+  delete env.LOBEHUB_WORKSPACE_ID;
+  delete env.LOBEHUB_HETERO_EXEC_INHERIT_PROCESS_GROUP;
 
   const result = await execFileAsync('lh', ['trace', 'op', 'inspect', operationId, '-j'], {
     env,
@@ -245,6 +382,7 @@ const main = async () => {
   const cliHome = path.join(runRoot, 'cli-home');
   const freezeClockPath = path.join(repoRoot, 'scripts/promptHarness/freezeClock.cjs');
   const scenarioRuns: ScenarioRun[] = [];
+  const scenarioErrors: HarnessManifest['scenarioErrors'] = [];
   const topicByScenario = new Map<string, string>();
   let provider: { providerRowId: string; vaultKeys: string[] } = {
     providerRowId: '',
@@ -273,6 +411,10 @@ const main = async () => {
       sourceDatabase: databaseParts.database,
       targetDatabase: runDatabase,
       user: databaseParts.user,
+    });
+    await migrateDatabase({
+      databaseUrl: clonedDatabaseUrl,
+      repoRoot,
     });
     await seedDatabase({
       container: pgContainer,
@@ -305,8 +447,8 @@ const main = async () => {
 
     managed.push(
       spawnManaged({
-        args: ['exec', 'next', 'dev', '-H', '127.0.0.1', '-p', String(nextPort)],
-        command: 'pnpm',
+        args: ['dev', '-H', '127.0.0.1', '-p', String(nextPort)],
+        command: path.join(repoRoot, 'node_modules/.bin/next'),
         cwd: repoRoot,
         env: {
           ...process.env,
@@ -352,60 +494,97 @@ const main = async () => {
           console.log(`skipped ${scenario.id}: manual product UI scenario`);
           continue;
         }
-        const topicId =
-          scenario.topicId ??
-          (scenario.topicFromScenarioId
-            ? topicByScenario.get(scenario.topicFromScenarioId)
-            : undefined);
-        if (scenario.topicFromScenarioId && !topicId) {
-          throw new Error(
-            `${scenario.id} requires the completed topic from ${scenario.topicFromScenarioId}.`,
+        try {
+          const topicId =
+            scenario.topicId ??
+            (scenario.topicFromScenarioId
+              ? topicByScenario.get(scenario.topicFromScenarioId)
+              : undefined);
+          if (scenario.topicFromScenarioId && !topicId) {
+            throw new Error(
+              `${scenario.id} requires the completed topic from ${scenario.topicFromScenarioId}.`,
+            );
+          }
+          for (const fixturePath of scenario.beforeFixturePaths ?? []) {
+            await seedDatabase({
+              container: pgContainer,
+              database: runDatabase,
+              fixturePath: path.join(repoRoot, fixturePath),
+              user: databaseParts.user,
+            });
+          }
+          const before = new Set(await readCaptureFiles(captureDir));
+          let run: Awaited<ReturnType<typeof runScenario>> | undefined;
+          let operationId: string | undefined;
+          let resolvedTopicId = topicId;
+          try {
+            run = await runScenario({
+              cliHome,
+              runRoot,
+              scenario,
+              serverUrl,
+              topicId,
+            });
+            operationId = run.operationId;
+            resolvedTopicId = run.topicId;
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (error instanceof ScenarioRunError) {
+              operationId = error.operationId;
+              resolvedTopicId = error.topicId;
+            }
+            scenarioErrors.push({
+              error: message,
+              ...(operationId && { operationId }),
+              scenarioId: scenario.id,
+            });
+            console.error(`failed ${scenario.id}: ${message}`);
+          }
+
+          const tracePath = path.join(traceDir, `${scenario.id}.json`);
+          if (operationId) {
+            try {
+              await inspectTrace({
+                cliHome,
+                operationId,
+                outputPath: tracePath,
+                serverUrl,
+              });
+            } catch (error) {
+              await writeFile(
+                path.join(logDir, `${scenario.id}-trace-error.log`),
+                error instanceof Error ? (error.stack ?? error.message) : String(error),
+              );
+            }
+          }
+          const after = await readCaptureFiles(captureDir);
+          const scenarioCaptureFiles: string[] = [];
+          for (const file of after) {
+            if (before.has(file)) continue;
+            if (await isAgentPromptCapture(captureDir, file)) scenarioCaptureFiles.push(file);
+          }
+          scenarioRuns.push({
+            captureFiles: scenarioCaptureFiles,
+            scenario,
+            tracePath,
+          });
+          if (resolvedTopicId) topicByScenario.set(scenario.id, resolvedTopicId);
+          for (const fixturePath of scenario.afterFixturePaths ?? []) {
+            await seedDatabase({
+              container: pgContainer,
+              database: runDatabase,
+              fixturePath: path.join(repoRoot, fixturePath),
+              user: databaseParts.user,
+            });
+          }
+          console.log(
+            `${run ? 'captured' : 'captured partial'} ${scenario.id}: ${operationId ?? 'no operation id'}`,
           );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          scenarioErrors.push({ error: message, scenarioId: scenario.id });
+          console.error(`failed ${scenario.id}: ${message}`);
         }
-        for (const fixturePath of scenario.beforeFixturePaths ?? []) {
-          await seedDatabase({
-            container: pgContainer,
-            database: runDatabase,
-            fixturePath: path.join(repoRoot, fixturePath),
-            user: databaseParts.user,
-          });
-        }
-        const before = new Set(await readCaptureFiles(captureDir));
-        const run = await runScenario({
-          cliHome,
-          runRoot,
-          scenario,
-          serverUrl,
-          topicId,
-        });
-        const tracePath = path.join(traceDir, `${scenario.id}.json`);
-        await inspectTrace({
-          cliHome,
-          operationId: run.operationId,
-          outputPath: tracePath,
-          serverUrl,
-        });
-        const after = await readCaptureFiles(captureDir);
-        const scenarioCaptureFiles: string[] = [];
-        for (const file of after) {
-          if (before.has(file)) continue;
-          if (await isAgentPromptCapture(captureDir, file)) scenarioCaptureFiles.push(file);
-        }
-        scenarioRuns.push({
-          captureFiles: scenarioCaptureFiles,
-          scenario,
-          tracePath,
-        });
-        topicByScenario.set(scenario.id, run.topicId);
-        for (const fixturePath of scenario.afterFixturePaths ?? []) {
-          await seedDatabase({
-            container: pgContainer,
-            database: runDatabase,
-            fixturePath: path.join(repoRoot, fixturePath),
-            user: databaseParts.user,
-          });
-        }
-        console.log(`captured ${scenario.id}: ${run.operationId}`);
       }
     }
   } catch (error) {
@@ -438,6 +617,7 @@ const main = async () => {
     provider,
     runId,
     runRoot,
+    scenarioErrors,
     scenarios: scenarioRuns,
   };
   const manifestPath = path.join(runRoot, 'manifest.json');
@@ -478,6 +658,7 @@ const main = async () => {
     error: failure instanceof Error ? failure.message : failure ? String(failure) : undefined,
     manifest,
     passed: !failure && checks.every((check) => check.status === 'PASS'),
+    scenarioErrors,
   };
   const resultPath = path.join(runRoot, 'result.json');
   await writeFile(resultPath, JSON.stringify(result, null, 2));

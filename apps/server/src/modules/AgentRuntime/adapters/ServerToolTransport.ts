@@ -423,22 +423,23 @@ export class ServerToolTransport implements ToolTransport {
       const preserveOnDemandManual =
         context.state.metadata?.contextMode === 'on-demand' &&
         chatToolPayload.identifier === 'lobe-activator';
-      const executionResult = controlled.blocked || preserveOnDemandManual
-        ? controlled.result
-        : await archiveRuntimeToolResult(
-            { ...controlled.result, executionTime: controlled.result.executionTime ?? 0 },
-            {
-              agentId: context.state.origin?.agentId,
-              canReadArchive: enabledToolIds.includes(AgentDocumentsIdentifier),
-              identifier: chatToolPayload.identifier,
-              limit: context.toolResultMaxLength,
-              serverDB,
-              toolCallId: chatToolPayload.id,
-              topicId: this.ctx.topicId ?? context.state.origin?.topicId,
-              userId,
-              workspaceId: context.state.origin?.workspaceId ?? this.ctx.workspaceId,
-            },
-          );
+      const executionResult =
+        controlled.blocked || preserveOnDemandManual
+          ? controlled.result
+          : await archiveRuntimeToolResult(
+              { ...controlled.result, executionTime: controlled.result.executionTime ?? 0 },
+              {
+                agentId: context.state.origin?.agentId,
+                canReadArchive: enabledToolIds.includes(AgentDocumentsIdentifier),
+                identifier: chatToolPayload.identifier,
+                limit: context.toolResultMaxLength,
+                serverDB,
+                toolCallId: chatToolPayload.id,
+                topicId: this.ctx.topicId ?? context.state.origin?.topicId,
+                userId,
+                workspaceId: context.state.origin?.workspaceId ?? this.ctx.workspaceId,
+              },
+            );
 
       await this.dispatchAfterToolCall(chatToolPayload, context, executionResult, toolCallMocked);
 

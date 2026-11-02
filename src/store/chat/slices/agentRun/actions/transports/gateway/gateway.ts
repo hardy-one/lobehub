@@ -73,6 +73,7 @@ import {
   resolveUserInterventionConfig,
 } from './execRequest';
 import { retireLocalRowIfServerSettled } from './externalProducerSettle';
+import { waitForGatewayConnected } from './gatewayConnectionWait';
 import { createGatewayEventBuffer } from './gatewayEventBuffer';
 import { createGatewayEventHandler } from './gatewayEventHandler';
 import { createGatewayEventRouter } from './gatewayEventRouter';
@@ -2667,16 +2668,3 @@ export type GatewayAction = Pick<GatewayActionImpl, keyof GatewayActionImpl>;
  * published its own `runningOperation` / `running` status.
  */
 const LOCAL_RUN_SETTLE_MIN_AGE_MS = 30_000;
-
-const GATEWAY_CONNECT_WAIT_MS = 5000;
-
-/** Resolve once the connection reads `connected`, or after a bounded wait. */
-const waitForGatewayConnected = async (
-  readStatus: () => ConnectionStatus | undefined,
-): Promise<boolean> => {
-  const deadline = Date.now() + GATEWAY_CONNECT_WAIT_MS;
-  while (readStatus() !== 'connected' && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  return readStatus() === 'connected';
-};

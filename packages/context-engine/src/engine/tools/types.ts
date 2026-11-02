@@ -1,9 +1,8 @@
 import type {
+  ExtendedHumanInterventionConfig,
   OnDemandCapabilityExpectation,
   OnDemandDiscoveryPool,
-} from '@lobechat/types';
-
-import type { ExtendedHumanInterventionConfig } from '@/types/index';
+} from '@/types/index';
 
 export interface LobeChatPluginApi {
   /**

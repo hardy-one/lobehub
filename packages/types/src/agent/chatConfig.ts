@@ -10,6 +10,8 @@ export interface WorkingModel {
   provider: string;
 }
 
+export type AgentContextMode = 'default' | 'on-demand';
+
 export interface AgentMemoryChatConfig {
   memory?: {
     effort?: UserMemoryEffort;
@@ -34,6 +36,11 @@ export interface LobeAgentChatConfig extends AgentMemoryChatConfig, AgentSelfIte
    * Model ID to use for generating compression summaries
    */
   compressionModelId?: string;
+  /**
+   * Context loading strategy. Only an explicit `on-demand` selects the third
+   * mode; undefined means `default` and keeps the legacy chat/agent behaviour.
+   */
+  contextMode?: AgentContextMode;
   deepseekV4GAReasoningEffort?: 'none' | 'low' | 'high' | 'max';
   deepseekV4ReasoningEffort?: 'none' | 'high' | 'max';
 
@@ -252,6 +259,7 @@ export const SelfIterationChatConfigSchema = z.object({
 export const AgentChatConfigSchema = z
   .object({
     codexMaxReasoningEffort: z.enum(['low', 'medium', 'high', 'xhigh']).optional(),
+    contextMode: z.enum(['default', 'on-demand']).optional(),
     deepseekV4GAReasoningEffort: z.enum(['none', 'low', 'high', 'max']).optional(),
     deepseekV4ReasoningEffort: z.enum(['none', 'high', 'max']).optional(),
     qwen38ReasoningEffort: z.enum(['none', 'low', 'medium', 'xhigh']).optional(),

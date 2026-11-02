@@ -1,3 +1,5 @@
+import { type AgentContextMode, resolveContextMode, resolveToolMode } from '@lobechat/types';
+
 import { useModelSupportToolUse } from '@/hooks/useModelSupportToolUse';
 import { useAgentStore } from '@/store/agent';
 import { agentByIdSelectors } from '@/store/agent/selectors';
@@ -6,9 +8,34 @@ import { aiProviderSelectors, useAiInfraStore } from '@/store/aiInfra';
 import { useEffectiveAgentModePreference } from './effectiveAgentModePreference';
 import { useEffectiveModel } from './useEffectiveModel';
 
-export type ChatInputMode = 'agent' | 'chat';
+export type ChatInputMode = 'agent' | 'chat' | 'on-demand';
+
+interface ModeFlags {
+  contextMode: AgentContextMode;
+  enableAgentMode: boolean;
+}
+
+/**
+ * Map the explicit UI mode to the persisted agent flags. Selecting either
+ * legacy mode writes `contextMode: 'default'`; only the third option opts into
+ * on-demand loading.
+ */
+export const resolveModeFlags = (mode: ChatInputMode): ModeFlags => {
+  switch (mode) {
+    case 'on-demand': {
+      return { contextMode: 'on-demand', enableAgentMode: true };
+    }
+    case 'agent': {
+      return { contextMode: 'default', enableAgentMode: true };
+    }
+    default: {
+      return { contextMode: 'default', enableAgentMode: false };
+    }
+  }
+};
 
 interface ResolveEffectiveAgentModeParams {
+  contextMode?: AgentContextMode;
   enableAgentMode: boolean;
   /**
    * Whether the aiProvider runtime-state (the enabled-model list + abilities)
@@ -17,12 +44,15 @@ interface ResolveEffectiveAgentModeParams {
    */
   isModelListReady?: boolean;
   supportToolUse: boolean;
+  toolMode?: 'agent' | 'chat' | 'custom';
 }
 
 export const resolveEffectiveAgentMode = ({
+  contextMode,
   enableAgentMode,
   isModelListReady = true,
   supportToolUse,
+  toolMode,
 }: ResolveEffectiveAgentModeParams) => {
   // While the model list is not ready, `supportToolUse` is `false` only because
   // the model hasn't hydrated into the store yet — not because it lacks tool
@@ -31,16 +61,26 @@ export const resolveEffectiveAgentMode = ({
   // available while loading and honour the user's stored intent; the real
   // capability re-evaluates once the list loads.
   const effectiveSupportToolUse = isModelListReady ? supportToolUse : true;
-
-  const currentMode: ChatInputMode = enableAgentMode && effectiveSupportToolUse ? 'agent' : 'chat';
-  // Example: stored Agent mode + a model without tool calling should render chat-only runtime UI.
-  const isAgentRuntimeMode = currentMode === 'agent';
+  const resolvedToolMode = resolveToolMode({ enableAgentMode, toolMode });
+  const resolvedContextMode = resolveContextMode(
+    { contextMode, enableAgentMode, toolMode },
+    { supportToolUse: effectiveSupportToolUse },
+  );
+  const currentMode: ChatInputMode =
+    resolvedToolMode !== 'chat' && effectiveSupportToolUse
+      ? resolvedContextMode === 'on-demand'
+        ? 'on-demand'
+        : 'agent'
+      : 'chat';
 
   return {
     canSelectAgentMode: effectiveSupportToolUse,
+    canSelectOnDemandMode:
+      effectiveSupportToolUse && (toolMode === undefined || toolMode === 'agent'),
     currentMode,
-    isAgentModeUnavailable: enableAgentMode && !effectiveSupportToolUse,
-    isAgentRuntimeMode,
+    isAgentModeUnavailable:
+      (resolvedToolMode !== 'chat' || contextMode === 'on-demand') && !effectiveSupportToolUse,
+    isAgentRuntimeMode: currentMode === 'agent' || currentMode === 'on-demand',
     supportToolUse: effectiveSupportToolUse,
   };
 };
@@ -56,13 +96,19 @@ interface ModelAndProvider {
  * `useEffectiveAgentMode` or `useAgentDefaultModelAgentMode`.
  */
 const useAgentModeForModel = (agentId: string, { model, provider }: ModelAndProvider) => {
-  const { enableAgentMode, isPreferenceLoading, usesWorkspaceMemberMode } =
+  const { contextMode, enableAgentMode, isPreferenceLoading, toolMode, usesWorkspaceMemberMode } =
     useEffectiveAgentModePreference(agentId);
   const supportToolUse = useModelSupportToolUse(model, provider);
   const isModelListReady = useAiInfraStore(aiProviderSelectors.isInitAiProviderRuntimeState);
 
   return {
-    ...resolveEffectiveAgentMode({ enableAgentMode, isModelListReady, supportToolUse }),
+    ...resolveEffectiveAgentMode({
+      contextMode,
+      enableAgentMode,
+      isModelListReady,
+      supportToolUse,
+      toolMode,
+    }),
     isPreferenceLoading,
     usesWorkspaceMemberMode,
   };

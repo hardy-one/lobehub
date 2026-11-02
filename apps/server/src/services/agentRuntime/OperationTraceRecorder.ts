@@ -1,9 +1,5 @@
 import type { ExecutionSnapshot, ISnapshotStore, StepSnapshot } from '@lobechat/agent-tracing';
-import type {
-  ChatMessageErrorAttribution,
-  ChatMessageErrorSeverity,
-  OnDemandTraceMetadata,
-} from '@lobechat/types';
+import type { ChatMessageErrorAttribution, ChatMessageErrorSeverity } from '@lobechat/types';
 import debug from 'debug';
 
 import type { StepCompletionReason, StepPresentationData } from './types';
@@ -34,11 +30,7 @@ export interface AppendStepParams {
    * cache-warmth gate inputs/outputs, truncation counts) — small scalar
    * records, safe to store every step.
    */
-  contextEngine?: {
-    input?: unknown;
-    metadata?: OnDemandTraceMetadata;
-    output?: unknown;
-  };
+  contextEngine?: { input?: unknown; metadata?: unknown; output?: unknown };
   currentContext?: { payload?: unknown; phase?: string; stepContext?: unknown };
   externalRetryCount: number;
   presentation: StepPresentationData;
@@ -405,11 +397,7 @@ export class OperationTraceRecorder {
     // RuntimeExecutorContext.tracingContextEngine). Uses the same delta
     // pattern as messagesBaseline/messagesDelta.
     const contextEngine: StepSnapshot['contextEngine'] = ceInput
-      ? {
-          input: ceInput.input,
-          ...(ceInput.metadata && { metadata: ceInput.metadata }),
-          output: ceInput.output,
-        }
+      ? { input: ceInput.input, metadata: ceInput.metadata, output: ceInput.output }
       : undefined;
 
     // Strip heavy/redundant data from events before persisting to snapshot.

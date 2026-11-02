@@ -4,7 +4,6 @@ import {
   type ExecSubAgentParams,
   type ExecSubAgentResult,
   type ExecVirtualSubAgentParams,
-  type OnDemandTraceMetadata,
 } from '@lobechat/types';
 
 import { type MessageModel } from '@/database/models/message';
@@ -98,11 +97,7 @@ export interface RuntimeExecutorContext {
    * ~83% of each step. Routing CE through this callback keeps the heavy
    * payload in trace only, reducing per-step Redis state from ~3.4MB to ~6KB.
    */
-  tracingContextEngine?: (
-    input: unknown,
-    output: unknown,
-    metadata?: OnDemandTraceMetadata,
-  ) => void;
+  tracingContextEngine?: (input: unknown, output: unknown, metadata?: unknown) => void;
   userId?: string;
   /**
    * Workspace scoping for ownership filters on models/services constructed

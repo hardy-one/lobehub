@@ -56,8 +56,7 @@ export const resolveServerCallLlmTooling = (
   // the operation snapshot. Routing a device must not widen that tool pool.
   // On-demand tools are only callable after activation, so the routed device
   // must not implicitly inject local-system into the bootstrap payload.
-  const activeDeviceId =
-    contextMode === 'on-demand' ? undefined : resolveRunActiveDeviceId(state);
+  const activeDeviceId = contextMode === 'on-demand' ? undefined : resolveRunActiveDeviceId(state);
   const executionTarget = (state.plan?.execution as ExecutionPlan | undefined)?.target;
   const operationToolSet: OperationToolSet = selectOperationToolSet(state);
 

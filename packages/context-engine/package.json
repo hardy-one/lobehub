@@ -11,6 +11,8 @@
     "ai",
     "lobe"
   ],
+  "homepage": "https://github.com/lobehub/lobehub/tree/canary/packages/context-engine",
+  "license": "MIT",
   "exports": {
     ".": "./src/index.ts",
     "./agent-document": "./src/providers/AgentDocumentInjector/shared.ts",
@@ -45,7 +47,5 @@
   },
   "devDependencies": {
     "@types/debug": "^4.1.13"
-  },
-  "license": "MIT",
-  "homepage": "https://github.com/lobehub/lobehub/tree/canary/packages/context-engine"
+  }
 }

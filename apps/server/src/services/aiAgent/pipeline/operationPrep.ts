@@ -28,8 +28,8 @@ import { redisService } from '@/server/services/redis';
 import { afterUnscoped } from '@/server/utils/scheduleAfterResponse';
 
 import { pruneRegeneratedBranch } from '../pruneRegeneratedBranch';
-import { resolveSelectedSkillIds } from '../resolveSelectedSkills';
 import { resolveDeviceWorkingDirectoryConfig } from '../resolveDeviceWorkingDirectory';
+import { resolveSelectedSkillIds } from '../resolveSelectedSkills';
 import { applyShareGateToToolSet } from '../shareGate';
 import type {
   BindTopicWorkingDirectoryParams,
@@ -453,11 +453,7 @@ export const prepareOperation = async (
     activeDeviceId,
     activeDeviceScope,
     agentPlugins,
-    builtinModels,
-    composioManifests,
-    connectorManifests,
     executionPlan,
-    lobehubSkillManifests,
     onlineDevices,
     toolsEngine,
     toolsResult,
@@ -607,14 +603,14 @@ export const prepareOperation = async (
     contextMode === 'on-demand'
       ? []
       : toolsEngine && historicalActivatedToolIds.length > 0
-      ? toolsEngine.generateToolsDetailed({
-          context: { isExplicitActivation: true },
-          model,
-          provider,
-          skipDefaultTools: true,
-          toolIds: historicalActivatedToolIds,
-        }).enabledToolIds
-      : [];
+        ? toolsEngine.generateToolsDetailed({
+            context: { isExplicitActivation: true },
+            model,
+            provider,
+            skipDefaultTools: true,
+            toolIds: historicalActivatedToolIds,
+          }).enabledToolIds
+        : [];
 
   // Final share-gate allowlist enforcement — run once here, after every
   // manifest/default/dynamic-activation source (installed plugins, LobeHub

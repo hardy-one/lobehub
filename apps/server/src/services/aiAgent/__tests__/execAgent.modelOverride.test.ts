@@ -91,27 +91,33 @@ vi.mock('@/server/services/agent', () => ({
 }));
 
 vi.mock('@/database/models/plugin', () => ({
-  PluginModel: vi.fn().mockImplementation(() => ({
-    query: mockPluginQuery,
-  })),
+  PluginModel: vi.fn().mockImplementation(function () {
+    return {
+      query: mockPluginQuery,
+    };
+  }),
 }));
 
 // Builtin agents inject their own tools, so a run under a builtin slug reaches
 // connector resolution that the plain-agent cases never do.
 vi.mock('@/database/models/connector', () => ({
-  ConnectorModel: vi.fn().mockImplementation(() => ({
-    queryByIdentifiers: vi.fn().mockResolvedValue([]),
-    resolveAll: mockConnectorResolveAll,
-    resolveByIdentifiers: vi.fn().mockResolvedValue([]),
-  })),
+  ConnectorModel: vi.fn().mockImplementation(function () {
+    return {
+      queryByIdentifiers: vi.fn().mockResolvedValue([]),
+      resolveAll: mockConnectorResolveAll,
+      resolveByIdentifiers: vi.fn().mockResolvedValue([]),
+    };
+  }),
 }));
 
 vi.mock('@/database/models/connectorTool', () => ({
-  ConnectorToolModel: vi.fn().mockImplementation(() => ({
-    queryAllByConnectorIds: mockConnectorToolQueryAll,
-    queryByConnector: vi.fn().mockResolvedValue([]),
-    queryByConnectorIds: vi.fn().mockResolvedValue([]),
-  })),
+  ConnectorToolModel: vi.fn().mockImplementation(function () {
+    return {
+      queryAllByConnectorIds: mockConnectorToolQueryAll,
+      queryByConnector: vi.fn().mockResolvedValue([]),
+      queryByConnectorIds: vi.fn().mockResolvedValue([]),
+    };
+  }),
 }));
 
 vi.mock('@/database/models/topic', () => ({

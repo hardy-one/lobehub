@@ -75,13 +75,14 @@ export const getEffectiveAgentModePreference = (agentId: string) => {
 
 /** Reactive counterpart used by capability-gated chat input controls. */
 export const useEffectiveAgentModePreference = (agentId: string) => {
-  const [agent, sharedEnableAgentMode, sharedContextMode, sharedToolMode] =
-    useAgentStore((state) => [
+  const [agent, sharedEnableAgentMode, sharedContextMode, sharedToolMode] = useAgentStore(
+    (state) => [
       agentByIdSelectors.getAgentById(agentId)(state),
       agentByIdSelectors.getAgentEnableModeById(agentId)(state),
       chatConfigByIdSelectors.getContextModeById(agentId)(state),
       chatConfigByIdSelectors.getChatConfigById(agentId)(state).toolMode,
-    ]);
+    ],
+  );
   const { canManageAgent, isAccessLoading } = useAgentManagementAccess(agentId);
   const usesWorkspaceMemberMode =
     !!agent?.workspaceId && agent.visibility !== 'private' && !canManageAgent;

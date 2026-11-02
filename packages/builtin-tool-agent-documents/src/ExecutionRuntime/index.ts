@@ -653,6 +653,7 @@ export class AgentDocumentsExecutionRuntime {
 
     const { content, state } = formatDocumentReadContent(doc, args);
     return {
+      content,
       state,
       success: true,
     };

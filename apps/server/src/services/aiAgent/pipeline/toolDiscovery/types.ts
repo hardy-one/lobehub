@@ -104,9 +104,9 @@ export interface ToolDiscoveryResult {
    * reads the list live, as it did before the snapshot existed.
    */
   credentialFactsPromise?: Promise<FrozenCredentialFacts | undefined>;
-  executionPlan?: ExecutionPlan;
   /** Activation-only capabilities when `contextMode` is on-demand. */
   discoveryPool?: OnDemandDiscoveryPool;
+  executionPlan?: ExecutionPlan;
   hasAgentDocuments: boolean;
   hasEnabledKnowledgeBases: boolean;
   lobehubSkillManifests: LobeToolManifest[];

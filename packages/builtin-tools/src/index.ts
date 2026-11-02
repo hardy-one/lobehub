@@ -57,13 +57,13 @@ import { WebOnboardingManifest } from '@lobechat/builtin-tool-web-onboarding';
 import { isDesktop, RECOMMENDED_SKILLS, RecommendedSkillType } from '@lobechat/const';
 import { type LobeBuiltinTool, ON_DEMAND_BOOTSTRAP_IDENTIFIERS } from '@lobechat/types';
 
+import { resolveCloudSandboxInPageScope } from './pageScope';
+
 /**
  * The only native tools admitted to the first on-demand payload. The canonical
  * allowlist lives in @lobechat/types and is shared by both runtime hosts.
  */
 export const onDemandBootstrapToolIds = ON_DEMAND_BOOTSTRAP_IDENTIFIERS;
-
-import { resolveCloudSandboxInPageScope } from './pageScope';
 
 /**
  * Default tool IDs that will always be added to the tools list.

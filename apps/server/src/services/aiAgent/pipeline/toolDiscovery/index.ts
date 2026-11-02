@@ -62,6 +62,7 @@ import {
 } from './connectors';
 import { resolveDevicePlan } from './devicePlan';
 import { resolveModelContext, startModelMetadataRead } from './modelFacts';
+import { buildOnDemandDiscoveryPool } from './onDemandDiscoveryPool';
 import { readCredentialFacts, startToolReads } from './reads';
 import { resolveOperationGroup, resolveTurnScopedPluginIds } from './turnContext';
 import type { ToolDiscoveryDeps, ToolDiscoveryInput, ToolDiscoveryResult } from './types';
@@ -729,9 +730,7 @@ export const discoverTools = async (
 
   if (contextMode === 'on-demand' && executionPlan) {
     const bootstrapIds = new Set<string>(ON_DEMAND_BOOTSTRAP_IDENTIFIERS);
-    const nonBootstrapEnabledIds = toolsResult.enabledToolIds.filter(
-      (id) => !bootstrapIds.has(id),
-    );
+    const nonBootstrapEnabledIds = toolsResult.enabledToolIds.filter((id) => !bootstrapIds.has(id));
     if (nonBootstrapEnabledIds.length > 0) {
       throw new Error(
         `On-demand initial tool set contains non-bootstrap tools: ${nonBootstrapEnabledIds.join(', ')}`,
@@ -742,7 +741,7 @@ export const discoverTools = async (
       agentId: resolvedAgentId,
       allowedIdentifiers: new Set(Object.keys(toolManifestMap)),
       canUseDevice,
-      deviceOnline,
+      deviceOnline: onlineDevices.length > 0,
       executionTarget: executionPlan.target,
       executorMap: toolExecutorMap,
       gatewayConfigured: deviceGateway.isConfigured,

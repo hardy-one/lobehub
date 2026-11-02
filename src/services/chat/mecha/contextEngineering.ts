@@ -63,13 +63,13 @@ interface ContextEngineeringContext {
   additionalContexts?: readonly RuntimeAdditionalContextFragment[];
   /** The agent ID that will respond (for group context injection) */
   agentId?: string;
-  /** Explicit third-mode context strategy. Default keeps the legacy pipeline. */
-  contextMode?: AgentContextMode;
   /**
    * Attachments sent as a preview plus file id because the request's attachment
    * budget is spent (planned by `shouldCompress`).
    */
   attachmentPreviewFileIds?: string[];
+  /** Explicit third-mode context strategy. Default keeps the legacy pipeline. */
+  contextMode?: AgentContextMode;
   /**
    * Identifiers the agent has explicitly disabled (`agents.plugins` tri-state).
    * Excluded from the client skill candidate pool entirely — not just left

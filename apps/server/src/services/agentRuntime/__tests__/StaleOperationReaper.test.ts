@@ -366,6 +366,25 @@ describe('StaleOperationReaper', () => {
     expect(staleBefore.getTime()).toBeLessThanOrEqual(before - 60_000 + 5);
   });
 
+  it('bounds the overlap patrol to rows whose lease can still be live', async () => {
+    // Coverage boundary: the mock's `groupBy` returns the fixture rows without
+    // executing the WHERE, so this proves the query carries a lease-age floor at
+    // the hetero silence window — that zombies are actually filtered is the
+    // database's job, not something this harness can observe.
+    const before = Date.now();
+    await buildReaper([], runningState()).sweep();
+
+    const { params, sql } = new PgDialect().sqlToQuery(whereConditions[1]);
+    expect(sql).toMatch(/"updated_at" >= \$\d+/);
+    const leaseAge = (p: unknown) =>
+      typeof p === 'string' || p instanceof Date ? new Date(p).getTime() : Number.NaN;
+    const floor = params.find((p) => leaseAge(p) <= before - 59 * 60_000);
+    expect(floor).toBeDefined();
+    // A 60-minute lease-age floor, not the 24h sweep lookback: rows frozen up
+    // to a day are exactly the ones this must stop re-reporting.
+    expect(leaseAge(floor)).toBeGreaterThanOrEqual(before - 60 * 60_000 - 1000);
+  });
+
   it('reports topics with more than one foreground run live', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const overlap = { operationIds: ['op_a', 'op_b'], topicId: 'tpc_x' };

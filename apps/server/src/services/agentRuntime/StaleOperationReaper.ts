@@ -73,7 +73,6 @@ const isHeterogeneousProvider = (provider: string | null | undefined): boolean =
 /** Bound how many overlapping topics one sweep reports. */
 const CONCURRENT_FOREGROUND_REPORT_LIMIT = 20;
 
-
 export interface ReapStaleOperationsParams {
   /** Silence after which a stateless heterogeneous run is retired. */
   heteroSilenceMs?: number;

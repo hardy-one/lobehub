@@ -204,7 +204,27 @@ describe('server-origin intervention with client-configured agent after reload',
       expect.objectContaining({
         initialContext: expect.objectContaining({
           payload: expect.objectContaining({
-            approvedToolCall: expect.objectContaining({ arguments: '{"path":"edited"}' }),
+            approvedToolCall: expect.objectContaining({
+              arguments: '{"path":"edited"}',
+              id: 'call-question',
+            }),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('keeps the tool call id when approving a stored client tool row', async () => {
+    const store = seed();
+    sourceMutation().mockResolvedValue({ success: false } as never);
+
+    await store.approveToolCalling(toolMessageId, '', context);
+
+    expect(store.executeClientAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialContext: expect.objectContaining({
+          payload: expect.objectContaining({
+            approvedToolCall: expect.objectContaining({ id: 'call-question' }),
           }),
         }),
       }),

@@ -22,7 +22,11 @@ import type {
 } from '@lobechat/context-engine';
 import type { AgentIdentityContext } from '@lobechat/prompts';
 import type {
+  AgentContextMode,
   ExpertiseContextSnapshot,
+  OnDemandDocumentCard,
+  OnDemandRetrievalBatch,
+  OnDemandToolCard,
   RuntimeAdditionalContextFragment,
   RuntimeInitialContext,
   RuntimeSelectedSkill,
@@ -40,6 +44,8 @@ export type ContextVariables = Record<string, string | (() => string)>;
  * host (`resolveAgentConfig`) and frozen.
  */
 export interface ContextAgentSnapshot {
+  /** Card-only document discovery; bodies stay behind readDocument. */
+  documentCards?: readonly OnDemandDocumentCard[];
   /** Agent documents the agent may consult. */
   documents?: AgentContextDocument[];
   enableHistoryCount?: boolean;
@@ -71,6 +77,8 @@ export interface ContextModelSnapshot {
  */
 export interface ContextRunSnapshot {
   additionalContexts?: readonly RuntimeAdditionalContextFragment[];
+  /** Explicit third-mode context strategy. Default keeps the legacy pipeline. */
+  contextMode?: AgentContextMode;
   /**
    * Runtime-resolved agent mode. `false` forces chat mode (skills and agent
    * documents are not injected) regardless of the stored chat config.
@@ -84,6 +92,10 @@ export interface ContextRunSnapshot {
   historySummary?: string;
   initialContext?: RuntimeInitialContext;
   messages: UIChatMessage[];
+  /** Server retrieval facts used by the on-demand dynamic suffix. */
+  onDemand?: {
+    retrieval?: OnDemandRetrievalBatch;
+  };
   stepContext?: RuntimeStepContext;
 }
 
@@ -96,6 +108,8 @@ export interface ContextToolsSnapshot {
    * tool is enabled. Defaults to hiding the page agent unless it is enabled.
    */
   disabledToolIdentifiers?: string[];
+  /** Compact tool cards the on-demand suffix may expose without schemas. */
+  discoveryCards?: readonly OnDemandToolCard[];
   enabledSkills?: SkillMeta[];
   enabledToolIds?: string[];
   manifests?: LobeToolManifest[];

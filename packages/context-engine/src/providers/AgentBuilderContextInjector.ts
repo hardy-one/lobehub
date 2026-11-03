@@ -73,7 +73,7 @@ export interface AgentBuilderContextInjectorConfig {
 /**
  * Format agent context as XML for injection
  */
-const defaultFormatAgentContext = (context: AgentBuilderContext): string => {
+export const formatAgentContext = (context: AgentBuilderContext): string => {
   const parts: string[] = [];
 
   // Add meta section
@@ -233,7 +233,7 @@ export class AgentBuilderContextInjector extends BaseFirstUserContentProvider {
       return null;
     }
 
-    const formatFn = this.config.formatAgentContext || defaultFormatAgentContext;
+    const formatFn = this.config.formatAgentContext || formatAgentContext;
     const formattedContent = formatFn(this.config.agentContext);
 
     if (!formattedContent) {

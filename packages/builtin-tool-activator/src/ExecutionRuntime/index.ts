@@ -1,4 +1,9 @@
-import type { BuiltinServerRuntimeOutput } from '@lobechat/types';
+import type {
+  BuiltinServerRuntimeOutput,
+  OnDemandCapabilityExpectation,
+  OnDemandCapabilitySource,
+  OnDemandExecutionEnvironment,
+} from '@lobechat/types';
 import { Md5 } from 'ts-md5';
 
 import type { ActivatedToolInfo, ActivateSkillParams, ActivateToolsParams } from '../types';
@@ -6,8 +11,14 @@ import type { ActivatedToolInfo, ActivateSkillParams, ActivateToolsParams } from
 export interface ToolManifestInfo {
   apiDescriptions: Array<{ description: string; name: string }>;
   avatar?: string;
+  capability?: OnDemandCapabilityExpectation;
+  capabilitySummary?: string;
+  executionEnvironment?: OnDemandExecutionEnvironment;
   identifier: string;
+  /** Full, untruncated atomic manual. Present only for on-demand activations. */
+  manual?: string;
   name: string;
+  source?: OnDemandCapabilitySource;
   systemRole?: string;
   /**
    * Tool type as the host classifies it (`mcp`, `standalone`, …). Mirrored
@@ -20,6 +31,7 @@ export interface ToolManifestInfo {
    * behavior for every manifest.
    */
   type?: string;
+  version?: string;
 }
 
 export interface ActivatorRuntimeService {
@@ -32,6 +44,8 @@ export interface ActivatorRuntimeService {
   explainNotFound?: (identifier: string) => string | undefined;
   getActivatedToolIds: () => string[];
   getToolManifests: (identifiers: string[]) => Promise<ToolManifestInfo[]>;
+  /** Whether this runtime is executing the on-demand activation flow. */
+  isOnDemand?: () => boolean;
   /**
    * Full list of discoverable tool manifests for this run, when the host can
    * provide it. Two uses, both about requests the identifier-keyed
@@ -306,9 +320,16 @@ export class ActivatorExecutionRuntime {
       const activatedTools: ActivatedToolInfo[] = manifests.map((m) => ({
         apiCount: m.apiDescriptions.length,
         avatar: m.avatar,
+        capability: m.capability,
+        capabilitySummary: m.capabilitySummary,
+        executionEnvironment: m.executionEnvironment,
+        hash: m.capability?.hash,
         identifier: m.identifier,
         name: m.name,
+        source: m.source,
+        version: m.capability?.version,
       }));
+      const isOnDemandActivation = manifests.some((manifest) => !!manifest.capability);
 
       // Mark newly activated tools
       if (manifests.length > 0) {
@@ -319,18 +340,25 @@ export class ActivatorExecutionRuntime {
       const parts: string[] = [];
 
       if (activatedTools.length > 0) {
-        // Activation state flows through `state.activatedTools` and gets the
-        // manifest (systemRole + API schemas) injected into the system prompt
-        // from the next LLM call onwards, so the result only needs to list the
-        // newly callable APIs — returning the full docs here would double-carry
-        // them in every subsequent payload.
         const apiNames = manifests.flatMap((manifest) =>
           manifest.apiDescriptions.length > 0
             ? manifest.apiDescriptions.map((api) => `${manifest.identifier}.${api.name}`)
             : [manifest.identifier],
         );
         parts.push(`Successfully activated tools: ${apiNames.join(', ')}.`);
-        parts.push('Usage instructions for the activated items are in the system prompt.');
+
+        if (isOnDemandActivation) {
+          // In on-demand mode the tool result is the only durable manual
+          // channel. Append each validated manual in full; the context engine's
+          // legacy trim processor is bypassed in this mode.
+          for (const manifest of manifests) {
+            if (manifest.manual) parts.push(manifest.manual);
+          }
+        } else {
+          // Legacy activation state is injected into the system prompt on the
+          // next call, so keep the historical terse result unchanged.
+          parts.push('Usage instructions for the activated items are in the system prompt.');
+        }
       }
 
       if (activatedSkillResults.length > 0) {
@@ -354,6 +382,13 @@ export class ActivatorExecutionRuntime {
         parts.push(`\nNot found: ${unexplained.join(', ')}`);
       }
 
+      const isOnDemandRejected =
+        this.service.isOnDemand?.() === true &&
+        manifests.length === 0 &&
+        activatedSkillResults.length === 0 &&
+        notFound.length > 0 &&
+        identifiers.every((id) => notFound.includes(id));
+
       return {
         content: parts.join('\n'),
         state: {
@@ -362,7 +397,7 @@ export class ActivatorExecutionRuntime {
           alreadyActive: alreadyActiveList,
           notFound,
         },
-        success: true,
+        success: !isOnDemandRejected,
       };
     } catch (e) {
       return {

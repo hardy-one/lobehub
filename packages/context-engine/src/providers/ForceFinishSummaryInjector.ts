@@ -11,6 +11,9 @@ declare module '../types' {
 
 const log = debug('context-engine:provider:ForceFinishSummaryInjector');
 
+export const FORCE_FINISH_SUMMARY_CONTENT =
+  'You have reached the maximum step limit. Please summarize your progress and provide a final response. Do not attempt to use any tools.';
+
 export interface ForceFinishSummaryInjectorConfig {
   enabled: boolean;
 }
@@ -44,8 +47,7 @@ export class ForceFinishSummaryInjector extends BaseProvider {
     const clonedContext = this.cloneContext(context);
 
     clonedContext.messages.push({
-      content:
-        'You have reached the maximum step limit. Please summarize your progress and provide a final response. Do not attempt to use any tools.',
+      content: FORCE_FINISH_SUMMARY_CONTENT,
       role: 'system' as const,
     });
 

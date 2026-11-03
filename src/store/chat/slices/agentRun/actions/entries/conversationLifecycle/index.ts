@@ -2,7 +2,7 @@
 import { createCallAgentManifest } from '@lobechat/builtin-tool-agent-management';
 import { GoalIdentifier, isGoalPrompt } from '@lobechat/builtin-tool-goal';
 import { isDesktop, isHeterogeneousAgentModelId, LOADING_FLAT } from '@lobechat/const';
-import { formatSelectedSkillsContext, formatSelectedToolsContext } from '@lobechat/context-engine';
+import { formatSelectedToolsContext } from '@lobechat/context-engine';
 import {
   collectHeteroAttachedFiles,
   isRemoteHeterogeneousType,
@@ -140,6 +140,13 @@ import { mergePartialPersistedMessages, resolveSendResponseMessages } from '../p
 import { resolveExistingTopicForRun } from '../resolveExistingTopic';
 import { resolveProjectDirectoryRun } from '../resolveProjectDirectoryRun';
 import { type ContextCompressionOptions, executeContextCompression } from './compression';
+import {
+  formatPersistedSelectedSkillsContext,
+  resolveOnDemandSkillDelivery,
+  toOnDemandSelectedSkillsInitialContext,
+} from './onDemandSkillContext';
+import { throwIfSendAborted } from './sendAbort';
+import type { OptimisticTopicPlaceholder, SendMessageServerResponseMeta } from './types';
 
 /**
  * Extended params for sendMessage with context
@@ -184,19 +191,6 @@ export interface SendMessageResult {
   userMessageId: string;
 }
 
-type SendMessageServerResponseMeta = SendMessageServerResponse & {
-  __isPartialMessages?: boolean;
-};
-
-interface OptimisticTopicPlaceholder {
-  id: string;
-  metadata?: ChatTopicMetadata;
-  /** Pinned model snapshot — top-level `topics.model` column, not metadata. */
-  model?: string;
-  provider?: string;
-  title: string;
-}
-
 /**
  * Actions managing the complete lifecycle of conversations including sending,
  * regenerating, and resending messages
@@ -205,14 +199,6 @@ interface OptimisticTopicPlaceholder {
 type Setter = StoreSetter<ChatStore>;
 export const conversationLifecycle = (set: Setter, get: () => ChatStore, _api?: unknown) =>
   new ConversationLifecycleActionImpl(set, get, _api);
-
-const throwIfSendAborted = (signal?: AbortSignal) => {
-  if (!signal?.aborted) return;
-
-  throw signal.reason instanceof Error
-    ? signal.reason
-    : new DOMException('Message send was cancelled', 'AbortError');
-};
 
 export class ConversationLifecycleActionImpl {
   readonly #get: () => ChatStore;
@@ -617,6 +603,10 @@ export class ConversationLifecycleActionImpl {
       message,
       selectedTools,
     });
+    const { contextMode, selectedSkills: onDemandSelectedSkills } = resolveOnDemandSkillDelivery(
+      agentConfig,
+      enrichedSelectedSkills,
+    );
     const requestTrigger = (metadata as Pick<MessageMetadata, 'trigger'> | undefined)?.trigger;
     const requestMetadata = requestTrigger ? { trigger: requestTrigger } : undefined;
 
@@ -1840,6 +1830,9 @@ export class ConversationLifecycleActionImpl {
           // client runtime does by persisting them into the message content.
           selectedSkillIds:
             selectedSkills.length > 0 ? selectedSkills.map((skill) => skill.identifier) : undefined,
+          // On-demand turns carry the preloaded skill bodies to the server so a
+          // slash-selected skill is available without a second activation step.
+          selectedSkills: onDemandSelectedSkills,
           // Forward @-mentioned agents so the server supervisor can delegate to
           // them (multi-mention). Mirrors the client runtime's `initialContext`
           // injection: the server enables the callAgent tool and injects the
@@ -1976,7 +1969,7 @@ export class ConversationLifecycleActionImpl {
         (t) => !previouslyMentionedTools.has(t.identifier),
       );
 
-      const skillContext = formatSelectedSkillsContext(dedupedSkills);
+      const skillContext = formatPersistedSelectedSkillsContext(contextMode, dedupedSkills);
       const toolContext = formatSelectedToolsContext(dedupedTools);
       const contextSuffix = [skillContext, toolContext].filter(Boolean).join('\n');
       const persistedContent = contextSuffix ? `${message}\n\n${contextSuffix}` : message;
@@ -2309,7 +2302,8 @@ export class ConversationLifecycleActionImpl {
           const activeTopicDocumentInitialContext =
             await resolveActiveTopicDocumentInitialContext(execContext);
 
-          const hasInitialContext = hasMentionedAgents || !!injectedManifests;
+          const hasInitialContext =
+            hasMentionedAgents || !!injectedManifests || !!onDemandSelectedSkills;
 
           // Note: selectedSkills and selectedTools are NOT passed here — they are
           // persisted into the user message content above so they survive across
@@ -2321,6 +2315,7 @@ export class ConversationLifecycleActionImpl {
                   // group @member mentions (including ALL_MEMBERS) leaking into agent-management
                   ...(hasMentionedAgents ? { mentionedAgents } : undefined),
                   ...(injectedManifests ? { injectedManifests } : undefined),
+                  ...toOnDemandSelectedSkillsInitialContext(onDemandSelectedSkills),
                 },
                 phase: 'init' as const,
               }

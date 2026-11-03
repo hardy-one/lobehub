@@ -46,7 +46,7 @@ export interface TodoInjectorConfig {
 /**
  * Format Todo list content for injection
  */
-function formatTodos(todos: TodoList): string | null {
+export const formatTodos = (todos: TodoList): string | null => {
   const { items } = todos;
 
   if (!items || items.length === 0) {
@@ -69,7 +69,7 @@ function formatTodos(todos: TodoList): string | null {
   lines.push('</todos>');
 
   return lines.join('\n');
-}
+};
 
 /**
  * Todo Injector

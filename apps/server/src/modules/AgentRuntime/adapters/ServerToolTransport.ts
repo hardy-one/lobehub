@@ -282,6 +282,7 @@ export class ServerToolTransport implements ToolTransport {
               // (changing a bot's settings) refuse anyone else.
               botContext: context.state.principal?.actor?.bot,
               clientIp: context.state.principal?.audit?.clientIp,
+              contextMode: context.state.metadata?.contextMode,
               currentTodos: context.currentTodos,
               deviceCapable: context.state.plan?.execution
                 ? isDeviceCapablePlan(context.state.plan?.execution)
@@ -289,6 +290,7 @@ export class ServerToolTransport implements ToolTransport {
               documentId: context.state.origin?.documentId,
               editingAgentId: context.state.origin?.editingAgentId,
               editingGroupId: context.state.origin?.editingGroupId,
+              discoveryPool: context.state.operationToolSet?.discoveryPool,
               execSubAgent: this.ctx.execSubAgent,
               executionPlan: context.state.plan?.execution,
               executionTimeoutMs: timeoutMs,
@@ -418,22 +420,26 @@ export class ServerToolTransport implements ToolTransport {
       if (controlled.cancelled) {
         return { ...execution, interrupted: true, result: controlled.result };
       }
-      const executionResult = controlled.blocked
-        ? controlled.result
-        : await archiveRuntimeToolResult(
-            { ...controlled.result, executionTime: controlled.result.executionTime ?? 0 },
-            {
-              agentId: context.state.origin?.agentId,
-              canReadArchive: enabledToolIds.includes(AgentDocumentsIdentifier),
-              identifier: chatToolPayload.identifier,
-              limit: context.toolResultMaxLength,
-              serverDB,
-              toolCallId: chatToolPayload.id,
-              topicId: this.ctx.topicId ?? context.state.origin?.topicId,
-              userId,
-              workspaceId: context.state.origin?.workspaceId ?? this.ctx.workspaceId,
-            },
-          );
+      const preserveOnDemandManual =
+        context.state.metadata?.contextMode === 'on-demand' &&
+        chatToolPayload.identifier === 'lobe-activator';
+      const executionResult =
+        controlled.blocked || preserveOnDemandManual
+          ? controlled.result
+          : await archiveRuntimeToolResult(
+              { ...controlled.result, executionTime: controlled.result.executionTime ?? 0 },
+              {
+                agentId: context.state.origin?.agentId,
+                canReadArchive: enabledToolIds.includes(AgentDocumentsIdentifier),
+                identifier: chatToolPayload.identifier,
+                limit: context.toolResultMaxLength,
+                serverDB,
+                toolCallId: chatToolPayload.id,
+                topicId: this.ctx.topicId ?? context.state.origin?.topicId,
+                userId,
+                workspaceId: context.state.origin?.workspaceId ?? this.ctx.workspaceId,
+              },
+            );
 
       await this.dispatchAfterToolCall(chatToolPayload, context, executionResult, toolCallMocked);
 

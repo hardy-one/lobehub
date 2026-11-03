@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   resolveEffectiveAgentMode,
+  resolveModeFlags,
   useAgentDefaultModelAgentMode,
   useEffectiveAgentMode,
 } from './useEffectiveAgentMode';
@@ -14,9 +15,11 @@ const testState = vi.hoisted(() => ({
   },
   agent: {
     agent: undefined as { visibility?: 'private' | 'public'; workspaceId?: string } | undefined,
+    contextMode: 'default' as 'default' | 'on-demand',
     enableAgentMode: true,
     model: 'model-1',
     provider: 'provider-1',
+    toolMode: undefined as 'agent' | 'chat' | 'custom' | undefined,
   },
   aiInfra: {
     isReady: true,
@@ -29,13 +32,21 @@ const testState = vi.hoisted(() => ({
   },
   user: {
     fetchedPreference: undefined as
-      { agentModeOverrides?: Record<string, boolean> } | null | undefined,
+      | {
+          agentContextModeOverrides?: Record<string, 'default' | 'on-demand'>;
+          agentModeOverrides?: Record<string, boolean>;
+        }
+      | null
+      | undefined,
     isLoading: false,
     useFetchWorkspaceUserPreference: () => ({
       data: testState.user.fetchedPreference,
       isLoading: testState.user.isLoading,
     }),
-    workspaceUserPreference: {} as { agentModeOverrides?: Record<string, boolean> },
+    workspaceUserPreference: {} as {
+      agentContextModeOverrides?: Record<string, 'default' | 'on-demand'>;
+      agentModeOverrides?: Record<string, boolean>;
+    },
   },
 }));
 
@@ -58,6 +69,10 @@ vi.mock('@/store/agent/selectors', () => ({
     getAgentEnableModeById: () => (s: typeof testState.agent) => s.enableAgentMode,
     getAgentModelById: () => (s: typeof testState.agent) => s.model,
     getAgentModelProviderById: () => (s: typeof testState.agent) => s.provider,
+  },
+  chatConfigByIdSelectors: {
+    getChatConfigById: () => (s: typeof testState.agent) => ({ toolMode: s.toolMode }),
+    getContextModeById: () => (s: typeof testState.agent) => s.contextMode,
   },
 }));
 
@@ -93,9 +108,11 @@ beforeEach(() => {
   testState.access.canManageAgent = false;
   testState.access.isAccessLoading = false;
   testState.agent.agent = undefined;
+  testState.agent.contextMode = 'default';
   testState.agent.enableAgentMode = true;
   testState.agent.model = 'model-1';
   testState.agent.provider = 'provider-1';
+  testState.agent.toolMode = undefined;
   testState.aiInfra.isReady = true;
   testState.toolUseByModel = { 'provider-1/model-1': true };
   testState.topic.pinned = undefined;
@@ -108,6 +125,7 @@ describe('resolveEffectiveAgentMode', () => {
   it('uses agent mode when the stored mode is enabled and the model supports tool use', () => {
     expect(resolveEffectiveAgentMode({ enableAgentMode: true, supportToolUse: true })).toEqual({
       canSelectAgentMode: true,
+      canSelectOnDemandMode: true,
       currentMode: 'agent',
       isAgentModeUnavailable: false,
       isAgentRuntimeMode: true,
@@ -118,6 +136,7 @@ describe('resolveEffectiveAgentMode', () => {
   it('falls back to chat mode without changing the stored mode when the model lacks tool use', () => {
     expect(resolveEffectiveAgentMode({ enableAgentMode: true, supportToolUse: false })).toEqual({
       canSelectAgentMode: false,
+      canSelectOnDemandMode: false,
       currentMode: 'chat',
       isAgentModeUnavailable: true,
       isAgentRuntimeMode: false,
@@ -128,6 +147,7 @@ describe('resolveEffectiveAgentMode', () => {
   it('keeps explicit chat mode even when the model supports tool use', () => {
     expect(resolveEffectiveAgentMode({ enableAgentMode: false, supportToolUse: true })).toEqual({
       canSelectAgentMode: true,
+      canSelectOnDemandMode: true,
       currentMode: 'chat',
       isAgentModeUnavailable: false,
       isAgentRuntimeMode: false,
@@ -147,6 +167,7 @@ describe('resolveEffectiveAgentMode', () => {
         }),
       ).toEqual({
         canSelectAgentMode: true,
+        canSelectOnDemandMode: true,
         currentMode: 'agent',
         isAgentModeUnavailable: false,
         isAgentRuntimeMode: true,
@@ -163,6 +184,7 @@ describe('resolveEffectiveAgentMode', () => {
         }),
       ).toEqual({
         canSelectAgentMode: true,
+        canSelectOnDemandMode: true,
         currentMode: 'chat',
         isAgentModeUnavailable: false,
         isAgentRuntimeMode: false,
@@ -179,11 +201,47 @@ describe('resolveEffectiveAgentMode', () => {
         }),
       ).toEqual({
         canSelectAgentMode: false,
+        canSelectOnDemandMode: false,
         currentMode: 'chat',
         isAgentModeUnavailable: true,
         isAgentRuntimeMode: false,
         supportToolUse: false,
       });
+    });
+  });
+
+  it('enters on-demand only when explicitly stored, agent-effective, and FC-capable', () => {
+    expect(
+      resolveEffectiveAgentMode({
+        contextMode: 'on-demand',
+        enableAgentMode: true,
+        supportToolUse: true,
+      }),
+    ).toEqual({
+      canSelectAgentMode: true,
+      canSelectOnDemandMode: true,
+      currentMode: 'on-demand',
+      isAgentModeUnavailable: false,
+      isAgentRuntimeMode: true,
+      supportToolUse: true,
+    });
+  });
+
+  it('does not offer on-demand when the explicit tool mode is custom', () => {
+    expect(
+      resolveEffectiveAgentMode({
+        contextMode: 'on-demand',
+        enableAgentMode: true,
+        supportToolUse: true,
+        toolMode: 'custom',
+      }),
+    ).toEqual({
+      canSelectAgentMode: true,
+      canSelectOnDemandMode: false,
+      currentMode: 'agent',
+      isAgentModeUnavailable: false,
+      isAgentRuntimeMode: true,
+      supportToolUse: true,
     });
   });
 });
@@ -229,6 +287,52 @@ describe('useEffectiveAgentMode', () => {
     const { result } = renderHook(() => useEffectiveAgentMode('agent-1'));
 
     expect(result.current.isPreferenceLoading).toBe(true);
+  });
+
+  it('restores the explicitly stored on-demand mode after the preference loads', () => {
+    testState.agent.contextMode = 'on-demand';
+
+    const { result } = renderHook(() => useEffectiveAgentMode('agent-1'));
+
+    expect(result.current).toMatchObject({
+      canSelectOnDemandMode: true,
+      currentMode: 'on-demand',
+      isAgentRuntimeMode: true,
+    });
+  });
+
+  it('restores a Workspace member on-demand preference independently of the shared Agent', () => {
+    testState.agent.agent = { visibility: 'public', workspaceId: 'workspace-1' };
+    testState.agent.contextMode = 'default';
+    testState.user.workspaceUserPreference = {
+      agentContextModeOverrides: { 'agent-1': 'on-demand' },
+      agentModeOverrides: { 'agent-1': true },
+    };
+
+    const { result } = renderHook(() => useEffectiveAgentMode('agent-1'));
+
+    expect(result.current).toMatchObject({
+      currentMode: 'on-demand',
+      usesWorkspaceMemberMode: true,
+    });
+  });
+
+  it('lets a Workspace member enable on-demand over a shared chat-mode Agent', () => {
+    testState.agent.agent = { visibility: 'public', workspaceId: 'workspace-1' };
+    testState.agent.contextMode = 'default';
+    testState.agent.enableAgentMode = false;
+    testState.agent.toolMode = undefined;
+    testState.user.workspaceUserPreference = {
+      agentContextModeOverrides: { 'agent-1': 'on-demand' },
+      agentModeOverrides: { 'agent-1': true },
+    };
+
+    const { result } = renderHook(() => useEffectiveAgentMode('agent-1'));
+
+    expect(result.current).toMatchObject({
+      currentMode: 'on-demand',
+      isAgentRuntimeMode: true,
+    });
   });
 });
 
@@ -296,5 +400,15 @@ describe('model used for the tool-use capability', () => {
 
       expect(result.current).toMatchObject({ currentMode: 'agent', isAgentRuntimeMode: true });
     });
+  });
+});
+
+describe('resolveModeFlags', () => {
+  it.each([
+    ['agent', { contextMode: 'default', enableAgentMode: true }],
+    ['chat', { contextMode: 'default', enableAgentMode: false }],
+    ['on-demand', { contextMode: 'on-demand', enableAgentMode: true }],
+  ] as const)('maps %s to its persisted flags', (mode, expected) => {
+    expect(resolveModeFlags(mode)).toEqual(expected);
   });
 });

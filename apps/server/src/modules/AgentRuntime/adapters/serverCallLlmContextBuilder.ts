@@ -5,6 +5,8 @@ import {
   selectExpertise,
 } from '@lobechat/agent-runtime';
 import { GroupAgentBuilderIdentifier } from '@lobechat/builtin-tool-group-agent-builder';
+import type { ResolvedToolSet } from '@lobechat/context-engine';
+import { buildOnDemandTraceMetadata, hashContent } from '@lobechat/context-engine/onDemand';
 import { gatherContextFacts } from '@lobechat/mecha';
 import type { ChatStreamPayload } from '@lobechat/model-runtime';
 import { SpanStatusCode } from '@lobechat/observability-otel/api';
@@ -13,16 +15,26 @@ import {
   CONTEXT_ENGINEERING_SPAN_NAME,
   tracer as agentRuntimeTracer,
 } from '@lobechat/observability-otel/modules/agent-runtime';
-import type { UIChatMessage } from '@lobechat/types';
+import type {
+  OnDemandActivatedToolBundleMetadata,
+  OnDemandContextMetadata,
+  OnDemandDocumentCard,
+  UIChatMessage,
+} from '@lobechat/types';
+import { resolveContextMode } from '@lobechat/types';
 
 import { serverMessagesEngine } from '@/server/modules/Mecha/ContextEngineering';
 import {
   createServerContextFactProviders,
   resolveServerConnectorFeatures,
 } from '@/server/modules/Mecha/ContextEngineering/providers';
+import { AgentDocumentsService } from '@/server/services/agentDocuments';
+import { retrieveOnDemandServerContext } from '@/server/services/onDemandContext/retrieval';
+import { getOrLoadOnDemandRetrieval } from '@/server/services/onDemandContext/turnCache';
 import { resolveBuilderGroupId } from '@/server/services/toolExecution/serverRuntimes/groupAgentBuilderTarget';
 
 import type { RuntimeExecutorContext } from '../context';
+import { log } from '../executorHelpers';
 import {
   resolveServerCallLlmContextHints,
   type ServerCallLlmContextHints,
@@ -58,13 +70,45 @@ const hasTrailingTodoMutation = (messages: UIChatMessage[]) => {
 };
 
 export interface ServerCallLlmContextBuildResult {
+  contextMetadata?: OnDemandContextMetadata;
   preserveThinkingForPayload?: boolean;
   processedMessages: ChatStreamPayload['messages'];
   resolvedExtendParams?: ServerCallLlmContextHints['resolvedExtendParams'];
+  resolvedTools?: ResolvedToolSet;
   shouldReplayAssistantReasoning: boolean;
   /** An explicit operation-level `stream` wins; otherwise the agent's chat config. */
   stream?: boolean;
 }
+
+const findCurrentUserMessage = (
+  messages: readonly { content: string; id?: string; role: string }[],
+): { index: number; message: { content: string; id?: string; role: string } } | undefined => {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role === 'user') return { index, message };
+  }
+};
+
+const buildActivatedToolBundles = (state: AgentState): OnDemandActivatedToolBundleMetadata[] => {
+  const discoveryPool = state.operationToolSet?.discoveryPool;
+
+  return (state.activatedStepTools ?? []).flatMap((activated) => {
+    const bundle = discoveryPool?.bundles[activated.id];
+    const capability = activated.capability;
+    if (!capability || !bundle) return [];
+
+    return [
+      {
+        activatedAtStep: activated.activatedAtStep,
+        capabilityHash: capability.hash,
+        capabilityVersion: capability.version,
+        identifier: capability.identifier,
+        manifestHash: hashContent(activated.manifest ?? bundle.manifest),
+        source: activated.source,
+      },
+    ];
+  });
+};
 
 export const buildServerCallLlmContext = async ({
   ctx,
@@ -103,8 +147,14 @@ export const buildServerCallLlmContext = async ({
     resolvedExtendParams,
     shouldReplayAssistantReasoning,
   } = contextHints;
-
   const agentId = state.origin?.agentId;
+  const contextMode =
+    state.metadata?.contextMode === 'on-demand'
+      ? 'on-demand'
+      : resolveContextMode(agentConfig.chatConfig, {
+          supportToolUse: capabilities.isCanUseFC?.(model, provider) ?? true,
+        });
+
   const topicId = ctx.topicId ?? state.origin?.topicId;
   // `<current_group_context>` must describe the group the builder tools will
   // write to — after a `createGroup` that is the new group, not the pinned one.
@@ -149,9 +199,66 @@ export const buildServerCallLlmContext = async ({
     createServerContextFactProviders({ ctx, state }),
   );
 
+  const currentUserMessage = findCurrentUserMessage(messagesForContext);
+  let onDemandRetrieval;
+  let documentCards: OnDemandDocumentCard[] | undefined;
+  if (contextMode === 'on-demand' && currentUserMessage && ctx.serverDB && ctx.userId) {
+    const memoryEffort = (agentConfig.chatConfig as { memory?: { effort?: string } } | undefined)
+      ?.memory?.effort as 'high' | 'low' | 'medium' | undefined;
+    const cached = await getOrLoadOnDemandRetrieval({
+      cache: ctx.onDemandRetrievalCache,
+      currentUserMessage: currentUserMessage.message.content,
+      load: () =>
+        retrieveOnDemandServerContext({
+          agentId,
+          currentUserMessage: currentUserMessage.message.content,
+          db: ctx.serverDB!,
+          effort: memoryEffort,
+          memoryEnabled:
+            typeof state.metadata?.memoryEnabled === 'boolean'
+              ? state.metadata.memoryEnabled
+              : Boolean(state.world?.userMemory?.memories),
+          userId: ctx.userId!,
+          workspaceId: state.origin?.workspaceId ?? ctx.workspaceId,
+        }),
+      messageId: currentUserMessage.message.id,
+      messageIndex: currentUserMessage.index,
+    });
+    ctx.onDemandRetrievalCache = cached;
+    onDemandRetrieval = cached.batch;
+
+    if (agentId) {
+      try {
+        const documentService = new AgentDocumentsService(
+          ctx.serverDB!,
+          ctx.userId!,
+          state.origin?.workspaceId ?? ctx.workspaceId,
+        );
+        const documents = await documentService.listDocuments(agentId, 'all');
+        documentCards = documents.slice(0, 50).map((document) => ({
+          description: document.description ?? undefined,
+          documentId: document.documentId,
+          filename: document.filename,
+          id: document.id,
+          sourceType: document.sourceType,
+          title: document.title,
+          updatedAt: document.updatedAt.toISOString(),
+        }));
+      } catch (error) {
+        // Document discovery is optional; a listing failure must not block the turn.
+        log('Failed to build on-demand document cards: %O', error);
+      }
+    }
+  }
+
   const contextEngineInput = {
     additionalContexts: llmPayload.additionalContexts,
     attachmentPreviewFileIds: llmPayload.attachmentPreviewFileIds,
+    contextMode,
+    ...(contextMode === 'on-demand' &&
+      onDemandRetrieval && {
+        onDemand: { retrieval: onDemandRetrieval },
+      }),
     agentDocuments: facts.agentDocuments,
     // Identity lives on the agent row, not in the prompt text — inject it so
     // the model introduces itself by the user-given name.
@@ -169,6 +276,7 @@ export const buildServerCallLlmContext = async ({
     userTimezone: state.world?.userTimezone,
     capabilities,
     botPlatformContext: state.world?.channel?.botPlatform,
+    documentCards,
     ...(facts.step.workspaceContext && { workspaceContext: facts.step.workspaceContext }),
     discordContext: state.world?.channel?.discord,
     enableExpertise: selectEnableExpertise(state),
@@ -222,10 +330,12 @@ export const buildServerCallLlmContext = async ({
     systemRole: agentConfig.systemRole ?? undefined,
     toolDiscoveryConfig,
     toolsConfig: {
+      discoveryCards: state.operationToolSet?.discoveryPool?.cards,
       manifests: Object.values(resolved.promptManifestMap),
       tools: resolved.enabledToolIds,
     },
-    userMemory: state.world?.userMemory,
+    // On-demand retrieves only current-turn matches; legacy persona stays default-only.
+    userMemory: contextMode === 'on-demand' ? undefined : state.world?.userMemory,
     ...(resolvedSkills?.enabledSkills?.length && {
       skillsConfig: { enabledSkills: resolvedSkills.enabledSkills },
     }),
@@ -234,69 +344,88 @@ export const buildServerCallLlmContext = async ({
     ...(facts.step.onboardingContext && { onboardingContext: facts.step.onboardingContext }),
   };
 
-  const { messages: processedMessages, metadata: ceMetadata } =
-    await agentRuntimeTracer.startActiveSpan(
-      CONTEXT_ENGINEERING_SPAN_NAME,
-      {
-        attributes: buildContextEngineeringAttributes({
-          hasImages: (messagesForContext as Array<{ content?: unknown }>).some(
-            (message) =>
-              Array.isArray(message.content) &&
-              (message.content as Array<{ type?: string }>).some(
-                (part) => part?.type === 'image_url',
-              ),
-          ),
-          historyCompressed:
-            Array.isArray(messagesForContext) &&
-            messagesForContext.some(
-              (message: { role?: string }) => message?.role === 'compressedGroup',
+  const contextResult = await agentRuntimeTracer.startActiveSpan(
+    CONTEXT_ENGINEERING_SPAN_NAME,
+    {
+      attributes: buildContextEngineeringAttributes({
+        hasImages: (messagesForContext as Array<{ content?: unknown }>).some(
+          (message) =>
+            Array.isArray(message.content) &&
+            (message.content as Array<{ type?: string }>).some(
+              (part) => part?.type === 'image_url',
             ),
-          knowledgeCount:
-            (contextEngineInput.knowledge?.knowledgeBases?.length ?? 0) +
-            (contextEngineInput.knowledge?.fileContents?.length ?? 0),
-          knowledgeInjected:
-            (contextEngineInput.knowledge?.knowledgeBases?.length ?? 0) > 0 ||
-            (contextEngineInput.knowledge?.fileContents?.length ?? 0) > 0,
-          memoryInjected: Boolean(contextEngineInput.userMemory?.memories),
-          messageCount: messagesForContext.length,
-          operationId,
-          stepIndex,
-          systemRoleLength: contextEngineInput.systemRole?.length,
-          toolCount: contextEngineInput.toolsConfig?.tools?.length ?? 0,
-        }),
-      },
-      async (ceSpan) => {
-        try {
-          const result = await serverMessagesEngine(contextEngineInput);
-          ceSpan.setAttribute('lobehub.context.message_count', result.messages.length);
-          return result;
-        } catch (error) {
-          ceSpan.recordException(error as Error);
-          ceSpan.setStatus({
-            code: SpanStatusCode.ERROR,
-            message: error instanceof Error ? error.message : String(error),
-          });
-          throw error;
-        } finally {
-          ceSpan.end();
-        }
-      },
-    );
+        ),
+        historyCompressed:
+          Array.isArray(messagesForContext) &&
+          messagesForContext.some(
+            (message: { role?: string }) => message?.role === 'compressedGroup',
+          ),
+        knowledgeCount:
+          (contextEngineInput.knowledge?.knowledgeBases?.length ?? 0) +
+          (contextEngineInput.knowledge?.fileContents?.length ?? 0),
+        knowledgeInjected:
+          (contextEngineInput.knowledge?.knowledgeBases?.length ?? 0) > 0 ||
+          (contextEngineInput.knowledge?.fileContents?.length ?? 0) > 0,
+        memoryInjected:
+          contextMode === 'on-demand'
+            ? Boolean(onDemandRetrieval?.candidates.length)
+            : Boolean(contextEngineInput.userMemory?.memories),
+        messageCount: messagesForContext.length,
+        operationId,
+        stepIndex,
+        systemRoleLength: contextEngineInput.systemRole?.length,
+        toolCount: contextEngineInput.toolsConfig?.tools?.length ?? 0,
+      }),
+    },
+    async (ceSpan) => {
+      try {
+        const result = await serverMessagesEngine(contextEngineInput);
+        ceSpan.setAttribute('lobehub.context.message_count', result.messages.length);
+        return result;
+      } catch (error) {
+        ceSpan.recordException(error as Error);
+        ceSpan.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      } finally {
+        ceSpan.end();
+      }
+    },
+  );
 
   const {
     messages: _inputMsgs,
     toolsConfig: _toolsConfig,
+    onDemand: _onDemand,
     ...contextEngineInputLite
   } = contextEngineInput;
+  const onDemandTraceMetadata = contextResult.onDemandContext
+    ? buildOnDemandTraceMetadata({
+        activatedToolBundles: buildActivatedToolBundles(state),
+        context: contextResult.onDemandContext,
+        rawSystemRole: contextEngineInput.systemRole ?? '',
+      })
+    : undefined;
   ctx.tracingContextEngine?.(
-    { ...contextEngineInputLite, toolCount: _toolsConfig?.tools?.length ?? 0 },
-    processedMessages,
-    ceMetadata,
+    {
+      ...contextEngineInputLite,
+      ...(contextResult.onDemandContext && {
+        onDemandContext: contextResult.onDemandContext,
+      }),
+      toolCount:
+        contextResult.onDemandContext?.bootstrapToolIds.length ?? _toolsConfig?.tools?.length ?? 0,
+    },
+    contextResult.messages,
+    onDemandTraceMetadata ?? contextResult.metadata,
   );
 
   return {
+    contextMetadata: contextResult.onDemandContext,
     preserveThinkingForPayload,
-    processedMessages,
+    processedMessages: contextResult.messages,
+    resolvedTools: tooling.resolved,
     resolvedExtendParams,
     shouldReplayAssistantReasoning,
     stream: ctx.stream ?? contextHints.stream,

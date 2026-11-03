@@ -94,7 +94,7 @@ export interface GroupAgentBuilderContextInjectorConfig {
 /**
  * Format group context as XML for injection
  */
-const defaultFormatGroupContext = (context: GroupAgentBuilderContext): string => {
+export const formatGroupAgentBuilderContext = (context: GroupAgentBuilderContext): string => {
   const parts: string[] = [];
 
   // Add group meta section
@@ -284,7 +284,7 @@ export class GroupAgentBuilderContextInjector extends BaseFirstUserContentProvid
     }
 
     // Format group context
-    const formatFn = this.config.formatGroupContext || defaultFormatGroupContext;
+    const formatFn = this.config.formatGroupContext || formatGroupAgentBuilderContext;
     const formattedContent = formatFn(this.config.groupContext);
 
     // Skip if no content to inject

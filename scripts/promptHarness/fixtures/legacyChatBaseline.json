@@ -1,0 +1,21 @@
+{
+  "agentId": "agt_T106CHAT01",
+  "agentPrompt": "  User-authored Agent Prompt\n\tkeep every byte and never rewrite this instruction.  ",
+  "canonicalization": "prompt-harness-canonical-json-v2",
+  "hashes": {
+    "full": "sha256:7e3dac5b95896f1aada2f080f37691ef43d1c09109c41dff2d9e056482a44af0",
+    "messages": "sha256:6331bfb35803cc407611742eb8d8e8469d3a0ebb92d77c2d94762139f892d143",
+    "messagesAndTools": "sha256:38cc7d7f06b37d6567c4efcc1c8576cdedd649f13c383d813e847a82cb37bd02",
+    "tools": "sha256:2fcdd34bf6d6101c71255cd7d13a15407f58bf46c2269cf76e69c6d4f4d230d8"
+  },
+  "provenance": {
+    "capturedAt": "2026-11-02T21:27:08.867Z",
+    "frozenTime": "2026-11-02T12:00:00.000Z",
+    "note": "Frozen from this T-113 clean origin/next isolated mock-provider run; this replaces the canary-era control for the next rebase. Hashes use v2, which normalizes only the volatile loopback test origin.",
+    "requestCount": 1,
+    "scenario": "baseline-chat",
+    "source": "bun --no-env-file scripts/promptHarness/run.ts --scenario=baseline-chat,baseline-legacy --keep",
+    "sourceCommit": "ff85bfa1dff2ec7d1a6eba2f6a0c13b040cce338"
+  },
+  "userMessage": "T105_BASELINE compare identical Agent Prompt and user turn"
+}

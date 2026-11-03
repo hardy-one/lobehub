@@ -1,10 +1,4 @@
-import {
-  CodePlugin,
-  CommonPlugin,
-  type IEditor,
-  Kernel,
-  MarkdownPlugin,
-} from '@lobehub/editor';
+import { CodePlugin, CommonPlugin, type IEditor, Kernel, MarkdownPlugin } from '@lobehub/editor';
 import { toast } from '@lobehub/ui';
 import {
   $createParagraphNode,
@@ -446,14 +440,15 @@ describe('ChatInput store actions', () => {
         type: 'root',
       },
     };
-    const marketEditor = () => ({
+    const marketMarkdown = () => '<mention name="Writer" id="market:writer" /> hi';
+    const marketEditor = (markdown: () => string = marketMarkdown) => ({
       cleanDocument: vi.fn(),
       dispatchCommand: vi.fn(),
       focus: vi.fn(),
-      getDocument: vi.fn((type: string) =>
-        type === 'markdown' ? '<mention name="Writer" id="market:writer" /> hi' : marketDoc,
-      ),
-      getLexicalEditor: () => ({}),
+      getDocument: vi.fn((type: string) => (type === 'markdown' ? markdown() : marketDoc)),
+      // The sent text is projected from the lexical document, so the double
+      // answers that read with the same Markdown `getDocument` returns.
+      getLexicalEditor: () => ({ getEditorState: () => ({ read: markdown }) }),
     });
 
     beforeEach(() => {
@@ -503,13 +498,11 @@ describe('ChatInput store actions', () => {
         },
       });
       let current: typeof marketDoc = marketDoc;
+      const currentMarkdown = () =>
+        `<mention name="${current.root.children[0].children[0].label}" id="${current.root.children[0].children[0].metadata.id}" /> hi`;
       const editor = {
-        ...marketEditor(),
-        getDocument: vi.fn((type: string) =>
-          type === 'markdown'
-            ? `<mention name="${current.root.children[0].children[0].label}" id="${current.root.children[0].children[0].metadata.id}" /> hi`
-            : current,
-        ),
+        ...marketEditor(currentMarkdown),
+        getDocument: vi.fn((type: string) => (type === 'markdown' ? currentMarkdown() : current)),
       };
       vi.mocked(installMarketMentions)
         .mockImplementationOnce(async () => {

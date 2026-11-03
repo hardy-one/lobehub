@@ -10,6 +10,9 @@ import { Avatar, Skeleton, Tag } from '@lobehub/ui';
 import type { ComponentProps } from 'react';
 import { lazy, Suspense } from 'react';
 
+import { getPlantModel } from './plantModel';
+import { PlantModelIcon } from './PlantModelIcon';
+
 // The catalog-backed features of @lobehub/icons statically import every brand
 // icon (~3 MB). Mounting them through lazy() keeps that catalog in one shared
 // chunk that loads after paint instead of inside each route's closure.
@@ -52,6 +55,9 @@ const BrandingModelAvatar = ({
 
 export const ModelIcon = (props: ComponentProps<typeof LobeModelIcon>) => {
   if (isBrandingModel(props.model)) return <BrandingModelAvatar {...props} />;
+
+  const plant = getPlantModel(props.model);
+  if (plant) return <PlantModelIcon {...props} plant={plant} />;
 
   const size = props.size ?? DEFAULT_SIZE;
   return (

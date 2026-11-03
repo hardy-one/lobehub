@@ -601,6 +601,8 @@ export interface AiModelSettings {
    */
   disabledParams?: DisabledParamType[];
   extendParams?: ExtendParamsType[];
+  /** Ability values explicitly set by the user in the model configuration UI. */
+  manualAbilities?: Partial<ModelAbilities>;
   /** Provider-sourced API protocol for this exact provider/model pair. */
   sdkType?: ModelSdkType;
   /**
@@ -674,6 +676,7 @@ export const DisabledParamTypeSchema = z.enum([
 ]);
 
 export const AiModelSettingsSchema = z.object({
+  manualAbilities: AiModelAbilitiesSchema.partial().optional(),
   sdkType: z.enum(['anthropic', 'google', 'openai', 'openai-responses']).optional(),
   disabledParams: z.array(DisabledParamTypeSchema).optional(),
   extendParams: z.array(ExtendParamsTypeSchema).optional(),

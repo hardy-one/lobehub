@@ -15,6 +15,7 @@ import type { LobeChatDatabase } from '@/database/type';
 import { AGENT_SIGNAL_DEFAULTS } from '@/server/services/agentSignal/constants';
 import { isAgentSignalEnabledForUser } from '@/server/services/agentSignal/featureGate';
 import { runMemoryActionAgent } from '@/server/services/agentSignal/policies/analyzeIntent/actions/userMemory';
+import { resolveExpertiseModelConfig } from '@/server/services/expertise/modelConfig';
 import { listAgentSignalReceipts } from '@/server/services/agentSignal/services/receiptService';
 import { redisSourceEventStore } from '@/server/services/agentSignal/store/adapters/redis/sourceEventStore';
 import { SkillManagementDocumentService } from '@/server/services/skillManagement';
@@ -772,10 +773,12 @@ export const createReviewRuntimePrimitives = (
       const input = rawInput as unknown as WriteMemoryInput;
       const memoryService = createMemoryService({
         writeMemory: async ({ content, evidenceRefs, idempotencyKey }) => {
+          const modelConfig = await resolveExpertiseModelConfig(db, userId);
           const result = await runMemoryActionAgent(
             {
               agentId,
               message: content,
+              modelConfig,
               reason: `Agent Signal self-review memory candidate from ${evidenceRefs.length} evidence refs.`,
             },
             { db, userId, workspaceId },

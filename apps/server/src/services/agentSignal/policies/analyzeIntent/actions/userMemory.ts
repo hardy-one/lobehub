@@ -68,6 +68,7 @@ export interface UserMemoryActionHandlerOptions {
     evidence?: AgentSignalFeedbackEvidence[];
     feedbackHint?: 'not_satisfied' | 'satisfied';
     memoryLanguage?: string;
+    modelConfig?: { model: string; provider: string };
     message: string;
     reason?: string;
     serializedContext?: string;
@@ -174,6 +175,7 @@ export const runMemoryActionAgent = async (
     evidence?: AgentSignalFeedbackEvidence[];
     feedbackHint?: 'not_satisfied' | 'satisfied';
     memoryLanguage?: string;
+    modelConfig?: { model: string; provider: string };
     message: string;
     reason?: string;
     serializedContext?: string;
@@ -210,6 +212,7 @@ export const runMemoryActionAgent = async (
   const pluginModel =
     options.pluginModel ?? new PluginModel(options.db, options.userId, options.workspaceId);
   const agentConfig = await agentService.getAgentConfig(input.agentId);
+  const modelConfig = input.modelConfig ?? agentConfig;
   const memoryLanguage = input.memoryLanguage ?? 'English';
 
   // Same precedence as chat (`AiAgentService.execAgent`): the agent-level memory
@@ -231,7 +234,7 @@ export const runMemoryActionAgent = async (
     };
   }
 
-  if (!agentConfig?.model || !agentConfig?.provider) {
+  if (!modelConfig?.model || !modelConfig?.provider) {
     return {
       detail: 'Missing runnable agent config for memory action.',
       status: 'failed',
@@ -262,13 +265,13 @@ export const runMemoryActionAgent = async (
   const toolsEngine = createServerAgentToolsEngine(toolsContext, {
     agentConfig: memoryToolsAgentConfig,
     globalMemoryEnabled: true,
-    model: agentConfig.model,
-    provider: agentConfig.provider,
+    model: modelConfig.model,
+    provider: modelConfig.provider,
   });
 
   const toolsResult = toolsEngine.generateToolsDetailed({
-    model: agentConfig.model,
-    provider: agentConfig.provider,
+    model: modelConfig.model,
+    provider: modelConfig.provider,
     skipDefaultTools: true,
     toolIds: [MemoryIdentifier],
   });

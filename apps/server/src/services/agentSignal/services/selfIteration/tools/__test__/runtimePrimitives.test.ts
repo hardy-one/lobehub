@@ -12,7 +12,12 @@ import type {
 } from '../shared';
 
 const mocks = vi.hoisted(() => ({
+  resolveExpertiseModelConfig: vi.fn().mockResolvedValue({ model: 'expertise-model', provider: 'expertise-provider' }),
   runMemoryActionAgent: vi.fn(),
+}));
+
+vi.mock('@/server/services/expertise/modelConfig', () => ({
+  resolveExpertiseModelConfig: mocks.resolveExpertiseModelConfig,
 }));
 
 vi.mock('@/server/services/agentSignal/policies/analyzeIntent/actions/userMemory', () => ({
@@ -111,6 +116,15 @@ describe('createResourceRuntimePrimitives', () => {
       userId: 'user_1',
     });
 
+    expect(mocks.resolveExpertiseModelConfig).toHaveBeenCalledWith(expect.anything(), 'user_1');
+    expect(mocks.runMemoryActionAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: 'agent_1',
+        message: 'Prefers concise notes.',
+        modelConfig: { model: 'expertise-model', provider: 'expertise-provider' },
+      }),
+      expect.objectContaining({ userId: 'user_1', workspaceId: 'workspace_1' }),
+    );
     expect(result).toEqual({
       resourceId: 'pref_1',
       summary: 'Saved tone preference',

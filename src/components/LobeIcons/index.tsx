@@ -8,6 +8,9 @@ import { Skeleton } from '@lobehub/ui';
 import type { ComponentProps } from 'react';
 import { lazy, Suspense } from 'react';
 
+import { getPlantModel } from './plantModel';
+import { PlantModelIcon } from './PlantModelIcon';
+
 // The catalog-backed features of @lobehub/icons statically import every brand
 // icon (~3 MB). Mounting them through lazy() keeps that catalog in one shared
 // chunk that loads after paint instead of inside each route's closure.
@@ -23,6 +26,9 @@ const LazyProviderCombine = lazy(() =>
 const DEFAULT_SIZE = 24;
 
 export const ModelIcon = (props: ComponentProps<typeof LobeModelIcon>) => {
+  const plant = getPlantModel(props.model);
+  if (plant) return <PlantModelIcon {...props} plant={plant} />;
+
   const size = props.size ?? DEFAULT_SIZE;
   return (
     <Suspense fallback={<Skeleton height={size} width={size} />}>

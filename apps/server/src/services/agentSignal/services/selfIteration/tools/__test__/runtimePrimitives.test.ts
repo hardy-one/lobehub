@@ -12,7 +12,9 @@ import type {
 } from '../shared';
 
 const mocks = vi.hoisted(() => ({
-  resolveExpertiseModelConfig: vi.fn().mockResolvedValue({ model: 'expertise-model', provider: 'expertise-provider' }),
+  resolveExpertiseModelConfig: vi
+    .fn()
+    .mockResolvedValue({ model: 'expertise-model', provider: 'expertise-provider' }),
   runMemoryActionAgent: vi.fn(),
 }));
 

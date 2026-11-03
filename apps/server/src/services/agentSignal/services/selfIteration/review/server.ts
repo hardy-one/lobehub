@@ -15,9 +15,9 @@ import type { LobeChatDatabase } from '@/database/type';
 import { AGENT_SIGNAL_DEFAULTS } from '@/server/services/agentSignal/constants';
 import { isAgentSignalEnabledForUser } from '@/server/services/agentSignal/featureGate';
 import { runMemoryActionAgent } from '@/server/services/agentSignal/policies/analyzeIntent/actions/userMemory';
-import { resolveExpertiseModelConfig } from '@/server/services/expertise/modelConfig';
 import { listAgentSignalReceipts } from '@/server/services/agentSignal/services/receiptService';
 import { redisSourceEventStore } from '@/server/services/agentSignal/store/adapters/redis/sourceEventStore';
+import { resolveExpertiseModelConfig } from '@/server/services/expertise/modelConfig';
 import { SkillManagementDocumentService } from '@/server/services/skillManagement';
 
 import { projectRun } from '../projection';

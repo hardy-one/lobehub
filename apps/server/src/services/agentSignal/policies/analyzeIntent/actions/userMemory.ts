@@ -343,8 +343,8 @@ export const runMemoryActionAgent = async (
     initialContext,
     initialMessages: [seedMessage],
     modelRuntimeConfig: {
-      model: agentConfig.model,
-      provider: agentConfig.provider,
+      model: modelConfig.model,
+      provider: modelConfig.provider,
     },
     operationId,
     toolSet: {

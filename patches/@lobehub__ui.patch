@@ -1,9 +1,8 @@
 diff --git a/es/hooks/useMarkdown/useMarkdownContent.mjs b/es/hooks/useMarkdown/useMarkdownContent.mjs
-index c6a0016..3018034 100644
 --- a/es/hooks/useMarkdown/useMarkdownContent.mjs
 +++ b/es/hooks/useMarkdown/useMarkdownContent.mjs
-@@ -3,6 +3,76 @@ import { addToCache, contentCache, preprocessMarkdownContent } from "./utils.mjs
- import { useMarkdownContext } from "../../Markdown/components/MarkdownProvider.mjs";
+@@ -3,6 +3,76 @@
+ import { addToCache, contentCache, preprocessMarkdownContent } from "./utils.mjs";
  import { useMemo } from "react";
  // src/hooks/useMarkdown/useMarkdownContent.ts
 +/**
@@ -79,7 +78,7 @@ index c6a0016..3018034 100644
  const useMarkdownContent = (children) => {
  	const { enableLatex = true, enableCustomFootnotes, citations } = useMarkdownContext();
  	const citationsLength = citations?.length || 0;
-@@ -14,11 +84,22 @@ const useMarkdownContent = (children) => {
+@@ -14,11 +84,22 @@
  	]);
  	return useMemo(() => {
  		if (contentCache.has(cacheKey)) return contentCache.get(cacheKey);
@@ -107,13 +106,12 @@ index c6a0016..3018034 100644
  		addToCache(cacheKey, processedContent);
  		return processedContent;
  	}, [
-@@ -29,6 +110,6 @@ const useMarkdownContent = (children) => {
+@@ -29,6 +110,6 @@
  		citationsLength
  	]);
  };
 -export { useMarkdownContent };
 +export { findSafeBoundary, useMarkdownContent };
  
--//# sourceMappingURL=useMarkdownContent.mjs.map
+ //# sourceMappingURL=useMarkdownContent.mjs.map
 \ No newline at end of file
-+//# sourceMappingURL=useMarkdownContent.mjs.map

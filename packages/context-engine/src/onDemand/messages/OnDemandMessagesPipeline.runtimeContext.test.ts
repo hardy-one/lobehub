@@ -176,10 +176,118 @@ describe('OnDemandMessagesPipeline runtime context', () => {
         expect.objectContaining({
           included: true,
           key: 'message:u1:context-selections',
-          required: true,
+          required: false,
         }),
       ]),
     );
+  });
+
+  it('preserves context selections owned by historical user messages', async () => {
+    const result = await processOnDemandMessages(
+      createParams({
+        messages: [
+          message({
+            content: 'Remember this earlier selection',
+            id: 'u1',
+            metadata: {
+              contextSelections: [
+                {
+                  content: 'Historical selected release schema',
+                  id: 'selection-history',
+                  source: 'text',
+                  title: 'Earlier release schema',
+                },
+              ],
+            } as any,
+            role: 'user',
+          }),
+          message({ content: 'Previous answer', id: 'a1', role: 'assistant' }),
+          message({
+            content: 'Use both selections',
+            id: 'u2',
+            metadata: {
+              contextSelections: [
+                {
+                  content: 'Current selected release note',
+                  id: 'selection-current',
+                  source: 'text',
+                  title: 'Current release note',
+                },
+              ],
+            } as any,
+            role: 'user',
+          }),
+        ],
+      }),
+    );
+    const suffix = result.messages
+      .slice(4)
+      .map((entry) => String(entry.content))
+      .join('\n');
+
+    expect(suffix).toContain('Historical selected release schema');
+    expect(suffix).toContain('Current selected release note');
+    expect(result.metadata.dynamicEntries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          included: true,
+          key: 'message:u1:context-selections',
+          priority: 40,
+          required: false,
+        }),
+        expect.objectContaining({
+          included: true,
+          key: 'message:u2:context-selections',
+          priority: 995,
+          required: false,
+        }),
+      ]),
+    );
+  });
+
+  it('degrades a current selection that cannot fit the shared budget', async () => {
+    const marker = 'PRIVATE_SELECTION_BODY';
+    const result = await processOnDemandMessages(
+      createParams({
+        messages: [
+          message({
+            content: 'Summarize the selected page',
+            id: 'u1',
+            metadata: {
+              contextSelections: [
+                {
+                  content: `${marker} ${'release notes '.repeat(4_000)}`,
+                  id: 'selection-large',
+                  source: 'page',
+                  title: 'Large release page',
+                },
+              ],
+            } as any,
+            role: 'user',
+          }),
+        ],
+        onDemand: { budget: { dynamicTokens: 600, reserveTokens: 0, totalTokens: 2_000 } },
+      }),
+    );
+    const selection = result.metadata.dynamicEntries?.find(
+      (entry) => entry.key === 'message:u1:context-selections',
+    );
+    const suffix = result.messages
+      .slice(2)
+      .map((entry) => String(entry.content))
+      .join('\n');
+
+    expect(selection).toMatchObject({
+      decision: 'degraded',
+      included: true,
+      required: false,
+    });
+    expect(selection?.degradation).toMatchObject({
+      reason: 'budget_exceeded',
+    });
+    expect(suffix).toContain('&lt;on_demand_summary');
+    expect(suffix).not.toContain('release notes '.repeat(100));
+    expect(result.metadata.onDemandContext?.budget.totalTokens).toBeLessThanOrEqual(2_000);
   });
 
   it('restores the skill import route for a linked skill source', async () => {

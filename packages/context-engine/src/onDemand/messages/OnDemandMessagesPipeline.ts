@@ -4,6 +4,7 @@ import type {
   OnDemandBudgetDecision,
   OnDemandBudgetMetadata,
   OnDemandContextMetadata,
+  OnDemandDynamicCandidateConflictMetadata,
   OnDemandDynamicEntryMetadata,
   OnDemandMessageSegmentMetadata,
   OnDemandRetrievalMetadata,
@@ -282,6 +283,7 @@ const buildOnDemandMetadata = ({
   bootstrapTools,
   bootstrapToolCount,
   budget,
+  candidateConflicts,
   currentUserHash,
   dynamicEntries,
   messageSegments,
@@ -293,6 +295,7 @@ const buildOnDemandMetadata = ({
   bootstrapTools: readonly OnDemandBootstrapToolMetadata[];
   bootstrapToolCount: number;
   budget: OnDemandBudgetMetadata;
+  candidateConflicts?: readonly OnDemandDynamicCandidateConflictMetadata[];
   currentUserHash?: string;
   dynamicEntries: readonly OnDemandDynamicEntryMetadata[];
   messageSegments: readonly OnDemandMessageSegmentMetadata[];
@@ -304,6 +307,7 @@ const buildOnDemandMetadata = ({
   bootstrapTools,
   bootstrapToolIds: ON_DEMAND_BOOTSTRAP_IDENTIFIERS.slice(0, bootstrapToolCount),
   budget,
+  ...(candidateConflicts?.length && { candidateConflicts }),
   contextMode: 'on-demand',
   ...(currentUserHash && { currentUserMessageHash: currentUserHash }),
   dynamicEntries,
@@ -419,13 +423,14 @@ export class OnDemandMessagesPipeline {
           currentUserMessage: currentUserText,
         })
       : undefined;
-    const dynamicCandidates = measure('OnDemandDynamicCandidates', () =>
+    const dynamicCandidateMerge = measure('OnDemandDynamicCandidates', () =>
       currentUserText
         ? mergeOnDemandDynamicCandidates([
             collectOnDemandDynamicCandidates(this.params, currentUserText),
             collectOnDemandMessageContextCandidates({
               currentUserMessage: currentUserText,
-              message: currentUserMatch.message,
+              currentUserMessageIndex: currentUserMatch.index,
+              messages: sourceMessages,
               params: this.params,
             }),
             collectOnDemandRuntimeContextCandidates({
@@ -439,8 +444,9 @@ export class OnDemandMessagesPipeline {
               firstTurnEligible: true,
             })),
           ])
-        : [],
+        : { candidates: [], conflicts: [] },
     );
+    const dynamicCandidates = dynamicCandidateMerge.candidates;
     const retrievalEntryKeys = new Set(retrieval?.entries.map((entry) => entry.key) ?? []);
     const firstTurnEntries = dynamicCandidates
       .filter(
@@ -545,6 +551,7 @@ export class OnDemandMessagesPipeline {
       bootstrapTools,
       bootstrapToolCount: bootstrapToolSet.enabledToolIds.length,
       budget: budgetMetadata,
+      candidateConflicts: dynamicCandidateMerge.conflicts,
       currentUserHash: protocol?.currentUserMessageHash,
       dynamicEntries,
       messageSegments,

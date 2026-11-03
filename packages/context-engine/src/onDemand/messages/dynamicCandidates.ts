@@ -1,6 +1,7 @@
 import { escapeXmlAttr, escapeXmlContent, promptAgentKnowledge } from '@lobechat/prompts';
 import type {
   OnDemandContentRange,
+  OnDemandDynamicCandidateConflictMetadata,
   OnDemandDynamicEntry,
   OnDemandDynamicKind,
   OnDemandSource,
@@ -29,6 +30,11 @@ export interface OnDemandDynamicCandidate {
    * applies the relevance gate, so eligibility is not an inclusion guarantee.
    */
   readonly firstTurnEligible: boolean;
+}
+
+export interface OnDemandDynamicCandidateMergeResult {
+  readonly candidates: OnDemandDynamicCandidate[];
+  readonly conflicts: OnDemandDynamicCandidateConflictMetadata[];
 }
 
 interface OnDemandDynamicCandidateInput {
@@ -81,21 +87,61 @@ export const createOnDemandDynamicCandidate = ({
 /**
  * Merge candidate groups before budget planning. A duplicate key keeps the
  * candidate that would win normal dynamic ordering, so one malformed or
- * colliding producer cannot make the whole request fail.
+ * colliding producer cannot make the whole request fail. Differing payloads
+ * are recorded by hash for trace diagnosis.
  */
 export const mergeOnDemandDynamicCandidates = (
   groups: readonly (readonly OnDemandDynamicCandidate[])[],
-): OnDemandDynamicCandidate[] => {
+): OnDemandDynamicCandidateMergeResult => {
   const byKey = new Map<string, OnDemandDynamicCandidate>();
+  const conflictingCandidatesByKey = new Map<string, Map<string, OnDemandDynamicCandidate>>();
 
   for (const candidate of groups.flat()) {
     const existing = byKey.get(candidate.entry.key);
-    if (!existing || compareOnDemandDynamicEntries(existing.entry, candidate.entry) > 0) {
+    if (!existing) {
       byKey.set(candidate.entry.key, candidate);
+      continue;
+    }
+
+    const winner =
+      compareOnDemandDynamicEntries(existing.entry, candidate.entry) > 0 ? candidate : existing;
+    const discarded = winner === candidate ? existing : candidate;
+    byKey.set(candidate.entry.key, winner);
+
+    if (discarded.entry.provenance.contentHash !== winner.entry.provenance.contentHash) {
+      const conflictingCandidates =
+        conflictingCandidatesByKey.get(candidate.entry.key) ??
+        new Map<string, OnDemandDynamicCandidate>();
+      conflictingCandidates.set(discarded.entry.provenance.contentHash, discarded);
+      conflictingCandidates.set(winner.entry.provenance.contentHash, winner);
+      conflictingCandidatesByKey.set(candidate.entry.key, conflictingCandidates);
     }
   }
 
-  return [...byKey.values()];
+  const toConflictSide = (
+    entry: OnDemandDynamicEntry,
+  ): OnDemandDynamicCandidateConflictMetadata['winner'] => ({
+    contentHash: entry.provenance.contentHash,
+    priority: entry.priority,
+    relevance: entry.relevance,
+    required: entry.required,
+    source: entry.source,
+  });
+  const conflicts = [...conflictingCandidatesByKey.entries()].map(([key, candidates]) => {
+    const winner = byKey.get(key)!;
+    const winnerHash = winner.entry.provenance.contentHash;
+
+    return {
+      discarded: [...candidates.values()]
+        .filter((candidate) => candidate.entry.provenance.contentHash !== winnerHash)
+        .map((candidate) => toConflictSide(candidate.entry))
+        .sort((a, b) => a.contentHash.localeCompare(b.contentHash)),
+      key,
+      winner: toConflictSide(winner.entry),
+    };
+  });
+
+  return { candidates: [...byKey.values()], conflicts };
 };
 
 const normalize = (value: string) => value.toLocaleLowerCase();

@@ -71,7 +71,46 @@ describe('mergeOnDemandDynamicCandidates', () => {
 
     const merged = mergeOnDemandDynamicCandidates([[optional], [required]]);
 
-    expect(merged).toHaveLength(1);
-    expect(merged[0].entry.content).toBe('required');
+    expect(merged.candidates).toHaveLength(1);
+    expect(merged.candidates[0].entry.content).toBe('required');
+    expect(merged.conflicts).toEqual([
+      expect.objectContaining({
+        discarded: [
+          expect.objectContaining({
+            contentHash: optional.entry.provenance.contentHash,
+            required: false,
+          }),
+        ],
+        key: 'shared-key',
+        winner: expect.objectContaining({
+          contentHash: required.entry.provenance.contentHash,
+          required: true,
+        }),
+      }),
+    ]);
+  });
+
+  it('does not report an identical duplicate as a content conflict', () => {
+    const first = createOnDemandDynamicCandidate({
+      content: 'same',
+      firstTurnEligible: true,
+      key: 'shared-key',
+      kind: 'environment',
+      relevance: 1,
+      source: { id: 'first', type: 'system' },
+    });
+    const second = createOnDemandDynamicCandidate({
+      content: 'same',
+      firstTurnEligible: true,
+      key: 'shared-key',
+      kind: 'environment',
+      relevance: 1,
+      source: { id: 'second', type: 'system' },
+    });
+
+    const merged = mergeOnDemandDynamicCandidates([[first], [second]]);
+
+    expect(merged.candidates).toHaveLength(1);
+    expect(merged.conflicts).toEqual([]);
   });
 });

@@ -9,6 +9,11 @@ import {
 } from '../../providers/SkillImportRouteInjector';
 import { createOnDemandDynamicCandidate, type OnDemandDynamicCandidate } from './dynamicCandidates';
 
+const CURRENT_SELECTION_PRIORITY = 995;
+const HISTORICAL_SELECTION_PRIORITY = 40;
+const HISTORICAL_SELECTION_RELEVANCE = 0.85;
+const SKILL_IMPORT_ROUTE_PRIORITY = 965;
+
 const isSkillStoreReachable = (params: MessagesEngineParams): boolean =>
   (params.toolsConfig?.manifests ?? []).some(
     (manifest) => manifest.identifier === SKILL_STORE_TOOL_ID,
@@ -20,49 +25,60 @@ const isSkillStoreReachable = (params: MessagesEngineParams): boolean =>
 /**
  * Message-owned context cannot be reconstructed from top-level engine params.
  * Keep it in the dynamic suffix so the user's row remains byte-identical while
- * preserving selections and turn-local skill-import routing.
+ * preserving selections and turn-local skill-import routing. Historical
+ * selections remain eligible but are optional and lower priority, so the
+ * shared budget can summarize or omit them under pressure.
  */
 export const collectOnDemandMessageContextCandidates = (input: {
   currentUserMessage: string;
-  message: MessagesEngineParams['messages'][number];
+  currentUserMessageIndex: number;
+  messages: MessagesEngineParams['messages'];
   params: MessagesEngineParams;
 }): OnDemandDynamicCandidate[] => {
-  const { currentUserMessage, message, params } = input;
+  const { currentUserMessage, currentUserMessageIndex, messages, params } = input;
   const candidates: OnDemandDynamicCandidate[] = [];
-  const selections = resolveContextSelections(message.metadata);
 
-  if (selections?.length) {
+  messages.forEach((message, index) => {
+    if (message.role !== 'user') return;
+
+    const selections = resolveContextSelections(message.metadata);
+    if (!selections?.length) return;
+
     const content = formatContextSelections(selections);
-    if (content) {
-      candidates.push(
-        createOnDemandDynamicCandidate({
-          content,
-          firstTurnEligible: true,
-          key: `message:${message.id}:context-selections`,
-          kind: 'environment',
-          priority: 995,
-          relevance: 1,
-          required: true,
-          source: { id: message.id, type: 'user' },
-        }),
-      );
-    }
-  }
+    if (!content) return;
 
-  if (isSkillStoreReachable(params)) {
+    const messageId = message.id || `index-${index}`;
+    const isCurrentMessage = index === currentUserMessageIndex;
+    candidates.push(
+      createOnDemandDynamicCandidate({
+        content,
+        firstTurnEligible: true,
+        key: `message:${messageId}:context-selections`,
+        kind: 'environment',
+        priority: isCurrentMessage ? CURRENT_SELECTION_PRIORITY : HISTORICAL_SELECTION_PRIORITY,
+        relevance: isCurrentMessage ? 1 : HISTORICAL_SELECTION_RELEVANCE,
+        required: false,
+        source: { id: messageId, type: 'user' },
+      }),
+    );
+  });
+
+  const currentMessage = messages[currentUserMessageIndex];
+  if (currentMessage && isSkillStoreReachable(params)) {
     const routes = extractSkillImportRoutes(currentUserMessage);
     const content = formatSkillImportRoutes(routes);
     if (content) {
+      const messageId = currentMessage.id || `index-${currentUserMessageIndex}`;
       candidates.push(
         createOnDemandDynamicCandidate({
           content,
           firstTurnEligible: true,
-          key: `message:${message.id}:skill-import-route`,
+          key: `message:${messageId}:skill-import-route`,
           kind: 'environment',
-          priority: 965,
+          priority: SKILL_IMPORT_ROUTE_PRIORITY,
           relevance: 1,
           required: true,
-          source: { id: message.id, type: 'user' },
+          source: { id: messageId, type: 'user' },
         }),
       );
     }

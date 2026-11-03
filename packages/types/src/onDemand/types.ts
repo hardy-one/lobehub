@@ -350,6 +350,25 @@ export interface OnDemandDynamicEntryMetadata {
   readonly source: OnDemandSource;
 }
 
+export interface OnDemandDynamicCandidateConflictSide {
+  readonly contentHash: string;
+  readonly priority: number;
+  readonly relevance: number;
+  readonly required: boolean;
+  readonly source: OnDemandSource;
+}
+
+/**
+ * Trace-safe record of producers that emitted the same key with different
+ * content. Only hashes and ordering metadata are retained; entry bodies never
+ * enter ordinary context metadata.
+ */
+export interface OnDemandDynamicCandidateConflictMetadata {
+  readonly discarded: readonly OnDemandDynamicCandidateConflictSide[];
+  readonly key: string;
+  readonly winner: OnDemandDynamicCandidateConflictSide;
+}
+
 export type OnDemandMessageSegmentSource =
   'current_user' | 'dynamic_suffix' | 'history' | 'stable_system';
 
@@ -405,6 +424,7 @@ export interface OnDemandContextMetadata {
   readonly bootstrapToolIds: readonly OnDemandBootstrapIdentifier[];
   readonly bootstrapTools: readonly OnDemandBootstrapToolMetadata[];
   readonly budget: OnDemandBudgetMetadata;
+  readonly candidateConflicts?: readonly OnDemandDynamicCandidateConflictMetadata[];
   readonly contextMode: 'on-demand';
   readonly currentUserMessageHash?: string;
   readonly dynamicEntries: readonly OnDemandDynamicEntryMetadata[];

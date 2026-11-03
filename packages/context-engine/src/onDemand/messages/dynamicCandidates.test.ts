@@ -2,7 +2,11 @@ import type { UIChatMessage } from '@lobechat/types';
 import { describe, expect, it } from 'vitest';
 
 import type { MessagesEngineParams } from '../../engine/messages/types';
-import { collectOnDemandDynamicCandidates } from './dynamicCandidates';
+import {
+  collectOnDemandDynamicCandidates,
+  createOnDemandDynamicCandidate,
+  mergeOnDemandDynamicCandidates,
+} from './dynamicCandidates';
 
 const message = (content: string): UIChatMessage =>
   ({
@@ -40,5 +44,34 @@ describe('collectOnDemandDynamicCandidates', () => {
 
     expect(card?.entry.relevance).toBe(0.2);
     expect(card?.firstTurnEligible).toBe(true);
+  });
+});
+
+describe('mergeOnDemandDynamicCandidates', () => {
+  it('keeps the higher-priority candidate for a duplicate key', () => {
+    const optional = createOnDemandDynamicCandidate({
+      content: 'optional',
+      firstTurnEligible: true,
+      key: 'shared-key',
+      kind: 'environment',
+      priority: 1,
+      relevance: 1,
+      source: { id: 'optional', type: 'system' },
+    });
+    const required = createOnDemandDynamicCandidate({
+      content: 'required',
+      firstTurnEligible: true,
+      key: 'shared-key',
+      kind: 'environment',
+      priority: 1,
+      relevance: 1,
+      required: true,
+      source: { id: 'required', type: 'system' },
+    });
+
+    const merged = mergeOnDemandDynamicCandidates([[optional], [required]]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].entry.content).toBe('required');
   });
 });

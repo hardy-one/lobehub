@@ -20,6 +20,7 @@ import type { MessagesEngineParams, MessagesEngineResult } from '../../engine/me
 import { CompressedGroupRoleTransformProcessor } from '../../processors/CompressedGroupRoleTransform';
 import { GroupMessageFlattenProcessor } from '../../processors/GroupMessageFlatten';
 import { ToolCallProcessor } from '../../processors/ToolCall';
+import { LocalSystemToolSnapshotInjector } from '../../providers/LocalSystemToolSnapshotInjector';
 import type { ContextBuckets, PipelineContextMetadata } from '../../types';
 import { buildOnDemandBootstrapToolSet } from '../bootstrapTooling';
 import { resolveOnDemandBudgetConfig } from '../budgetConfig';
@@ -39,9 +40,11 @@ import { retrieveOnDemandContext } from '../retrieval/ranking';
 import { buildOnDemandCandidatesFromUserMemory } from '../retrieval/userMemory';
 import {
   collectOnDemandDynamicCandidates,
+  mergeOnDemandDynamicCandidates,
   ON_DEMAND_FIRST_TURN_RELEVANCE,
   type OnDemandDynamicCandidate,
 } from './dynamicCandidates';
+import { collectOnDemandMessageContextCandidates } from './messageContextCandidates';
 import { collectOnDemandRuntimeContextCandidates } from './runtimeContextCandidates';
 
 export interface OnDemandMessagesOptions {
@@ -172,11 +175,13 @@ const extractUserMessageText = (content: unknown): string | undefined => {
 
 const findCurrentUserMessage = (
   messages: MessagesEngineParams['messages'],
-): { index: number; text?: string } | undefined => {
+):
+  | { index: number; message: MessagesEngineParams['messages'][number]; text?: string }
+  | undefined => {
   const index = messages.findLastIndex((message) => message.role === 'user');
   if (index === -1) return undefined;
 
-  return { index, text: extractUserMessageText(messages[index].content) };
+  return { index, message: messages[index], text: extractUserMessageText(messages[index].content) };
 };
 
 const estimateActiveToolContracts = (
@@ -350,12 +355,18 @@ export class OnDemandMessagesPipeline {
         metadata: {},
       }),
     );
+    const snapshotMessages = await measureAsync('LocalSystemToolSnapshotInjector', () =>
+      new LocalSystemToolSnapshotInjector({ enabled: true }).process({
+        ...flattenedMessages,
+        messages: flattenedMessages.messages as any[],
+      }),
+    );
     const roleTransformedMessages = await measureAsync(
       'CompressedGroupRoleTransformProcessor',
       () =>
         new CompressedGroupRoleTransformProcessor().process({
-          ...flattenedMessages,
-          messages: flattenedMessages.messages as any[],
+          ...snapshotMessages,
+          messages: snapshotMessages.messages as any[],
         }),
     );
     const preparedMessages = await measureAsync('ToolCallProcessor', () =>
@@ -410,19 +421,24 @@ export class OnDemandMessagesPipeline {
       : undefined;
     const dynamicCandidates = measure('OnDemandDynamicCandidates', () =>
       currentUserText
-        ? [
-            ...collectOnDemandDynamicCandidates(this.params, currentUserText),
-            ...collectOnDemandRuntimeContextCandidates({
+        ? mergeOnDemandDynamicCandidates([
+            collectOnDemandDynamicCandidates(this.params, currentUserText),
+            collectOnDemandMessageContextCandidates({
+              currentUserMessage: currentUserText,
+              message: currentUserMatch.message,
+              params: this.params,
+            }),
+            collectOnDemandRuntimeContextCandidates({
               currentUserMessage: currentUserText,
               hasRetrievedExpertise:
                 retrieval?.entries.some((entry) => entry.kind === 'approved_expertise') ?? false,
               params: this.params,
             }),
-            ...(retrieval?.entries ?? []).map<OnDemandDynamicCandidate>((entry) => ({
+            (retrieval?.entries ?? []).map<OnDemandDynamicCandidate>((entry) => ({
               entry,
               firstTurnEligible: true,
             })),
-          ]
+          ])
         : [],
     );
     const retrievalEntryKeys = new Set(retrieval?.entries.map((entry) => entry.key) ?? []);

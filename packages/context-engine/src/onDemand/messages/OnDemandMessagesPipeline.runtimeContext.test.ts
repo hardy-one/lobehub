@@ -138,6 +138,139 @@ describe('OnDemandMessagesPipeline runtime context', () => {
     );
   });
 
+  it('preserves current user context selections in the dynamic suffix', async () => {
+    const result = await processOnDemandMessages(
+      createParams({
+        messages: [
+          message({
+            content: 'Rewrite this selection',
+            id: 'u1',
+            metadata: {
+              contextSelections: [
+                {
+                  content: 'Selected release note',
+                  id: 'selection-1',
+                  source: 'text',
+                  title: 'Release note',
+                },
+              ],
+            } as any,
+            role: 'user',
+          }),
+        ],
+      }),
+    );
+
+    expect(result.messages[1]).toEqual({
+      content: 'Rewrite this selection',
+      role: 'user',
+    });
+    expect(
+      result.messages
+        .slice(2)
+        .map((entry) => entry.content)
+        .join('\n'),
+    ).toContain('Selected release note');
+    expect(result.metadata.dynamicEntries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          included: true,
+          key: 'message:u1:context-selections',
+          required: true,
+        }),
+      ]),
+    );
+  });
+
+  it('restores the skill import route for a linked skill source', async () => {
+    const result = await processOnDemandMessages(
+      createParams({
+        messages: [
+          message({
+            content: 'Install https://lobehub.com/skills/release-helper',
+            id: 'u1',
+            role: 'user',
+          }),
+        ],
+        toolsConfig: {
+          manifests: [
+            {
+              api: [],
+              identifier: 'lobe-skill-store',
+              meta: {},
+              systemRole: '',
+            },
+          ],
+        },
+      }),
+    );
+    const suffix = result.messages
+      .slice(2)
+      .map((entry) => entry.content)
+      .join('\n');
+
+    expect(suffix).toContain('<detected_skills>');
+    expect(suffix).toContain('install="importFromMarket"');
+    expect(suffix).toContain('identifier="release-helper"');
+    expect(result.metadata.dynamicEntries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          included: true,
+          key: 'message:u1:skill-import-route',
+          required: true,
+        }),
+      ]),
+    );
+  });
+
+  it('replays local system tool snapshots as native tool calls and results', async () => {
+    const result = await processOnDemandMessages(
+      createParams({
+        messages: [
+          message({
+            content: 'Read the release file',
+            id: 'u1',
+            metadata: {
+              localSystemToolSnapshots: [
+                {
+                  apiName: 'readLocalFile',
+                  arguments: { path: '/tmp/release.md' },
+                  content: '<file path="/tmp/release.md">ready</file>',
+                  identifier: 'lobe-local-system',
+                  snapshotId: 'snapshot-1',
+                  success: true,
+                  toolCallId: 'call_snapshot_1',
+                },
+              ],
+            } as any,
+            role: 'user',
+          }),
+          message({ content: 'Summarize the release', id: 'u2', role: 'user' }),
+        ],
+      }),
+    );
+
+    expect(result.messages[2]).toMatchObject({
+      role: 'assistant',
+      tool_calls: [
+        {
+          function: {
+            arguments: '{"path":"/tmp/release.md"}',
+            name: 'lobe-local-system.readLocalFile',
+          },
+          id: 'call_snapshot_1',
+          type: 'function',
+        },
+      ],
+    });
+    expect(result.messages[3]).toMatchObject({
+      content: '<file path="/tmp/release.md">ready</file>',
+      role: 'tool',
+      tool_call_id: 'call_snapshot_1',
+    });
+    expect(result.messages[4].content).toBe('Summarize the release');
+  });
+
   it('uses the last multimodal user message instead of an earlier text turn', async () => {
     const content = [
       { text: 'deploy rollback release', type: 'text' },

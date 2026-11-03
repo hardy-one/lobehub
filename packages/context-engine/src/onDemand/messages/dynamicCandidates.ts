@@ -7,6 +7,7 @@ import type {
   OnDemandToolCard,
   RuntimeAdditionalContextFragment,
 } from '@lobechat/types';
+import { compareOnDemandDynamicEntries } from '@lobechat/types';
 import { estimateTokenCount } from 'tokenx';
 
 import type { MessagesEngineParams } from '../../engine/messages/types';
@@ -76,6 +77,26 @@ export const createOnDemandDynamicCandidate = ({
   },
   firstTurnEligible,
 });
+
+/**
+ * Merge candidate groups before budget planning. A duplicate key keeps the
+ * candidate that would win normal dynamic ordering, so one malformed or
+ * colliding producer cannot make the whole request fail.
+ */
+export const mergeOnDemandDynamicCandidates = (
+  groups: readonly (readonly OnDemandDynamicCandidate[])[],
+): OnDemandDynamicCandidate[] => {
+  const byKey = new Map<string, OnDemandDynamicCandidate>();
+
+  for (const candidate of groups.flat()) {
+    const existing = byKey.get(candidate.entry.key);
+    if (!existing || compareOnDemandDynamicEntries(existing.entry, candidate.entry) > 0) {
+      byKey.set(candidate.entry.key, candidate);
+    }
+  }
+
+  return [...byKey.values()];
+};
 
 const normalize = (value: string) => value.toLocaleLowerCase();
 

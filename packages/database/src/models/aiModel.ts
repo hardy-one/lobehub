@@ -212,7 +212,22 @@ export class AiModelModel {
   };
 
   update = async (id: string, providerId: string, value: Partial<AiModelSelectItem>) => {
-    const normalizedValue = this.normalizeAiModelValues(value);
+    const manualAbilities = value.abilities
+      ? Object.fromEntries(
+          Object.entries(value.abilities).filter(([, ability]) => ability !== undefined),
+        )
+      : undefined;
+    const normalizedValue = this.normalizeAiModelValues({
+      ...value,
+      ...(manualAbilities
+        ? {
+            settings: {
+              ...value.settings,
+              manualAbilities,
+            },
+          }
+        : {}),
+    });
 
     const set: Record<string, unknown> = { ...normalizedValue };
     // Shallow-merge `config` instead of replacing the column: callers send partial

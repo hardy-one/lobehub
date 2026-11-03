@@ -172,31 +172,51 @@ export class AiModelActionImpl {
         const isCustom = existingModel?.source === 'custom';
 
         const hasAnyAbility =
-          model.files ||
-          model.functionCall ||
-          model.imageOutput ||
-          model.reasoning ||
-          model.search ||
-          model.video ||
-          model.vision;
+          model.files !== undefined ||
+          model.functionCall !== undefined ||
+          model.imageOutput !== undefined ||
+          model.reasoning !== undefined ||
+          model.search !== undefined ||
+          model.video !== undefined ||
+          model.vision !== undefined;
 
         const remoteAbilities = hasAnyAbility
-          ? {
-              files: model.files,
-              functionCall: model.functionCall,
-              imageOutput: model.imageOutput,
-              reasoning: model.reasoning,
-              search: model.search,
-              video: model.video,
-              vision: model.vision,
-            }
+          ? Object.fromEntries(
+              Object.entries({
+                files: model.files,
+                functionCall: model.functionCall,
+                imageOutput: model.imageOutput,
+                reasoning: model.reasoning,
+                search: model.search,
+                video: model.video,
+                vision: model.vision,
+              }).filter(([, ability]) => ability !== undefined),
+            )
           : undefined;
+
+        // Legacy rows do not have a manualAbilities marker. Their persisted values
+        // are treated as user choices so a refresh cannot silently overwrite them.
+        const manualAbilities =
+          existingModel?.settings?.manualAbilities ?? existingModel?.abilities;
+        const mergedAbilities =
+          remoteAbilities || manualAbilities || existingModel?.abilities
+            ? {
+                ...existingModel?.abilities,
+                ...remoteAbilities,
+                ...Object.fromEntries(
+                  Object.keys(manualAbilities ?? {}).map((key) => [
+                    key,
+                    existingModel?.abilities?.[key as keyof typeof existingModel.abilities],
+                  ]),
+                ),
+              }
+            : undefined;
 
         // Priority during fetch action: model-bank (in model) > custom (existing) > remote
         // model contains model-bank metadata when known; if custom model has properties, preserve them
         return {
           ...model,
-          abilities: (isCustom ? existingModel?.abilities : undefined) ?? remoteAbilities,
+          abilities: isCustom ? existingModel?.abilities : mergedAbilities,
           contextWindowTokens:
             model.contextWindowTokens ??
             (isCustom ? existingModel?.contextWindowTokens : undefined),

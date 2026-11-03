@@ -477,6 +477,52 @@ describe('AiModelAction', () => {
       });
     });
 
+    it('should preserve manually configured abilities while filling unset abilities from remote data', async () => {
+      const mockRemoteModels = [
+        {
+          functionCall: false,
+          id: 'remote-1',
+          search: false,
+          type: 'chat',
+          vision: true,
+        },
+      ];
+
+      act(() => {
+        useStore.setState({
+          aiModelListMap: {
+            'test-provider': [
+              {
+                abilities: { functionCall: true, search: true },
+                enabled: true,
+                id: 'remote-1',
+                settings: { manualAbilities: { functionCall: true, search: true } },
+                source: 'remote',
+                type: 'chat',
+              },
+            ],
+          },
+        });
+      });
+
+      const { result } = renderHook(() => useStore());
+      const batchUpdateSpy = vi
+        .spyOn(aiModelService, 'batchUpdateAiModels')
+        .mockResolvedValue(undefined as any);
+
+      vi.resetModules();
+      vi.doMock('@/services/models', () => ({
+        modelsService: { getModels: vi.fn().mockResolvedValue(mockRemoteModels) },
+      }));
+
+      await act(async () => {
+        await result.current.fetchRemoteModelList('test-provider');
+      });
+
+      const fetched = batchUpdateSpy.mock.calls[0][1][0];
+      expect(fetched.abilities).toEqual({ functionCall: true, search: true, vision: true });
+    });
+
     it('should not update if remote service returns no data', async () => {
       const { result } = renderHook(() => useStore());
       const batchUpdateSpy = vi

@@ -130,6 +130,7 @@ describe('planOnDemandBudget', () => {
         }),
         makeDynamicEntry({
           content: lowRelevanceContent,
+          degradedContent: 'Short low-relevance summary',
           estimatedTokens: 150,
           key: 'low-relevance',
           relevance: 0.2,
@@ -141,13 +142,15 @@ describe('planOnDemandBudget', () => {
         protocol: 0,
         userPrompt: 0,
       },
-      maxDynamicTokens: 140,
-      maxTokens: 140,
+      // CDATA framing is part of the budgeted envelope. Leave enough room for
+      // the summary card while still forcing the full body to be degraded.
+      maxDynamicTokens: 150,
+      maxTokens: 150,
     });
 
     const degraded = decision.degraded[0];
     expect(decision.status).toBe('within_budget');
-    expect(decision.totalTokens).toBeLessThanOrEqual(140);
+    expect(decision.totalTokens).toBeLessThanOrEqual(150);
     expect(decision.decisions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ key: 'high-relevance', status: 'included' }),

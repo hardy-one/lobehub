@@ -40,7 +40,7 @@ describe('AtomicCapabilityRegistry and loader', () => {
 
   it('fails closed for an unregistered bundle', () => {
     const result = loadAtomicCapabilityBundle(new AtomicCapabilityRegistry(), {
-      hash: 'md5:missing',
+      hash: 'sha256:missing',
       identifier: 'missing-tool',
       version: '1.0.0',
     });

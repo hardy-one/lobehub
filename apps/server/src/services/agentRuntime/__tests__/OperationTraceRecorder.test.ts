@@ -507,7 +507,7 @@ describe('OperationTraceRecorder', () => {
         activatedToolBundles: [],
         protocolVersion: '1',
         rawSystemRole: '  exact prompt  ',
-        stablePrefixHash: 'md5:stable',
+        stablePrefixHash: 'sha256:stable',
       };
 
       await appendStepWithCe(buildCe({ metadata }), [prevStep]);

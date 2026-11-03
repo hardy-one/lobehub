@@ -12,6 +12,11 @@ const escapeAttribute = (value: string): string =>
 const escapeContent = (value: string): string =>
   value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
+const escapeCdataContent = (value: string): string =>
+  value
+    .replaceAll(/<(\/?)(on_demand_[a-z_]+)(?=[\s/>])/gi, '&lt;$1$2')
+    .replaceAll(']]>', ']]]]><![CDATA[>');
+
 export const compactOnDemandSummary = (content: string): string => {
   const text = content
     .replaceAll(/<[^>]+>/g, ' ')
@@ -32,8 +37,10 @@ export const renderOnDemandContextMessageContent = (entry: OnDemandDynamicEntry)
       entry.source.type,
     )}:${escapeAttribute(entry.source.id)}" provenance="${escapeAttribute(
       entry.provenance.contentHash,
-    )}">`,
-    entry.content,
+    )}" content_format="cdata">`,
+    '<![CDATA[',
+    escapeCdataContent(entry.content),
+    ']]>',
     '</on_demand_context>',
   ].join('\n');
 

@@ -158,7 +158,7 @@ describe('retrieveOnDemandContext', () => {
     expect(result.dropped).toEqual([expect.objectContaining({ reason: 'scope_denied' })]);
   });
 
-  it('resolves conflicts by authority before relevance and makes explicit constraints required', () => {
+  it('resolves conflicts by authority before relevance', () => {
     const result = retrieveOnDemandContext({
       batch: {
         candidates: [
@@ -199,7 +199,7 @@ describe('retrieveOnDemandContext', () => {
     expect(result.entries).toHaveLength(1);
     expect(result.entries[0]).toMatchObject({
       kind: 'explicit_constraint',
-      required: true,
+      required: false,
       source: { id: 'constraint' },
     });
     expect(result.entries[0].content).toContain('deploy only with the explicit constraint');
@@ -346,12 +346,12 @@ describe('retrieveOnDemandContext', () => {
       durationMs: expect.any(Number),
       hitCount: 1,
       mode: 'vector',
-      provenanceHash: expect.stringMatching(/^md5:/),
+      provenanceHash: expect.stringMatching(/^sha256:/),
       queryHash: hashContent(currentUserMessage),
     });
   });
 
-  it('never drops required explicit constraints when lower-priority content exceeds the budget', () => {
+  it('prioritizes relevant explicit constraints without turning them into hard floors', () => {
     const result = retrieveOnDemandContext({
       batch: {
         candidates: [
@@ -384,7 +384,34 @@ describe('retrieveOnDemandContext', () => {
       maxTokens: 0,
     });
 
-    expect(plan.selected.map((entry) => entry.source.id)).toEqual(['constraint']);
-    expect(plan.dropped.map((drop) => drop.entry.source.id)).toEqual(['suggestion']);
+    expect(plan.status).toBe('within_budget');
+    expect(plan.hardFloorTokens).toBe(0);
+    expect(plan.selected).toEqual([]);
+    expect(plan.dropped.map((drop) => drop.entry.source.id)).toEqual(['constraint', 'suggestion']);
+  });
+
+  it('drops explicit constraints that are unrelated to the current request', () => {
+    const result = retrieveOnDemandContext({
+      batch: {
+        candidates: [
+          makeCandidate({
+            authority: 'explicit_constraint',
+            content: 'Always use tabs in Go source files.',
+            id: 'unrelated-constraint',
+            relevance: 0,
+          }),
+        ],
+      },
+      currentUserMessage: 'summarize quarterly revenue',
+      scope,
+    });
+
+    expect(result.entries).toEqual([]);
+    expect(result.dropped).toEqual([
+      expect.objectContaining({
+        candidate: expect.objectContaining({ id: 'unrelated-constraint' }),
+        reason: 'not_relevant',
+      }),
+    ]);
   });
 });

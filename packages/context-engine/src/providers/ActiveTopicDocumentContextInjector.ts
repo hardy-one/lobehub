@@ -18,7 +18,7 @@ export interface ActiveTopicDocumentContextInjectorConfig {
   enabled?: boolean;
 }
 
-const formatActiveTopicDocumentContext = (document: RuntimeActiveTopicDocumentContext) => {
+export const formatActiveTopicDocumentContext = (document: RuntimeActiveTopicDocumentContext) => {
   const attrs = [
     `document_id="${escapeXmlAttr(document.documentId)}"`,
     document.agentDocumentId

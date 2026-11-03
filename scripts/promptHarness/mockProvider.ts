@@ -184,7 +184,7 @@ const chooseAction = (request: {
         args: {
           identifiers: [
             {
-              hash: 'md5:t106-forged-hash',
+              hash: 'sha256:t106-forged-hash',
               identifier: 'lobe-calculator',
               version: 't106-forged-version',
             },

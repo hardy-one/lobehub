@@ -287,7 +287,7 @@ export const retrieveOnDemandContext = (input: {
 
     const lexical = scoreLexicalRelevance(input.currentUserMessage, content);
     const relevance = Math.max(lexical, Math.min(1, Math.max(0, candidate.relevance ?? 0)));
-    if (authority !== 'explicit_constraint' && relevance < MIN_RELEVANCE) {
+    if (relevance < MIN_RELEVANCE) {
       dropped.push({ candidate, reason: 'not_relevant' });
       continue;
     }
@@ -332,7 +332,10 @@ export const retrieveOnDemandContext = (input: {
           ...(candidate.sourceVersion && { sourceVersion: candidate.sourceVersion }),
         }),
         relevance,
-        required: authority === 'explicit_constraint',
+        // Relevance keeps unrelated constraints out of the turn. A relevant
+        // constraint still wins the optional ordering, but it must not turn an
+        // unbounded memory table into a hard-floor overflow.
+        required: false,
         source: candidate.source,
       }),
     );

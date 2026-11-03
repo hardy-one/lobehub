@@ -88,7 +88,7 @@ describe('resolveExpertiseApproval', () => {
     });
 
     expect(approval.state).toBe('hash_mismatch');
-    expect(approval.approvedContentHash).toMatch(/^md5:/);
+    expect(approval.approvedContentHash).toMatch(/^sha256:/);
   });
 });
 

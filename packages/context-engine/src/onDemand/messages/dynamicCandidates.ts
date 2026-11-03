@@ -24,13 +24,13 @@ export const ON_DEMAND_FIRST_TURN_RELEVANCE = 0.85;
 export interface OnDemandDynamicCandidate {
   readonly entry: OnDemandDynamicEntry;
   /**
-   * Cards are the only dynamic content allowed in the first-turn suffix.
-   * Bodies and manuals remain candidates for a later bootstrap load.
+   * Whether this candidate may enter the first-turn suffix. The pipeline still
+   * applies the relevance gate, so eligibility is not an inclusion guarantee.
    */
   readonly firstTurnEligible: boolean;
 }
 
-interface CandidateInput {
+interface OnDemandDynamicCandidateInput {
   content: string;
   firstTurnEligible: boolean;
   key: string;
@@ -44,7 +44,7 @@ interface CandidateInput {
   sourceVersion?: string;
 }
 
-const createCandidate = ({
+export const createOnDemandDynamicCandidate = ({
   content,
   firstTurnEligible,
   key,
@@ -56,7 +56,7 @@ const createCandidate = ({
   required = false,
   source,
   sourceVersion,
-}: CandidateInput): OnDemandDynamicCandidate => ({
+}: OnDemandDynamicCandidateInput): OnDemandDynamicCandidate => ({
   entry: {
     content,
     estimatedTokens: estimateTokenCount(content),
@@ -216,7 +216,7 @@ const collectSkillCandidates = (
     const source: OnDemandSource = { id: skill.identifier, type: 'skill' };
 
     add(
-      createCandidate({
+      createOnDemandDynamicCandidate({
         content: renderOnDemandSkillCard(card),
         firstTurnEligible: true,
         key: `skill:${skill.identifier}:card`,
@@ -229,7 +229,7 @@ const collectSkillCandidates = (
 
     if (skill.content) {
       add(
-        createCandidate({
+        createOnDemandDynamicCandidate({
           content: skill.content,
           firstTurnEligible: false,
           key: `skill:${skill.identifier}:content`,
@@ -259,7 +259,7 @@ const collectSkillCandidates = (
     )[0];
     const source: OnDemandSource = { id: skill.identifier, type: 'skill' };
     add(
-      createCandidate({
+      createOnDemandDynamicCandidate({
         content: renderOnDemandSkillCard({ ...card, relevance: 1 }),
         firstTurnEligible: true,
         key: `skill:${skill.identifier}:card`,
@@ -274,7 +274,7 @@ const collectSkillCandidates = (
     const content = skill.content ?? configured?.content;
     if (content) {
       add(
-        createCandidate({
+        createOnDemandDynamicCandidate({
           content,
           // A slash/selected skill is an explicit activation. Load its body in
           // this turn instead of requiring a second user or model confirmation.
@@ -297,7 +297,7 @@ const collectSkillCandidates = (
     });
     for (const reference of referenceCards) {
       add(
-        createCandidate({
+        createOnDemandDynamicCandidate({
           content: renderOnDemandSkillReferenceCard(reference),
           firstTurnEligible: true,
           key: `skill:${skill.identifier}:reference:${reference.path}`,
@@ -325,19 +325,16 @@ const collectToolCandidates = (
   const selectedIds = new Set(selectedToolsById.keys());
 
   for (const card of params.toolsConfig?.discoveryCards ?? []) {
-    const relevance = Math.max(
-      ON_DEMAND_FIRST_TURN_RELEVANCE,
-      scoreCandidate(
-        `${card.name} ${card.capability}`,
-        [card.identifier, card.name],
-        currentUserMessage,
-        selectedIds.has(card.identifier),
-      ),
+    const relevance = scoreCandidate(
+      `${card.name} ${card.capability}`,
+      [card.identifier, card.name],
+      currentUserMessage,
+      selectedIds.has(card.identifier),
     );
     const source: OnDemandSource = { id: card.identifier, type: 'tool' };
 
     add(
-      createCandidate({
+      createOnDemandDynamicCandidate({
         content: renderDiscoveryToolCard(card),
         firstTurnEligible: true,
         key: `tool:${card.identifier}:card`,
@@ -362,7 +359,7 @@ const collectToolCandidates = (
     const source: OnDemandSource = { id: manifest.identifier, type: 'tool' };
 
     add(
-      createCandidate({
+      createOnDemandDynamicCandidate({
         content: renderToolCard(manifest),
         firstTurnEligible: true,
         key: `tool:${manifest.identifier}:card`,
@@ -377,7 +374,7 @@ const collectToolCandidates = (
     const selectedTool = selectedToolsById.get(manifest.identifier);
     if (manual && !selectedTool?.content) {
       add(
-        createCandidate({
+        createOnDemandDynamicCandidate({
           content: manual,
           firstTurnEligible: selected,
           key: `tool:${manifest.identifier}:manual`,
@@ -397,7 +394,7 @@ const collectToolCandidates = (
   for (const tool of params.selectedTools ?? []) {
     const source: OnDemandSource = { id: tool.identifier, type: 'tool' };
     add(
-      createCandidate({
+      createOnDemandDynamicCandidate({
         content: renderToolCard({
           description: 'Selected for this request.',
           identifier: tool.identifier,
@@ -414,7 +411,7 @@ const collectToolCandidates = (
 
     if (tool.content) {
       add(
-        createCandidate({
+        createOnDemandDynamicCandidate({
           content: tool.content,
           firstTurnEligible: true,
           key: `tool:${tool.identifier}:manual`,
@@ -452,7 +449,7 @@ const collectKnowledgeCandidates = (
     );
     const source: OnDemandSource = { id: file.fileId, type: 'document' };
     add(
-      createCandidate({
+      createOnDemandDynamicCandidate({
         content: card,
         firstTurnEligible: true,
         key: `document:${file.fileId}:card`,
@@ -463,7 +460,7 @@ const collectKnowledgeCandidates = (
       }),
     );
     add(
-      createCandidate({
+      createOnDemandDynamicCandidate({
         content: file.content,
         firstTurnEligible: false,
         key: `document:${file.fileId}:content`,
@@ -483,7 +480,7 @@ const collectKnowledgeCandidates = (
       title: knowledgeBase.name,
     });
     add(
-      createCandidate({
+      createOnDemandDynamicCandidate({
         content,
         firstTurnEligible: true,
         key: `document:${knowledgeBase.id}:card`,
@@ -503,7 +500,7 @@ const collectKnowledgeCandidates = (
   const knowledgeBody = promptAgentKnowledge({ fileContents, knowledgeBases });
   if (knowledgeBody) {
     add(
-      createCandidate({
+      createOnDemandDynamicCandidate({
         content: knowledgeBody,
         firstTurnEligible: false,
         key: 'document:knowledge-body',
@@ -533,7 +530,7 @@ const collectAgentDocumentCandidates = (
     const source: OnDemandSource = { id, type: 'document' };
 
     add(
-      createCandidate({
+      createOnDemandDynamicCandidate({
         content: renderDocumentCard(document),
         firstTurnEligible: true,
         key: `document:${id}:card`,
@@ -547,7 +544,7 @@ const collectAgentDocumentCandidates = (
 
     if (document.content) {
       add(
-        createCandidate({
+        createOnDemandDynamicCandidate({
           content: document.content,
           firstTurnEligible: false,
           key: `document:${id}:content`,
@@ -578,7 +575,7 @@ const collectDocumentCards = (
     const source: OnDemandSource = { id, type: 'document' };
 
     add(
-      createCandidate({
+      createOnDemandDynamicCandidate({
         content: renderDocumentCard(document),
         firstTurnEligible: true,
         key: `document:${id}:card`,
@@ -607,7 +604,7 @@ const collectEnvironmentCandidates = (
     }).format(new Date());
 
     add(
-      createCandidate({
+      createOnDemandDynamicCandidate({
         content: `<system_date timezone="${escapeXmlAttr(timeZone)}">\n${escapeXmlContent(date)}\n</system_date>`,
         firstTurnEligible: true,
         key: 'environment:system-date',
@@ -627,7 +624,7 @@ const collectEnvironmentCandidates = (
     .join('\n');
   if (modelInfo) {
     add(
-      createCandidate({
+      createOnDemandDynamicCandidate({
         content: `<model_info>\n${escapeXmlContent(modelInfo)}\n</model_info>`,
         firstTurnEligible: true,
         key: 'environment:model-info',
@@ -646,7 +643,7 @@ const collectAdditionalContextCandidates = (
 ) => {
   for (const [index, fragment] of (params.additionalContexts ?? []).entries()) {
     add(
-      createCandidate({
+      createOnDemandDynamicCandidate({
         content: renderAdditionalContext(fragment),
         firstTurnEligible: true,
         key: `runtime:${fragment.wrapper.tag}:${index}`,

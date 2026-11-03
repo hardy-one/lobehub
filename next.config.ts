@@ -20,6 +20,8 @@ const vercelConfig = {
 };
 const nextConfig = defineConfig({
   ...(isVercel ? vercelConfig : {}),
+  // The prompt harness runs isolated dev builds against a shared checkout.
+  // Production and normal local builds keep Next's default `.next` directory.
   ...(process.env.PROMPT_HARNESS_NEXT_DIST_DIR
     ? { distDir: process.env.PROMPT_HARNESS_NEXT_DIST_DIR }
     : {}),

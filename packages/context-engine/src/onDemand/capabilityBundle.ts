@@ -49,7 +49,10 @@ const deriveVersion = (content: {
   manifestHash: string;
   manualHash: string;
   permissionsHash: string;
-}) => `atomic-${hashContent(content).replace(/^md5:/, '').slice(0, 16)}`;
+}) =>
+  `atomic-${hashContent(content)
+    .replace(/^sha256:/, '')
+    .slice(0, 16)}`;
 
 /**
  * Materializes an atomic native capability. The builder fails closed if the

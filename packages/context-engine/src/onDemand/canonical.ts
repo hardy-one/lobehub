@@ -1,4 +1,4 @@
-import { Md5 } from 'ts-md5';
+import { sha256 } from 'js-sha256';
 
 const encodeCanonical = (value: unknown): string => {
   if (value === null) return 'null';
@@ -48,5 +48,4 @@ const encodeCanonical = (value: unknown): string => {
  */
 export const stableStringify = (value: unknown): string => encodeCanonical(value);
 
-export const hashContent = (value: unknown): string =>
-  `md5:${Md5.hashStr(stableStringify(value)).toString()}`;
+export const hashContent = (value: unknown): string => `sha256:${sha256(stableStringify(value))}`;

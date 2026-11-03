@@ -27,6 +27,7 @@ import {
   createOnDemandTokenEstimator,
   estimateOnDemandTokensWithFallback,
   ON_DEMAND_TOKEN_ESTIMATOR_ID,
+  planOnDemandBudget,
 } from '../budgetPlanner';
 import { hashContent } from '../canonical';
 import {
@@ -41,6 +42,7 @@ import {
   ON_DEMAND_FIRST_TURN_RELEVANCE,
   type OnDemandDynamicCandidate,
 } from './dynamicCandidates';
+import { collectOnDemandRuntimeContextCandidates } from './runtimeContextCandidates';
 
 export interface OnDemandMessagesOptions {
   genToolCallingName?: (identifier: string, apiName: string, type?: string) => string;
@@ -148,13 +150,33 @@ const toOpenAIMessage = (message: MessagesEngineParams['messages'][number]): Ope
   };
 };
 
+const extractUserMessageText = (content: unknown): string | undefined => {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return undefined;
+
+  const text = content
+    .filter(
+      (part): part is { text: string; type: 'text' } =>
+        !!part &&
+        typeof part === 'object' &&
+        'type' in part &&
+        part.type === 'text' &&
+        'text' in part &&
+        typeof part.text === 'string',
+    )
+    .map((part) => part.text)
+    .join('\n\n');
+
+  return text || undefined;
+};
+
 const findCurrentUserMessage = (
   messages: MessagesEngineParams['messages'],
-): { index: number; message: MessagesEngineParams['messages'][number] } | undefined => {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message.role === 'user') return { index, message };
-  }
+): { index: number; text?: string } | undefined => {
+  const index = messages.findLastIndex((message) => message.role === 'user');
+  if (index === -1) return undefined;
+
+  return { index, text: extractUserMessageText(messages[index].content) };
 };
 
 const estimateActiveToolContracts = (
@@ -266,7 +288,7 @@ const buildOnDemandMetadata = ({
   bootstrapTools: readonly OnDemandBootstrapToolMetadata[];
   bootstrapToolCount: number;
   budget: OnDemandBudgetMetadata;
-  currentUserHash: string;
+  currentUserHash?: string;
   dynamicEntries: readonly OnDemandDynamicEntryMetadata[];
   messageSegments: readonly OnDemandMessageSegmentMetadata[];
   rawSystemRole: string;
@@ -278,7 +300,7 @@ const buildOnDemandMetadata = ({
   bootstrapToolIds: ON_DEMAND_BOOTSTRAP_IDENTIFIERS.slice(0, bootstrapToolCount),
   budget,
   contextMode: 'on-demand',
-  currentUserMessageHash: currentUserHash,
+  ...(currentUserHash && { currentUserMessageHash: currentUserHash }),
   dynamicEntries,
   messageSegments,
   protocolVersion: ON_DEMAND_PROTOCOL_VERSION,
@@ -289,9 +311,10 @@ const buildOnDemandMetadata = ({
 });
 
 /**
- * Third-mode assembly. It deliberately does not reuse any legacy injector:
- * the stable system message is only the raw Agent Prompt plus the fixed
- * protocol, and all mutable context is appended after the current user turn.
+ * Third-mode assembly. It deliberately does not run the legacy injector
+ * pipeline: the stable system message is only the raw Agent Prompt plus the
+ * fixed protocol, and all mutable context is appended after the current user
+ * turn. Runtime formatters are reused so legacy contexts keep their semantics.
  */
 export class OnDemandMessagesPipeline {
   constructor(
@@ -300,36 +323,60 @@ export class OnDemandMessagesPipeline {
   ) {}
 
   async process(): Promise<MessagesEngineResult> {
-    const startTime = Date.now();
-    const flattenedMessages = await new GroupMessageFlattenProcessor().process({
-      initialState: { messages: [] },
-      isAborted: false,
-      messages: this.params.messages as any[],
-      metadata: {},
-    });
-    const roleTransformedMessages = await new CompressedGroupRoleTransformProcessor().process({
-      ...flattenedMessages,
-      messages: flattenedMessages.messages as any[],
-    });
-    const preparedMessages = await new ToolCallProcessor({
-      genToolCallingName: this.options.genToolCallingName,
-      isCanUseFC: this.params.capabilities?.isCanUseFC,
-      model: this.params.model,
-      provider: this.params.provider,
-    }).process(roleTransformedMessages);
+    const startTime = performance.now();
+    const processorDurations: Record<string, number> = {};
+    const measure = <T>(name: string, task: () => T): T => {
+      const startedAt = performance.now();
+      try {
+        return task();
+      } finally {
+        processorDurations[name] = Math.round((performance.now() - startedAt) * 100) / 100;
+      }
+    };
+    const measureAsync = async <T>(name: string, task: () => Promise<T>): Promise<T> => {
+      const startedAt = performance.now();
+      try {
+        return await task();
+      } finally {
+        processorDurations[name] = Math.round((performance.now() - startedAt) * 100) / 100;
+      }
+    };
+
+    const flattenedMessages = await measureAsync('GroupMessageFlattenProcessor', () =>
+      new GroupMessageFlattenProcessor().process({
+        initialState: { messages: [] },
+        isAborted: false,
+        messages: this.params.messages as any[],
+        metadata: {},
+      }),
+    );
+    const roleTransformedMessages = await measureAsync(
+      'CompressedGroupRoleTransformProcessor',
+      () =>
+        new CompressedGroupRoleTransformProcessor().process({
+          ...flattenedMessages,
+          messages: flattenedMessages.messages as any[],
+        }),
+    );
+    const preparedMessages = await measureAsync('ToolCallProcessor', () =>
+      new ToolCallProcessor({
+        genToolCallingName: this.options.genToolCallingName,
+        isCanUseFC: this.params.capabilities?.isCanUseFC,
+        model: this.params.model,
+        provider: this.params.provider,
+      }).process(roleTransformedMessages),
+    );
     const sourceMessages = preparedMessages.messages as MessagesEngineParams['messages'];
     const rawSystemRole = this.params.systemRole ?? '';
-    const stablePrefix = buildOnDemandStablePrefix({ agentPrompt: rawSystemRole });
+    const stablePrefix = measure('OnDemandStablePrefix', () =>
+      buildOnDemandStablePrefix({ agentPrompt: rawSystemRole }),
+    );
     const bootstrapToolSet = buildOnDemandBootstrapToolSet();
     const systemContent = rawSystemRole
       ? `${rawSystemRole}\n\n${ON_DEMAND_PROTOCOL_CONTENT}`
       : ON_DEMAND_PROTOCOL_CONTENT;
     const currentUserMatch = findCurrentUserMessage(sourceMessages);
-
-    if (!currentUserMatch) {
-      throw new Error('On-demand context requires a current user message.');
-    }
-    const currentUserMessage = currentUserMatch.message;
+    const currentUserText = currentUserMatch?.text;
 
     const estimatorInfo = {
       id: ON_DEMAND_TOKEN_ESTIMATOR_ID,
@@ -345,28 +392,40 @@ export class OnDemandMessagesPipeline {
     );
     const activeToolContracts = estimateActiveToolContracts(this.params, estimator);
 
-    const suppliedRetrieval = this.params.onDemand?.retrieval;
-    const retrieval = retrieveOnDemandContext({
-      batch: {
-        candidates: suppliedRetrieval
-          ? suppliedRetrieval.candidates
-          : buildOnDemandCandidatesFromUserMemory(
-              this.params.userMemory?.memories,
-              currentUserMessage.content,
-            ),
-        durationMs: suppliedRetrieval?.durationMs,
-        mode: suppliedRetrieval?.mode,
-      },
-      currentUserMessage: currentUserMessage.content,
-    });
-    const dynamicCandidates = [
-      ...collectOnDemandDynamicCandidates(this.params, currentUserMessage.content),
-      ...retrieval.entries.map<OnDemandDynamicCandidate>((entry) => ({
-        entry,
-        firstTurnEligible: true,
-      })),
-    ];
-    const retrievalEntryKeys = new Set(retrieval.entries.map((entry) => entry.key));
+    const suppliedRetrieval = currentUserText ? this.params.onDemand?.retrieval : undefined;
+    const retrieval = currentUserText
+      ? retrieveOnDemandContext({
+          batch: {
+            candidates: suppliedRetrieval
+              ? suppliedRetrieval.candidates
+              : buildOnDemandCandidatesFromUserMemory(
+                  this.params.userMemory?.memories,
+                  currentUserText,
+                ),
+            durationMs: suppliedRetrieval?.durationMs,
+            mode: suppliedRetrieval?.mode,
+          },
+          currentUserMessage: currentUserText,
+        })
+      : undefined;
+    const dynamicCandidates = measure('OnDemandDynamicCandidates', () =>
+      currentUserText
+        ? [
+            ...collectOnDemandDynamicCandidates(this.params, currentUserText),
+            ...collectOnDemandRuntimeContextCandidates({
+              currentUserMessage: currentUserText,
+              hasRetrievedExpertise:
+                retrieval?.entries.some((entry) => entry.kind === 'approved_expertise') ?? false,
+              params: this.params,
+            }),
+            ...(retrieval?.entries ?? []).map<OnDemandDynamicCandidate>((entry) => ({
+              entry,
+              firstTurnEligible: true,
+            })),
+          ]
+        : [],
+    );
+    const retrievalEntryKeys = new Set(retrieval?.entries.map((entry) => entry.key) ?? []);
     const firstTurnEntries = dynamicCandidates
       .filter(
         (candidate) =>
@@ -376,42 +435,61 @@ export class OnDemandMessagesPipeline {
             candidate.entry.relevance >= ON_DEMAND_FIRST_TURN_RELEVANCE),
       )
       .map((candidate) => candidate.entry);
+    const fixedTokens = {
+      activeToolContracts,
+      bootstrapTools: estimate(JSON.stringify(bootstrapToolSet.tools)),
+      currentUserMessage: currentUserText ? estimate(currentUserText) : 0,
+      protocol: estimate(ON_DEMAND_PROTOCOL_CONTENT),
+      userPrompt: estimate(rawSystemRole),
+    };
 
-    const protocol = buildOnDemandProtocol({
-      budget: {
-        estimator,
-        estimatorInfo,
-        fixedTokens: {
-          activeToolContracts,
-          bootstrapTools: estimate(JSON.stringify(bootstrapToolSet.tools)),
-          currentUserMessage: estimate(currentUserMessage.content),
-          protocol: estimate(ON_DEMAND_PROTOCOL_CONTENT),
-          userPrompt: estimate(rawSystemRole),
-        },
-        maxDynamicTokens: budgetConfig.dynamicTokens,
-        maxTokens: budgetConfig.totalTokens,
-        reserveTokens: budgetConfig.reserveTokens,
-      },
-      currentUserMessage: {
-        content: currentUserMessage.content,
-        ...(currentUserMessage.id && { id: currentUserMessage.id }),
-        role: 'user',
-      },
-      entries: firstTurnEntries,
-      stablePrefix,
-    });
+    const protocol = currentUserText
+      ? measure('OnDemandSuffix', () =>
+          buildOnDemandProtocol({
+            budget: {
+              estimator,
+              estimatorInfo,
+              fixedTokens,
+              maxDynamicTokens: budgetConfig.dynamicTokens,
+              maxTokens: budgetConfig.totalTokens,
+              reserveTokens: budgetConfig.reserveTokens,
+            },
+            currentUserMessage: {
+              content: currentUserText,
+              ...(sourceMessages[currentUserMatch.index].id && {
+                id: sourceMessages[currentUserMatch.index].id,
+              }),
+              role: 'user',
+            },
+            entries: firstTurnEntries,
+            stablePrefix,
+          }),
+        )
+      : undefined;
+    const budgetMetadata = toBudgetMetadata(
+      protocol?.budget ??
+        planOnDemandBudget({
+          entries: [],
+          estimator,
+          estimatorInfo,
+          fixedTokens,
+          maxDynamicTokens: budgetConfig.dynamicTokens,
+          maxTokens: budgetConfig.totalTokens,
+          reserveTokens: budgetConfig.reserveTokens,
+        }),
+    );
+    const appendedMessages = protocol?.appendedMessages ?? [];
 
     const conversationMessages = sourceMessages.map(toOpenAIMessage);
     const messages: OpenAIChatMessage[] = [
       { content: systemContent, role: 'system' },
       ...conversationMessages,
-      ...(protocol.appendedMessages as readonly OpenAIChatMessage[]),
+      ...(appendedMessages as readonly OpenAIChatMessage[]),
     ];
-    const budgetMetadata = toBudgetMetadata(protocol.budget);
     const dynamicEntries = buildDynamicEntryMetadata(dynamicCandidates, budgetMetadata);
     const messageSegments = buildMessageSegments({
-      appendedMessages: protocol.appendedMessages,
-      currentUserSourceIndex: currentUserMatch.index,
+      appendedMessages,
+      currentUserSourceIndex: currentUserMatch?.index ?? -1,
       estimate,
       messages,
       sourceMessageCount: sourceMessages.length,
@@ -445,22 +523,23 @@ export class OnDemandMessagesPipeline {
       (entry) => retrievalEntryKeys.has(entry.key) && entry.included,
     ).length;
     const degradedRetrievalCount = dynamicEntries.filter(
-      (entry) =>
-        retrievalEntryKeys.has(entry.key) && (entry.decision === 'degraded' || !entry.included),
+      (entry) => retrievalEntryKeys.has(entry.key) && entry.decision === 'degraded',
     ).length;
     const onDemandContext = buildOnDemandMetadata({
       bootstrapTools,
       bootstrapToolCount: bootstrapToolSet.enabledToolIds.length,
       budget: budgetMetadata,
-      currentUserHash: protocol.currentUserMessageHash,
+      currentUserHash: protocol?.currentUserMessageHash,
       dynamicEntries,
       messageSegments,
       rawSystemRole,
-      retrieval: {
-        ...retrieval.metadata,
-        degradedCount: degradedRetrievalCount,
-        includedCount: includedRetrievalCount,
-      },
+      ...(retrieval && {
+        retrieval: {
+          ...retrieval.metadata,
+          degradedCount: degradedRetrievalCount,
+          includedCount: includedRetrievalCount,
+        },
+      }),
       stablePrefixHash: stablePrefix.hash,
       tokens,
     });
@@ -480,13 +559,9 @@ export class OnDemandMessagesPipeline {
       messages,
       metadata,
       stats: {
-        processedCount: 3,
-        processorDurations: {
-          OnDemandDynamicCandidates: 0,
-          OnDemandStablePrefix: 0,
-          OnDemandSuffix: 0,
-        },
-        totalDuration: Date.now() - startTime,
+        processedCount: Object.keys(processorDurations).length,
+        processorDurations,
+        totalDuration: Math.round((performance.now() - startTime) * 100) / 100,
       },
     };
   }

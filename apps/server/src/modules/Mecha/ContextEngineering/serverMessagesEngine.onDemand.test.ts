@@ -68,7 +68,7 @@ describe('serverMessagesEngine on-demand contract', () => {
         includedCount: 1,
         mode: 'vector',
       }),
-      stablePrefixHash: expect.stringMatching(/^md5:/),
+      stablePrefixHash: expect.stringMatching(/^sha256:/),
     });
   });
 

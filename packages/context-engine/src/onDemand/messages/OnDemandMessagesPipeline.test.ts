@@ -202,7 +202,7 @@ describe('OnDemandMessagesPipeline', () => {
           key: 'skill:setup-skill:content',
           priority: 15,
           provenance: expect.objectContaining({
-            contentHash: expect.stringMatching(/^md5:/),
+            contentHash: expect.stringMatching(/^sha256:/),
             sourceVersion: 'manual-selected',
           }),
           required: true,
@@ -224,7 +224,7 @@ describe('OnDemandMessagesPipeline', () => {
         }),
       ]),
     );
-    expect(result.metadata.stablePrefixHash).toMatch(/^md5:/);
+    expect(result.metadata.stablePrefixHash).toMatch(/^sha256:/);
     expect(result.metadata.rawSystemRoleHash).toBe(hashContent(SYSTEM_ROLE));
     expect(result.metadata.bootstrapToolIds).toEqual(ON_DEMAND_BOOTSTRAP_IDENTIFIERS);
     expect(result.metadata.onDemandContext?.budget).toMatchObject({
@@ -260,7 +260,7 @@ describe('OnDemandMessagesPipeline', () => {
         expect.objectContaining({
           apiNames: ['activateTools'],
           identifier: 'lobe-activator',
-          manifestHash: expect.stringMatching(/^md5:/),
+          manifestHash: expect.stringMatching(/^sha256:/),
         }),
       ]),
     );
@@ -280,10 +280,10 @@ describe('OnDemandMessagesPipeline', () => {
       activatedToolBundles: [
         {
           activatedAtStep: 1,
-          capabilityHash: 'md5:capability',
+          capabilityHash: 'sha256:capability',
           capabilityVersion: '1.0.0',
           identifier: 'release-tool',
-          manifestHash: 'md5:manifest',
+          manifestHash: 'sha256:manifest',
           source: 'discovery',
         },
       ],
@@ -292,7 +292,7 @@ describe('OnDemandMessagesPipeline', () => {
     });
     expect(traceMetadata.rawSystemRole).toBe(SYSTEM_ROLE);
     expect(traceMetadata.rawSystemRoleHash).toBe(hashContent(SYSTEM_ROLE));
-    expect(traceMetadata.activatedToolBundles[0].capabilityHash).toBe('md5:capability');
+    expect(traceMetadata.activatedToolBundles[0].capabilityHash).toBe('sha256:capability');
     expect(JSON.stringify(traceMetadata.messageSegments)).not.toContain(SYSTEM_ROLE);
     expect(result.metadata.protocolVersion).toBe(ON_DEMAND_PROTOCOL_VERSION);
   });
@@ -627,10 +627,10 @@ describe('OnDemandMessagesPipeline', () => {
     ).toEqual([]);
   });
 
-  it('keeps explicit constraints while degrading lower-priority suggestions first', async () => {
+  it('keeps explicit constraints while omitting lower-priority suggestions first', async () => {
     const params = createParams({
       onDemand: {
-        maxTokens: 0,
+        budget: { dynamicTokens: 120, reserveTokens: 0, totalTokens: 5_000 },
         retrieval: {
           candidates: [
             retrievalCandidate({
@@ -658,10 +658,18 @@ describe('OnDemandMessagesPipeline', () => {
     expect(appended[0].content).toContain('rollback enabled');
     expect(appended[0].content).not.toContain('Deployment suggestion');
     expect(result.metadata.onDemandContext?.retrieval).toMatchObject({
-      degradedCount: 1,
+      degradedCount: 0,
       hitCount: 2,
       includedCount: 1,
     });
+    expect(result.metadata.dynamicEntries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          decision: 'omitted',
+          key: 'retrieval:unapproved_suggestion:suggestion',
+        }),
+      ]),
+    );
   });
 
   it('keeps selected tool contracts verbatim under one shared budget', async () => {
@@ -774,10 +782,10 @@ describe('OnDemandMessagesPipeline', () => {
     });
     expect(lowMemory?.degradation).toMatchObject({
       reason: 'low_relevance',
-      originalContentHash: expect.stringMatching(/^md5:/),
+      originalContentHash: expect.stringMatching(/^sha256:/),
       recoveryRef: expect.stringContaining('memory:low-memory'),
     });
-    expect(appended.map((entry) => entry.content).join('\n')).toContain('<on_demand_summary');
+    expect(appended.map((entry) => entry.content).join('\n')).toContain('&lt;on_demand_summary');
     expect(result.metadata.onDemandContext?.budget.totalTokens).toBeLessThanOrEqual(2_400);
     expect(result.metadata.onDemandContext?.retrieval).toMatchObject({
       degradedCount: 1,

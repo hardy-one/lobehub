@@ -236,7 +236,7 @@ describe('buildOnDemandProtocol', () => {
     });
 
     expect(second).toEqual(first);
-    expect(first.hash).toMatch(/^md5:/);
+    expect(first.hash).toMatch(/^sha256:/);
     expect(first.appendedMessages.map((message) => message.id)).toEqual(
       second.appendedMessages.map((message) => message.id),
     );

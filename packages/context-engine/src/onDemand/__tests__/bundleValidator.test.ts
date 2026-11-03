@@ -92,7 +92,7 @@ describe('validateAtomicCapabilityBundle', () => {
     );
     expectCode(
       validateAtomicCapabilityBundle(bundle, {
-        hash: 'md5:not-the-bundle',
+        hash: 'sha256:not-the-bundle',
         identifier: bundle.identifier,
         version: bundle.version,
       }),

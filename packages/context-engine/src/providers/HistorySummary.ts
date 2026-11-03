@@ -28,7 +28,7 @@ export interface HistorySummaryConfig {
 /**
  * Default history summary formatter function
  */
-const defaultHistorySummaryFormatter = (historySummary: string): string => `<chat_history_summary>
+export const formatHistorySummary = (historySummary: string): string => `<chat_history_summary>
 <docstring>Users may have lots of chat messages, here is the summary of the history:</docstring>
 <summary>${historySummary}</summary>
 </chat_history_summary>`;
@@ -53,7 +53,7 @@ export class HistorySummaryProvider extends BaseSystemRoleProvider {
       return null;
     }
 
-    const formatter = this.config.formatHistorySummary || defaultHistorySummaryFormatter;
+    const formatter = this.config.formatHistorySummary || formatHistorySummary;
     return formatter(this.config.historySummary);
   }
 

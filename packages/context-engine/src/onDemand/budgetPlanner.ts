@@ -343,8 +343,8 @@ export const planOnDemandBudget = (input: OnDemandBudgetPlanInput): OnDemandBudg
       continue;
     }
 
-    dropped.push(Object.freeze({ entry: item.entry, reason: 'budget_exceeded' }));
-    droppedStatus.set(item.entry.key, 'budget_exceeded');
+    dropped.push(Object.freeze({ entry: item.entry, reason }));
+    droppedStatus.set(item.entry.key, reason);
   }
 
   const selectedOptionalTokens = selectedOptional.reduce((sum, entry) => {

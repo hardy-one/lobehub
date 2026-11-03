@@ -217,7 +217,8 @@ export interface OnDemandBudgetPlanInput {
   readonly reserveTokens?: number;
 }
 
-export type OnDemandBudgetDropReason = 'budget_exceeded' | 'empty' | 'estimator_failed';
+export type OnDemandBudgetDropReason =
+  'budget_exceeded' | 'empty' | 'estimator_failed' | 'low_relevance';
 
 export interface OnDemandBudgetDrop {
   readonly entry: OnDemandDynamicEntry;

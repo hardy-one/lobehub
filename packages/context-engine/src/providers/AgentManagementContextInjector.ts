@@ -116,7 +116,7 @@ export interface AgentManagementContextInjectorConfig {
 /**
  * Format Agent Management context as XML for injection
  */
-const defaultFormatContext = (context: AgentManagementContext): string => {
+export const formatAgentManagementContext = (context: AgentManagementContext): string => {
   const parts: string[] = [];
 
   // Add current agent identity so the model can self-manage
@@ -263,7 +263,7 @@ ${parts.join('\n')}
  * Format mentioned agents as delegation context for injection after the user message.
  * Instructs the AI to delegate to the mentioned agent(s) via callAgent.
  */
-const formatMentionedAgentsContext = (mentionedAgents: RuntimeMentionedAgent[]): string => {
+export const formatMentionedAgentsContext = (mentionedAgents: RuntimeMentionedAgent[]): string => {
   const agentsXml = mentionedAgents
     .map((a) => `  <agent id="${escapeXml(a.id)}" name="${escapeXml(a.name)}" />`)
     .join('\n');
@@ -321,7 +321,7 @@ export class AgentManagementContextInjector extends BaseFirstUserContentProvider
     // silently get dropped here.
     const { mentionedAgents: _mentioned, ...contextWithoutMentions } = this.config.context;
 
-    const formatFn = this.config.formatContext || defaultFormatContext;
+    const formatFn = this.config.formatContext || formatAgentManagementContext;
     const formattedContent = formatFn(contextWithoutMentions);
 
     if (!formattedContent) {
@@ -340,7 +340,7 @@ export class AgentManagementContextInjector extends BaseFirstUserContentProvider
     // Track metadata when we actually injected content
     if (this.config.enabled && this.config.context) {
       const { mentionedAgents: _m, ...rest } = this.config.context;
-      const formatFn = this.config.formatContext || defaultFormatContext;
+      const formatFn = this.config.formatContext || formatAgentManagementContext;
       if (formatFn(rest)) {
         result.metadata.agentManagementContextInjected = true;
       }

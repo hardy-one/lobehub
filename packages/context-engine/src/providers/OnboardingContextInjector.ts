@@ -34,6 +34,29 @@ export interface OnboardingContextInjectorConfig {
   onboardingContext?: OnboardingContext;
 }
 
+export const formatOnboardingContext = (onboardingContext: OnboardingContext): string => {
+  const parts: string[] = [onboardingContext.phaseGuidance];
+
+  if (onboardingContext.soulContent) {
+    parts.push(
+      `<current_soul_document>\n${numberLines(onboardingContext.soulContent)}\n</current_soul_document>`,
+    );
+  }
+
+  if (onboardingContext.personaContent) {
+    parts.push(
+      `<current_user_persona>\n${numberLines(onboardingContext.personaContent)}\n</current_user_persona>`,
+    );
+  }
+
+  const userInfo = formatOnboardingUserInfo(onboardingContext.userInfo);
+  if (userInfo) {
+    parts.push(userInfo);
+  }
+
+  return `<onboarding_context>\n${parts.join('\n\n')}\n</onboarding_context>`;
+};
+
 /**
  * Onboarding Context Injector (FirstUser position)
  * Injects onboarding phase guidance and document contents before the first user message.
@@ -65,27 +88,7 @@ export class OnboardingContextInjector extends BaseFirstUserContentProvider {
       return null;
     }
 
-    const { onboardingContext } = this.config;
-    const parts: string[] = [onboardingContext.phaseGuidance];
-
-    if (onboardingContext.soulContent) {
-      parts.push(
-        `<current_soul_document>\n${numberLines(onboardingContext.soulContent)}\n</current_soul_document>`,
-      );
-    }
-
-    if (onboardingContext.personaContent) {
-      parts.push(
-        `<current_user_persona>\n${numberLines(onboardingContext.personaContent)}\n</current_user_persona>`,
-      );
-    }
-
-    const userInfo = formatOnboardingUserInfo(onboardingContext.userInfo);
-    if (userInfo) {
-      parts.push(userInfo);
-    }
-
-    return `<onboarding_context>\n${parts.join('\n\n')}\n</onboarding_context>`;
+    return formatOnboardingContext(this.config.onboardingContext);
   }
 }
 

@@ -2,6 +2,7 @@ import type { AgentSignalRuntimeService } from '@lobechat/builtin-tool-agent-sig
 
 import type { LobeChatDatabase } from '@/database/type';
 import { runMemoryActionAgent } from '@/server/services/agentSignal/policies/analyzeIntent/actions/userMemory';
+import { resolveExpertiseModelConfig } from '@/server/services/expertise/modelConfig';
 import type { SkillManagementDocumentService } from '@/server/services/skillManagement';
 
 import { createSelfReviewProposalPreflightService } from '../review/proposalPreflight';
@@ -223,8 +224,9 @@ export const createResourceRuntimePrimitives = ({
       const input = rawInput as unknown as WriteMemoryInput;
       const memoryService = createMemoryService({
         writeMemory: async ({ content, evidenceRefs }) => {
+          const modelConfig = await resolveExpertiseModelConfig(db, userId);
           const result = await runMemoryActionAgent(
-            { agentId, message: content, reason: memoryReason(evidenceRefs.length) },
+            { agentId, message: content, modelConfig, reason: memoryReason(evidenceRefs.length) },
             { db, userId, workspaceId },
           );
 

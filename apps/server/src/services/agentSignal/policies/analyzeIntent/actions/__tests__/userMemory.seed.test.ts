@@ -91,6 +91,26 @@ describe('runMemoryActionAgent seed prompt', () => {
     expect(params.initialContext.payload.parentMessageId).toBe('msg-seed');
   });
 
+  it('uses the requested model config for the actual runtime call', async () => {
+    const { options } = createOptions();
+
+    await runMemoryActionAgent(
+      {
+        agentId: 'agent-1',
+        message: 'remember I prefer tabs',
+        modelConfig: { model: 'expertise-model', provider: 'expertise-provider' },
+      },
+      options,
+      { marker },
+    );
+
+    const params = mockCreateOperation.mock.calls[0][0];
+    expect(params.modelRuntimeConfig).toEqual({
+      model: 'expertise-model',
+      provider: 'expertise-provider',
+    });
+  });
+
   it('keeps the seed in memory only when no isolation thread exists', async () => {
     const { messageModel, options } = createOptions();
 

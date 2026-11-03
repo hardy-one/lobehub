@@ -3,19 +3,19 @@
   "agentPrompt": "  User-authored Agent Prompt\n\tkeep every byte and never rewrite this instruction.  ",
   "canonicalization": "prompt-harness-canonical-json-v2",
   "hashes": {
-    "full": "sha256:6f2e09138da156989249d92f0abc924cac9a1e8425277c3c83a0719769f6dddf",
-    "messages": "sha256:37a54922b3a78b551f492481ec784bb34f027499abfbeea2c67b998e40638ce1",
-    "messagesAndTools": "sha256:b0ead19e3a6d5e941a3f384caf3a0759b44e89a0525049567aa00359411eb26a",
+    "full": "sha256:af0f1a615e25d51afaa048c1a47b0f3fb06e7e213564aebd9c30c2cf50397c6c",
+    "messages": "sha256:20621f7b1ded8b1d2c6e02acc769d1ef186645dca8bd5cf40fd26980fc5b0267",
+    "messagesAndTools": "sha256:5abef9e6558eaf9d3e85578afd32357aeaaefeebd17556db8f1296912d1cdde5",
     "tools": "sha256:acbb247b0455bd0be152cddac8e24acd799ca492755ca95de95d073253b5a0ff"
   },
   "provenance": {
-    "capturedAt": "2026-11-02T21:27:12.078Z",
+    "capturedAt": "2026-11-03T05:34:18.355Z",
     "frozenTime": "2026-11-02T12:00:00.000Z",
-    "note": "Frozen from this T-113 clean origin/next isolated mock-provider run; this replaces the canary-era control for the next rebase. Hashes use v2, which normalizes only the volatile loopback test origin.",
+    "note": "Refreshed after removing the retired budget-only harness Agents. This isolates the legacy runtime baseline from test-fixture roster changes while preserving the same legacy pipeline request shape.",
     "requestCount": 1,
     "scenario": "baseline-legacy",
-    "source": "bun --no-env-file scripts/promptHarness/run.ts --scenario=baseline-chat,baseline-legacy --keep",
-    "sourceCommit": "ff85bfa1dff2ec7d1a6eba2f6a0c13b040cce338"
+    "source": "bash scripts/promptHarness/stack.sh --keep",
+    "sourceCommit": "9c8ce56f9361ece644fcfd345991e6bb7780d791"
   },
   "userMessage": "T105_BASELINE compare identical Agent Prompt and user turn"
 }

@@ -5,7 +5,6 @@ import type {
 } from '@lobechat/types';
 import { describe, expect, it } from 'vitest';
 
-import { planOnDemandBudget } from '../budgetPlanner';
 import { hashContent } from '../canonical';
 import { retrieveOnDemandContext, selectRelevantPersonaFragments } from './ranking';
 
@@ -351,7 +350,7 @@ describe('retrieveOnDemandContext', () => {
     });
   });
 
-  it('prioritizes relevant explicit constraints without turning them into hard floors', () => {
+  it('keeps explicit constraints and suggestions as ordinary ranked entries', () => {
     const result = retrieveOnDemandContext({
       batch: {
         candidates: [
@@ -373,21 +372,9 @@ describe('retrieveOnDemandContext', () => {
       currentUserMessage: 'deploy safe',
       scope,
     });
-    const plan = planOnDemandBudget({
-      entries: result.entries,
-      fixedTokens: {
-        bootstrapTools: 0,
-        currentUserMessage: 0,
-        protocol: 0,
-        userPrompt: 0,
-      },
-      maxTokens: 0,
-    });
 
-    expect(plan.status).toBe('within_budget');
-    expect(plan.hardFloorTokens).toBe(0);
-    expect(plan.selected).toEqual([]);
-    expect(plan.dropped.map((drop) => drop.entry.source.id)).toEqual(['constraint', 'suggestion']);
+    expect(result.entries.map((entry) => entry.source.id)).toEqual(['constraint', 'suggestion']);
+    expect(result.entries.every((entry) => entry.required === false)).toBe(true);
   });
 
   it('drops explicit constraints that are unrelated to the current request', () => {

@@ -23,7 +23,6 @@ import type {
 } from '@lobechat/types';
 import { resolveContextMode } from '@lobechat/types';
 
-import { resolveOnDemandContextBudgetDefaults } from '@/envs/onDemandContext';
 import { serverMessagesEngine } from '@/server/modules/Mecha/ContextEngineering';
 import {
   createServerContextFactProviders,
@@ -256,12 +255,10 @@ export const buildServerCallLlmContext = async ({
     additionalContexts: llmPayload.additionalContexts,
     attachmentPreviewFileIds: llmPayload.attachmentPreviewFileIds,
     contextMode,
-    ...(contextMode === 'on-demand' && {
-      onDemand: {
-        budget: resolveOnDemandContextBudgetDefaults(),
-        ...(onDemandRetrieval && { retrieval: onDemandRetrieval }),
-      },
-    }),
+    ...(contextMode === 'on-demand' &&
+      onDemandRetrieval && {
+        onDemand: { retrieval: onDemandRetrieval },
+      }),
     agentDocuments: facts.agentDocuments,
     // Identity lives on the agent row, not in the prompt text — inject it so
     // the model introduces itself by the user-given name.

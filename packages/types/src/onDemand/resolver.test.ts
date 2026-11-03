@@ -3,9 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   compareOnDemandDynamicEntries,
   isOnDemandBootstrapApiAllowed,
-  isOnDemandHardFloorEntry,
   ON_DEMAND_KIND_RANK,
-  resolveOnDemandEntryClass,
 } from './resolver';
 import { ON_DEMAND_DYNAMIC_KINDS, type OnDemandDynamicEntry } from './types';
 
@@ -44,12 +42,12 @@ describe('on-demand shared resolver', () => {
     expect(Object.keys(ON_DEMAND_KIND_RANK).sort()).toEqual([...ON_DEMAND_DYNAMIC_KINDS].sort());
   });
 
-  it('protects hard-floor categories and explicit required entries', () => {
-    expect(isOnDemandHardFloorEntry(makeEntry({ kind: 'safety' }))).toBe(true);
-    expect(isOnDemandHardFloorEntry(makeEntry({ kind: 'pending_action' }))).toBe(true);
-    expect(isOnDemandHardFloorEntry(makeEntry({ kind: 'tool_contract' }))).toBe(true);
-    expect(resolveOnDemandEntryClass(makeEntry({ required: true }))).toBe('protected');
-    expect(resolveOnDemandEntryClass(makeEntry())).toBe('degradable');
+  it('sorts required entries first without introducing category-specific selection', () => {
+    const optional = makeEntry({ key: 'optional', priority: 100 });
+    const required = makeEntry({ required: true, key: 'required', priority: 1 });
+
+    expect(compareOnDemandDynamicEntries(required, optional)).toBeLessThan(0);
+    expect(compareOnDemandDynamicEntries(optional, required)).toBeGreaterThan(0);
   });
 
   it('enforces the bootstrap API allowlist', () => {

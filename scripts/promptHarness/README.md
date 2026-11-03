@@ -30,13 +30,11 @@ The command prints a JSON line containing `runRoot`, `captureDir`, `nextPort`
 and `mockPort`, followed by one line per verification check. The final report is
 `<runRoot>/result.json`.
 
-By default all fixtures run in this order: on-demand baseline, legacy baseline,
-memory, skill, document, tool activation, long document, budget pressure. The
-two baseline scenarios use the same exact Agent Prompt and user message on
-different Agents. Memory, skill, document, tool activation, and long-document
-checks exercise their real runtime paths. Budget pressure uses a dedicated
-Agent whose oversized document card must degrade with `budget_exceeded`, so the
-scenario proves real planner pressure instead of relying on its name. The
+By default all fixtures run in this order: the three baselines, memory and
+expertise, skill discovery and activation, document discovery, tool activation,
+and long-document loading. The two baseline scenarios use the same exact Agent
+Prompt and user message on different Agents. Memory, skill, document, tool
+activation, and long-document checks exercise their real runtime paths. The
 provider is repointed only in the cloned database and uses the non-secret key
 `prompt-harness-not-a-secret`.
 

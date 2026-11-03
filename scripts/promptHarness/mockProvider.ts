@@ -207,23 +207,6 @@ const chooseAction = (request: {
     return { content: 'T106 negative activation capture complete.' };
   }
 
-  if (prompt.includes('T106_PROTECTED_BUDGET')) {
-    if (!hasCall(messages, 'call_t106_protected_activate')) {
-      const name = findToolName(request, 'activateTools');
-      if (!name) throw new Error('activateTools was not present for protected budget.');
-      return {
-        args: {
-          identifiers: ['lobe-calculator'],
-          reason: 'T106 protects the active tool contract while the shared budget is pressured.',
-        },
-        id: 'call_t106_protected_activate',
-        name,
-      };
-    }
-
-    return { content: 'T106 protected budget capture complete.' };
-  }
-
   if (prompt.includes('T106_SKILL_FLOW')) {
     if (!hasCall(messages, 'call_t106_activate_skill')) {
       return {

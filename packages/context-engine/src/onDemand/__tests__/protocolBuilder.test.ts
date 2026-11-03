@@ -17,13 +17,6 @@ import {
 } from '../protocolBuilder';
 import { makeDynamicEntry } from './fixtures';
 
-const emptyFixedTokens = {
-  bootstrapTools: 0,
-  currentUserMessage: 0,
-  protocol: 0,
-  userPrompt: 0,
-};
-
 describe('on-demand bootstrap manifests', () => {
   it('exposes only the real native bootstrap schemas', () => {
     expect(ON_DEMAND_BOOTSTRAP_MANIFESTS.map((manifest) => manifest.identifier)).toEqual(
@@ -180,7 +173,6 @@ describe('buildOnDemandProtocol', () => {
     const stablePrefixBefore = structuredClone(stablePrefix);
 
     const protocol = buildOnDemandProtocol({
-      budget: { fixedTokens: emptyFixedTokens, maxTokens: 100 },
       currentUserMessage,
       entries,
       stablePrefix,
@@ -223,13 +215,11 @@ describe('buildOnDemandProtocol', () => {
     ];
 
     const first = buildOnDemandProtocol({
-      budget: { fixedTokens: emptyFixedTokens, maxTokens: 100 },
       currentUserMessage,
       entries,
       stablePrefix,
     });
     const second = buildOnDemandProtocol({
-      budget: { fixedTokens: emptyFixedTokens, maxTokens: 100 },
       currentUserMessage,
       entries: [...entries].reverse(),
       stablePrefix,
@@ -242,21 +232,24 @@ describe('buildOnDemandProtocol', () => {
     );
   });
 
-  it('does not append optional entries dropped by the shared budget', () => {
+  it('appends every supplied entry regardless of size or relevance', () => {
     const stablePrefix = buildOnDemandStablePrefix({ agentPrompt: 'agent prompt' });
     const protocol = buildOnDemandProtocol({
-      budget: { fixedTokens: emptyFixedTokens, maxTokens: 15 },
       currentUserMessage: { content: 'current', role: 'user' },
       entries: [
         makeDynamicEntry({ key: 'high', relevance: 1, estimatedTokens: 10 }),
-        makeDynamicEntry({ key: 'low', relevance: 0, estimatedTokens: 10 }),
+        makeDynamicEntry({ key: 'large', relevance: 0, estimatedTokens: 1_000_000 }),
       ],
       stablePrefix,
     });
 
-    expect(protocol.budget.selected.map((entry) => entry.key)).toEqual(['high']);
-    expect(protocol.appendedMessages).toHaveLength(1);
-    expect(protocol.appendedMessages[0].metadata.entryKey).toBe('high');
+    expect(protocol.appendedMessages.map((message) => message.metadata.entryKey)).toEqual([
+      'high',
+      'large',
+    ]);
+    expect(protocol.appendedMessages.map((message) => message.content).join('\n')).toContain(
+      'Content for large',
+    );
   });
 
   it('renders every required dynamic kind as a post-user-message entry', () => {
@@ -269,7 +262,6 @@ describe('buildOnDemandProtocol', () => {
     );
 
     const protocol = buildOnDemandProtocol({
-      budget: { fixedTokens: emptyFixedTokens, maxTokens: 1000 },
       currentUserMessage: { content: 'current', role: 'user' },
       entries,
       stablePrefix,

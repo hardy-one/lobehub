@@ -87,8 +87,6 @@ export interface OnDemandRetrievalDrop {
  * counters, latency, and mode, never retrieved text.
  */
 export interface OnDemandRetrievalMetadata {
-  /** Entries discarded because the budget or relevance gate removed them. */
-  readonly degradedCount: number;
   readonly durationMs: number;
   readonly hitCount: number;
   readonly includedCount: number;
@@ -100,5 +98,5 @@ export interface OnDemandRetrievalMetadata {
 export interface OnDemandRetrievalResult {
   readonly dropped: readonly OnDemandRetrievalDrop[];
   readonly entries: readonly OnDemandDynamicEntry[];
-  readonly metadata: Omit<OnDemandRetrievalMetadata, 'degradedCount' | 'includedCount'>;
+  readonly metadata: Omit<OnDemandRetrievalMetadata, 'includedCount'>;
 }

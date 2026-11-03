@@ -7,8 +7,6 @@ export const NEXT_REPLY_LANGUAGE_SUFFIX =
 export const nextReplyLanguageSystemRole = (agentPrompt: string): string =>
   `${agentPrompt}${NEXT_REPLY_LANGUAGE_SUFFIX}`;
 
-export const HARNESS_BUDGET_AGENT_PROMPT = 'T105 budget-pressure control prompt.';
-
 export const HARNESS_BASELINE_USER_MESSAGE =
   'T105_BASELINE compare identical Agent Prompt and user turn';
 
@@ -18,7 +16,6 @@ export interface PromptScenario {
   agentPrompt: string;
   beforeFixturePaths?: readonly string[];
   expectation: {
-    degradeReasons?: string[];
     dynamicKinds?: string[];
     manualSkillName?: string;
     minCapturedRequests?: number;
@@ -39,10 +36,8 @@ export interface PromptScenario {
 const ON_DEMAND_AGENT_ID = 'agt_yLie7JpbUr2K';
 const LEGACY_AGENT_ID = 'agt_T101LEGACY01';
 const LEGACY_CHAT_AGENT_ID = 'agt_T106CHAT01';
-const BUDGET_PRESSURE_AGENT_ID = 'agt_T105BUDGET01';
 const UI_INTERVENTION_AGENT_ID = 'agt_T106UI01';
 const NEGATIVE_ACTIVATION_AGENT_ID = 'agt_T106NEGATIVE01';
-const PROTECTED_BUDGET_AGENT_ID = 'agt_T106PROTECTED01';
 
 export const PROMPT_SCENARIOS: readonly PromptScenario[] = [
   {
@@ -222,35 +217,6 @@ export const PROMPT_SCENARIOS: readonly PromptScenario[] = [
     id: 'negative-activation',
     prompt: 'T106_NEGATIVE_ACTIVATION prove missing and forged bundle identity fail closed',
     title: 'Missing bundle, forged version/hash and unpermitted tool fail closed',
-  },
-  {
-    agentId: PROTECTED_BUDGET_AGENT_ID,
-    agentPrompt: 'SAFETY RULE T106: destructive deployment is forbidden without two reviewers.',
-    beforeFixturePaths: ['scripts/promptHarness/fixtures/protectedBudget.sql'],
-    expectation: {
-      degradeReasons: ['budget_exceeded'],
-      dynamicKinds: ['document_card'],
-      minCapturedRequests: 2,
-      toolSuffixes: ['activateTools'],
-      traceMode: 'on-demand',
-    },
-    id: 'protected-budget',
-    prompt: 'T106_PROTECTED_BUDGET release rollback deployment needs a protected budget check',
-    title: 'Safety and pending action survive active-tool budget pressure',
-    topicId: 'tpc_T106PROTECTEDBUDGET',
-  },
-  {
-    agentId: BUDGET_PRESSURE_AGENT_ID,
-    agentPrompt: HARNESS_BUDGET_AGENT_PROMPT,
-    expectation: {
-      degradeReasons: ['budget_exceeded'],
-      dynamicKinds: ['document_card'],
-      minCapturedRequests: 1,
-      traceMode: 'on-demand',
-    },
-    id: 'budget-pressure',
-    prompt: 'T105_BUDGET_PRESSURE release rollback deployment low relevance memory',
-    title: 'Shared budget pressure and degradation',
   },
 ] as const;
 

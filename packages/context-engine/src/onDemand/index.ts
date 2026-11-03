@@ -7,15 +7,6 @@ export {
   buildOnDemandBootstrapToolSet,
   getOnDemandBootstrapManifests,
 } from './bootstrapTooling';
-export { resolveOnDemandBudgetConfig } from './budgetConfig';
-export { OnDemandBudgetInputError } from './budgetErrors';
-export {
-  createOnDemandTokenEstimator,
-  estimateOnDemandTokensWithFallback,
-  ON_DEMAND_DEGRADE_RELEVANCE,
-  ON_DEMAND_TOKEN_ESTIMATOR_ID,
-  planOnDemandBudget,
-} from './budgetPlanner';
 export { loadAtomicCapabilityBundle } from './bundleLoader';
 export {
   computeAtomicCapabilityBundleHash,

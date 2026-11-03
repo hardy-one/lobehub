@@ -108,7 +108,7 @@ describe('OnDemandMessagesPipeline runtime context', () => {
     expect(result.metadata.dynamicEntries).toEqual([]);
     expect(result.metadata.onDemandContext?.currentUserMessageHash).toBeUndefined();
     expect(result.metadata.onDemandContext?.retrieval).toBeUndefined();
-    expect(result.metadata.onDemandContext?.budget.fixedBreakdown.currentUserMessage).toBe(0);
+    expect(result.metadata.onDemandContext?.tokens.currentUserMessage).toBe(0);
     expect(result.stats.processedCount).toBe(Object.keys(result.stats.processorDurations).length);
   });
 
@@ -245,7 +245,7 @@ describe('OnDemandMessagesPipeline runtime context', () => {
     );
   });
 
-  it('degrades a current selection that cannot fit the shared budget', async () => {
+  it('includes a large current selection in full without a summary card', async () => {
     const marker = 'PRIVATE_SELECTION_BODY';
     const result = await processOnDemandMessages(
       createParams({
@@ -266,7 +266,6 @@ describe('OnDemandMessagesPipeline runtime context', () => {
             role: 'user',
           }),
         ],
-        onDemand: { budget: { dynamicTokens: 600, reserveTokens: 0, totalTokens: 2_000 } },
       }),
     );
     const selection = result.metadata.dynamicEntries?.find(
@@ -278,16 +277,13 @@ describe('OnDemandMessagesPipeline runtime context', () => {
       .join('\n');
 
     expect(selection).toMatchObject({
-      decision: 'degraded',
       included: true,
       required: false,
     });
-    expect(selection?.degradation).toMatchObject({
-      reason: 'budget_exceeded',
-    });
-    expect(suffix).toContain('&lt;on_demand_summary');
-    expect(suffix).not.toContain('release notes '.repeat(100));
-    expect(result.metadata.onDemandContext?.budget.totalTokens).toBeLessThanOrEqual(2_000);
+    expect(selection?.dropReason).toBeUndefined();
+    expect(suffix).toContain(marker);
+    expect(suffix).toContain('release notes '.repeat(100));
+    expect(suffix).not.toContain('on_demand_summary');
   });
 
   it('restores the skill import route for a linked skill source', async () => {
@@ -391,7 +387,6 @@ describe('OnDemandMessagesPipeline runtime context', () => {
           message({ content: 'Previous answer', id: 'a1', role: 'assistant' }),
           message({ content, id: 'u2', role: 'user' }),
         ],
-        onDemand: { budget: { dynamicTokens: 20_000, reserveTokens: 0, totalTokens: 20_000 } },
       }),
     );
     const includedKeys =
@@ -416,7 +411,6 @@ describe('OnDemandMessagesPipeline runtime context', () => {
     const result = await processOnDemandMessages(
       createParams({
         ...runtimeContextParams(),
-        onDemand: { budget: { dynamicTokens: 50_000, reserveTokens: 0, totalTokens: 50_000 } },
       }),
     );
     const includedKeys =
@@ -484,7 +478,6 @@ describe('OnDemandMessagesPipeline runtime context', () => {
           systemPrompt: 'Review every release.',
         },
         agentIdentity: { name: 'Ignored identity' },
-        onDemand: { budget: { dynamicTokens: 20_000, reserveTokens: 0, totalTokens: 20_000 } },
       }),
     );
     const includedKeys =

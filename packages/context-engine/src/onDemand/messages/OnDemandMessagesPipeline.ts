@@ -1,8 +1,6 @@
 import type {
   OnDemandAppendedMessage,
   OnDemandBootstrapToolMetadata,
-  OnDemandBudgetDecision,
-  OnDemandBudgetMetadata,
   OnDemandContextMetadata,
   OnDemandDynamicCandidateConflictMetadata,
   OnDemandDynamicEntryMetadata,
@@ -16,6 +14,7 @@ import {
   ON_DEMAND_BOOTSTRAP_IDENTIFIERS,
   ON_DEMAND_PROTOCOL_VERSION,
 } from '@lobechat/types';
+import { estimateTokenCount } from 'tokenx';
 
 import type { MessagesEngineParams, MessagesEngineResult } from '../../engine/messages/types';
 import { CompressedGroupRoleTransformProcessor } from '../../processors/CompressedGroupRoleTransform';
@@ -24,13 +23,6 @@ import { ToolCallProcessor } from '../../processors/ToolCall';
 import { LocalSystemToolSnapshotInjector } from '../../providers/LocalSystemToolSnapshotInjector';
 import type { ContextBuckets, PipelineContextMetadata } from '../../types';
 import { buildOnDemandBootstrapToolSet } from '../bootstrapTooling';
-import { resolveOnDemandBudgetConfig } from '../budgetConfig';
-import {
-  createOnDemandTokenEstimator,
-  estimateOnDemandTokensWithFallback,
-  ON_DEMAND_TOKEN_ESTIMATOR_ID,
-  planOnDemandBudget,
-} from '../budgetPlanner';
 import { hashContent } from '../canonical';
 import {
   buildOnDemandProtocol,
@@ -185,10 +177,7 @@ const findCurrentUserMessage = (
   return { index, message: messages[index], text: extractUserMessageText(messages[index].content) };
 };
 
-const estimateActiveToolContracts = (
-  params: MessagesEngineParams,
-  estimator: ReturnType<typeof createOnDemandTokenEstimator>,
-): number => {
+const estimateActiveToolContracts = (params: MessagesEngineParams): number => {
   const enabledIds = new Set(params.toolsConfig?.tools ?? []);
   const bootstrapIds = new Set<string>(ON_DEMAND_BOOTSTRAP_IDENTIFIERS);
 
@@ -196,48 +185,29 @@ const estimateActiveToolContracts = (
     .filter(
       (manifest) => enabledIds.has(manifest.identifier) && !bootstrapIds.has(manifest.identifier),
     )
-    .reduce(
-      (sum, manifest) =>
-        sum + estimateOnDemandTokensWithFallback(JSON.stringify(manifest), estimator).tokens,
-      0,
-    );
+    .reduce((sum, manifest) => sum + estimateTokenCount(JSON.stringify(manifest)), 0);
 };
 
 const buildDynamicEntryMetadata = (
   candidates: readonly OnDemandDynamicCandidate[],
-  budget: OnDemandBudgetMetadata,
+  includedKeys: ReadonlySet<string>,
 ): OnDemandDynamicEntryMetadata[] => {
-  const decisionsByKey = new Map(budget.decisions.map((decision) => [decision.key, decision]));
-  const degradationsByKey = new Map(
-    budget.degraded.map((degradation) => [degradation.key, degradation]),
-  );
-
   return [...candidates]
     .sort((a, b) => compareOnDemandDynamicEntries(a.entry, b.entry))
     .map(({ entry, firstTurnEligible }) => {
-      const decision = decisionsByKey.get(entry.key);
-      const degradation = degradationsByKey.get(entry.key);
-      const status = firstTurnEligible ? (decision?.status ?? 'omitted') : 'omitted';
-      const dropReason =
-        status === 'omitted'
-          ? !firstTurnEligible
-            ? 'first_turn_body_deferred'
-            : (decision?.reason ?? 'low_relevance')
-          : undefined;
-      const degradeReason = degradation?.reason ?? dropReason;
+      const included = includedKeys.has(entry.key);
+      const dropReason = included
+        ? undefined
+        : firstTurnEligible
+          ? ('low_relevance' as const)
+          : ('first_turn_body_deferred' as const);
 
       return {
-        decision: status,
-        ...(degradation && { degradation }),
-        ...(degradeReason && { degradeReason }),
         ...(dropReason && { dropReason }),
-        estimatedTokens: decision?.estimatedTokens ?? entry.estimatedTokens,
-        included: status !== 'omitted',
+        estimatedTokens: entry.estimatedTokens,
+        included,
         key: entry.key,
         kind: entry.kind,
-        ...(decision?.originalEstimatedTokens !== undefined && {
-          originalEstimatedTokens: decision.originalEstimatedTokens,
-        }),
         priority: entry.priority,
         provenance: entry.provenance,
         relevance: entry.relevance,
@@ -247,42 +217,9 @@ const buildDynamicEntryMetadata = (
     });
 };
 
-const toBudgetMetadata = (budget: OnDemandBudgetDecision): OnDemandBudgetMetadata => ({
-  availableDynamicTokens: budget.availableDynamicTokens,
-  decisions: budget.decisions.map((decision) => ({ ...decision })),
-  degraded: budget.degraded.map(({ degradedEntry, entry, reason }) => ({
-    estimatedTokens: degradedEntry.estimatedTokens,
-    key: entry.key,
-    originalContentHash: entry.provenance.contentHash,
-    originalEstimatedTokens: entry.estimatedTokens,
-    reason,
-    recoveryRef: degradedEntry.degradedFrom?.recoveryRef ?? degradedEntry.key,
-  })),
-  dropped: budget.dropped.map(({ entry, reason }) => ({
-    key: entry.key,
-    reason,
-  })),
-  estimator: { ...budget.estimator },
-  estimatorFailureCount: budget.estimatorFailureCount,
-  fixedBreakdown: { ...budget.fixedBreakdown },
-  fixedTokens: budget.fixedTokens,
-  hardFloorOverflowTokens: budget.hardFloorOverflowTokens,
-  hardFloorTokens: budget.hardFloorTokens,
-  hash: budget.hash,
-  maxDynamicTokens: budget.maxDynamicTokens,
-  maxTokens: budget.maxTokens,
-  reserveTokens: budget.reserveTokens,
-  reserveUsedTokens: budget.reserveUsedTokens,
-  selectedKeys: budget.selected.map((entry) => entry.key),
-  selectedOptionalTokens: budget.selectedOptionalTokens,
-  status: budget.status,
-  totalTokens: budget.totalTokens,
-});
-
 const buildOnDemandMetadata = ({
   bootstrapTools,
   bootstrapToolCount,
-  budget,
   candidateConflicts,
   currentUserHash,
   dynamicEntries,
@@ -294,7 +231,6 @@ const buildOnDemandMetadata = ({
 }: {
   bootstrapTools: readonly OnDemandBootstrapToolMetadata[];
   bootstrapToolCount: number;
-  budget: OnDemandBudgetMetadata;
   candidateConflicts?: readonly OnDemandDynamicCandidateConflictMetadata[];
   currentUserHash?: string;
   dynamicEntries: readonly OnDemandDynamicEntryMetadata[];
@@ -306,7 +242,6 @@ const buildOnDemandMetadata = ({
 }): OnDemandContextMetadata => ({
   bootstrapTools,
   bootstrapToolIds: ON_DEMAND_BOOTSTRAP_IDENTIFIERS.slice(0, bootstrapToolCount),
-  budget,
   ...(candidateConflicts?.length && { candidateConflicts }),
   contextMode: 'on-demand',
   ...(currentUserHash && { currentUserMessageHash: currentUserHash }),
@@ -393,19 +328,8 @@ export class OnDemandMessagesPipeline {
     const currentUserMatch = findCurrentUserMessage(sourceMessages);
     const currentUserText = currentUserMatch?.text;
 
-    const estimatorInfo = {
-      id: ON_DEMAND_TOKEN_ESTIMATOR_ID,
-      model: this.params.model,
-      provider: this.params.provider,
-    } as const;
-    const estimator = createOnDemandTokenEstimator(estimatorInfo);
-    const estimate = (content: string) =>
-      estimateOnDemandTokensWithFallback(content, estimator).tokens;
-    const budgetConfig = resolveOnDemandBudgetConfig(
-      this.params.onDemand?.budget,
-      this.params.onDemand?.maxTokens,
-    );
-    const activeToolContracts = estimateActiveToolContracts(this.params, estimator);
+    const estimate = (content: string) => estimateTokenCount(content);
+    const activeToolContracts = estimateActiveToolContracts(this.params);
 
     const suppliedRetrieval = currentUserText ? this.params.onDemand?.retrieval : undefined;
     const retrieval = currentUserText
@@ -457,25 +381,9 @@ export class OnDemandMessagesPipeline {
             candidate.entry.relevance >= ON_DEMAND_FIRST_TURN_RELEVANCE),
       )
       .map((candidate) => candidate.entry);
-    const fixedTokens = {
-      activeToolContracts,
-      bootstrapTools: estimate(JSON.stringify(bootstrapToolSet.tools)),
-      currentUserMessage: currentUserText ? estimate(currentUserText) : 0,
-      protocol: estimate(ON_DEMAND_PROTOCOL_CONTENT),
-      userPrompt: estimate(rawSystemRole),
-    };
-
     const protocol = currentUserText
       ? measure('OnDemandSuffix', () =>
           buildOnDemandProtocol({
-            budget: {
-              estimator,
-              estimatorInfo,
-              fixedTokens,
-              maxDynamicTokens: budgetConfig.dynamicTokens,
-              maxTokens: budgetConfig.totalTokens,
-              reserveTokens: budgetConfig.reserveTokens,
-            },
             currentUserMessage: {
               content: currentUserText,
               ...(sourceMessages[currentUserMatch.index].id && {
@@ -488,18 +396,6 @@ export class OnDemandMessagesPipeline {
           }),
         )
       : undefined;
-    const budgetMetadata = toBudgetMetadata(
-      protocol?.budget ??
-        planOnDemandBudget({
-          entries: [],
-          estimator,
-          estimatorInfo,
-          fixedTokens,
-          maxDynamicTokens: budgetConfig.dynamicTokens,
-          maxTokens: budgetConfig.totalTokens,
-          reserveTokens: budgetConfig.reserveTokens,
-        }),
-    );
     const appendedMessages = protocol?.appendedMessages ?? [];
 
     const conversationMessages = sourceMessages.map(toOpenAIMessage);
@@ -508,7 +404,10 @@ export class OnDemandMessagesPipeline {
       ...conversationMessages,
       ...(appendedMessages as readonly OpenAIChatMessage[]),
     ];
-    const dynamicEntries = buildDynamicEntryMetadata(dynamicCandidates, budgetMetadata);
+    const dynamicEntries = buildDynamicEntryMetadata(
+      dynamicCandidates,
+      new Set(appendedMessages.map((message) => message.metadata.entryKey)),
+    );
     const messageSegments = buildMessageSegments({
       appendedMessages,
       currentUserSourceIndex: currentUserMatch?.index ?? -1,
@@ -530,27 +429,23 @@ export class OnDemandMessagesPipeline {
       (total, segment) => total + segment.estimatedTokens,
       0,
     );
+    const dynamicTokens = messageSegments
+      .filter((segment) => segment.source === 'dynamic_suffix')
+      .reduce((total, segment) => total + segment.estimatedTokens, 0);
     const tokens: OnDemandTokenMetadata = {
-      bootstrapTools: budgetMetadata.fixedBreakdown.bootstrapTools,
-      budgetTotal: budgetMetadata.totalTokens,
-      dynamic: budgetMetadata.totalTokens - budgetMetadata.fixedTokens,
-      fixed: budgetMetadata.fixedTokens,
-      max: budgetMetadata.maxTokens,
+      activeToolContracts,
+      bootstrapTools: estimate(JSON.stringify(bootstrapToolSet.tools)),
+      currentUserMessage: currentUserText ? estimate(currentUserText) : 0,
+      dynamic: dynamicTokens,
       messageTotal,
-      reserve: budgetMetadata.reserveTokens,
-      reserveUsed: budgetMetadata.reserveUsedTokens,
       stableSystem: messageSegments[0]?.estimatedTokens ?? 0,
     };
     const includedRetrievalCount = dynamicEntries.filter(
       (entry) => retrievalEntryKeys.has(entry.key) && entry.included,
     ).length;
-    const degradedRetrievalCount = dynamicEntries.filter(
-      (entry) => retrievalEntryKeys.has(entry.key) && entry.decision === 'degraded',
-    ).length;
     const onDemandContext = buildOnDemandMetadata({
       bootstrapTools,
       bootstrapToolCount: bootstrapToolSet.enabledToolIds.length,
-      budget: budgetMetadata,
       candidateConflicts: dynamicCandidateMerge.conflicts,
       currentUserHash: protocol?.currentUserMessageHash,
       dynamicEntries,
@@ -559,7 +454,6 @@ export class OnDemandMessagesPipeline {
       ...(retrieval && {
         retrieval: {
           ...retrieval.metadata,
-          degradedCount: degradedRetrievalCount,
           includedCount: includedRetrievalCount,
         },
       }),

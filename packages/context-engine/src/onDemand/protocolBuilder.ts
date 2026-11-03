@@ -10,6 +10,7 @@ import type {
 } from '@lobechat/types';
 import {
   BuiltinToolManifestSchema,
+  compareOnDemandDynamicEntries,
   isOnDemandBootstrapApiAllowed,
   ON_DEMAND_BOOTSTRAP_ALLOWLIST,
   ON_DEMAND_BOOTSTRAP_IDENTIFIERS,
@@ -18,7 +19,6 @@ import {
 } from '@lobechat/types';
 
 import { ON_DEMAND_BOOTSTRAP_MANIFESTS } from './bootstrapManifests';
-import { planOnDemandBudget } from './budgetPlanner';
 import { hashContent } from './canonical';
 import { renderOnDemandContextMessageContent } from './rendering';
 
@@ -314,16 +314,6 @@ const buildAppendedMessages = (
         content,
         id: `on-demand-${entryHash}`,
         metadata: Object.freeze({
-          ...(entry.degradedFrom && {
-            degradation: Object.freeze({
-              estimatedTokens: entry.estimatedTokens,
-              key: entry.key,
-              originalContentHash: entry.degradedFrom.originalContentHash,
-              originalEstimatedTokens: entry.degradedFrom.originalEstimatedTokens,
-              reason: entry.degradedFrom.reason,
-              recoveryRef: entry.degradedFrom.recoveryRef,
-            }),
-          }),
           entryHash,
           entryKey: entry.key,
           estimatedTokens: entry.estimatedTokens,
@@ -342,9 +332,9 @@ const buildAppendedMessages = (
 /**
  * Builds only the dynamic suffix. `currentUserMessage` is passed through
  * unchanged and appended messages carry an explicit post-current-message
- * position; no system or first-user message is accepted or produced. This is
- * a strict low-level contract: the messages pipeline skips calling it when the
- * request has no textual current user turn.
+ * position; no system or first-user message is accepted or produced. Every
+ * supplied entry is appended in deterministic order, independent of its token
+ * estimate or the model's context window.
  */
 export const buildOnDemandProtocol = (input: OnDemandProtocolBuildInput): OnDemandProtocol => {
   if (input.currentUserMessage.role !== 'user') {
@@ -356,19 +346,10 @@ export const buildOnDemandProtocol = (input: OnDemandProtocolBuildInput): OnDema
     throw new Error(prefixValidation.errors.join('\n'));
   }
 
-  const budget = planOnDemandBudget({
-    entries: input.entries,
-    estimator: input.budget.estimator,
-    estimatorInfo: input.budget.estimatorInfo,
-    fixedTokens: input.budget.fixedTokens,
-    maxDynamicTokens: input.budget.maxDynamicTokens,
-    maxTokens: input.budget.maxTokens,
-    reserveTokens: input.budget.reserveTokens,
-  });
-  const appendedMessages = buildAppendedMessages(budget.selected);
+  const sortedEntries = [...input.entries].sort(compareOnDemandDynamicEntries);
+  const appendedMessages = buildAppendedMessages(sortedEntries);
   const protocolWithoutHash = {
     appendedMessages,
-    budget,
     currentUserMessage: input.currentUserMessage,
     currentUserMessageHash: hashContent(input.currentUserMessage),
     stablePrefix: input.stablePrefix,

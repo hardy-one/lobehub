@@ -26,8 +26,7 @@ const isSkillStoreReachable = (params: MessagesEngineParams): boolean =>
  * Message-owned context cannot be reconstructed from top-level engine params.
  * Keep it in the dynamic suffix so the user's row remains byte-identical while
  * preserving selections and turn-local skill-import routing. Historical
- * selections remain eligible but are optional and lower priority, so the
- * shared budget can summarize or omit them under pressure.
+ * selections remain eligible but sort after the current turn's selection.
  */
 export const collectOnDemandMessageContextCandidates = (input: {
   currentUserMessage: string;

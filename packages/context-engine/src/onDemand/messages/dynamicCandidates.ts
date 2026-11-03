@@ -85,7 +85,7 @@ export const createOnDemandDynamicCandidate = ({
 });
 
 /**
- * Merge candidate groups before budget planning. A duplicate key keeps the
+ * Merge candidate groups before suffix assembly. A duplicate key keeps the
  * candidate that would win normal dynamic ordering, so one malformed or
  * colliding producer cannot make the whole request fail. Differing payloads
  * are recorded by hash for trace diagnosis.
@@ -726,7 +726,7 @@ const collectAdditionalContextCandidates = (
 /**
  * Converts every legacy injector input into an explicit dynamic candidate.
  * Only relevance-qualified cards are eligible for the first-turn suffix;
- * bodies and manuals are retained as deferred candidates.
+ * bodies and manuals remain deferred behind their bootstrap capability.
  */
 export const collectOnDemandDynamicCandidates = (
   params: MessagesEngineParams,

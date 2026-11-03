@@ -1,9 +1,4 @@
-import type {
-  OnDemandDynamicEntry,
-  OnDemandDynamicFloor,
-  OnDemandDynamicKind,
-  OnDemandResolvedEntryClass,
-} from './types';
+import type { OnDemandDynamicEntry, OnDemandDynamicKind } from './types';
 import { ON_DEMAND_BOOTSTRAP_ALLOWLIST, ON_DEMAND_DYNAMIC_KINDS } from './types';
 
 /**
@@ -32,30 +27,6 @@ export const ON_DEMAND_KIND_RANK: Readonly<Record<OnDemandDynamicKind, number>> 
   >,
 );
 
-const HARD_FLOOR_BY_KIND: Partial<Record<OnDemandDynamicKind, OnDemandDynamicFloor>> = {
-  pending_action: 'pending_action',
-  safety: 'safety',
-  tool_contract: 'active_tool_contract',
-};
-
-export const isOnDemandFloorValidForKind = (
-  kind: OnDemandDynamicKind,
-  floor: OnDemandDynamicFloor,
-): boolean => HARD_FLOOR_BY_KIND[kind] === floor;
-
-export const resolveOnDemandEntryFloor = (
-  entry: Pick<OnDemandDynamicEntry, 'floor' | 'kind'>,
-): OnDemandDynamicFloor | undefined => HARD_FLOOR_BY_KIND[entry.kind] ?? entry.floor;
-
-export const isOnDemandHardFloorEntry = (
-  entry: Pick<OnDemandDynamicEntry, 'floor' | 'kind'>,
-): boolean => resolveOnDemandEntryFloor(entry) !== undefined;
-
-export const resolveOnDemandEntryClass = (
-  entry: Pick<OnDemandDynamicEntry, 'floor' | 'kind' | 'required'>,
-): OnDemandResolvedEntryClass =>
-  entry.required || isOnDemandHardFloorEntry(entry) ? 'protected' : 'degradable';
-
 export const isOnDemandBootstrapApiAllowed = (identifier: string, apiName: string): boolean => {
   const allowedApis: readonly string[] | undefined =
     ON_DEMAND_BOOTSTRAP_ALLOWLIST[identifier as keyof typeof ON_DEMAND_BOOTSTRAP_ALLOWLIST];
@@ -66,22 +37,15 @@ export const isOnDemandBootstrapApiAllowed = (identifier: string, apiName: strin
 const compareStrings = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
- * Deterministic priority ordering. Protected entries always sort first, then
+ * Deterministic priority ordering. Required entries always sort first, then
  * explicit priority/relevance, then stable content-derived tie breakers.
  */
 export const compareOnDemandDynamicEntries = (
   a: OnDemandDynamicEntry,
   b: OnDemandDynamicEntry,
 ): number => {
-  const classDelta =
-    Number(resolveOnDemandEntryClass(b) === 'protected') -
-    Number(resolveOnDemandEntryClass(a) === 'protected');
-  if (classDelta !== 0) return classDelta;
-
-  const floorDelta =
-    (resolveOnDemandEntryFloor(a) === undefined ? 1 : 0) -
-    (resolveOnDemandEntryFloor(b) === undefined ? 1 : 0);
-  if (floorDelta !== 0) return floorDelta;
+  const requiredDelta = Number(b.required) - Number(a.required);
+  if (requiredDelta !== 0) return requiredDelta;
 
   const priorityDelta = b.priority - a.priority;
   if (priorityDelta !== 0) return priorityDelta;

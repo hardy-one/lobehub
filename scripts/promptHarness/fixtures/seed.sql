@@ -43,19 +43,6 @@ VALUES
     'private'
   ),
   (
-    'agt_T105BUDGET01',
-    'T105 Budget-pressure harness',
-    'T105 budget-pressure control prompt.',
-    'user_agent_testing_001',
-    'gpt-4o',
-    'openai',
-    '[]'::jsonb,
-    '{"toolMode":"agent","promptMode":"full","contextMode":"on-demand","selfIteration":{"enabled":false},"enableAgentMode":true,"enableStreaming":true,"enableContextCompression":false,"enableHistoryCount":false,"enableFollowUpChips":false}'::jsonb,
-    '{}'::jsonb,
-    '[]'::jsonb,
-    'private'
-  ),
-  (
     'agt_T106UI01',
     'T106 intervention UI harness',
     'T106 intervention UI control prompt.',
@@ -76,19 +63,6 @@ VALUES
     'gpt-4o',
     'openai',
     '[]'::jsonb,
-    '{"toolMode":"agent","promptMode":"full","contextMode":"on-demand","selfIteration":{"enabled":false},"enableAgentMode":true,"enableStreaming":true,"enableContextCompression":false,"enableHistoryCount":false,"enableFollowUpChips":false}'::jsonb,
-    '{}'::jsonb,
-    '[]'::jsonb,
-    'private'
-  ),
-  (
-    'agt_T106PROTECTED01',
-    'T106 protected-budget harness',
-    'SAFETY RULE T106: destructive deployment is forbidden without two reviewers.',
-    'user_agent_testing_001',
-    'gpt-4o',
-    'openai',
-    '["lobe-calculator"]'::jsonb,
     '{"toolMode":"agent","promptMode":"full","contextMode":"on-demand","selfIteration":{"enabled":false},"enableAgentMode":true,"enableStreaming":true,"enableContextCompression":false,"enableHistoryCount":false,"enableFollowUpChips":false}'::jsonb,
     '{}'::jsonb,
     '[]'::jsonb,
@@ -132,30 +106,6 @@ ON CONFLICT (id) DO UPDATE SET
   total_line_count = EXCLUDED.total_line_count,
   updated_at = now();
 
-INSERT INTO documents
-  (id, title, description, content, file_type, filename, total_char_count, total_line_count, source, source_type, user_id)
-VALUES
-  (
-    'doc_t105_budget_pressure',
-    'T105 Budget Pressure Document',
-    repeat('T105_BUDGET_PRESSURE release rollback deployment low relevance memory ', 1200),
-    'Budget pressure fixture content.',
-    'markdown',
-    't105-budget-pressure.md',
-    length('Budget pressure fixture content.'),
-    1,
-    'agent',
-    'agent',
-    'user_agent_testing_001'
-  )
-ON CONFLICT (id) DO UPDATE SET
-  title = EXCLUDED.title,
-  description = EXCLUDED.description,
-  content = EXCLUDED.content,
-  total_char_count = EXCLUDED.total_char_count,
-  total_line_count = EXCLUDED.total_line_count,
-  updated_at = now();
-
 INSERT INTO agent_documents
   (id, user_id, agent_id, document_id, access_self, policy_load, policy_load_format)
 VALUES
@@ -175,24 +125,6 @@ VALUES
     'doc_t105_long_doc',
     31,
     'disabled',
-    'raw'
-  ),
-  (
-    'a1050000-0000-4000-8000-000000000003',
-    'user_agent_testing_001',
-    'agt_T105BUDGET01',
-    'doc_t105_budget_pressure',
-    31,
-    'always',
-    'raw'
-  ),
-  (
-    'a1060000-0000-4000-8000-000000000004',
-    'user_agent_testing_001',
-    'agt_T106PROTECTED01',
-    'doc_t105_budget_pressure',
-    31,
-    'always',
     'raw'
   )
 ON CONFLICT (id) DO UPDATE SET

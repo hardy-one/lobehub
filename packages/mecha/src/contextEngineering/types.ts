@@ -24,7 +24,6 @@ import type { AgentIdentityContext } from '@lobechat/prompts';
 import type {
   AgentContextMode,
   ExpertiseContextSnapshot,
-  OnDemandBudgetConfig,
   OnDemandDocumentCard,
   OnDemandRetrievalBatch,
   OnDemandToolCard,
@@ -93,11 +92,8 @@ export interface ContextRunSnapshot {
   historySummary?: string;
   initialContext?: RuntimeInitialContext;
   messages: UIChatMessage[];
-  /** On-demand dynamic-suffix budget and server retrieval facts. */
+  /** Server retrieval facts used by the on-demand dynamic suffix. */
   onDemand?: {
-    budget?: Partial<OnDemandBudgetConfig>;
-    /** Legacy total-only override; new callers should pass `budget`. */
-    maxTokens?: number;
     retrieval?: OnDemandRetrievalBatch;
   };
   stepContext?: RuntimeStepContext;

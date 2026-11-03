@@ -332,9 +332,8 @@ export const retrieveOnDemandContext = (input: {
           ...(candidate.sourceVersion && { sourceVersion: candidate.sourceVersion }),
         }),
         relevance,
-        // Relevance keeps unrelated constraints out of the turn. A relevant
-        // constraint still wins the optional ordering, but it must not turn an
-        // unbounded memory table into a hard-floor overflow.
+        // Relevance keeps unrelated constraints out of the turn. Relevant
+        // constraints use normal dynamic ordering and never bypass that gate.
         required: false,
         source: candidate.source,
       }),

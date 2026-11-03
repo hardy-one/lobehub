@@ -5,40 +5,6 @@ export const ON_DEMAND_PROTOCOL_ID = 'lobe-on-demand-context';
 export const ON_DEMAND_PROTOCOL_VERSION = '1';
 
 /**
- * T93's first-turn allocation: 15,500 tokens of usable context plus a
- * 4,500-token reserve, for a 20,000-token request ceiling. Runtime
- * configuration may override these values, but they have one source here.
- */
-export const ON_DEMAND_DEFAULT_BUDGET = Object.freeze({
-  dynamicTokens: 15_500,
-  reserveTokens: 4_500,
-  totalTokens: 20_000,
-});
-
-export interface OnDemandBudgetConfig {
-  /** Usable dynamic-suffix allocation before the reserve is touched. */
-  readonly dynamicTokens: number;
-  /** Capacity intentionally kept unspent by normal first-turn selection. */
-  readonly reserveTokens: number;
-  /** Hard ceiling for the complete on-demand request assembly. */
-  readonly totalTokens: number;
-}
-
-export interface OnDemandTokenEstimatorDescriptor {
-  /** Stable estimator identity recorded in trace metadata. */
-  readonly id: string;
-  readonly model: string;
-  readonly provider: string;
-}
-
-/**
- * Deterministic estimator shared by candidate construction, retrieval, fixed
- * floors, and the budget planner. Callers may inject a test/fallback estimator,
- * but production uses the same tokenx estimator as the rest of the harness.
- */
-export type OnDemandTokenEstimator = (content: string) => number;
-
-/**
  * The bootstrap surface is intentionally closed. Adding an API here is a
  * protocol change: the stable prefix may only expose these native APIs.
  */
@@ -124,8 +90,6 @@ export const ON_DEMAND_DYNAMIC_KINDS = [
 
 export type OnDemandDynamicKind = (typeof ON_DEMAND_DYNAMIC_KINDS)[number];
 
-export type OnDemandDynamicFloor = 'active_tool_contract' | 'pending_action' | 'safety';
-
 export type OnDemandSourceType =
   'agent' | 'document' | 'memory' | 'runtime' | 'skill' | 'system' | 'tool' | 'user';
 
@@ -157,17 +121,6 @@ export interface OnDemandProvenance {
   readonly sourceVersion?: string;
 }
 
-export type OnDemandDegradationReason = 'budget_exceeded' | 'estimator_failed' | 'low_relevance';
-
-export interface OnDemandEntryDegradation {
-  readonly originalContentHash: string;
-  readonly originalEstimatedTokens: number;
-  readonly reason: OnDemandDegradationReason;
-  /** Stable locator for reloading the full source; never embeds source text. */
-  readonly recoveryRef: string;
-  readonly strategy: 'summary_card';
-}
-
 /**
  * A dynamic context item. Dynamic items are never allowed to become part of
  * the stable prefix and are only rendered as messages after the current user
@@ -175,157 +128,19 @@ export interface OnDemandEntryDegradation {
  */
 export interface OnDemandDynamicEntry {
   readonly content: string;
-  /**
-   * A deterministic summary used only when the full optional item does not fit.
-   * The planner never substitutes this for a protected item.
-   */
-  readonly degradedContent?: string;
-  readonly degradedFrom?: OnDemandEntryDegradation;
   readonly estimatedTokens: number;
-  readonly floor?: OnDemandDynamicFloor;
   /** Stable identity within one retrieval batch. */
   readonly key: string;
   readonly kind: OnDemandDynamicKind;
   readonly priority: number;
   readonly provenance: OnDemandProvenance;
-  /** Source locator exposed to the model when an item is degraded. */
-  readonly recoveryRef?: string;
   readonly relevance: number;
-  /** Required entries are never dropped by the budget planner. */
+  /** Required entries bypass the first-turn relevance gate. */
   readonly required: boolean;
   readonly source: OnDemandSource;
 }
 
-export interface OnDemandFixedTokenFloors {
-  /** Full native contracts already active for this step, excluding bootstrap. */
-  readonly activeToolContracts?: number;
-  readonly bootstrapTools: number;
-  readonly currentUserMessage: number;
-  readonly protocol: number;
-  readonly userPrompt: number;
-}
-
-export interface OnDemandBudgetPlanInput {
-  readonly entries: readonly OnDemandDynamicEntry[];
-  readonly estimator?: OnDemandTokenEstimator;
-  readonly estimatorInfo?: OnDemandTokenEstimatorDescriptor;
-  readonly fixedTokens: OnDemandFixedTokenFloors;
-  /** Dynamic-suffix cap. Defaults to `maxTokens` for legacy callers. */
-  readonly maxDynamicTokens?: number;
-  readonly maxTokens: number;
-  /** Capacity kept unspent unless protected floors need it. */
-  readonly reserveTokens?: number;
-}
-
-export type OnDemandBudgetDropReason =
-  'budget_exceeded' | 'empty' | 'estimator_failed' | 'low_relevance';
-
-export interface OnDemandBudgetDrop {
-  readonly entry: OnDemandDynamicEntry;
-  readonly reason: OnDemandBudgetDropReason;
-}
-
-export interface OnDemandBudgetDegradation {
-  readonly degradedEntry: OnDemandDynamicEntry;
-  readonly entry: OnDemandDynamicEntry;
-  readonly reason: OnDemandDegradationReason;
-}
-
-export type OnDemandBudgetEntryStatus = 'degraded' | 'included' | 'omitted';
-
-export interface OnDemandBudgetDecisionItem {
-  readonly estimatedTokens: number;
-  readonly key: string;
-  readonly kind: OnDemandDynamicKind;
-  readonly originalEstimatedTokens?: number;
-  readonly reason?: OnDemandBudgetDropReason | OnDemandDegradationReason;
-  readonly status: OnDemandBudgetEntryStatus;
-}
-
-export type OnDemandBudgetStatus = 'hard_floor_overflow' | 'within_budget';
-
-export interface OnDemandBudgetDecision {
-  readonly availableDynamicTokens: number;
-  readonly decisions: readonly OnDemandBudgetDecisionItem[];
-  readonly degraded: readonly OnDemandBudgetDegradation[];
-  readonly dropped: readonly OnDemandBudgetDrop[];
-  readonly estimator: OnDemandTokenEstimatorDescriptor;
-  readonly estimatorFailureCount: number;
-  readonly fixedBreakdown: OnDemandFixedTokenBreakdown;
-  readonly fixedTokens: number;
-  readonly hardFloorOverflowTokens: number;
-  readonly hardFloorTokens: number;
-  readonly hash: string;
-  readonly maxDynamicTokens: number;
-  readonly maxTokens: number;
-  readonly reserveTokens: number;
-  readonly reserveUsedTokens: number;
-  readonly selected: readonly OnDemandDynamicEntry[];
-  readonly selectedOptionalTokens: number;
-  readonly status: OnDemandBudgetStatus;
-  readonly totalTokens: number;
-}
-
-export interface OnDemandFixedTokenBreakdown {
-  readonly activeToolContracts: number;
-  readonly bootstrapTools: number;
-  readonly currentUserMessage: number;
-  readonly protocol: number;
-  readonly total: number;
-  readonly userPrompt: number;
-}
-
-export interface OnDemandBudgetDropMetadata {
-  readonly key: string;
-  readonly reason: OnDemandBudgetDropReason;
-}
-
-export interface OnDemandBudgetDegradationMetadata {
-  readonly estimatedTokens: number;
-  readonly key: string;
-  readonly originalContentHash: string;
-  readonly originalEstimatedTokens: number;
-  readonly reason: OnDemandDegradationReason;
-  readonly recoveryRef: string;
-}
-
-export interface OnDemandBudgetDecisionMetadata {
-  readonly estimatedTokens: number;
-  readonly key: string;
-  readonly kind: OnDemandDynamicKind;
-  readonly originalEstimatedTokens?: number;
-  readonly reason?: OnDemandBudgetDropReason | OnDemandDegradationReason;
-  readonly status: OnDemandBudgetEntryStatus;
-}
-
-/**
- * Trace-safe budget record. It exposes the planner's decision without copying
- * dynamic entry bodies into request metadata.
- */
-export interface OnDemandBudgetMetadata {
-  readonly availableDynamicTokens: number;
-  readonly decisions: readonly OnDemandBudgetDecisionMetadata[];
-  readonly degraded: readonly OnDemandBudgetDegradationMetadata[];
-  readonly dropped: readonly OnDemandBudgetDropMetadata[];
-  readonly estimator: OnDemandTokenEstimatorDescriptor;
-  readonly estimatorFailureCount: number;
-  readonly fixedBreakdown: OnDemandFixedTokenBreakdown;
-  readonly fixedTokens: number;
-  readonly hardFloorOverflowTokens: number;
-  readonly hardFloorTokens: number;
-  readonly hash: string;
-  readonly maxDynamicTokens: number;
-  readonly maxTokens: number;
-  readonly reserveTokens: number;
-  readonly reserveUsedTokens: number;
-  readonly selectedKeys: readonly string[];
-  readonly selectedOptionalTokens: number;
-  readonly status: OnDemandBudgetStatus;
-  readonly totalTokens: number;
-}
-
-export type OnDemandDynamicEntryDropReason =
-  OnDemandBudgetDropReason | 'first_turn_body_deferred' | 'low_relevance';
+export type OnDemandDynamicEntryDropReason = 'first_turn_body_deferred' | 'low_relevance';
 
 /**
  * Reviewer-facing record of every dynamic candidate considered for a request.
@@ -333,16 +148,12 @@ export type OnDemandDynamicEntryDropReason =
  * loadable through their bootstrap capability.
  */
 export interface OnDemandDynamicEntryMetadata {
-  readonly decision: OnDemandBudgetEntryStatus;
-  readonly degradation?: OnDemandBudgetDegradationMetadata;
-  /** Normalized reason the candidate was omitted or degraded for this request. */
-  readonly degradeReason?: OnDemandDynamicEntryDropReason;
+  /** Why this candidate was not included in this request's suffix. */
   readonly dropReason?: OnDemandDynamicEntryDropReason;
   readonly estimatedTokens: number;
   readonly included: boolean;
   readonly key: string;
   readonly kind: OnDemandDynamicKind;
-  readonly originalEstimatedTokens?: number;
   readonly priority: number;
   readonly provenance: OnDemandProvenance;
   readonly relevance: number;
@@ -405,14 +216,13 @@ export interface OnDemandActivatedToolBundleMetadata {
 }
 
 export interface OnDemandTokenMetadata {
+  /** Full native contracts already active for this step, excluding bootstrap. */
+  readonly activeToolContracts: number;
   readonly bootstrapTools: number;
-  readonly budgetTotal: number;
+  readonly currentUserMessage: number;
+  /** Measured size of the appended dynamic suffix. */
   readonly dynamic: number;
-  readonly fixed: number;
-  readonly max: number;
   readonly messageTotal: number;
-  readonly reserve: number;
-  readonly reserveUsed: number;
   readonly stableSystem: number;
 }
 
@@ -423,7 +233,6 @@ export interface OnDemandTokenMetadata {
 export interface OnDemandContextMetadata {
   readonly bootstrapToolIds: readonly OnDemandBootstrapIdentifier[];
   readonly bootstrapTools: readonly OnDemandBootstrapToolMetadata[];
-  readonly budget: OnDemandBudgetMetadata;
   readonly candidateConflicts?: readonly OnDemandDynamicCandidateConflictMetadata[];
   readonly contextMode: 'on-demand';
   readonly currentUserMessageHash?: string;
@@ -459,7 +268,6 @@ export interface OnDemandUserMessage {
 }
 
 export interface OnDemandAppendedMessageMetadata {
-  readonly degradation?: OnDemandBudgetDegradationMetadata;
   readonly entryHash: string;
   readonly entryKey: string;
   readonly estimatedTokens: number;
@@ -480,7 +288,6 @@ export interface OnDemandAppendedMessage {
 
 export interface OnDemandProtocol {
   readonly appendedMessages: readonly OnDemandAppendedMessage[];
-  readonly budget: OnDemandBudgetDecision;
   readonly currentUserMessage: OnDemandUserMessage;
   readonly currentUserMessageHash: string;
   readonly hash: string;
@@ -488,7 +295,6 @@ export interface OnDemandProtocol {
 }
 
 export interface OnDemandProtocolBuildInput {
-  readonly budget: Omit<OnDemandBudgetPlanInput, 'entries'>;
   readonly currentUserMessage: OnDemandUserMessage;
   readonly entries: readonly OnDemandDynamicEntry[];
   readonly stablePrefix: OnDemandStablePrefix;
@@ -680,5 +486,3 @@ export interface OnDemandBootstrapValidationFailure {
 
 export type OnDemandBootstrapValidationResult =
   OnDemandBootstrapValidationFailure | OnDemandBootstrapValidationSuccess;
-
-export type OnDemandResolvedEntryClass = 'degradable' | 'protected';

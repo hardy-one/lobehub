@@ -3,7 +3,6 @@ import type { AgentIdentityContext, FileContent, KnowledgeBaseInfo } from '@lobe
 import type {
   AgentContextMode,
   ExpertiseContextSnapshot,
-  OnDemandBudgetConfig,
   OnDemandContextMetadata,
   OnDemandDocumentCard,
   OnDemandRetrievalBatch,
@@ -250,15 +249,8 @@ export interface MessagesEngineParams {
    * processor pipeline byte-for-byte unchanged.
    */
   contextMode?: AgentContextMode;
-  /** First-turn dynamic suffix limits. */
+  /** Inputs for the first-turn on-demand dynamic suffix. */
   onDemand?: {
-    /** Shared total/dynamic/reserve budget for the on-demand assembly. */
-    budget?: Partial<OnDemandBudgetConfig>;
-    /**
-     * Legacy total-only override. Kept for callers that predate the shared
-     * config; it maps to `{ totalTokens, dynamicTokens, reserveTokens: 0 }`.
-     */
-    maxTokens?: number;
     /** Server/user-memory retrieval facts ranked by the shared service. */
     retrieval?: OnDemandRetrievalBatch;
   };

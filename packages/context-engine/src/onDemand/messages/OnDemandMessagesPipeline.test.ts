@@ -227,14 +227,6 @@ describe('OnDemandMessagesPipeline', () => {
     expect(result.metadata.stablePrefixHash).toMatch(/^sha256:/);
     expect(result.metadata.rawSystemRoleHash).toBe(hashContent(SYSTEM_ROLE));
     expect(result.metadata.bootstrapToolIds).toEqual(ON_DEMAND_BOOTSTRAP_IDENTIFIERS);
-    expect(result.metadata.onDemandContext?.budget).toMatchObject({
-      availableDynamicTokens: expect.any(Number),
-      dropped: expect.any(Array),
-      maxTokens: expect.any(Number),
-      selectedKeys: expect.arrayContaining(['skill:setup-skill:content']),
-      status: 'within_budget',
-      totalTokens: expect.any(Number),
-    });
     const contextMetadata = result.metadata.onDemandContext!;
     expect(contextMetadata.messageSegments.map(({ index, source }) => ({ index, source }))).toEqual(
       [
@@ -265,11 +257,10 @@ describe('OnDemandMessagesPipeline', () => {
       ]),
     );
     expect(contextMetadata.tokens).toMatchObject({
+      activeToolContracts: expect.any(Number),
       bootstrapTools: expect.any(Number),
-      budgetTotal: contextMetadata.budget.totalTokens,
+      currentUserMessage: expect.any(Number),
       dynamic: expect.any(Number),
-      fixed: contextMetadata.budget.fixedTokens,
-      max: contextMetadata.budget.maxTokens,
       messageTotal: contextMetadata.messageSegments.reduce(
         (total, segment) => total + segment.estimatedTokens,
         0,
@@ -335,10 +326,9 @@ describe('OnDemandMessagesPipeline', () => {
     );
   });
 
-  it('keeps only budgeted discovery cards and protected manual activation entries', async () => {
+  it('keeps relevant discovery cards alongside manual activation entries', async () => {
     const params = createParams({
       messages: [message({ content: 'deploy release charts', id: 'u1', role: 'user' })],
-      onDemand: { maxTokens: 0 },
       selectedSkills: [
         {
           content: 'selected deploy body',
@@ -365,16 +355,10 @@ describe('OnDemandMessagesPipeline', () => {
     );
 
     expect(includedSkillEntries.map((entry) => entry.key)).toEqual(
-      expect.arrayContaining(['skill:deploy:card', 'skill:deploy:content']),
+      expect.arrayContaining(['skill:deploy:card', 'skill:deploy:content', 'skill:charts:card']),
     );
-    expect(includedSkillEntries.every((entry) => entry.required)).toBe(true);
     expect(entries).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          dropReason: 'budget_exceeded',
-          included: false,
-          key: 'skill:charts:card',
-        }),
         expect.objectContaining({
           dropReason: 'first_turn_body_deferred',
           included: false,
@@ -610,7 +594,6 @@ describe('OnDemandMessagesPipeline', () => {
       ),
     ).toEqual([]);
     expect(result.metadata.onDemandContext?.retrieval).toMatchObject({
-      degradedCount: 0,
       hitCount: 0,
       includedCount: 0,
       mode: 'none',
@@ -627,10 +610,9 @@ describe('OnDemandMessagesPipeline', () => {
     ).toEqual([]);
   });
 
-  it('keeps explicit constraints while omitting lower-priority suggestions first', async () => {
+  it('keeps explicit constraints and lower-priority suggestions without token-based omission', async () => {
     const params = createParams({
       onDemand: {
-        budget: { dynamicTokens: 120, reserveTokens: 0, totalTokens: 5_000 },
         retrieval: {
           candidates: [
             retrievalCandidate({
@@ -652,27 +634,22 @@ describe('OnDemandMessagesPipeline', () => {
 
     const result = await processOnDemandMessages(params);
     const appended = result.messages.slice(1 + params.messages.length);
+    const retrievalEntries = result.metadata.dynamicEntries?.filter((entry) =>
+      entry.key.startsWith('retrieval:'),
+    );
 
-    expect(appended).toHaveLength(1);
     expect(appended[0].content).toContain('<user_constraint');
     expect(appended[0].content).toContain('rollback enabled');
-    expect(appended[0].content).not.toContain('Deployment suggestion');
+    expect(appended.map((entry) => entry.content).join('\n')).toContain('Deployment suggestion');
     expect(result.metadata.onDemandContext?.retrieval).toMatchObject({
-      degradedCount: 0,
       hitCount: 2,
-      includedCount: 1,
+      includedCount: 2,
     });
-    expect(result.metadata.dynamicEntries).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          decision: 'omitted',
-          key: 'retrieval:unapproved_suggestion:suggestion',
-        }),
-      ]),
-    );
+    expect(retrievalEntries).toHaveLength(2);
+    expect(retrievalEntries?.every((entry) => entry.included)).toBe(true);
   });
 
-  it('keeps selected tool contracts verbatim under one shared budget', async () => {
+  it('keeps every selected tool contract verbatim without a shared token cap', async () => {
     const firstContract = `<tool_contract identifier="release-tool">\n${'release schema '.repeat(
       120,
     )}\n</tool_contract>`;
@@ -695,9 +672,6 @@ describe('OnDemandMessagesPipeline', () => {
       messages: [
         message({ content: 'release and rollback this deployment', id: 'u1', role: 'user' }),
       ],
-      onDemand: {
-        budget: { dynamicTokens: 5_000, reserveTokens: 0, totalTokens: 5_000 },
-      },
       selectedTools: [
         { content: firstContract, identifier: 'release-tool', name: 'Release' },
         { content: secondContract, identifier: 'rollback-tool', name: 'Rollback' },
@@ -715,21 +689,12 @@ describe('OnDemandMessagesPipeline', () => {
     const result = await processOnDemandMessages(params);
     const appended = result.messages.slice(1 + params.messages.length);
     const appendedText = appended.map((entry) => entry.content).join('\n');
-    const budget = result.metadata.onDemandContext?.budget;
+    const tokens = result.metadata.onDemandContext?.tokens;
 
     expect(result.messages[1].content).toBe('release and rollback this deployment');
     expect(appendedText).toContain(firstContract);
     expect(appendedText).toContain(secondContract);
-    expect(budget?.fixedBreakdown.activeToolContracts).toBeGreaterThan(0);
-    expect(budget?.estimator).toEqual({
-      id: 'tokenx',
-      model: 'gpt-4',
-      provider: 'openai',
-    });
-    expect(budget?.selectedKeys).toEqual(
-      expect.arrayContaining(['tool:release-tool:manual', 'tool:rollback-tool:manual']),
-    );
-    expect(budget?.totalTokens).toBeLessThanOrEqual(5_000);
+    expect(tokens?.activeToolContracts).toBeGreaterThan(0);
     expect(
       result.metadata.dynamicEntries?.filter((entry) => entry.kind === 'tool_contract'),
     ).toEqual(
@@ -738,15 +703,14 @@ describe('OnDemandMessagesPipeline', () => {
         expect.objectContaining({ key: 'tool:rollback-tool:manual', required: true }),
       ]),
     );
-    expect(JSON.stringify(budget)).not.toContain('release schema');
-    expect(JSON.stringify(budget)).not.toContain('rollback schema');
+    expect(JSON.stringify(tokens)).not.toContain('release schema');
+    expect(JSON.stringify(tokens)).not.toContain('rollback schema');
   });
 
-  it('degrades a low-relevance retrieved memory before an explicit constraint', async () => {
+  it('keeps a low-relevance retrieved memory in full instead of creating a summary card', async () => {
     const params = createParams({
       messages: [message({ content: 'deploy with rollback', id: 'u1', role: 'user' })],
       onDemand: {
-        budget: { dynamicTokens: 1_400, reserveTokens: 0, totalTokens: 2_400 },
         retrieval: {
           candidates: [
             retrievalCandidate({
@@ -776,24 +740,20 @@ describe('OnDemandMessagesPipeline', () => {
       'Deployment must retain the rollback gate.',
     );
     expect(lowMemory).toMatchObject({
-      decision: 'degraded',
       included: true,
       key: 'retrieval:memory:low-memory',
     });
-    expect(lowMemory?.degradation).toMatchObject({
-      reason: 'low_relevance',
-      originalContentHash: expect.stringMatching(/^sha256:/),
-      recoveryRef: expect.stringContaining('memory:low-memory'),
-    });
-    expect(appended.map((entry) => entry.content).join('\n')).toContain('&lt;on_demand_summary');
-    expect(result.metadata.onDemandContext?.budget.totalTokens).toBeLessThanOrEqual(2_400);
+    expect(lowMemory?.dropReason).toBeUndefined();
+    expect(appended.map((entry) => entry.content).join('\n')).toContain(
+      'Low relevance deployment note',
+    );
+    expect(appended.map((entry) => entry.content).join('\n')).not.toContain('on_demand_summary');
     expect(result.metadata.onDemandContext?.retrieval).toMatchObject({
-      degradedCount: 1,
       includedCount: 2,
     });
   });
 
-  it('omits unrelated skill and document cards before protected context under pressure', async () => {
+  it('defers unrelated skill and document cards through the relevance gate, not a token cap', async () => {
     const params = createParams({
       agentDocuments: [
         {
@@ -804,9 +764,6 @@ describe('OnDemandMessagesPipeline', () => {
         },
       ],
       messages: [message({ content: 'deploy the release safely', id: 'u1', role: 'user' })],
-      onDemand: {
-        budget: { dynamicTokens: 1_400, reserveTokens: 0, totalTokens: 2_400 },
-      },
       selectedSkills: [
         {
           content: 'Release deployment must pass health checks.',
@@ -849,10 +806,9 @@ describe('OnDemandMessagesPipeline', () => {
         }),
       ]),
     );
-    expect(result.metadata.onDemandContext?.budget.totalTokens).toBeLessThanOrEqual(2_400);
   });
 
-  it('keeps a large shared retrieval batch within budget without exposing bodies in metadata', async () => {
+  it('includes a large retrieval batch without truncation or exposing bodies in metadata', async () => {
     const privateBodyMarker = 'PRIVATE_MEMORY_BODY';
     const candidates = Array.from({ length: 40 }, (_, index) =>
       retrievalCandidate({
@@ -866,31 +822,29 @@ describe('OnDemandMessagesPipeline', () => {
         message({ content: '  keep this deployment request exact  ', id: 'u1', role: 'user' }),
       ],
       onDemand: {
-        budget: { dynamicTokens: 1_600, reserveTokens: 0, totalTokens: 1_600 },
         retrieval: { candidates, mode: 'vector' },
       },
     });
 
     const result = await processOnDemandMessages(params);
-    const budget = result.metadata.onDemandContext?.budget;
     const retrievalEntries = result.metadata.dynamicEntries?.filter((entry) =>
       entry.key.startsWith('retrieval:'),
     );
 
     expect(result.messages[1].content).toBe('  keep this deployment request exact  ');
-    expect(budget?.totalTokens).toBeLessThanOrEqual(1_600);
     expect(retrievalEntries).toHaveLength(40);
     expect(result.metadata.onDemandContext?.retrieval).toMatchObject({
-      degradedCount: expect.any(Number),
       hitCount: 40,
-      includedCount: expect.any(Number),
+      includedCount: 40,
     });
+    expect(retrievalEntries?.every((entry) => entry.included)).toBe(true);
     expect(
-      retrievalEntries?.some((entry) => entry.decision === 'omitted') ||
-        retrievalEntries?.some((entry) => entry.decision === 'degraded'),
-    ).toBe(true);
+      result.messages
+        .slice(2)
+        .map((entry) => entry.content)
+        .join('\n'),
+    ).toContain(privateBodyMarker);
     expect(JSON.stringify(result.metadata.onDemandContext)).not.toContain(privateBodyMarker);
-    expect(JSON.stringify(budget)).not.toContain('deployment memory deployment memory');
   });
 
   it('transforms compressed group history into a user message before wire serialization', async () => {

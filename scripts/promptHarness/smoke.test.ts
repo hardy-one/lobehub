@@ -25,7 +25,6 @@ describe('prompt harness smoke', () => {
       'baseline-chat',
       'baseline-legacy',
       'baseline-on-demand',
-      'budget-pressure',
       'document',
       'long-document',
       'manual-skill',
@@ -33,7 +32,6 @@ describe('prompt harness smoke', () => {
       'memory-expertise',
       'memory-follow-up',
       'negative-activation',
-      'protected-budget',
       'skill',
       'skill-activation',
       'tool-activation',
@@ -48,7 +46,6 @@ describe('prompt harness smoke', () => {
     expect(getScenario('baseline-legacy').agentId).not.toBe(
       getScenario('baseline-on-demand').agentId,
     );
-    expect(getScenario('budget-pressure').expectation.degradeReasons).toEqual(['budget_exceeded']);
 
     const seed = readFileSync(
       path.join(repoRoot, 'scripts/promptHarness/fixtures/seed.sql'),
@@ -58,8 +55,6 @@ describe('prompt harness smoke', () => {
     expect(seed).toContain('agt_yLie7JpbUr2K');
     expect(seed).toContain('agt_T101LEGACY01');
     expect(seed).toContain('agt_T106CHAT01');
-    expect(seed).toContain('agt_T105BUDGET01');
-    expect(seed).toContain('doc_t105_budget_pressure');
     expect(seed).not.toContain('t100-domain-approved');
     expect(getScenario('memory-expertise').beforeFixturePaths).toEqual([
       'scripts/promptHarness/fixtures/memoryExpertise.sql',

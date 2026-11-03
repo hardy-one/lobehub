@@ -159,8 +159,8 @@ const validateOnDemandTrace = (
       typeof entry.kind === 'string' &&
       typeof entry.source === 'object' &&
       typeof entry.included === 'boolean' &&
-      (entry.included || typeof entry.degradeReason === 'string'),
-  ), 'dynamic entry is missing kind/source/inclusion/degradeReason');
+      (entry.included || typeof entry.dropReason === 'string'),
+  ), 'dynamic entry is missing kind/source/inclusion/dropReason');
   if (scenario.expectation.dynamicKinds?.length) {
     for (const kind of scenario.expectation.dynamicKinds) {
       require(entries.some(
@@ -168,23 +168,19 @@ const validateOnDemandTrace = (
       ), `dynamic entry kind ${kind} was not observed`);
     }
   }
-  if (scenario.expectation.degradeReasons?.length) {
-    for (const reason of scenario.expectation.degradeReasons) {
-      require(entries.some(
-        (entry) => entry.degradeReason === reason,
-      ), `dynamic entry degrade reason ${reason} was not observed`);
-    }
-  }
-
   require(Array.isArray(first.metadata.bootstrapTools), 'bootstrapTools is missing');
   require((first.metadata.bootstrapTools as Array<Record<string, unknown>>).every(
     (tool) => typeof tool.identifier === 'string' && typeof tool.manifestHash === 'string',
   ), 'bootstrap tool metadata is incomplete');
   require(Array.isArray(first.metadata.activatedToolBundles), 'activatedToolBundles is missing');
-  require(first.metadata.tokens && first.metadata.budget, 'token/budget metadata is missing');
-  require(typeof (first.metadata.tokens as Record<string, unknown>).budgetTotal === 'number' &&
-    typeof (first.metadata.budget as Record<string, unknown>).totalTokens ===
-      'number', 'token/budget totals are missing');
+  require(first.metadata.tokens, 'token metadata is missing');
+  const tokens = first.metadata.tokens as Record<string, unknown>;
+  require(typeof tokens.activeToolContracts === 'number' &&
+    typeof tokens.bootstrapTools === 'number' &&
+    typeof tokens.currentUserMessage === 'number' &&
+    typeof tokens.dynamic === 'number' &&
+    typeof tokens.messageTotal === 'number' &&
+    typeof tokens.stableSystem === 'number', 'measured token totals are missing');
   require(!JSON.stringify(first.input?.onDemandContext ?? {}).includes(
     '<on_demand_context ',
   ), 'ordinary context metadata leaked a dynamic message body');
@@ -451,63 +447,6 @@ const validateNegativeActivation = (requests: CapturedRequest[]) => {
   require(!rejected.includes('Result: 2'), 'the unoffered calculator call executed');
 };
 
-const validateProtectedBudget = (
-  requests: CapturedRequest[],
-  trace: Parameters<typeof validateOnDemandTrace>[1],
-  agentPrompt: string,
-) => {
-  require(requests.length >= 2, 'protected-budget capture is incomplete');
-  for (const request of requests) {
-    const system = request.request.messages.find((message) => message.role === 'system');
-    require(system, 'protected-budget request has no system message');
-    require(text(system.content).startsWith(
-      nextReplyLanguageSystemRole(agentPrompt),
-    ), 'protected-budget safety prompt was not byte-exact');
-    require(text(system.content).includes(
-      '<on_demand_context_protocol version="1">',
-    ), 'protected-budget fixed protocol was removed');
-
-    const pendingAssistant = request.request.messages.find(
-      (message) =>
-        message.role === 'assistant' &&
-        (message.tool_calls ?? []).some((call) => call.id === 'call_T106_PROTECTED_PENDING'),
-    );
-    require(pendingAssistant, 'pending action assistant tool call was removed');
-    const pendingCall = pendingAssistant.tool_calls?.find(
-      (call) => call.id === 'call_T106_PROTECTED_PENDING',
-    );
-    require(pendingCall?.function?.arguments?.includes(
-      'T106 PENDING ACTION: approve canary rollout before deployment',
-    ), 'pending action arguments were rewritten or removed');
-    require(toolResult(request, 'call_T106_PROTECTED_PENDING') ===
-      'T106 PENDING ACTION: approve canary rollout before deployment', 'pending action tool result was removed');
-  }
-
-  const firstMetadata = trace.steps?.[0]?.contextEngine?.metadata;
-  require(firstMetadata, 'protected-budget trace step 0 has no metadata');
-  const degraded = (firstMetadata.budget as Record<string, unknown> | undefined)?.degraded as
-    Array<Record<string, unknown>> | undefined;
-  require(degraded?.some(
-    (item) => item.reason === 'budget_exceeded' && String(item.key).startsWith('document:'),
-  ), 'protected-budget document was not degraded first under budget pressure');
-  require(((firstMetadata.dynamicEntries as Array<Record<string, unknown>> | undefined) ?? []).some(
-    (entry) => entry.kind === 'document_card' && entry.decision === 'degraded',
-  ), 'protected-budget document card has no degraded decision');
-
-  const lastMetadata = trace.steps?.findLast((step) => step.contextEngine?.metadata)?.contextEngine
-    ?.metadata;
-  require(lastMetadata, 'protected-budget final step has no metadata');
-  const fixedBreakdown = (lastMetadata.budget as Record<string, unknown> | undefined)
-    ?.fixedBreakdown as Record<string, unknown> | undefined;
-  require(Number(fixedBreakdown?.activeToolContracts) >
-    0, 'active tool contracts were not protected after activation');
-  require(requests
-    .at(-1)
-    ?.toolOrder.includes(
-      'lobe-calculator____calculate',
-    ), 'activated calculator schema is missing from the final request');
-};
-
 const validateSkillAndDocument = (captures: Map<string, CapturedRequest[]>) => {
   const skill = captures.get('skill')?.[0];
   require(skill, 'skill card capture is missing');
@@ -627,7 +566,7 @@ export const verifyHarnessRun = async ({
         validateLegacyTrace(scenarioRun.scenario, trace);
       }
     }
-    return 'Every trace exposes the exact systemRole; on-demand traces expose prefix, segments, entries, bootstrap tools, bundles, budget and tokens; legacy traces have no on-demand envelope.';
+    return 'Every trace exposes the exact systemRole; on-demand traces expose prefix, segments, entries, bootstrap tools, bundles and measured tokens; legacy traces have no on-demand envelope.';
   });
 
   await check('scenario-contracts', () => {
@@ -719,22 +658,6 @@ export const verifyHarnessRun = async ({
     });
   }
 
-  if (captures.has('protected-budget')) {
-    await check('protected-budget', async () => {
-      const scenarioRun = manifest.scenarios.find((run) => run.scenario.id === 'protected-budget');
-      require(scenarioRun, 'protected-budget trace is missing');
-      const trace = await readJson<Parameters<typeof validateOnDemandTrace>[1]>(
-        scenarioRun.tracePath,
-      );
-      validateProtectedBudget(
-        captures.get('protected-budget') ?? [],
-        trace,
-        scenarioRun.scenario.agentPrompt,
-      );
-      return 'Budget pressure degraded the large document first while preserving the exact safety prompt, pending action and its arguments, and the activated calculator contract.';
-    });
-  }
-
   if (
     captures.has('skill') &&
     captures.has('document') &&
@@ -762,15 +685,14 @@ export const verifyHarnessRun = async ({
       );
       const metadata = activatedStep?.contextEngine?.metadata;
       require(metadata, 'activated tool step is missing');
-      const budget = metadata.budget as Record<string, unknown> | undefined;
-      const fixedBreakdown = budget?.fixedBreakdown as Record<string, unknown> | undefined;
-      require(Number(fixedBreakdown?.activeToolContracts) >
-        0, 'active tool schema is not counted as protected fixed context');
+      const tokens = metadata.tokens as Record<string, unknown> | undefined;
+      require(Number(tokens?.activeToolContracts) >
+        0, 'active tool schema token measurement is missing');
       const request = captures.get('tool-activation')?.at(-1);
       require(request, 'post-activation request is missing');
       require(request.toolOrder.length >
         BOOTSTRAP_TOOLS.length, 'post-activation request has no native tool schemas');
-      return `After activation the next request exposes ${request.toolOrder.length - BOOTSTRAP_TOOLS.length} native schemas in addition to bootstrap tools, while ${String(fixedBreakdown.activeToolContracts)} active-tool tokens remain in protected fixed context.`;
+      return `After activation the next request exposes ${request.toolOrder.length - BOOTSTRAP_TOOLS.length} native schemas in addition to bootstrap tools; the measured active-tool contract estimate is ${String(tokens?.activeToolContracts)} tokens.`;
     });
   }
 

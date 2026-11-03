@@ -31,6 +31,11 @@ import { useUserStore } from '@/store/user';
 
 import { buildRunLifecycle } from '../lifecycle/buildRunLifecycle';
 import { type RunScope } from '../lifecycle/types';
+import {
+  createApprovedToolCall,
+  getAddressableApprovalDecisions,
+  refreshApprovedToolCall,
+} from './approvalResume';
 import { readClientRunMessages } from './ensureFullHistoryForClientRun';
 import {
   shouldUseConfiguredGatewayResume as resolveConfiguredGatewayResume,
@@ -680,13 +685,7 @@ export class ConversationControlActionImpl {
     // 1. Get tool message and verify it exists
     const toolMessage = dbMessageSelectors.getDbMessageById(toolMessageId)(this.#get());
     if (!toolMessage) return;
-    // The stored plugin columns deliberately omit the call id (it lives on
-    // `tool_call_id`), but the runtime replays the approved call by id. Without
-    // this merge a client-runtime approval cannot match its pending tool row.
-    let approvedToolCall = {
-      ...toolMessage.plugin,
-      id: toolMessage.tool_call_id,
-    };
+    let approvedToolCall = createApprovedToolCall(toolMessage.plugin, toolMessage.tool_call_id);
 
     // Create an operation to carry the context for optimistic updates
     // This ensures optimistic updates use the correct agentId/topicId
@@ -754,11 +753,10 @@ export class ConversationControlActionImpl {
           prepareLegacy: async () => {
             if (!options?.editedArguments) return;
             await options.onLegacyEditFallback?.();
-            approvedToolCall = {
-              ...(dbMessageSelectors.getDbMessageById(toolMessageId)(this.#get())?.plugin ??
-                approvedToolCall),
-              id: toolMessage.tool_call_id,
-            };
+            const refreshedToolMessage = dbMessageSelectors.getDbMessageById(toolMessageId)(
+              this.#get(),
+            );
+            approvedToolCall = refreshApprovedToolCall(approvedToolCall, refreshedToolMessage);
           },
           resumeLegacy: async (params) => {
             await this.#get().executeGatewayAgent({
@@ -939,15 +937,9 @@ export class ConversationControlActionImpl {
     // Drop anything that can't be addressed: an optimistic row (`tmp_`) has no
     // server identity yet, and a tool message without `tool_call_id` can't be
     // matched to its pending call.
-    const decisions = toolMessageIds
-      .map((toolMessageId) => {
-        const toolMessage = dbMessageSelectors.getDbMessageById(toolMessageId)(this.#get());
-        const toolCallId = toolMessage?.tool_call_id;
-        return toolCallId && !toolMessageId.startsWith('tmp_')
-          ? { decision: 'approved' as const, parentMessageId: toolMessageId, toolCallId }
-          : undefined;
-      })
-      .filter((decision) => !!decision);
+    const decisions = getAddressableApprovalDecisions(toolMessageIds, (toolMessageId) =>
+      dbMessageSelectors.getDbMessageById(toolMessageId)(this.#get()),
+    );
 
     if (decisions.length === 0) {
       console.warn('[approveAllToolCalls][server] no addressable pending tools; skipping resume');

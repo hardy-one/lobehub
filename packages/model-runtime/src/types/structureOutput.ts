@@ -21,6 +21,12 @@ export interface GenerateObjectSchema {
 }
 
 export interface GenerateObjectPayload {
+  /**
+   * The provider's “使用 Responses API 规范” switch, as the caller resolved it. Same field the
+   * chat payload carries, so a structured-output call follows the provider's wire protocol
+   * instead of the model-name default alone.
+   */
+  apiMode?: ChatStreamPayload['apiMode'];
   messages: GenerateObjectMessage[];
   model: string;
   reasoning_effort?: ChatStreamPayload['reasoning_effort'];

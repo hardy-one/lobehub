@@ -1,7 +1,7 @@
 import type { ChatModelCard } from '@lobechat/types';
 import type { AiFullModelCard } from 'model-bank';
-import type { ClientOptions } from 'openai';
 import type OpenAI from 'openai';
+import type { ClientOptions } from 'openai';
 import type { Stream } from 'openai/streaming';
 
 import type {
@@ -31,6 +31,13 @@ import type { DecideConfig } from './decide';
 export type LobeClientOptions = Omit<ClientOptions, 'apiKey'> & {
   apiKey?: string;
   modelSdkType?: 'openai' | 'openai-responses';
+  /**
+   * The provider's “使用 Responses API 规范” switch, for the calls that carry no
+   * `apiMode` of their own. A chat payload always does — `services/chat` sets it in the
+   * browser, `ServerLLMTransport` on the server — but structured output is requested
+   * without one by dozens of server callers, so the runtime remembers the answer here.
+   */
+  responseApiMode?: 'chatCompletion' | 'responses';
 };
 export type ConstructorOptions<T extends Record<string, any> = any> = LobeClientOptions &
   ModelIdMappingOptions &

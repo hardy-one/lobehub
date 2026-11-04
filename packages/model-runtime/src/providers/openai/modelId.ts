@@ -67,39 +67,90 @@ const GPT_MODEL_PATTERN =
  *
  * @see https://github.com/lobehub/lobehub/issues/17831
  */
-const CODEX_MODEL_PREFIX = 'codex/';
-const OPENROUTER_OPENAI_MODEL_PREFIX = 'openai/';
+const CODEX_NAMESPACE = 'codex';
+const OPENROUTER_NAMESPACE = 'openai';
+const CODEX_MODEL_PREFIX = `${CODEX_NAMESPACE}/`;
+const OPENROUTER_OPENAI_MODEL_PREFIX = `${OPENROUTER_NAMESPACE}/`;
+
+/** What an OpenAI model id may start with, whichever namespace it arrives inside. */
+const OPENAI_MODEL_NAME = /^(?:gpt-|o[134]|codex|computer-use)/;
+
+/**
+ * A gateway hands out ids namespaced by the slot it serves the model from: magpie's `group/`
+ * and `auto/` routing groups, its `remote-magpie/` namespace in front of those, a vendor's own
+ * slot (`workbuddy/`). The model behind such an id still answers on the protocol its own name
+ * implies, so the namespaces have to come off before any rule can read it.
+ *
+ * The search stops at the first segment that names an OpenAI model, or at `codex` / `openai`
+ * when one appears further in (`remote-magpie/codex/gpt-6.1-sol`). Those two are kept: they
+ * carry a source of their own (`codex`) or are OpenRouter's convention for the same slug
+ * (`openai`), which routes through Chat Completions despite its OpenAI-looking name.
+ */
+const stripGatewayNamespace = (normalized: string): string => {
+  const segments = normalized.split('/');
+  if (segments.length < 2) return normalized;
+
+  const [first] = segments;
+  if (first === CODEX_NAMESPACE || first === OPENROUTER_NAMESPACE) return normalized;
+
+  for (let index = 1; index < segments.length; index++) {
+    const segment = segments[index];
+    if (segment === CODEX_NAMESPACE || segment === OPENROUTER_NAMESPACE) {
+      return segments.slice(index).join('/');
+    }
+    if (OPENAI_MODEL_NAME.test(segment)) return segments.slice(index).join('/');
+  }
+
+  return normalized;
+};
+
+/**
+ * The id a static rule set is keyed by: the gateway namespaces off, `codex/` off, `openai/`
+ * kept — the same split {@link extractOpenAIModelId} makes, so an id either source names its
+ * model the same way here.
+ */
+const staticRuleModelId = (model: string): string => {
+  const stripped = stripGatewayNamespace(model.trim().toLowerCase());
+
+  return stripped.startsWith(CODEX_MODEL_PREFIX)
+    ? stripped.slice(CODEX_MODEL_PREFIX.length)
+    : stripped;
+};
 
 const normalizeOpenAIModelId = (model: string): string | undefined => {
   const normalized = model.trim().toLowerCase();
   if (!normalized) return;
 
-  if (normalized.startsWith(CODEX_MODEL_PREFIX)) {
-    return normalized.slice(CODEX_MODEL_PREFIX.length);
+  const stripped = stripGatewayNamespace(normalized);
+
+  if (stripped.startsWith(CODEX_MODEL_PREFIX)) {
+    return stripped.slice(CODEX_MODEL_PREFIX.length);
   }
 
-  return normalized.startsWith(OPENROUTER_OPENAI_MODEL_PREFIX)
-    ? normalized.slice(OPENROUTER_OPENAI_MODEL_PREFIX.length)
-    : normalized;
+  return stripped.startsWith(OPENROUTER_OPENAI_MODEL_PREFIX)
+    ? stripped.slice(OPENROUTER_OPENAI_MODEL_PREFIX.length)
+    : stripped;
 };
 
 const extractOpenAIModelId = (model: string): ExtractedOpenAIModelId | undefined => {
   const normalized = model.trim().toLowerCase();
   if (!normalized) return;
 
-  if (normalized.startsWith(CODEX_MODEL_PREFIX)) {
-    return { normalizedModelId: normalized.slice(CODEX_MODEL_PREFIX.length), source: 'codex' };
+  const stripped = stripGatewayNamespace(normalized);
+
+  if (stripped.startsWith(CODEX_MODEL_PREFIX)) {
+    return { normalizedModelId: stripped.slice(CODEX_MODEL_PREFIX.length), source: 'codex' };
   }
 
-  if (normalized.startsWith(OPENROUTER_OPENAI_MODEL_PREFIX)) {
+  if (stripped.startsWith(OPENROUTER_OPENAI_MODEL_PREFIX)) {
     return {
-      normalizedModelId: normalized.slice(OPENROUTER_OPENAI_MODEL_PREFIX.length),
+      normalizedModelId: stripped.slice(OPENROUTER_OPENAI_MODEL_PREFIX.length),
       source: 'openRouter',
     };
   }
 
-  if (normalized.startsWith('gpt-')) {
-    return { normalizedModelId: normalized, source: 'openai' };
+  if (stripped.startsWith('gpt-')) {
+    return { normalizedModelId: stripped, source: 'openai' };
   }
 };
 
@@ -181,7 +232,7 @@ export const isGPTResponsesModel = (model: string): boolean => {
 };
 
 export const isResponsesAPIModel = (model: string): boolean =>
-  responsesAPIModels.has(model) || isGPTResponsesModel(model);
+  responsesAPIModels.has(staticRuleModelId(model)) || isGPTResponsesModel(model);
 
 export const isGPTProResponsesModel = (model: string): boolean => {
   const parsed = isResponsesEndpointGPTModel(model);

@@ -145,6 +145,28 @@ describe('isGPTResponsesModel', () => {
     expect(isGPTResponsesModel('gpt-35-turbo-16k')).toBe(false);
     expect(isResponsesAPIModel('gpt-35-turbo-16k')).toBe(false);
   });
+
+  describe('gateway namespaces', () => {
+    it('should read through a routing group or vendor slot in front of the model name', () => {
+      expect(isResponsesAPIModel('group/gpt-5.6-luna')).toBe(true);
+      expect(isResponsesAPIModel('auto/gpt-5.6-luna')).toBe(true);
+      expect(isResponsesAPIModel('workbuddy/gpt-6-luna')).toBe(true);
+      expect(isResponsesAPIModel('group/codex-mini-latest')).toBe(true);
+    });
+
+    it('should read a nested namespace whose inner segment names the source', () => {
+      expect(isResponsesAPIModel('remote-magpie/group/gpt-6.1-sol')).toBe(true);
+      expect(isResponsesAPIModel('remote-magpie/codex/gpt-6.1-sol')).toBe(true);
+    });
+
+    it('should keep ids whose own name says chat completions off the Responses endpoint', () => {
+      expect(isResponsesAPIModel('group/gpt-35-turbo-16k')).toBe(false);
+      expect(isResponsesAPIModel('openai/gpt-5.6-terra')).toBe(false);
+      expect(isResponsesAPIModel('remote-magpie/group/moss')).toBe(false);
+      expect(isResponsesAPIModel('group/qwen3.8-flash')).toBe(false);
+      expect(isResponsesAPIModel('group/deepseek-v4.1-flash')).toBe(false);
+    });
+  });
 });
 
 describe('isGPTProResponsesModel', () => {

@@ -514,17 +514,52 @@ export class GeneralChatAgent implements Agent {
   }
 
   /**
+   * Read the provider-measured baseline recorded for the previous LLM call of
+   * this operation: `{ msgId, tokens, model }` — the assistant message the call
+   * produced and the input tokens the provider charged for it.
+   *
+   * The measurement covers everything sent up to that message, so the messages
+   * from that message onward are the only part still to be estimated. A
+   * baseline measured by another model is ignored: a different tokenizer makes
+   * the number incomparable.
+   */
+  private resolveCompressionBaseline(
+    state: AgentState,
+    currentModel?: string,
+  ): { msgId: string; tokens: number } | undefined {
+    const baseline = state.metadata?.compressionBaseline as
+      { model?: string; msgId?: string; tokens?: number } | undefined;
+    if (!baseline || typeof baseline.msgId !== 'string') return undefined;
+    if (typeof baseline.tokens !== 'number' || baseline.tokens <= 0) return undefined;
+    if (currentModel && baseline.model && baseline.model !== currentModel) return undefined;
+
+    return { msgId: baseline.msgId, tokens: baseline.tokens };
+  }
+
+  /**
    * Fit the upcoming request under the compression threshold. Runs whether or
    * not compression is enabled: the attachment preview plan keeps attachment
    * text within the room the conversation leaves even when the conversation
    * itself is never compressed.
+   *
+   * A pure estimate is unreliable here in both directions: this runs on the
+   * runtime working set, whose tool results are still the untrimmed originals,
+   * and it cannot see the preamble the context engine assembles afterwards
+   * (system role, memory, tool schemas). The provider-measured baseline of the
+   * last call is preferred whenever this operation has one.
    */
   private checkContextBudget(messages: any[], tools: any[] | undefined, state: AgentState) {
     // Mirror RuntimeExecutors.callLlm: when state.forceFinish is set, the
     // executor strips all tools via buildStepToolDelta (deactivatedToolIds: ['*']),
     // so they must not count against the compression budget either — otherwise
     // we'd burn an extra summarization pass on tool tokens that won't be sent.
+    const baseline = this.resolveCompressionBaseline(
+      state,
+      state.modelRuntimeConfig?.model ?? this.config.modelRuntimeConfig?.model,
+    );
+
     return shouldCompress(messages, {
+      ...(baseline && { baselineLastMsgId: baseline.msgId, baselineTokens: baseline.tokens }),
       maxWindowToken: this.config.compressionConfig?.maxWindowToken,
       thresholdRatio: this.getCompressionThresholdRatio(messages),
       tools: state.forceFinish ? undefined : tools,

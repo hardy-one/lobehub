@@ -184,4 +184,111 @@ describe('tokenCounter', () => {
       expect(withTools.currentTokenCount).toBeGreaterThan(withoutTools.currentTokenCount);
     });
   });
+
+  describe('provider-measured baseline', () => {
+    const options = { driftMultiplier: 1, maxWindowToken: 100_000, thresholdRatio: 0.6 };
+
+    it('should count from the measured baseline plus the messages after the anchor', () => {
+      // The estimate alone reads ~4 chars/token: this set looks far smaller
+      // than the 70k the provider measured, and the decision must not depend on
+      // the estimate for the part the provider already counted.
+      const messages = [
+        mkMsg({ content: 'old question', id: 'anchor', role: 'assistant' }),
+        mkMsg({ content: 'new question', id: 'u1', role: 'user' }),
+      ];
+
+      const result = shouldCompress(messages, {
+        ...options,
+        baselineLastMsgId: 'anchor',
+        baselineTokens: 70_000,
+      });
+
+      expect(result.needsCompression).toBe(true);
+      expect(result.currentTokenCount).toBeGreaterThanOrEqual(70_000);
+      expect(result.currentTokenCount).toBeLessThan(70_100);
+    });
+
+    it('should stay under the threshold when the measured baseline is below it', () => {
+      const messages = [
+        mkMsg({ content: 'old question', id: 'anchor', role: 'assistant' }),
+        mkMsg({ content: 'new question', id: 'u1', role: 'user' }),
+      ];
+
+      const result = shouldCompress(messages, {
+        ...options,
+        baselineLastMsgId: 'anchor',
+        baselineTokens: 40_000,
+      });
+
+      expect(result.needsCompression).toBe(false);
+    });
+
+    it('should ignore a baseline whose anchor message is gone', () => {
+      const messages = [mkMsg({ content: 'compressed summary', id: 'summary', role: 'user' })];
+
+      const result = shouldCompress(messages, {
+        ...options,
+        baselineLastMsgId: 'anchor',
+        baselineTokens: 70_000,
+      });
+
+      // Falls back to the estimate of the visible set, which is far below 60k.
+      expect(result.needsCompression).toBe(false);
+      expect(result.currentTokenCount).toBeLessThan(1000);
+    });
+
+    it('should count only the group children after the anchor child', () => {
+      // A turn is rehydrated into an assistantGroup container; the measured
+      // request covered up to the first child, so the remaining children are
+      // the part still to be estimated.
+      const messages = [
+        mkMsg({
+          children: [
+            { content: 'first call', id: 'anchor', role: 'assistant' },
+            { content: 'x'.repeat(200_000), id: 'later', role: 'assistant' },
+          ],
+          content: '',
+          id: 'group-1',
+          role: 'assistantGroup',
+        } as any),
+      ];
+
+      const result = shouldCompress(messages, {
+        ...options,
+        baselineLastMsgId: 'anchor',
+        baselineTokens: 10_000,
+        maxWindowToken: 20_000,
+      });
+
+      // threshold = 12k; 10k baseline leaves 2k of room, and the child after the
+      // anchor alone is far larger than that.
+      expect(result.needsCompression).toBe(true);
+      expect(result.currentTokenCount).toBeGreaterThan(12_000);
+    });
+
+    it('should not charge tool schemas twice in baseline mode', () => {
+      const messages = [
+        mkMsg({ content: 'old question', id: 'anchor', role: 'assistant' }),
+        mkMsg({ content: 'new question', id: 'u1', role: 'user' }),
+      ];
+      const bigTool = {
+        function: {
+          description: 'x'.repeat(400_000),
+          name: 'big_tool',
+          parameters: { properties: {}, type: 'object' },
+        },
+        type: 'function',
+      };
+
+      const result = shouldCompress(messages, {
+        ...options,
+        baselineLastMsgId: 'anchor',
+        baselineTokens: 10_000,
+        tools: [bigTool],
+      });
+
+      // The measured request already included those schemas.
+      expect(result.needsCompression).toBe(false);
+    });
+  });
 });

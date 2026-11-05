@@ -6,6 +6,22 @@ import type { UIChatMessage } from '@lobechat/types';
  */
 export interface TokenCountOptions {
   /**
+   * Id of the last message covered by `baselineTokens`. The anchor must still
+   * be present in `messages`; otherwise the whole set is estimated instead.
+   */
+  baselineLastMsgId?: string;
+  /**
+   * Provider-measured input tokens of an earlier completed request on this
+   * conversation. When it is available the estimate becomes
+   *
+   *     baselineTokens + estimate(messages after the anchor)
+   *
+   * so the history portion carries no estimation error, and the parts the
+   * estimate cannot see at all (system role, memory, tool schemas assembled
+   * after the budget is taken) are already inside the measured value.
+   */
+  baselineTokens?: number;
+  /**
    * Optional drift multiplier override forwarded to {@link countContextTokens}.
    * Default {@link DEFAULT_DRIFT_MULTIPLIER} (1.25).
    */
@@ -83,8 +99,64 @@ export function shouldCompress(
   options: TokenCountOptions = {},
 ): CompressionCheckResult {
   const threshold = getCompressionThreshold(options);
+  const drift = options.driftMultiplier ?? DEFAULT_DRIFT_MULTIPLIER;
+
+  // Baseline path: the provider already measured this conversation up to the
+  // anchor, including the preamble (system role, memory, tool schemas) that the
+  // estimate below cannot see. Only what was added since then is estimated.
+  //
+  // The anchor is the assistant message the measured request produced. The
+  // runtime rehydrates a turn into an `assistantGroup` container, so the anchor
+  // may sit among its children; in that case the delta starts after that child
+  // instead of after the whole group.
+  const { baselineLastMsgId, baselineTokens } = options;
+  const anchorIndex =
+    typeof baselineTokens === 'number' &&
+    baselineTokens > 0 &&
+    typeof baselineLastMsgId === 'string'
+      ? messages.findIndex(
+          (message) =>
+            message.id === baselineLastMsgId ||
+            (message.children ?? []).some((child: any) => child?.id === baselineLastMsgId),
+        )
+      : -1;
+
+  if (anchorIndex >= 0 && typeof baselineTokens === 'number') {
+    const anchor = messages[anchorIndex] as UIChatMessage & { children?: any[] };
+    const childIndex = (anchor.children ?? []).findIndex(
+      (child: any) => child?.id === baselineLastMsgId,
+    );
+    const remainingChildren = childIndex >= 0 ? anchor.children!.slice(childIndex + 1) : undefined;
+    // An emptied container would otherwise be counted for its (empty) content,
+    // so it is dropped instead of kept as a shell.
+    const deltaMessages = (
+      childIndex < 0
+        ? messages.slice(anchorIndex + 1)
+        : [
+            ...(remainingChildren!.length > 0 ? [{ ...anchor, children: remainingChildren }] : []),
+            ...messages.slice(anchorIndex + 1),
+          ]
+    ) as UIChatMessage[];
+
+    // Same attachment fitting as the estimate path, against the room the
+    // measured baseline leaves. Tool schemas are already inside the baseline,
+    // so they are not counted again here.
+    const plan = planAttachmentPreviews({
+      driftMultiplier: drift,
+      messages: deltaMessages,
+      threshold: Math.max(0, threshold - baselineTokens),
+    });
+
+    return {
+      attachmentPreviewFileIds: [...plan.previewFileIds],
+      currentTokenCount: baselineTokens + plan.accounting.rawTotal,
+      needsCompression: baselineTokens + plan.accounting.adjustedTotal > threshold,
+      threshold,
+    };
+  }
+
   const { accounting, previewFileIds } = planAttachmentPreviews({
-    driftMultiplier: options.driftMultiplier ?? DEFAULT_DRIFT_MULTIPLIER,
+    driftMultiplier: drift,
     messages,
     threshold,
     tools: options.tools,

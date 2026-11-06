@@ -1,3 +1,4 @@
+import { aiProviderSelectors } from '@/store/aiInfra/selectors';
 import { getAiInfraStoreState } from '@/store/aiInfra/store';
 
 import { createPayloadWithKeyVaults } from '../../_auth';
@@ -31,6 +32,21 @@ export const initializeWithClientStore = async ({
    * @file src/services/_auth.ts
    */
   const providerAuthPayload = { ...payload, ...createPayloadWithKeyVaults(provider) };
+  /**
+   * The provider's “使用 Responses API 规范” switch, for the structured-output calls that build
+   * their own payload (`generateObject` has no `apiMode` field from its callers). An unset
+   * switch stays unset here: dropping in the `openai` default would move every model of every
+   * provider onto the Responses endpoint, which only an explicit choice should do.
+   */
+  const enableResponseApi =
+    aiProviderSelectors.providerConfigById(provider)(getAiInfraStoreState())?.config
+      ?.enableResponseApi;
+  const responseApiMode =
+    typeof enableResponseApi === 'boolean'
+      ? enableResponseApi
+        ? ('responses' as const)
+        : ('chatCompletion' as const)
+      : undefined;
   // Providers whose models speak different protocols route per model, so both the
   // provider-sourced sdk type and the explicit user override travel with the client.
   const routingOptions: Record<string, unknown> = {};
@@ -55,6 +71,7 @@ export const initializeWithClientStore = async ({
   return ModelRuntime.initializeWithProvider(runtimeProvider ?? provider, {
     ...commonOptions,
     ...providerAuthPayload,
+    ...(responseApiMode && { responseApiMode }),
     ...payload,
     providerId: provider,
     ...routingOptions,

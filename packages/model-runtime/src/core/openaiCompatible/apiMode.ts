@@ -15,6 +15,10 @@ export interface ShouldUseResponsesAPIParams {
   responseApi?: boolean;
   /** User-specified API mode (highest priority) */
   userApiMode?: string;
+  /** Provider-scoped SDK routing metadata. */
+  modelSdkType?: 'openai' | 'openai-responses';
+  /** Runtime-level default for calls that do not carry an explicit mode. */
+  responseApiMode?: 'chatCompletion' | 'responses';
 }
 
 /**
@@ -34,8 +38,14 @@ export const shouldUseResponsesAPI = (
     context = 'operation',
   } = params;
 
+  const effectiveUserApiMode = userApiMode ?? responseApiMode;
+
   const log = debug(`${logPrefix}:shouldUseResponsesAPI`);
 
+
+  if (modelSdkType) {
+    return modelSdkType === 'openai-responses';
+  }
   // Priority 0: Check built-in Responses API model rules FIRST (highest priority)
   // These models MUST use Responses API regardless of user settings.
   if (model && isResponsesAPIModel(model)) {
@@ -43,35 +53,35 @@ export const shouldUseResponsesAPI = (
     return true;
   }
 
-  // Priority 1: userApiMode is explicitly set to 'chatCompletion' (user disabled the switch)
-  if (userApiMode === 'chatCompletion') {
-    log('using Chat Completions API: userApiMode=%s', userApiMode);
+  // Priority 1: effectiveUserApiMode is explicitly set to 'chatCompletion' (user disabled the switch)
+  if (effectiveUserApiMode === 'chatCompletion') {
+    log('using Chat Completions API: effectiveUserApiMode=%s', effectiveUserApiMode);
     return false;
   }
 
-  // Priority 2: When user enables the switch (userApiMode === 'responses')
+  // Priority 2: When user enables the switch (effectiveUserApiMode === 'responses')
   // Check if useResponseModels is configured - if so, only matching models use Responses API
   // If useResponseModels is not configured, all models use Responses API
-  if (userApiMode === 'responses') {
+  if (effectiveUserApiMode === 'responses') {
     if (model && flagUseResponseModels?.length) {
       const matches = flagUseResponseModels.some((m: string | RegExp) =>
         typeof m === 'string' ? model.includes(m) : (m as RegExp).test(model),
       );
       if (matches) {
         log(
-          'using Responses API: userApiMode=responses and model %s matches useResponseModels',
+          'using Responses API: effectiveUserApiMode=responses and model %s matches useResponseModels',
           model,
         );
         return true;
       }
       log(
-        'using Chat Completions API: userApiMode=responses but model %s does not match useResponseModels',
+        'using Chat Completions API: effectiveUserApiMode=responses but model %s does not match useResponseModels',
         model,
       );
       return false;
     }
     // No useResponseModels configured, use Responses API for all models
-    log('using Responses API: userApiMode=responses (no useResponseModels filter)');
+    log('using Responses API: effectiveUserApiMode=responses (no useResponseModels filter)');
     return true;
   }
 

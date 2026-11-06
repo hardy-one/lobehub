@@ -373,6 +373,54 @@ describe('ModelRuntimeOnClient', () => {
         expect(runtime['_runtime']).toBeInstanceOf(LobeOpenAI);
       });
 
+      describe('provider Responses API switch', () => {
+        const mockProviderConfig = async (provider: string, config: Record<string, unknown>) => {
+          const { useAiInfraStore } = await import('@/store/aiInfra');
+          useAiInfraStore.setState((state) => ({
+            aiProviderRuntimeConfig: {
+              ...state.aiProviderRuntimeConfig,
+              [provider]: { config, keyVaults: { apiKey: 'user-magpie-key' }, settings: {} },
+            },
+          }));
+        };
+
+        const initSpy = () => vi.spyOn(ModelRuntime, 'initializeWithProvider');
+
+        it('should pass the switch on when the provider enabled Responses API', async () => {
+          await mockProviderConfig(ModelProvider.Magpie, { enableResponseApi: true });
+          const initializeSpy = initSpy();
+
+          await initializeWithClientStore({ payload: {}, provider: ModelProvider.Magpie });
+
+          expect(initializeSpy).toHaveBeenCalledWith(
+            ModelProvider.Magpie,
+            expect.objectContaining({ responseApiMode: 'responses' }),
+          );
+        });
+
+        it('should pass the switch off when the provider disabled it', async () => {
+          await mockProviderConfig(ModelProvider.Magpie, { enableResponseApi: false });
+          const initializeSpy = initSpy();
+
+          await initializeWithClientStore({ payload: {}, provider: ModelProvider.Magpie });
+
+          expect(initializeSpy).toHaveBeenCalledWith(
+            ModelProvider.Magpie,
+            expect.objectContaining({ responseApiMode: 'chatCompletion' }),
+          );
+        });
+
+        it('should leave the mode to the model name when the switch was never set', async () => {
+          await mockProviderConfig(ModelProvider.Magpie, {});
+          const initializeSpy = initSpy();
+
+          await initializeWithClientStore({ payload: {}, provider: ModelProvider.Magpie });
+
+          const options = initializeSpy.mock.calls[0][1] as Record<string, unknown>;
+          expect(options.responseApiMode).toBeUndefined();
+        });
+      });
+
       /**
        * The following test cases need to be enforce
        */

@@ -562,6 +562,19 @@ export const initModelRuntimeFromDB = async (
       models.filter((m) => m.config?.sdkType).map((m) => [m.id, m.config!.sdkType]),
     );
   }
+
+  // The provider's Responses API switch, for the structured-output calls that build their own
+  // payload. A chat payload carries `apiMode` per request (browser: `services/chat`, gateway
+  // run: `ServerLLMTransport`), but `generateObject` has no such field from its caller, so the
+  // runtime holds the provider's answer and applies it there.
+  const enableResponseApi = providerConfig?.config?.enableResponseApi;
+  const responseApiMode =
+    typeof enableResponseApi === 'boolean'
+      ? enableResponseApi
+        ? 'responses'
+        : 'chatCompletion'
+      : undefined;
+
   return initModelRuntimeWithUserPayload(
     provider,
     payload,
@@ -569,6 +582,7 @@ export const initModelRuntimeFromDB = async (
       userId,
       workspaceId,
       ...routingOptions,
+      ...(responseApiMode && { responseApiMode }),
       chatCompletion: { localObjectReader: createStorageObjectReader(db, userId, workspaceId) },
     },
     hooks,

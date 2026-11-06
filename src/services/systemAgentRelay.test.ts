@@ -1,9 +1,10 @@
-import { DEFAULT_VERIFY_PLAN_MODEL, DEFAULT_VERIFY_PLAN_PROVIDER } from '@lobechat/business-const';
+import { DEFAULT_VERIFY_PLAN_PROVIDER } from '@lobechat/business-const';
 import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { lambdaClient } from '@/libs/trpc/client';
 import { oneShotRelay } from '@/services/llmRelay';
+import { createServerConfigStore } from '@/store/serverConfig/store';
 import { useUserStore } from '@/store/user';
 
 import { expertiseService } from './expertise';
@@ -59,12 +60,16 @@ describe('system-agent browser entries and the one-shot relay', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(oneShotRelay.run).mockImplementation(async (_provider, request) => request(RELAY));
+    createServerConfigStore().setState({
+      serverConfig: { aiProvider: {}, telemetry: {} },
+    });
     act(() => {
       useUserStore.setState({
         settings: {
           systemAgent: {
             expertise: { enabled: true, model: 'qwen3-1.7b', provider: 'lmstudio' },
             goal: { enabled: true, model: 'qwen3:1.7b', provider: 'ollama' },
+            verify: { enabled: true, model: 'qwen3:1.7b', provider: 'ollama' },
           },
         } as any,
       });
@@ -183,13 +188,14 @@ describe('system-agent browser entries and the one-shot relay', () => {
   });
 
   describe('verify', () => {
-    it('generateCriteria runs on the pinned plan model', async () => {
+    // Criteria / plans are split on the acceptance model, so a device-only
+    // provider behind that slot still needs this tab standing by as the executor.
+    it('generateCriteria stands by for the acceptance model', async () => {
       const params = { goal: 'ship it' };
       await verifyService.generateCriteria(params);
 
-      expect(DEFAULT_VERIFY_PLAN_MODEL).toBeTruthy();
       expect(oneShotRelay.run).toHaveBeenCalledWith(
-        DEFAULT_VERIFY_PLAN_PROVIDER,
+        ['ollama', DEFAULT_VERIFY_PLAN_PROVIDER],
         expect.any(Function),
       );
       expect(lambdaClient.verify.generateCriteria.mutate).toHaveBeenCalledWith(
@@ -198,17 +204,51 @@ describe('system-agent browser entries and the one-shot relay', () => {
       );
     });
 
-    it('generateDraftPlan runs on the pinned plan model', async () => {
+    it('generateDraftPlan stands by for the acceptance model', async () => {
       const params = { goal: 'ship it', operationId: 'op' };
       await verifyService.generateDraftPlan(params);
 
       expect(oneShotRelay.run).toHaveBeenCalledWith(
-        DEFAULT_VERIFY_PLAN_PROVIDER,
+        ['ollama', DEFAULT_VERIFY_PLAN_PROVIDER],
         expect.any(Function),
       );
       expect(lambdaClient.verify.generateDraftPlan.mutate).toHaveBeenCalledWith(
         params,
         RELAY_OPTIONS,
+      );
+    });
+
+    it('falls back to the deployment plan provider when the slot is unset', async () => {
+      act(() => {
+        useUserStore.setState({ settings: { systemAgent: {} } as any });
+      });
+      await verifyService.generateDraftPlan({ goal: 'ship it', operationId: 'op' });
+
+      expect(oneShotRelay.run).toHaveBeenCalledWith(
+        [DEFAULT_VERIFY_PLAN_PROVIDER],
+        expect.any(Function),
+      );
+    });
+
+    // The server resolves the slot as account → deployment `SYSTEM_AGENT=verify=`
+    // → floor, so a deployment that only sets the env still splits on that
+    // model; this tab has to be standing by for it, not just the floor's.
+    it('stands by for the deployment acceptance model too', async () => {
+      act(() => {
+        useUserStore.setState({ settings: { systemAgent: {} } as any });
+        createServerConfigStore().setState({
+          serverConfig: {
+            aiProvider: {},
+            systemAgent: { verify: { model: 'qwen3:1.7b', provider: 'ollama' } },
+            telemetry: {},
+          },
+        });
+      });
+      await verifyService.generateDraftPlan({ goal: 'ship it', operationId: 'op' });
+
+      expect(oneShotRelay.run).toHaveBeenCalledWith(
+        ['ollama', DEFAULT_VERIFY_PLAN_PROVIDER],
+        expect.any(Function),
       );
     });
 

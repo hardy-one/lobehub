@@ -1,0 +1,539 @@
+$ tsrs --noEmit -p tsconfig.type-check.json --checkers 4
+../lobehub-t128/apps/desktop/src/main/controllers/AuthCtr.ts(10,38): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/AuthCtr.ts(12,38): error TS2307: Cannot find module '@/services/gatewayConnectionSrv' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/AuthCtr.ts(13,36): error TS2307: Cannot find module '@/utils/http-headers' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/AuthCtr.ts(14,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/AuthCtr.ts(15,26): error TS2307: Cannot find module '@/utils/net-fetch' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/AuthCtr.ts(16,43): error TS2307: Cannot find module '@/utils/user-agent' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/AuthCtr.ts(37,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/AuthCtr.ts(139,23): error TS18046: 'error' is of type 'unknown'.
+../lobehub-t128/apps/desktop/src/main/controllers/AuthCtr.ts(262,63): error TS18046: 'error' is of type 'unknown'.
+../lobehub-t128/apps/desktop/src/main/controllers/AuthCtr.ts(406,64): error TS18046: 'error' is of type 'unknown'.
+../lobehub-t128/apps/desktop/src/main/controllers/AuthCtr.ts(551,23): error TS18046: 'error' is of type 'unknown'.
+../lobehub-t128/apps/desktop/src/main/controllers/AuthCtr.ts(564,35): error TS7006: Parameter 'error' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/AuvCtr.ts(5,8): error TS2307: Cannot find module '@/services/auvSrv' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/AuvCtr.ts(11,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/BinaryCtr.ts(16,51): error TS2307: Cannot find module '@/core/infrastructure/BinaryManager' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BinaryCtr.ts(17,78): error TS2307: Cannot find module '@/modules/binaries' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BinaryCtr.ts(18,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BinaryCtr.ts(33,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/BinaryCtr.ts(163,54): error TS7006: Parameter 'spec' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserControlCtr.ts(25,78): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserControlCtr.ts(26,27): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserControlCtr.ts(32,8): error TS2307: Cannot find module '@/modules/browser/agentOverlayScript' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserControlCtr.ts(33,36): error TS2307: Cannot find module '@/modules/browser/guestViewport' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserControlCtr.ts(34,52): error TS2307: Cannot find module '@/modules/browser/guestViewport' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserControlCtr.ts(35,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserControlCtr.ts(129,8): error TS7006: Parameter 'image' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserControlCtr.ts(133,8): error TS7006: Parameter 'error' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserControlCtr.ts(308,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(14,34): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(15,87): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(17,41): error TS2307: Cannot find module '@/modules/browser/agentOverlayScript' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(18,43): error TS2307: Cannot find module '@/modules/browser/elementPickerScript' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(22,8): error TS2307: Cannot find module '@/modules/browser/elementPickerScript' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(23,36): error TS2307: Cannot find module '@/modules/browser/guestViewport' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(24,39): error TS2307: Cannot find module '@/modules/browser/importChromeLoginData' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(25,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(93,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(514,49): error TS7006: Parameter '_webContents' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(514,63): error TS7006: Parameter '_permission' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(514,76): error TS7006: Parameter 'callback' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(518,41): error TS7006: Parameter 'event' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(521,48): error TS7006: Parameter 'details' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(521,57): error TS7006: Parameter 'callback' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(571,41): error TS7031: Binding element 'url' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(573,46): error TS7006: Parameter 'error' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(580,45): error TS7006: Parameter '_event' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(580,53): error TS7006: Parameter 'favicons' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(600,38): error TS7006: Parameter '_event' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(600,46): error TS7006: Parameter 'code' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(600,52): error TS7006: Parameter 'description' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(600,65): error TS7006: Parameter 'url' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserSidebarCtr.ts(600,70): error TS7006: Parameter 'isMainFrame' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserWindowsCtr.ts(9,72): error TS2307: Cannot find module '@/appBrowsers' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserWindowsCtr.ts(10,31): error TS2307: Cannot find module '@/utils/ipc' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserWindowsCtr.ts(11,35): error TS2307: Cannot find module '~common/routes' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserWindowsCtr.ts(16,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserWindowsCtr.ts(18,4): error TS1241: Unable to resolve signature of method decorator when called as an expression.
+  Argument of type 'ClassMethodDecoratorContext<BrowserWindowsCtr, () => void> & { name: "toggleMainWindow"; private: false; static: false; }' is not assignable to parameter of type 'string'.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserWindowsCtr.ts(24,4): error TS1241: Unable to resolve signature of method decorator when called as an expression.
+  Argument of type 'ClassMethodDecoratorContext<BrowserWindowsCtr, () => Promise<void>> & { name: "openQuickComposer"; private: false; static: false; }' is not assignable to parameter of type 'string'.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserWindowsCtr.ts(29,4): error TS1241: Unable to resolve signature of method decorator when called as an expression.
+  Argument of type 'ClassMethodDecoratorContext<BrowserWindowsCtr, () => void> & { name: "openQuickChat"; private: false; static: false; }' is not assignable to parameter of type 'string'.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserWindowsCtr.ts(62,23): error TS18046: 'error' is of type 'unknown'.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserWindowsCtr.ts(187,16): error TS18046: 'error' is of type 'unknown'.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserWindowsCtr.ts(234,16): error TS18046: 'error' is of type 'unknown'.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserWindowsCtr.ts(254,16): error TS18046: 'error' is of type 'unknown'.
+../lobehub-t128/apps/desktop/src/main/controllers/BrowserWindowsCtr.ts(271,16): error TS18046: 'error' is of type 'unknown'.
+../lobehub-t128/apps/desktop/src/main/controllers/CliCtr.ts(6,34): error TS2307: Cannot find module '@/modules/cliEmbedding' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/CliCtr.ts(7,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/CliCtr.ts(19,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/CompletionSoundCtr.ts(9,29): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/CompletionSoundCtr.ts(12,30): error TS2307: Cannot find module '@/const/dir' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/CompletionSoundCtr.ts(13,43): error TS2307: Cannot find module '@/modules/completionSound' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/CompletionSoundCtr.ts(14,10): error TS2724: '"@/utils/platform"' has no exported member named 'macOS'. Did you mean 'isMacOS'?
+../lobehub-t128/apps/desktop/src/main/controllers/CompletionSoundCtr.ts(35,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/CompletionSoundCtr.ts(129,33): error TS7031: Binding element 'file' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/CompletionSoundCtr.ts(155,48): error TS2307: Cannot find module '@lobechat/electron-mac-notifications' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/ConnectorOAuthCtr.ts(9,31): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/ConnectorOAuthCtr.ts(11,28): error TS2307: Cannot find module '@/const/dir' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/ConnectorOAuthCtr.ts(12,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/ConnectorOAuthCtr.ts(13,48): error TS2307: Cannot find module '~common/connectorOAuth' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/ConnectorOAuthCtr.ts(26,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/ConnectorOAuthCtr.ts(90,60): error TS7006: Parameter '_wc' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/ConnectorOAuthCtr.ts(90,65): error TS7006: Parameter '_permission' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/ConnectorOAuthCtr.ts(90,78): error TS7006: Parameter 'callback' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/ConnectorOAuthCtr.ts(95,37): error TS2503: Cannot find namespace 'Electron'.
+../lobehub-t128/apps/desktop/src/main/controllers/ConnectorOAuthCtr.ts(120,46): error TS7006: Parameter '_event' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/ConnectorOAuthCtr.ts(120,54): error TS7006: Parameter 'code' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/ConnectorOAuthCtr.ts(120,60): error TS7006: Parameter '_description' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/ConnectorOAuthCtr.ts(120,74): error TS7006: Parameter '_url' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/ConnectorOAuthCtr.ts(120,80): error TS7006: Parameter 'isMainFrame' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/ConnectorOAuthCtr.ts(123,65): error TS7006: Parameter 'event' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/ConnectorOAuthCtr.ts(123,72): error TS7006: Parameter 'data' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/DevtoolsCtr.ts(3,49): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/DevtoolsCtr.ts(5,37): error TS2307: Cannot find module '@/utils/appMetrics' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/DevtoolsCtr.ts(6,61): error TS2307: Cannot find module '@/utils/idleRendererGc' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/DevtoolsCtr.ts(7,31): error TS2307: Cannot find module '@/utils/ipc' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/DevtoolsCtr.ts(8,50): error TS2307: Cannot find module '@/utils/memoryDump' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/DevtoolsCtr.ts(24,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/DevtoolsCtr.ts(60,42): error TS7006: Parameter 'metric' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/DevtoolsCtr.ts(63,61): error TS7006: Parameter 'metric' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/DevtoolsCtr.ts(66,35): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/DevtoolsCtr.ts(66,40): error TS7006: Parameter 'metric' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/DevtoolsCtr.ts(71,48): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/DevtoolsCtr.ts(71,53): error TS7006: Parameter 'metric' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/DevtoolsCtr.ts(73,38): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/DevtoolsCtr.ts(73,43): error TS7006: Parameter 'metric' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/DevtoolsCtr.ts(75,31): error TS7006: Parameter 'metric' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(27,36): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(29,36): error TS2307: Cannot find module '@/modules/cliEmbedding' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(30,31): error TS2307: Cannot find module '@/modules/updater/configs' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(31,43): error TS2307: Cannot find module '@/modules/updater/remoteUpdate' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(32,54): error TS2307: Cannot find module '@/services/auvSrv' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(33,44): error TS2307: Cannot find module '@/services/deviceArchitectureBackfill' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(36,8): error TS2307: Cannot find module '@/services/gatewayConnectionSrv' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(37,35): error TS2307: Cannot find module '@/services/imessageBridgeSrv' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(38,41): error TS2307: Cannot find module '@/utils/heteroExecProcess' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(39,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(40,43): error TS2307: Cannot find module '@/utils/user-agent' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(140,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(202,29): error TS7006: Parameter 'identifier' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(202,41): error TS7006: Parameter 'apiName' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(202,50): error TS7006: Parameter 'args' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(207,28): error TS7006: Parameter 'mcpCall' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(210,31): error TS7006: Parameter 'platform' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(210,41): error TS7006: Parameter 'apiName' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(210,50): error TS7006: Parameter 'payload' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(215,29): error TS7006: Parameter 'request' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(225,24): error TS7006: Parameter 'method' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(225,32): error TS7006: Parameter 'params' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(228,29): error TS7006: Parameter 'info' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(228,35): error TS7006: Parameter 'auth' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(233,36): error TS7006: Parameter 'workspaceId' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(233,49): error TS7006: Parameter 'serverUrl' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(236,36): error TS7006: Parameter 'workspaceId' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(236,49): error TS7006: Parameter 'deviceId' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(236,59): error TS7006: Parameter 'serverUrl' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(333,4): error TS1241: Unable to resolve signature of method decorator when called as an expression.
+  Argument of type 'ClassMethodDecoratorContext<GatewayConnectionCtr, ({ deviceId }: { deviceId?: string | undefined; }) => Promise<boolean>> & { ...; }' is not assignable to parameter of type 'string'.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(1207,31): error TS7006: Parameter 'orphan' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GatewayConnectionCtr.ts(1215,23): error TS7006: Parameter 'pid' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/GitCtr.ts(41,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/HeteroSessionCtr.ts(22,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeteroSessionCtr.ts(65,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentCtr.ts(1,48): error TS2307: Cannot find module '@/modules/heterogeneousAgent/claudeCodeAccounts' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentCtr.ts(2,39): error TS2307: Cannot find module '@/modules/heterogeneousAgent/fileStorePort' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentCtr.ts(17,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentCtr.ts(57,14): error TS2307: Cannot find module '@/modules/heterogeneousAgent/claudeCodeAccountsHost' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(113,51): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(116,66): error TS2307: Cannot find module '@/const/heteroAgent' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(117,26): error TS2307: Cannot find module '@/core/App' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(118,47): error TS2307: Cannot find module '@/modules/binaries' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(119,75): error TS2307: Cannot find module '@/modules/cliEmbedding' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(120,67): error TS2307: Cannot find module '@/modules/heterogeneousAgent' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(124,8): error TS2307: Cannot find module '@/modules/heterogeneousAgent/codexQuota' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(128,8): error TS2307: Cannot find module '@/modules/heterogeneousAgent/fileStorePort' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(132,8): error TS2307: Cannot find module '@/modules/heterogeneousAgent/inflightRunRegistry' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(133,36): error TS2307: Cannot find module '@/modules/heterogeneousAgent/kimiCodeQuota' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(134,38): error TS2307: Cannot find module '@/modules/heterogeneousAgent/lhHeteroExecEnv' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(135,27): error TS2307: Cannot find module '@/modules/heterogeneousAgent/piRpcPool' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(136,44): error TS2307: Cannot find module '@/modules/heterogeneousAgent/providerBindingHost' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(142,8): error TS2307: Cannot find module '@/modules/heterogeneousAgent/providerBindingHost' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(150,8): error TS2307: Cannot find module '@/modules/heterogeneousAgent/providerBindingPort' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(154,8): error TS2307: Cannot find module '@/modules/heterogeneousAgent/types' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(155,31): error TS2307: Cannot find module '@/modules/networkProxy/envBuilder' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(164,8): error TS2307: Cannot find module '@/utils/heteroCliProcess' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(165,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(459,16): error TS7006: Parameter 'key' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(459,21): error TS7006: Parameter 'reason' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(1244,18): error TS2307: Cannot find module '@/modules/heterogeneousAgent/browserMcpTools' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(1249,45): error TS7006: Parameter 'operationId' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(1249,58): error TS7006: Parameter 'apiName' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(1249,67): error TS7006: Parameter 'args' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(1454,16): error TS7006: Parameter 'removedProfiles' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(1458,17): error TS7006: Parameter 'error' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(1468,16): error TS7006: Parameter 'error' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(1582,17): error TS7006: Parameter 'error' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(1687,35): error TS7006: Parameter 'agentType' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(1687,46): error TS7006: Parameter 'input' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(1856,80): error TS2739: Type 'Record<string, string>' is missing the following properties from type 'ProcessEnv': NODE_ENV, NEXT_PUBLIC_DEVELOPER_DEBUG, NEXT_PUBLIC_I18N_DEBUG, NEXT_PUBLIC_I18N_DEBUG_BROWSER, NEXT_PUBLIC_I18N_DEBUG_SERVER
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(3196,29): error TS2304: Cannot find name 'normalizeImage'.
+../lobehub-t128/apps/desktop/src/main/controllers/HeterogeneousAgentImpl.ts(3382,36): error TS7006: Parameter 'event' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/ImessageBridgeCtr.ts(7,35): error TS2307: Cannot find module '@/services/imessageBridgeSrv' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/ImessageBridgeCtr.ts(8,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/ImessageBridgeCtr.ts(16,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/ImessageBridgeCtr.ts(32,33): error TS7006: Parameter 'error' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/LocalDatabaseCtr.ts(10,34): error TS2307: Cannot find module '@/services/LocalDatabaseSrv' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/LocalDatabaseCtr.ts(15,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/LocalFileCtr.ts(94,31): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/LocalFileCtr.ts(96,34): error TS2307: Cannot find module '@/services/contentSearchSrv' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/LocalFileCtr.ts(97,31): error TS2307: Cannot find module '@/services/fileSearchSrv' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/LocalFileCtr.ts(101,8): error TS2307: Cannot find module '@/services/remoteFileUploadSrv' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/LocalFileCtr.ts(102,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/LocalFileCtr.ts(103,26): error TS2307: Cannot find module '@/utils/net-fetch' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/LocalFileCtr.ts(104,38): error TS2307: Cannot find module '@/utils/shrinkImageForUpload' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/LocalFileCtr.ts(296,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/LocalFileCtr.ts(901,43): error TS7006: Parameter 'result' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/McpCtr.ts(19,25): error TS2307: Cannot find module '@/services/fileSrv' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/McpCtr.ts(20,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/McpCtr.ts(317,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/McpCtr.ts(364,34): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/McpInstallCtr.ts(1,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/McpInstallCtr.ts(61,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/McpInstallCtr.ts(68,4): error TS1241: Unable to resolve signature of method decorator when called as an expression.
+  Argument of type 'ClassMethodDecoratorContext<McpInstallController, (parsedData: McpInstallParams) => Promise<boolean>> & { ...; }' is not assignable to parameter of type 'string'.
+../lobehub-t128/apps/desktop/src/main/controllers/MenuCtr.ts(6,31): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/MenuCtr.ts(8,31): error TS2307: Cannot find module '@/utils/ipc' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/MenuCtr.ts(13,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/NetworkProxyCtr.ts(4,38): error TS2307: Cannot find module '@/const/store' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/NetworkProxyCtr.ts(5,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/NetworkProxyCtr.ts(19,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/NotificationCtr.ts(5,35): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/NotificationCtr.ts(7,31): error TS2307: Cannot find module '@/env' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/NotificationCtr.ts(8,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/NotificationCtr.ts(24,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/NotificationCtr.ts(62,22): error TS2339: Property 'windows' does not exist on type 'typeof import("/home/hardy/Workspace/LobeHub/t2-origin-next-clean/packages/utils/src/platform")'.
+../lobehub-t128/apps/desktop/src/main/controllers/NotificationCtr.ts(101,29): error TS2339: Property 'linux' does not exist on type 'typeof import("/home/hardy/Workspace/LobeHub/t2-origin-next-clean/packages/utils/src/platform")'.
+../lobehub-t128/apps/desktop/src/main/controllers/OpenInAppCtr.ts(7,36): error TS2307: Cannot find module '@/modules/openInApp/cache' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/OpenInAppCtr.ts(8,27): error TS2307: Cannot find module '@/modules/openInApp/detectors' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/OpenInAppCtr.ts(9,27): error TS2307: Cannot find module '@/modules/openInApp/launchers' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/OpenInAppCtr.ts(10,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/OpenInAppCtr.ts(17,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerConfigCtr.ts(5,57): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerConfigCtr.ts(7,39): error TS2307: Cannot find module '@/const/env' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerConfigCtr.ts(8,53): error TS2307: Cannot find module '@/modules/cliEmbedding/appSignInFile' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerConfigCtr.ts(9,38): error TS2307: Cannot find module '@/services/gatewayConnectionSrv' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerConfigCtr.ts(10,36): error TS2307: Cannot find module '@/utils/http-headers' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerConfigCtr.ts(11,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerConfigCtr.ts(12,26): error TS2307: Cannot find module '@/utils/net-fetch' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerConfigCtr.ts(13,43): error TS2307: Cannot find module '@/utils/user-agent' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerConfigCtr.ts(47,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerConfigCtr.ts(609,14): error TS7006: Parameter 'details' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerConfigCtr.ts(609,23): error TS7006: Parameter 'callback' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerSyncCtr.ts(8,48): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerSyncCtr.ts(9,25): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerSyncCtr.ts(10,32): error TS2307: Cannot find module 'http-proxy-agent' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerSyncCtr.ts(11,33): error TS2307: Cannot find module 'https-proxy-agent' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerSyncCtr.ts(13,38): error TS2307: Cannot find module '@/const/store' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerSyncCtr.ts(14,36): error TS2307: Cannot find module '@/utils/http-headers' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerSyncCtr.ts(15,35): error TS2307: Cannot find module '@/utils/jwt-claims' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerSyncCtr.ts(16,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerSyncCtr.ts(17,43): error TS2307: Cannot find module '@/utils/user-agent' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerSyncCtr.ts(30,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerSyncCtr.ts(64,19): error TS2531: Object is possibly 'null'.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerSyncCtr.ts(73,37): error TS2531: Object is possibly 'null'.
+../lobehub-t128/apps/desktop/src/main/controllers/RemoteServerSyncCtr.ts(74,27): error TS2531: Object is possibly 'null'.
+../lobehub-t128/apps/desktop/src/main/controllers/RendererOtaCtr.ts(1,27): error TS2307: Cannot find module '@/const/shell' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/RendererOtaCtr.ts(2,31): error TS2307: Cannot find module '@/utils/ipc' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/RendererOtaCtr.ts(7,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/ScreenCaptureCtr.ts(8,45): error TS2307: Cannot find module '@/modules/screenCapture/ScreenCaptureManager' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/ScreenCaptureCtr.ts(9,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/ScreenCaptureCtr.ts(16,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/ShellCommandCtr.ts(5,40): error TS2307: Cannot find module '@lobechat/device-sandbox' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/ShellCommandCtr.ts(29,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/ShellCommandCtr.ts(48,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/ShellCommandCtr.ts(108,57): error TS2307: Cannot find module '@lobechat/device-sandbox' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/ShellCommandCtr.ts(161,48): error TS2307: Cannot find module '@lobechat/device-sandbox' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/ShellCommandCtr.ts(217,51): error TS2307: Cannot find module '@lobechat/device-sandbox' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/ShellCommandCtr.ts(323,55): error TS2307: Cannot find module '@lobechat/device-sandbox' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/ShortcutCtr.ts(1,43): error TS2307: Cannot find module '@/core/ui/ShortcutManager' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/ShortcutCtr.ts(6,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/SystemCtr.ts(5,49): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/SystemCtr.ts(7,34): error TS2307: Cannot find module '@/const/dir' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/SystemCtr.ts(8,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/SystemCtr.ts(17,8): error TS2307: Cannot find module '@/utils/permissions' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/SystemCtr.ts(19,52): error TS2307: Cannot find module '@/utils/system-language' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/SystemCtr.ts(20,29): error TS2307: Cannot find module '@/utils/user-path' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/SystemCtr.ts(33,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/SystemCtr.ts(137,21): error TS2551: Property 'macOS' does not exist on type 'typeof import("/home/hardy/Workspace/LobeHub/t2-origin-next-clean/packages/utils/src/platform")'. Did you mean 'isMacOS'?
+../lobehub-t128/apps/desktop/src/main/controllers/SystemCtr.ts(263,21): error TS2307: Cannot find module 'font-list' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/TabPreviewCtr.ts(3,31): error TS2307: Cannot find module '@/utils/ipc' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/TabPreviewCtr.ts(4,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/TabPreviewCtr.ts(15,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/TerminalCtr.ts(8,36): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/TerminalCtr.ts(10,35): error TS2307: Cannot find module '@/modules/terminal' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/TerminalCtr.ts(11,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/TerminalCtr.ts(22,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/TerminalCtr.ts(25,14): error TS7006: Parameter 'id' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/TerminalCtr.ts(25,18): error TS7006: Parameter 'data' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/TerminalCtr.ts(26,14): error TS7006: Parameter 'id' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/TerminalCtr.ts(26,18): error TS7006: Parameter 'exitCode' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/TerminalCtr.ts(31,14): error TS7006: Parameter 'id' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/TerminalCtr.ts(31,18): error TS7006: Parameter 'reason' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/TrayMenuCtr.ts(8,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/TrayMenuCtr.ts(16,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/UpdaterCtr.ts(3,32): error TS2307: Cannot find module '@/modules/updater/configs' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/UpdaterCtr.ts(4,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/UpdaterCtr.ts(11,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/UpdaterCtr.ts(66,44): error TS2307: Cannot find module '@/modules/updater/configs' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/WorkspaceCtr.ts(13,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/WorkspaceCtr.ts(29,28): error TS4113: This member cannot have an 'override' modifier because it is not declared in the base class 'ControllerModule'.
+../lobehub-t128/apps/desktop/src/main/controllers/codexAppServer.ts(18,36): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/codexAppServer.ts(20,48): error TS2307: Cannot find module '@/modules/heterogeneousAgent/inflightRunRegistry' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/codexAppServer.ts(21,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/heterogeneousAgentSession.ts(43,36): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/heterogeneousAgentSession.ts(46,44): error TS2307: Cannot find module '@/modules/heterogeneousAgent/providerBindingHost' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/heterogeneousAgentSession.ts(47,56): error TS2307: Cannot find module '@/modules/heterogeneousAgent/types' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/heterogeneousAgentSession.ts(48,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/index.ts(3,26): error TS2307: Cannot find module '@/core/App' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/index.ts(4,30): error TS2307: Cannot find module '@/core/infrastructure/IoCContainer' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/index.ts(5,28): error TS2307: Cannot find module '@/utils/ipc' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/index.ts(57,27): error TS2307: Cannot find module '@/utils/ipc' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/notificationShared.ts(5,30): error TS2307: Cannot find module 'electron' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/notificationShared.ts(7,26): error TS2307: Cannot find module '@/core/App' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/notificationShared.ts(8,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/controllers/notificationShared.ts(92,30): error TS7006: Parameter 'error' implicitly has an 'any' type.
+../lobehub-t128/apps/desktop/src/main/controllers/registry.ts(1,83): error TS2307: Cannot find module '@/utils/ipc' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/libs/mcp/client.ts(17,31): error TS2307: Cannot find module '@/env' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/modules/networkProxy/dispatcher.ts(2,35): error TS2307: Cannot find module 'fetch-socks' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/modules/networkProxy/dispatcher.ts(3,33): error TS2307: Cannot find module 'fetch-socks' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/modules/networkProxy/dispatcher.ts(6,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/modules/networkProxy/tester.ts(4,36): error TS2307: Cannot find module '@/utils/http-headers' or its corresponding type declarations.
+../lobehub-t128/apps/desktop/src/main/modules/networkProxy/tester.ts(5,30): error TS2307: Cannot find module '@/utils/logger' or its corresponding type declarations.
+../lobehub-t128/packages/context-engine/src/index.ts(13,1): error TS2308: Module './types' has already exported a member named 'UIChatMessage'. Consider explicitly re-exporting to resolve the ambiguity.
+apps/server/src/services/agentSignal/policies/analyzeIntent/actions/userMemory.ts(253,19): error TS18047: 'agentConfig' is possibly 'null'.
+apps/server/src/services/agentSignal/policies/analyzeIntent/actions/userMemory.ts(254,19): error TS18047: 'agentConfig' is possibly 'null'.
+packages/agent-address-linq/tsup.config.ts(1,30): error TS2307: Cannot find module 'tsup' or its corresponding type declarations.
+packages/agent-address-mail/tsup.config.ts(1,30): error TS2307: Cannot find module 'tsup' or its corresponding type declarations.
+packages/agent-tracing/src/analysis/contextLint.ts(1,24): error TS2307: Cannot find module 'gpt-tokenizer' or its corresponding type declarations.
+packages/agent-tracing/src/analysis/contextMap.ts(1,24): error TS2307: Cannot find module 'gpt-tokenizer' or its corresponding type declarations.
+packages/agent-tracing/src/analysis/toolFeedback.ts(1,24): error TS2307: Cannot find module 'gpt-tokenizer' or its corresponding type declarations.
+packages/agent-tracing/src/cli/ctx-lint.ts(4,30): error TS2307: Cannot find module 'commander' or its corresponding type declarations.
+packages/agent-tracing/src/cli/ctx-map.ts(4,30): error TS2307: Cannot find module 'commander' or its corresponding type declarations.
+packages/agent-tracing/src/cli/index.ts(3,25): error TS2307: Cannot find module 'commander' or its corresponding type declarations.
+packages/agent-tracing/src/cli/inspect.ts(1,30): error TS2307: Cannot find module 'commander' or its corresponding type declarations.
+packages/agent-tracing/src/cli/list.ts(1,30): error TS2307: Cannot find module 'commander' or its corresponding type declarations.
+packages/agent-tracing/src/cli/partial.ts(1,30): error TS2307: Cannot find module 'commander' or its corresponding type declarations.
+packages/agent-tracing/src/cli/replay.ts(1,30): error TS2307: Cannot find module 'commander' or its corresponding type declarations.
+packages/agent-tracing/src/cli/tool-quality.ts(4,30): error TS2307: Cannot find module 'commander' or its corresponding type declarations.
+packages/agent-tracing/src/viewer/index.ts(1,24): error TS2307: Cannot find module 'gpt-tokenizer' or its corresponding type declarations.
+packages/builtin-tool-agent-builder/src/executor.ts(7,37): error TS2307: Cannot find module '@lobechat/agent-manager-runtime' or its corresponding type declarations.
+packages/builtin-tool-agent-management/src/client/Render/UpdatePrompt/index.tsx(3,40): error TS2307: Cannot find module '@lobechat/agent-manager-runtime' or its corresponding type declarations.
+packages/builtin-tool-agent-management/src/executor.ts(8,37): error TS2307: Cannot find module '@lobechat/agent-manager-runtime' or its corresponding type declarations.
+packages/builtin-tool-agent-management/src/types.ts(1,51): error TS2307: Cannot find module '@lobechat/agent-manager-runtime' or its corresponding type declarations.
+packages/builtin-tool-agent-management/src/types.ts(387,8): error TS2307: Cannot find module '@lobechat/agent-manager-runtime' or its corresponding type declarations.
+packages/builtin-tool-calculator/src/executor/index.ts(2,25): error TS2307: Cannot find module '@thi.ng/base-n/base' or its corresponding type declarations.
+packages/builtin-tool-calculator/src/executor/index.ts(3,29): error TS2307: Cannot find module 'mathjs' or its corresponding type declarations.
+packages/builtin-tool-group-agent-builder/src/executor.ts(7,37): error TS2307: Cannot find module '@lobechat/agent-manager-runtime' or its corresponding type declarations.
+packages/canvas-runtime/src/addons/highlight.ts(2,49): error TS2307: Cannot find module '@pierre/highlights' or its corresponding type declarations.
+packages/canvas-runtime/src/addons/mermaid.ts(1,23): error TS2307: Cannot find module 'pele' or its corresponding type declarations.
+packages/canvas/src/mermaid.ts(1,34): error TS2307: Cannot find module 'pele' or its corresponding type declarations.
+packages/canvas/src/mermaid.ts(16,42): error TS18046: 'error' is of type 'unknown'.
+packages/canvas/src/mermaid.ts(17,17): error TS18046: 'error' is of type 'unknown'.
+packages/canvas/src/preview/prepare.ts(1,23): error TS2307: Cannot find module 'acorn' or its corresponding type declarations.
+packages/canvas/src/preview/prepare.ts(2,24): error TS2307: Cannot find module 'acorn-walk' or its corresponding type declarations.
+packages/canvas/src/preview/prepare.ts(3,41): error TS2307: Cannot find module 'htmlparser2' or its corresponding type declarations.
+packages/canvas/src/preview/prepare.ts(64,27): error TS7006: Parameter 'node' implicitly has an 'any' type.
+packages/canvas/src/preview/prepare.ts(65,30): error TS7006: Parameter 'node' implicitly has an 'any' type.
+packages/canvas/src/preview/prepare.ts(66,32): error TS7006: Parameter 'node' implicitly has an 'any' type.
+packages/canvas/src/preview/prepare.ts(69,26): error TS7006: Parameter 'node' implicitly has an 'any' type.
+packages/canvas/src/preview/prepare.ts(76,23): error TS7006: Parameter 'node' implicitly has an 'any' type.
+packages/canvas/src/preview/prepare.ts(95,26): error TS7006: Parameter 'node' implicitly has an 'any' type.
+packages/canvas/src/preview/prepare.ts(150,69): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+packages/canvas/src/preview/prepare.ts(151,78): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+packages/canvas/src/preview/prepare.ts(156,54): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+packages/canvas/src/validate/html.ts(1,24): error TS2307: Cannot find module 'htmlparser2' or its corresponding type declarations.
+packages/canvas/src/validate/html.ts(276,18): error TS7006: Parameter 'tag' implicitly has an 'any' type.
+packages/canvas/src/validate/html.ts(316,17): error TS7006: Parameter 'tag' implicitly has an 'any' type.
+packages/canvas/src/validate/html.ts(316,22): error TS7006: Parameter 'attrs' implicitly has an 'any' type.
+packages/canvas/src/validate/html.ts(352,14): error TS7006: Parameter 'text' implicitly has an 'any' type.
+packages/chat-adapter-feishu/tsup.config.ts(1,30): error TS2307: Cannot find module 'tsup' or its corresponding type declarations.
+packages/chat-adapter-imessage/tsup.config.ts(1,30): error TS2307: Cannot find module 'tsup' or its corresponding type declarations.
+packages/chat-adapter-line/tsup.config.ts(1,30): error TS2307: Cannot find module 'tsup' or its corresponding type declarations.
+packages/chat-adapter-qq/tsup.config.ts(1,30): error TS2307: Cannot find module 'tsup' or its corresponding type declarations.
+packages/chat-adapter-wechat/src/voice.ts(111,39): error TS2307: Cannot find module 'silk-wasm' or its corresponding type declarations.
+packages/chat-adapter-wechat/tsup.config.ts(1,30): error TS2307: Cannot find module 'tsup' or its corresponding type declarations.
+packages/context-engine/src/index.ts(13,1): error TS2308: Module './types' has already exported a member named 'UIChatMessage'. Consider explicitly re-exporting to resolve the ambiguity.
+packages/database/src/core/pgliteSnapshot.ts(5,24): error TS2307: Cannot find module '@electric-sql/pglite' or its corresponding type declarations.
+packages/database/src/core/pgliteSnapshot.ts(6,24): error TS2307: Cannot find module '@electric-sql/pglite/vector' or its corresponding type declarations.
+packages/device-control/src/projectFileIndex.ts(7,16): error TS2307: Cannot find module 'fast-glob' or its corresponding type declarations.
+packages/device-control/src/projectFileSearchManager.ts(4,16): error TS2307: Cannot find module 'fast-glob' or its corresponding type declarations.
+packages/device-sandbox/src/capability.ts(8,8): error TS2307: Cannot find module '@anthropic-ai/sandbox-runtime' or its corresponding type declarations.
+packages/device-sandbox/src/runtime.ts(1,43): error TS2307: Cannot find module '@anthropic-ai/sandbox-runtime' or its corresponding type declarations.
+packages/device-sandbox/src/runtime.ts(2,32): error TS2307: Cannot find module '@anthropic-ai/sandbox-runtime' or its corresponding type declarations.
+packages/device-sandbox/src/setup.ts(34,57): error TS2307: Cannot find module '@anthropic-ai/sandbox-runtime' or its corresponding type declarations.
+packages/device-sandbox/src/setup.ts(52,18): error TS2307: Cannot find module '@anthropic-ai/sandbox-runtime' or its corresponding type declarations.
+packages/device-sandbox/src/srt.ts(1,43): error TS2307: Cannot find module '@anthropic-ai/sandbox-runtime' or its corresponding type declarations.
+packages/device-sandbox/src/srt.ts(2,31): error TS2307: Cannot find module '@anthropic-ai/sandbox-runtime' or its corresponding type declarations.
+packages/electron-client-ipc/src/types/contextMenu.ts(1,31): error TS2307: Cannot find module 'sf-symbols-typescript' or its corresponding type declarations.
+packages/electron-client-ipc/src/types/contextMenu.ts(3,16): error TS2664: Invalid module name in augmentation, module 'sf-symbols-typescript' cannot be found.
+packages/eval-dataset-parser/src/parsers/csv.ts(1,23): error TS2307: Cannot find module 'papaparse' or its corresponding type declarations.
+packages/eval-dataset-parser/src/parsers/xlsx.ts(1,23): error TS2307: Cannot find module 'xlsx' or its corresponding type declarations.
+packages/fetch-sse/src/parseError.ts(64,18): error TS2345: Argument of type '[`response.${number}`, { ns: "error"; }]' is not assignable to parameter of type '[key: string | string[], options: { readonly ns: "error"; } & $Dictionary & { defaultValue: string; }] | [key: "asyncState.desc" | "asyncState.metricLabel" | "asyncState.title" | ... 221 more ... | TemplateStringsArray, options?: ... | undefined] | ...'.
+  Type '[`response.${number}`, { ns: "error"; }]' is not assignable to type '[key: string | string[], defaultValue: string, options?: ({ readonly ns: "error"; } & $Dictionary) | undefined]'.
+    Type at position 1 in source is not compatible with type at position 1 in target.
+      Type '{ ns: "error"; }' is not assignable to type 'string'.
+packages/file-loaders/src/loaders/excel/index.ts(4,23): error TS2307: Cannot find module 'xlsx' or its corresponding type declarations.
+packages/file-loaders/src/utils/parser-utils.ts(2,20): error TS2307: Cannot find module 'concat-stream' or its corresponding type declarations.
+packages/file-loaders/src/utils/parser-utils.ts(3,19): error TS2307: Cannot find module 'yauzl' or its corresponding type declarations.
+packages/file-loaders/src/utils/parser-utils.ts(52,42): error TS7006: Parameter 'err' implicitly has an 'any' type.
+packages/file-loaders/src/utils/parser-utils.ts(52,47): error TS7006: Parameter 'readStream' implicitly has an 'any' type.
+packages/file-loaders/src/utils/parser-utils.ts(64,23): error TS7006: Parameter 'data' implicitly has an 'any' type.
+packages/file-loaders/src/utils/parser-utils.ts(72,37): error TS7006: Parameter 'streamErr' implicitly has an 'any' type.
+packages/file-loaders/src/utils/parser-utils.ts(87,28): error TS7006: Parameter 'err' implicitly has an 'any' type.
+packages/file-loaders/src/utils/parser-utils.ts(96,58): error TS7006: Parameter 'err' implicitly has an 'any' type.
+packages/file-loaders/src/utils/parser-utils.ts(96,63): error TS7006: Parameter 'zipfile' implicitly has an 'any' type.
+packages/file-loaders/src/utils/parser-utils.ts(102,52): error TS7006: Parameter 'err' implicitly has an 'any' type.
+packages/file-loaders/src/utils/parser-utils.ts(102,57): error TS7006: Parameter 'zipfile' implicitly has an 'any' type.
+packages/heterogeneous-agents/src/builtinMcp/LobeBuiltinMcpServer.ts(6,51): error TS2307: Cannot find module '@modelcontextprotocol/node' or its corresponding type declarations.
+packages/heterogeneous-agents/src/spawn/claudeAgentSdkSession.ts(10,8): error TS2307: Cannot find module '@anthropic-ai/claude-agent-sdk' or its corresponding type declarations.
+packages/heterogeneous-agents/src/spawn/claudeAgentSdkSession.ts(117,3): error TS2322: Type '{ effort?: any; extraArgs: Record<string, string | null> | undefined; model?: string | undefined; plugins?: any; }' is not assignable to type 'Pick<ClaudeAgentSdkOptions, "effort" | "extraArgs" | "model" | "plugins">'.
+  Property 'effort' is optional in type '{ effort?: any; extraArgs: Record<string, string | null> | undefined; model?: string | undefined; plugins?: any; }' but required in type 'Pick<ClaudeAgentSdkOptions, "effort" | "extraArgs" | "model" | "plugins">'.
+packages/heterogeneous-agents/src/spawn/claudeAgentSdkSession.ts(273,38): error TS2307: Cannot find module '@anthropic-ai/claude-agent-sdk' or its corresponding type declarations.
+packages/heterogeneous-agents/src/spawn/claudeAgentSdkSession.ts(340,32): error TS7006: Parameter 'spawnOptions' implicitly has an 'any' type.
+packages/heterogeneous-agents/src/spawn/claudeAgentSdkSession.ts(347,16): error TS7006: Parameter 'data' implicitly has an 'any' type.
+packages/llm-generation-tracing/src/cli/index.ts(3,25): error TS2307: Cannot find module 'commander' or its corresponding type declarations.
+packages/llm-generation-tracing/src/cli/inspect.ts(1,30): error TS2307: Cannot find module 'commander' or its corresponding type declarations.
+packages/llm-generation-tracing/src/cli/list.ts(1,30): error TS2307: Cannot find module 'commander' or its corresponding type declarations.
+packages/local-file-shell/src/contentSearch/base.ts(4,16): error TS2307: Cannot find module 'fast-glob' or its corresponding type declarations.
+packages/local-file-shell/src/contentSearch/gitIgnore.ts(3,23): error TS2307: Cannot find module 'execa' or its corresponding type declarations.
+packages/local-file-shell/src/contentSearch/impl/unix.ts(3,23): error TS2307: Cannot find module 'execa' or its corresponding type declarations.
+packages/local-file-shell/src/contentSearch/impl/unix.ts(199,15): error TS7006: Parameter 'line' implicitly has an 'any' type.
+packages/local-file-shell/src/contentSearch/impl/windows.ts(3,23): error TS2307: Cannot find module 'execa' or its corresponding type declarations.
+packages/local-file-shell/src/contentSearch/impl/windows.ts(164,15): error TS7006: Parameter 'line' implicitly has an 'any' type.
+packages/local-file-shell/src/file/glob.ts(1,16): error TS2307: Cannot find module 'fast-glob' or its corresponding type declarations.
+packages/local-file-shell/src/file/search.ts(4,16): error TS2307: Cannot find module 'fast-glob' or its corresponding type declarations.
+packages/local-file-shell/src/file/search.ts(33,51): error TS7006: Parameter 'f' implicitly has an 'any' type.
+packages/local-file-shell/src/fileSearch/impl/macOS.ts(5,23): error TS2307: Cannot find module 'execa' or its corresponding type declarations.
+packages/local-file-shell/src/fileSearch/impl/macOS.ts(111,18): error TS7006: Parameter 'line' implicitly has an 'any' type.
+packages/local-file-shell/src/fileSearch/impl/unix.ts(5,23): error TS2307: Cannot find module 'execa' or its corresponding type declarations.
+packages/local-file-shell/src/fileSearch/impl/unix.ts(6,16): error TS2307: Cannot find module 'fast-glob' or its corresponding type declarations.
+packages/local-file-shell/src/fileSearch/impl/unix.ts(137,18): error TS7006: Parameter 'line' implicitly has an 'any' type.
+packages/local-file-shell/src/fileSearch/impl/unix.ts(197,18): error TS7006: Parameter 'line' implicitly has an 'any' type.
+packages/local-file-shell/src/fileSearch/impl/unix.ts(320,18): error TS7006: Parameter 'line' implicitly has an 'any' type.
+packages/local-file-shell/src/fileSearch/impl/unix.ts(373,18): error TS7006: Parameter 'line' implicitly has an 'any' type.
+packages/local-file-shell/src/fileSearch/impl/windows.ts(5,23): error TS2307: Cannot find module 'execa' or its corresponding type declarations.
+packages/local-file-shell/src/fileSearch/impl/windows.ts(6,16): error TS2307: Cannot find module 'fast-glob' or its corresponding type declarations.
+packages/local-file-shell/src/fileSearch/impl/windows.ts(141,18): error TS7006: Parameter 'line' implicitly has an 'any' type.
+packages/local-file-shell/src/fileSearch/impl/windows.ts(192,18): error TS7006: Parameter 'line' implicitly has an 'any' type.
+packages/local-file-shell/src/fileSearch/impl/windows.ts(310,18): error TS7006: Parameter 'line' implicitly has an 'any' type.
+packages/local-file-shell/src/shell/child-process-backend.ts(5,22): error TS2307: Cannot find module 'tree-kill' or its corresponding type declarations.
+packages/local-file-shell/src/shell/child-process-backend.ts(100,44): error TS7006: Parameter 'error' implicitly has an 'any' type.
+packages/local-file-shell/src/shell/runner.ts(6,36): error TS2307: Cannot find module '@lobechat/device-sandbox' or its corresponding type declarations.
+packages/local-file-shell/src/shell/runner.ts(220,56): error TS2307: Cannot find module '@lobechat/device-sandbox' or its corresponding type declarations.
+packages/locales/src/requestLocale.ts(1,63): error TS2307: Cannot find module '@lobehub/edge-contract/request-locale' or its corresponding type declarations.
+packages/locales/src/resources.ts(1,44): error TS2307: Cannot find module '@lobehub/edge-contract/request-locale' or its corresponding type declarations.
+packages/model-bank/tsdown.config.ts(1,30): error TS2307: Cannot find module 'tsdown' or its corresponding type declarations.
+packages/observability-otel/src/api.ts(1,63): error TS2307: Cannot find module '@opentelemetry/api' or its corresponding type declarations.
+packages/observability-otel/src/api.ts(2,85): error TS2307: Cannot find module '@opentelemetry/api' or its corresponding type declarations.
+packages/observability-otel/src/modules/agent-runtime/attributes.ts(1,33): error TS2307: Cannot find module '@opentelemetry/api' or its corresponding type declarations.
+packages/observability-otel/src/modules/agent-runtime/index.ts(1,32): error TS2307: Cannot find module '@opentelemetry/api' or its corresponding type declarations.
+packages/observability-otel/src/modules/agent-signal/index.ts(1,32): error TS2307: Cannot find module '@opentelemetry/api' or its corresponding type declarations.
+packages/observability-otel/src/modules/bot-wake/index.ts(1,25): error TS2307: Cannot find module '@opentelemetry/api' or its corresponding type declarations.
+packages/observability-otel/src/modules/fts-search-reindex/index.ts(2,39): error TS2307: Cannot find module '@opentelemetry/api' or its corresponding type declarations.
+packages/observability-otel/src/modules/fts-search-reindex/index.ts(3,54): error TS2307: Cannot find module '@opentelemetry/api' or its corresponding type declarations.
+packages/observability-otel/src/modules/fts-search-reindex/index.ts(221,59): error TS7006: Parameter 'span' implicitly has an 'any' type.
+packages/observability-otel/src/modules/memory-user-memory/extract.ts(1,32): error TS2307: Cannot find module '@opentelemetry/api' or its corresponding type declarations.
+packages/observability-otel/src/modules/onboarding-understanding/index.ts(1,39): error TS2307: Cannot find module '@opentelemetry/api' or its corresponding type declarations.
+packages/observability-otel/src/modules/onboarding-understanding/index.ts(2,48): error TS2307: Cannot find module '@opentelemetry/api' or its corresponding type declarations.
+packages/observability-otel/src/modules/onboarding-understanding/index.ts(368,12): error TS7006: Parameter 'span' implicitly has an 'any' type.
+packages/observability-otel/src/modules/onboarding-understanding/index.ts(452,12): error TS7006: Parameter 'span' implicitly has an 'any' type.
+packages/observability-otel/src/modules/upstash-workflow/index.ts(2,32): error TS2307: Cannot find module '@opentelemetry/api' or its corresponding type declarations.
+packages/observability-otel/src/node.ts(4,56): error TS2307: Cannot find module '@opentelemetry/api' or its corresponding type declarations.
+packages/observability-otel/src/node.ts(5,55): error TS2307: Cannot find module '@opentelemetry/api' or its corresponding type declarations.
+packages/observability-otel/src/node.ts(7,36): error TS2307: Cannot find module '@opentelemetry/exporter-metrics-otlp-http' or its corresponding type declarations.
+packages/observability-otel/src/node.ts(8,35): error TS2307: Cannot find module '@opentelemetry/exporter-trace-otlp-http' or its corresponding type declarations.
+packages/observability-otel/src/node.ts(9,37): error TS2307: Cannot find module '@opentelemetry/instrumentation-http' or its corresponding type declarations.
+packages/observability-otel/src/node.ts(10,35): error TS2307: Cannot find module '@opentelemetry/instrumentation-pg' or its corresponding type declarations.
+packages/observability-otel/src/node.ts(14,25): error TS2307: Cannot find module '@opentelemetry/sdk-node' or its corresponding type declarations.
+packages/observability-otel/src/node.ts(15,45): error TS2307: Cannot find module '@opentelemetry/sdk-trace-base' or its corresponding type declarations.
+packages/observability-otel/src/node.ts(16,36): error TS2307: Cannot find module '@opentelemetry/sdk-trace-base' or its corresponding type declarations.
+packages/observability-otel/src/node.ts(17,57): error TS2307: Cannot find module '@opentelemetry/semantic-conventions' or its corresponding type declarations.
+packages/observability-otel/src/node.ts(196,30): error TS2307: Cannot find module '@opentelemetry/api' or its corresponding type declarations.
+packages/observability-otel/src/trpc/convention.ts(16,8): error TS2307: Cannot find module '@opentelemetry/semantic-conventions' or its corresponding type declarations.
+packages/observability-otel/src/trpc/index.ts(1,33): error TS2307: Cannot find module '@opentelemetry/api' or its corresponding type declarations.
+packages/observability-otel/src/trpc/metrics.ts(1,25): error TS2307: Cannot find module '@opentelemetry/api' or its corresponding type declarations.
+packages/openapi/src/app.ts(1,24): error TS2307: Cannot find module '@scalar/hono-api-reference' or its corresponding type declarations.
+packages/openapi/src/app.ts(9,31): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/common/validator.ts(1,27): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/common/validator.ts(13,30): error TS7006: Parameter 'result' implicitly has an 'any' type.
+packages/openapi/src/common/validator.ts(13,38): error TS7006: Parameter 'c' implicitly has an 'any' type.
+packages/openapi/src/helpers/file.ts(3,24): error TS2307: Cannot find module 'formidable' or its corresponding type declarations.
+packages/openapi/src/middleware/machine-payment-rejections.ts(1,24): error TS2307: Cannot find module 'mppx' or its corresponding type declarations.
+packages/openapi/src/middleware/machine-payment.ts(3,37): error TS2307: Cannot find module 'mppx' or its corresponding type declarations.
+packages/openapi/src/routes/agent-groups.route.ts(2,31): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/routes/agents.route.ts(2,31): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/routes/api-keys.route.ts(2,31): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/routes/audio.route.ts(2,43): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/routes/audio.route.ts(3,31): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/routes/eval.route.ts(2,31): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/routes/eval.route.ts(58,21): error TS2345: Argument of type '"json"' is not assignable to parameter of type 'never'.
+packages/openapi/src/routes/eval.route.ts(58,29): error TS2339: Property 'executionMode' does not exist on type 'never'.
+packages/openapi/src/routes/files.route.ts(2,31): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/routes/goals.route.ts(2,31): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/routes/im.route.ts(2,31): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/routes/mcp-servers.route.ts(2,31): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/routes/memories.route.ts(2,31): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/routes/notifications.route.ts(2,31): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/routes/plugins.route.ts(2,31): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/routes/push-tokens.route.ts(2,31): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/routes/signals.route.ts(2,31): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/routes/topics.route.ts(2,31): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/routes/usage.route.ts(2,31): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/routes/users.route.ts(2,31): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/openapi/src/spec.ts(2,31): error TS2307: Cannot find module 'hono-openapi' or its corresponding type declarations.
+packages/python-interpreter/src/interpreter.ts(1,26): error TS2307: Cannot find module 'comlink' or its corresponding type declarations.
+packages/python-interpreter/src/worker.ts(1,26): error TS2307: Cannot find module 'comlink' or its corresponding type declarations.
+packages/python-interpreter/src/worker.ts(2,65): error TS2307: Cannot find module 'pyodide' or its corresponding type declarations.
+packages/sdk/openapi-ts.config.ts(1,25): error TS2307: Cannot find module '@hey-api/openapi-ts' or its corresponding type declarations.
+packages/sdk/openapi-ts.config.ts(2,30): error TS2307: Cannot find module '@hey-api/openapi-ts' or its corresponding type declarations.
+packages/sdk/scripts/generate-sdk.ts(17,30): error TS2307: Cannot find module '@hey-api/openapi-ts' or its corresponding type declarations.
+packages/sdk/tsdown.config.ts(1,30): error TS2307: Cannot find module 'tsdown' or its corresponding type declarations.
+packages/secret-channel/src/asc/aad.ts(1,24): error TS2307: Cannot find module '@noble/hashes/sha2.js' or its corresponding type declarations.
+packages/secret-channel/src/asc/hpke.ts(1,52): error TS2307: Cannot find module '@hpke/core' or its corresponding type declarations.
+packages/secret-channel/src/asc/hpke.ts(2,39): error TS2307: Cannot find module '@hpke/dhkem-x25519' or its corresponding type declarations.
+packages/secret-channel/src/asc/identity.ts(1,25): error TS2307: Cannot find module '@noble/curves/ed25519.js' or its corresponding type declarations.
+packages/secret-channel/src/asc/identity.ts(2,24): error TS2307: Cannot find module '@noble/hashes/sha2.js' or its corresponding type declarations.
+packages/secret-channel/src/asc/index.ts(11,24): error TS2307: Cannot find module '@noble/hashes/sha2.js' or its corresponding type declarations.
+packages/secret-channel/src/derivedIdentity.ts(13,22): error TS2307: Cannot find module '@noble/hashes/hkdf.js' or its corresponding type declarations.
+packages/secret-channel/src/derivedIdentity.ts(14,24): error TS2307: Cannot find module '@noble/hashes/sha2.js' or its corresponding type declarations.
+packages/shared-tool-ui/src/Render/RunCommand/AnsiOutput.tsx(3,19): error TS2307: Cannot find module 'anser' or its corresponding type declarations.
+packages/shared-tool-ui/src/Render/RunCommand/AnsiOutput.tsx(44,22): error TS7006: Parameter 'seg' implicitly has an 'any' type.
+packages/shared-tool-ui/src/Render/RunCommand/AnsiOutput.tsx(44,27): error TS7006: Parameter 'i' implicitly has an 'any' type.
+packages/ssrf-safe-fetch/index.ts(2,51): error TS2307: Cannot find module 'request-filtering-agent' or its corresponding type declarations.
+packages/ssrf-safe-fetch/index.ts(3,71): error TS2307: Cannot find module 'request-filtering-agent' or its corresponding type declarations.
+packages/utils/src/cronEval.ts(1,38): error TS2307: Cannot find module 'cron-parser' or its corresponding type declarations.
+packages/utils/src/cronEval.ts(155,50): error TS7006: Parameter 'date' implicitly has an 'any' type.
+packages/utils/src/siteOrigin.ts(1,33): error TS2307: Cannot find module 'tldts' or its corresponding type declarations.
+packages/utils/src/tokenizer/embedding.ts(30,35): error TS2307: Cannot find module 'gpt-tokenizer/encoding/cl100k_base' or its corresponding type declarations.
+packages/utils/tests/setup.ts(9,10): error TS2307: Cannot find module 'vitest-canvas-mock' or its corresponding type declarations.
+packages/web-crawler/src/utils/htmlToMarkdown.ts(1,29): error TS2307: Cannot find module '@mozilla/readability' or its corresponding type declarations.
+packages/web-crawler/src/utils/htmlToMarkdown.ts(3,45): error TS2307: Cannot find module 'node-html-markdown' or its corresponding type declarations.
+packages/web-crawler/src/utils/htmlToMarkdown.ts(4,34): error TS2307: Cannot find module 'node-html-markdown' or its corresponding type declarations.
+packages/web-crawler/src/utils/htmlToMarkdown.ts(45,7): error TS2578: Unused '@ts-expect-error' directive.
+src/features/Conversation/Messages/components/MessageActionBar/actions/translate.ts(21,20): error TS2345: Argument of type '[`lang.${any}`, { ns: "common"; }]' is not assignable to parameter of type '[key: string | string[], options: { readonly ns: "common"; } & $Dictionary & { defaultValue: string; }] | [key: "about" | "addNew" | "advanceSettings" | "agentLabel.create" | "agentLabel.manage" | ... 591 more ... | TemplateStringsArray, options?: ... | undefined] | ...'.
+  Type '[`lang.${any}`, { ns: "common"; }]' is not assignable to type '[key: string | string[], defaultValue: string, options?: ({ readonly ns: "common"; } & $Dictionary) | undefined]'.
+    Type at position 1 in source is not compatible with type at position 1 in target.
+      Type '{ ns: "common"; }' is not assignable to type 'string'.
+src/features/Conversation/hooks/useChatListActionsBar.tsx(136,20): error TS2345: Argument of type '[`lang.${any}`]' is not assignable to parameter of type '[key: string | string[], options: TOptionsBase & $Dictionary & { defaultValue: never; }] | [key: "about" | "addNew" | "advanceSettings" | "agentLabel.create" | ... 5149 more ... | TemplateStringsArray, options?: (TOptionsBase & ... 1 more ... & ...) | undefined] | ...'.
+  Type '[`lang.${any}`]' is not assignable to type '[key: "about" | "addNew" | "advanceSettings" | "agentLabel.create" | "agentLabel.manage" | "agentLabel.menuTitle" | "agentSkills.ensureFailed" | "agentViewAll.addToSidebar" | ... 5145 more ... | TemplateStringsArray, options?: (TOptionsBase & ... 1 more ... & ...) | undefined]'.
+    Type at position 0 in source is not compatible with type at position 0 in target.
+      Type '`lang.${any}`' is not assignable to type '"about" | "addNew" | "advanceSettings" | "agentLabel.create" | "agentLabel.manage" | "agentLabel.menuTitle" | "agentSkills.ensureFailed" | "agentViewAll.addToSidebar" | ... 5145 more ... | TemplateStringsArray'.
+src/features/Conversation/store/slices/data/messageIndex.ts(49,33): error TS2339: Property 'taskCompletions' does not exist on type 'UIChatMessage'.
+src/services/heterogeneousAgent.ts(40,73): error TS2345: Argument of type '{ args?: string[]; command?: string; cwd?: string; env?: Record<string, string>; type: HeterogeneousCatalogAgentType; deviceId: string; }' is not assignable to parameter of type '{ args?: string[] | undefined; command?: string | undefined; cwd?: string | undefined; deviceId: string; env?: Record<string, string> | undefined; type: "codebuddy" | "codex" | ... 8 more ... | "trae"; }'.
+  Types of property 'type' are incompatible.
+    Type 'HeterogeneousCatalogAgentType' is not assignable to type '"codebuddy" | "codex" | "cursor" | "devin" | "droid" | "grok-build" | "kimi-code" | "opencode" | "pi" | "qoder" | "trae"'.
+      Type '"copilot"' is not assignable to type '"codebuddy" | "codex" | "cursor" | "devin" | "droid" | "grok-build" | "kimi-code" | "opencode" | "pi" | "qoder" | "trae"'.
+src/utils/locale.ts(14,53): error TS7006: Parameter 'locale' implicitly has an 'any' type.

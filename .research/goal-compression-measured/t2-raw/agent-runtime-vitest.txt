@@ -1,0 +1,58 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.0 [39m[90m/home/hardy/Workspace/LobeHub/lobehub-t128/packages/agent-runtime[39m
+
+ [32m✓[39m src/executors/humanApprove.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/executors/subAgent.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 61[2mms[22m[39m
+ [32m✓[39m src/executors/resolveTools.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m src/core/__tests__/UsageCounter.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m src/executors/compressContext.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m src/core/__tests__/runtime.test.ts [2m([22m[2m57 tests[22m[2m)[22m[32m 54[2mms[22m[39m
+ [32m✓[39m src/utils/messageSelectors.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+[90mstderr[2m | src/executors/callLlm.test.ts[2m > [22m[2mcallLlm executor[2m > [22m[2mkeeps the run alive when the provenance stamp write fails
+[22m[39m[call_llm] Failed to stamp operation id provenance: Error: db down
+    at [90m/home/hardy/Workspace/LobeHub/lobehub-t128/packages/agent-runtime/[39msrc/executors/callLlm.test.ts:355:54
+    at file:///home/hardy/Workspace/LobeHub/lobehub-t128/node_modules/[4m.bun[24m/vitest@5.0.0+0edf394d60b5c2aa/node_modules/[4mvitest[24m/dist/chunks/run.CQOUYP-x.js:1628:35
+    at file:///home/hardy/Workspace/LobeHub/lobehub-t128/node_modules/[4m.bun[24m/vitest@5.0.0+0edf394d60b5c2aa/node_modules/[4mvitest[24m/dist/chunks/run.CQOUYP-x.js:2783:26
+    at file:///home/hardy/Workspace/LobeHub/lobehub-t128/node_modules/[4m.bun[24m/vitest@5.0.0+0edf394d60b5c2aa/node_modules/[4mvitest[24m/dist/chunks/run.CQOUYP-x.js:3319:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///home/hardy/Workspace/LobeHub/lobehub-t128/node_modules/[4m.bun[24m/vitest@5.0.0+0edf394d60b5c2aa/node_modules/[4mvitest[24m/dist/chunks/run.CQOUYP-x.js:3314:10)
+    at file:///home/hardy/Workspace/LobeHub/lobehub-t128/node_modules/[4m.bun[24m/vitest@5.0.0+0edf394d60b5c2aa/node_modules/[4mvitest[24m/dist/chunks/run.CQOUYP-x.js:3299:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///home/hardy/Workspace/LobeHub/lobehub-t128/node_modules/[4m.bun[24m/vitest@5.0.0+0edf394d60b5c2aa/node_modules/[4mvitest[24m/dist/chunks/run.CQOUYP-x.js:3257:10)
+    at file:///home/hardy/Workspace/LobeHub/lobehub-t128/node_modules/[4m.bun[24m/vitest@5.0.0+0edf394d60b5c2aa/node_modules/[4mvitest[24m/dist/chunks/run.CQOUYP-x.js:3876:64
+
+ [32m✓[39m src/executors/callLlm.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 50[2mms[22m[39m
+ [32m✓[39m src/executors/callLlmFinalizer.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 55[2mms[22m[39m
+ [32m✓[39m src/utils/toolCallRepeatGuard.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m src/utils/normalizeAgentState.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m src/audit/__tests__/createSecurityBlacklistAudit.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m src/core/__tests__/llmCallCount.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/core/__tests__/InterventionChecker.test.ts [2m([22m[2m57 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m src/loop/index.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/utils/llmErrorClassifier.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/utils/emptyArgumentsCalls.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/utils/runtimeRetry.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/groupOrchestration/__tests__/GroupOrchestrationSupervisor.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/utils/stepContextComputer.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/utils/status.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/executors/registry.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/agents/__tests__/GeneralChatAgent.manualAllowList.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/agents/__tests__/GeneralChatAgent.compressionBaseline.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/agents/__tests__/GeneralChatAgent.queuedMessages.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/agents/__tests__/GeneralChatAgent.emptyArguments.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m src/core/__tests__/asyncToolPauseInstructions.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m src/executors/tool.replay.test.ts [2m([22m[2m39 tests[22m[2m)[22m[32m 55[2mms[22m[39m
+ [32m✓[39m src/utils/tokenCounter.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 89[2mms[22m[39m
+ [32m✓[39m src/executors/tool.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 91[2mms[22m[39m
+ [32m✓[39m src/agents/__tests__/GeneralChatAgent.test.ts [2m([22m[2m109 tests[22m[2m)[22m[32m 182[2mms[22m[39m
+ [32m✓[39m src/executors/tool.batch.test.ts [2m([22m[2m27 tests[22m[2m)[22m[33m 406[2mms[22m[39m
+ [32m✓[39m src/agents/graph/__tests__/GraphAgent.test.ts [2m([22m[2m34 tests[22m[2m)[22m[33m 533[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m33 passed[39m[22m[90m (33)[39m
+[2m      Tests [22m [1m[32m613 passed[39m[22m[90m (613)[39m
+[2m   Start at [22m 18:33:18
+[2m   Duration [22m 4.92s[2m (transform 47%, environment 27%, import 22%, tests 3%, worker 1%)[22m
+
+[2mEnvironment [22m [33mhappy-dom was created 33 times[39m[2m · 14.77s total, 27% of tracked time[22m
+[2m            [22m [2mcreate it once per worker with [22m[33mpool: 'vmThreads'[39m[2m (keeps per-file isolation) or [22m[33misolate: false[39m[2m (shares it across files)[22m
+[2m            [22m [2mlearn more: https://vitest.dev/guide/improving-performance#test-environments[22m

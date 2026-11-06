@@ -235,6 +235,36 @@ describe('resolveVerifyPlanModelConfig', () => {
     await expect(resolveVerifyPlanModelConfig(db, 'u')).resolves.toEqual(VERIFY_PLAN_MODEL_CONFIG);
   });
 
+  /** The deployment's `SYSTEM_AGENT=verify=` is the second level, as it is for the judge. */
+  it('uses the deployment acceptance model when the account has picked none', async () => {
+    appEnvMock.SYSTEM_AGENT = 'verify=magpie/gpt-6-luna';
+
+    await expect(resolveVerifyPlanModelConfig(db, 'u')).resolves.toEqual({
+      model: 'gpt-6-luna',
+      provider: 'magpie',
+    });
+  });
+
+  /** The account's own pick still wins over the deployment's. */
+  it('prefers the account acceptance model over the deployment one', async () => {
+    appEnvMock.SYSTEM_AGENT = 'verify=magpie/gpt-6-luna';
+    getUserSettingsMock.mockResolvedValue({
+      systemAgent: { verify: { model: 'qwen3:1.7b', provider: 'ollama' } },
+    });
+
+    await expect(resolveVerifyPlanModelConfig(db, 'u')).resolves.toEqual({
+      model: 'qwen3:1.7b',
+      provider: 'ollama',
+    });
+  });
+
+  /** A failed settings read must not block the split (verify never breaks a run). */
+  it('falls back to the floor plan model when the settings read throws', async () => {
+    getUserSettingsMock.mockRejectedValueOnce(new Error('settings row unavailable'));
+
+    await expect(resolveVerifyPlanModelConfig(db, 'u')).resolves.toEqual(VERIFY_PLAN_MODEL_CONFIG);
+  });
+
   it('ignores a heterogeneous provider, which cannot run the split', async () => {
     getUserSettingsMock.mockResolvedValue({
       systemAgent: { verify: { model: 'claude-opus-5-5', provider: 'claude-code' } },

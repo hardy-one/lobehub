@@ -1,0 +1,48 @@
+T-130 本地产品验收环境记录
+采集日期：2026-11-06（本机时区）
+Worktree：/home/hardy/Workspace/LobeHub/lobehub-t128
+分支：fix/compression-threshold-measured-usage
+验收开始 HEAD：1afe6859f38c6784872042136cb89bd4fde19213
+根目录 .env：不存在；test-env.sh 报告 env files: none
+
+项目端口来源：.agents/acceptance/scripts/test-env.sh + .records/env/agent-testing-ports.env
+APP_URL/SERVER_URL=http://localhost:38518
+PORT=38518
+SPA_PORT=28359
+DB_PORT=5044（setup-db 成功输出显示实际迁移连接端口）
+Redis 默认端口=6380（init-dev-env.sh 默认值；容器探针通过）
+QSTASH_URL=http://127.0.0.1:8080
+S3 endpoint=http://127.0.0.1:29000
+测试账号来源：init-dev-env.sh seed-user；CLI whoami 返回 userId=user_agent_testing_001、email=agent-testing@lobehub.com、scope=personal。密码与 API key 不复制到本证据。
+
+关键原始命令与输出（摘录）：
+$ .agents/acceptance/scripts/init-dev-env.sh setup-db
+✔ created Postgres container: lobehub-agent-testing-postgres
+✔ created Redis container: lobehub-agent-testing-redis
+✅ database migration pass. use: 5044 ms
+
+$ .agents/acceptance/scripts/init-dev-env.sh seed-user
+seeded baseline user: email=agent-testing@lobehub.com
+seeded baseline API key: CLI env: .records/env/agent-testing-cli.env
+（凭据值已省略）
+
+$ .agents/acceptance/scripts/init-dev-env.sh preflight  # 在正确加载 resolver 环境变量后
+agent-runtime preflight (AGENT_RUNTIME_MODE=queue):
+✔ Redis running: lobehub-agent-testing-redis (queue-mode state)
+✔ QStash reachable: http://127.0.0.1:8080 (operation dispatch)
+✔ S3 read/write/delete passed: http://127.0.0.1:29000/agent-testing-bucket
+✔ dev server reachable: http://localhost:38518
+✔ preflight passed — safe to run agent-runtime tests
+
+$ lh provider view openai --json（local seeded CLI profile）
+{"enabled":null,"config":{},"keyVaults":null,"id":"openai","source":"builtin"}
+$ lh provider view deepseek --json
+{"enabled":null,"config":{},"keyVaults":{},"id":"deepseek","source":"builtin"}
+$ lh agent run -a agt_KOcjlmpbUIZL -p '请仅回复“验收连接确认”。' --json --timeout 60
+[WARN] Live stream unavailable (Gateway auth failed: Failed to parse response from http://localhost:38518/api/v1/users/me?includeCount=0.). Polling run status every 10s…
+Run status: idle · 0 step(s)
+Run status: error · 1 step(s)
+[ERROR] Run error: InvalidProviderAPIKey
+exit code: 1
+
+账号 provider 配置缺少可用凭据。模型清单显示有启用的模型目录数据，不代表该测试账号持有对应 Provider 凭据。未设置密钥、未伪造模型响应，也未构造实测 usage。

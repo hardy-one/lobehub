@@ -1,0 +1,10 @@
+T-130 发布通道状态与范围
+
+lh acceptance preflight --json 的脱敏关键结果：
+- authenticated=true
+- mode=publish
+- language.locale=zh-CN（enforced）
+- endpoint: settings.json 中的自托管 https://lobe.hardynio.xyz
+- credential source: stored login（token 值已隐藏）
+
+本轮只执行只读离线 doctor、preflight 和 `lh acceptance run list --json`；没有把本地测试 API key 用于发布，没有执行 ingest，也没有生成可发布的成功产品验收轮次。由于真实产品案例被 InvalidProviderAPIKey 阻断，本地运行证据已采集、发布链接缺失；不构造或伪报链接。CLI 列表含其他既有任务 round，与 T-130 无关，未作为本轮证据或结果复用。

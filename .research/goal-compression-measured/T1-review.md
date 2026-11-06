@@ -84,3 +84,7 @@ GeneralChatAgent.ts:660–666 第二生产流程复用判定结果
 本轮最初只读观察时，主工作树实际位于 `next`，HEAD 为 `d985c9b286b52ce0b508a1367ad407edd3787a00` 且工作区干净。任务要求保护主工作树，故没有切换其分支或修改文件。前轮材料曾记录为 `fix/verify-plan-model-from-service-settings`，该旧记录与本轮观察到的现状不一致；本报告不把旧状态当成本轮事实。
 
 本轮重建后，已执行 `git merge-base --is-ancestor origin/next HEAD` 并得到退出码 0；目标测试与 agent-runtime 全量测试在当前基线上重跑通过（原始输出见本轮验收证据）。报告提交后再次核对 worktree 与主工作树均干净。
+
+## 补充：主工作树最终分支状态
+
+本轮起初观察到主工作树位于 `next`。delivery checker 指出验收合同要求其分支精确为 `fix/verify-plan-model-from-service-settings`；确认该分支存在且主工作区干净后，已切回该分支。最终主工作树 HEAD 为 `e6f8e61546e50953b976737aecc64c3086fee2d3`，`git status --porcelain` 为空；切换只恢复既有分支状态，没有修改文件。新 worktree 仍独立承载本任务提交。

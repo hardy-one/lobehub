@@ -1,0 +1,15 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.0 [39m[90m/home/hardy/Workspace/LobeHub/lobehub-t128/packages/agent-runtime[39m
+
+ [32m✓[39m src/executors/callLlmFinalizer.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m src/agents/__tests__/GeneralChatAgent.compressionBaseline.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/utils/tokenCounter.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 60[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m3 passed[39m[22m[90m (3)[39m
+[2m      Tests [22m [1m[32m42 passed[39m[22m[90m (42)[39m
+[2m   Start at [22m 18:37:15
+[2m   Duration [22m 2.23s[2m (transform 58%, import 22%, environment 19%, tests 2%)[22m
+
+[2m  Transform [22m [33mtransforming modules took 2.66s[39m[2m · 58% of tracked time, re-done on every run[22m
+[2m            [22m [2mpersist transforms across runs with [22m[33mfsModuleCache: true[39m
+[2m            [22m [2mlearn more: https://vitest.dev/guide/improving-performance#caching-between-reruns[22m

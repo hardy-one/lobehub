@@ -1,0 +1,8 @@
+$ tsrs --noEmit -p tsconfig.type-check.json --checkers 4
+apps/server/src/services/agentSignal/policies/analyzeIntent/actions/userMemory.ts(253,19): error TS18047: 'agentConfig' is possibly 'null'.
+apps/server/src/services/agentSignal/policies/analyzeIntent/actions/userMemory.ts(254,19): error TS18047: 'agentConfig' is possibly 'null'.
+src/features/Conversation/store/slices/data/messageIndex.ts(49,33): error TS2339: Property 'taskCompletions' does not exist on type 'UIChatMessage'.
+src/services/heterogeneousAgent.ts(40,73): error TS2345: Argument of type '{ args?: string[]; command?: string; cwd?: string; env?: Record<string, string>; type: HeterogeneousCatalogAgentType; deviceId: string; }' is not assignable to parameter of type '{ args?: string[] | undefined; command?: string | undefined; cwd?: string | undefined; deviceId: string; env?: Record<string, string> | undefined; type: "codebuddy" | "codex" | ... 8 more ... | "trae"; }'.
+  Types of property 'type' are incompatible.
+    Type 'HeterogeneousCatalogAgentType' is not assignable to type '"codebuddy" | "codex" | "cursor" | "devin" | "droid" | "grok-build" | "kimi-code" | "opencode" | "pi" | "qoder" | "trae"'.
+      Type '"copilot"' is not assignable to type '"codebuddy" | "codex" | "cursor" | "devin" | "droid" | "grok-build" | "kimi-code" | "opencode" | "pi" | "qoder" | "trae"'.

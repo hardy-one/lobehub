@@ -6,8 +6,6 @@ import type {
   ModelReasoning,
   ModelUsage,
 } from '@lobechat/types';
-import { serializePartsForStorage } from '../utils/multimodalContent';
-import { sanitizeToolCallArguments } from '../utils/sanitizeToolCallArguments';
 
 import { UsageCounter } from '../core/UsageCounter';
 import type { AgentRuntimeHost, LLMAttemptOutput } from '../transport';
@@ -17,6 +15,8 @@ import type {
   GeneralAgentCallLLMResultPayload,
   InstructionExecutionResult,
 } from '../types';
+import { serializePartsForStorage } from '../utils/multimodalContent';
+import { sanitizeToolCallArguments } from '../utils/sanitizeToolCallArguments';
 import {
   hasRepeatedToolCall,
   TOOL_CALL_REPEAT_LIMIT,
@@ -278,6 +278,20 @@ const buildFinalState = ({
         visibleOutputEndPublishedStepIndex;
     }
     newState.metadata = stateMetadata;
+  }
+
+  // Run ledger: what the provider actually tokenized for this call. The
+  // compression check reads it instead of re-estimating the whole conversation,
+  // which it cannot do faithfully (the working set still holds untrimmed tool
+  // results, and the prompt preamble is assembled later). `totalTokens` is
+  // input + output, and the output is this message, which the next request
+  // sends back — so the anchor covers everything up to its own content.
+  const measuredTokens = output.usageEstimated ? undefined : output.usage?.totalTokens;
+  if (measuredTokens) {
+    newState.metadata = {
+      ...newState.metadata,
+      compressionBaseline: { model, msgId: assistantMessageId, tokens: measuredTokens },
+    };
   }
 
   return newState;

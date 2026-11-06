@@ -712,4 +712,72 @@ describe('callLlmFinalizer', () => {
       [expect.objectContaining({ type: 'stream_end' })],
     ]);
   });
+
+  it('records the measured usage as the compression baseline', async () => {
+    const result = await finalizeCallLlmTurn({
+      assistantMessageId: 'assistant-1',
+      events: [],
+      host: createHost(createMessageTransport(), createStreamSink()),
+      model: 'gpt-4',
+      output: createOutput({
+        usage: { totalInputTokens: 90_000, totalOutputTokens: 1_000, totalTokens: 91_000 },
+      }),
+      provider: 'openai',
+      shouldReplayAssistantReasoning: false,
+      state: AgentRuntime.createInitialState({ operationId: 'operation-1' }),
+    });
+
+    expect(result.newState.metadata?.compressionBaseline).toEqual({
+      model: 'gpt-4',
+      msgId: 'assistant-1',
+      tokens: 91_000,
+    });
+  });
+
+  it('does not record estimated usage as the compression baseline', async () => {
+    const result = await finalizeCallLlmTurn({
+      assistantMessageId: 'assistant-estimated',
+      events: [],
+      host: createHost(createMessageTransport(), createStreamSink()),
+      model: 'llama3',
+      output: createOutput({
+        executionSite: 'client',
+        usage: { totalInputTokens: 90_000, totalOutputTokens: 1_000, totalTokens: 91_000 },
+        usageEstimated: true,
+      }),
+      provider: 'ollama',
+      shouldReplayAssistantReasoning: false,
+      state: AgentRuntime.createInitialState({
+        metadata: { compressionBaseline: { model: 'llama3', msgId: 'older', tokens: 1_000 } },
+        operationId: 'operation-estimated',
+      }),
+    });
+
+    expect(result.newState.metadata?.compressionBaseline).toEqual({
+      model: 'llama3',
+      msgId: 'older',
+      tokens: 1_000,
+    });
+  });
+  it('leaves the compression baseline untouched when the provider reports no usage', async () => {
+    const result = await finalizeCallLlmTurn({
+      assistantMessageId: 'assistant-1',
+      events: [],
+      host: createHost(createMessageTransport(), createStreamSink()),
+      model: 'gpt-4',
+      output: createOutput(),
+      provider: 'openai',
+      shouldReplayAssistantReasoning: false,
+      state: AgentRuntime.createInitialState({
+        metadata: { compressionBaseline: { model: 'gpt-4', msgId: 'older', tokens: 1_000 } },
+        operationId: 'operation-1',
+      }),
+    });
+
+    expect(result.newState.metadata?.compressionBaseline).toEqual({
+      model: 'gpt-4',
+      msgId: 'older',
+      tokens: 1_000,
+    });
+  });
 });

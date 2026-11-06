@@ -1,0 +1,165 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.0 [39m[90m/home/hardy/Workspace/LobeHub/t2-origin-next-clean/packages/agent-runtime[39m
+
+ [31m❯[39m src/executors/callLlmFinalizer.test.ts [2m([22m[2m19 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 29[2mms[22m[39m
+   [31m❯[39m callLlmFinalizer [2m(19)[22m
+     [32m✓[39m retains the final assistant id independently of the rehydrated message shape[32m 4[2mms[22m[39m
+     [32m✓[39m blocks the limit-th consecutive identical tool call before it can execute[32m 8[2mms[22m[39m
+     [32m✓[39m keeps the repeat-limit marker on later turns that call no tools[32m 1[2mms[22m[39m
+     [32m✓[39m preserves user cancellation when an aborted stream emits the limit-th repeated tool call[32m 1[2mms[22m[39m
+     [32m✓[39m persists, builds replay-safe state and usage, and preserves finalization order[32m 2[2mms[22m[39m
+     [32m✓[39m tags replayable reasoning with its source model and provider[32m 0[2mms[22m[39m
+     [32m✓[39m persists complete reasoning response items without visible thinking content[32m 0[2mms[22m[39m
+     [32m✓[39m publishes no-tool visible output end before persistence and records the marker[32m 0[2mms[22m[39m
+     [32m✓[39m stamps the work display anchor only on the turn-final message after tool interaction[32m 1[2mms[22m[39m
+     [32m✓[39m serializes multimodal parts and keeps the null grounding sentinel[32m 1[2mms[22m[39m
+     [32m✓[39m preserves structured client metadata and maps abort completion to human_abort[32m 0[2mms[22m[39m
+     [32m✓[39m records a client-executed attempt and its estimated usage on the message[32m 1[2mms[22m[39m
+     [32m✓[39m persists partial interrupted output and skips empty interruptions[32m 1[2mms[22m[39m
+     [32m✓[39m keeps state finalization tolerant when the message write fails[32m 1[2mms[22m[39m
+     [32m✓[39m counts provider attempts even when a successful response omits usage[32m 0[2mms[22m[39m
+     [32m✓[39m does not publish early visible output end when the host disables it[32m 0[2mms[22m[39m
+[31m     [31m×[31m records the measured usage as the compression baseline[39m[32m 5[2mms[22m[39m
+     [32m✓[39m does not record estimated usage as the compression baseline[32m 1[2mms[22m[39m
+     [32m✓[39m leaves the compression baseline untouched when the provider reports no usage[32m 0[2mms[22m[39m
+ [31m❯[39m src/agents/__tests__/GeneralChatAgent.compressionBaseline.test.ts [2m([22m[2m4 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 12[2mms[22m[39m
+   [31m❯[39m GeneralChatAgent compression baseline [2m(4)[22m
+[31m     [31m×[31m compresses from the measured baseline of the previous call[39m[32m 10[2mms[22m[39m
+     [32m✓[39m ignores a baseline measured by another model[32m 0[2mms[22m[39m
+     [32m✓[39m ignores a baseline whose anchor message is no longer in the conversation[32m 0[2mms[22m[39m
+     [32m✓[39m uses the estimate path on the first turn without a baseline[32m 0[2mms[22m[39m
+ [31m❯[39m src/utils/tokenCounter.test.ts [2m([22m[2m19 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[32m 72[2mms[22m[39m
+   [31m❯[39m tokenCounter [2m(19)[22m
+     [32m✓[39m getCompressionThreshold [2m(5)[22m
+       [32m✓[39m should use default values[32m 1[2mms[22m[39m
+       [32m✓[39m should use custom maxWindowToken[32m 0[2mms[22m[39m
+       [32m✓[39m should use custom thresholdRatio[32m 0[2mms[22m[39m
+       [32m✓[39m should use both custom values[32m 0[2mms[22m[39m
+       [32m✓[39m should floor the result[32m 0[2mms[22m[39m
+     [32m✓[39m shouldCompress [2m(8)[22m
+       [32m✓[39m previews older attachments instead of compressing for attachment text[32m 50[2mms[22m[39m
+       [32m✓[39m should return needsCompression=false when under threshold[32m 0[2mms[22m[39m
+       [32m✓[39m should return needsCompression=true when over threshold[32m 0[2mms[22m[39m
+       [32m✓[39m should return needsCompression=true when raw count is at threshold (drift pushes over)[32m 0[2mms[22m[39m
+       [32m✓[39m should NOT trigger at threshold when driftMultiplier is 1[32m 0[2mms[22m[39m
+       [32m✓[39m should use custom options[32m 0[2mms[22m[39m
+       [32m✓[39m should handle empty messages[32m 0[2mms[22m[39m
+       [32m✓[39m should count tool definition tokens against the budget[32m 1[2mms[22m[39m
+     [31m❯[39m provider-measured baseline [2m(6)[22m
+[31m       [31m×[31m should count from the measured baseline plus the messages after the anchor[39m[32m 5[2mms[22m[39m
+       [32m✓[39m should stay under the threshold when the measured baseline is below it[32m 0[2mms[22m[39m
+       [32m✓[39m should ignore a baseline whose anchor message is gone[32m 0[2mms[22m[39m
+       [32m✓[39m should count only the group children after the anchor child[32m 1[2mms[22m[39m
+       [32m✓[39m should drop an emptied assistantGroup shell and count following messages[32m 7[2mms[22m[39m
+[31m       [31m×[31m should not charge tool schemas twice in baseline mode[39m[32m 3[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 4 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/executors/callLlmFinalizer.test.ts[2m > [22mcallLlmFinalizer[2m > [22mrecords the measured usage as the compression baseline
+[31m[1mAssertionError[22m: expected undefined to deeply equal { model: 'gpt-4', …(2) }[39m
+
+[32m- Expected:[39m
+{
+  "model": "gpt-4",
+  "msgId": "assistant-1",
+  "tokens": 91000,
+}
+
+[31m+ Received:[39m
+undefined
+
+[36m [2m❯[22m src/executors/callLlmFinalizer.test.ts:[2m730:59[22m[39m
+    [90m728|[39m     });
+    [90m729|[39m
+    [90m730|[39m     expect(result.newState.metadata?.compressionBaseline).toEqual({
+    [90m   |[39m                                                           [31m^[39m
+    [90m731|[39m       model: 'gpt-4',
+    [90m732|[39m       msgId: 'assistant-1',
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/utils/tokenCounter.test.ts[2m > [22mtokenCounter[2m > [22mprovider-measured baseline[2m > [22mshould count from the measured baseline plus the messages after the anchor
+[31m[1mAssertionError[22m: expected false to be true // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+[36m [2m❯[22m src/utils/tokenCounter.test.ts:[2m206:39[22m[39m
+    [90m204|[39m       });
+    [90m205|[39m
+    [90m206|[39m       expect(result.needsCompression).toBe(true);
+    [90m   |[39m                                       [31m^[39m
+    [90m207|[39m       expect(result.currentTokenCount).toBeGreaterThanOrEqual(70_000);
+    [90m208|[39m       expect(result.currentTokenCount).toBeLessThan(70_100);
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/utils/tokenCounter.test.ts[2m > [22mtokenCounter[2m > [22mprovider-measured baseline[2m > [22mshould not charge tool schemas twice in baseline mode
+[31m[1mAssertionError[22m: expected true to be false // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+[36m [2m❯[22m src/utils/tokenCounter.test.ts:[2m315:39[22m[39m
+    [90m313|[39m
+    [90m314|[39m       // The measured request already included those schemas.
+    [90m315|[39m       expect(result.needsCompression).toBe(false);
+    [90m   |[39m                                       [31m^[39m
+    [90m316|[39m     });
+    [90m317|[39m   });
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/agents/__tests__/GeneralChatAgent.compressionBaseline.test.ts[2m > [22mGeneralChatAgent compression baseline[2m > [22mcompresses from the measured baseline of the previous call
+[31m[1mAssertionError[22m: expected { payload: { …(2) }, type: 'call_llm' } to deeply equal { payload: { …(3) }, …(1) }[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[33m@@ -1,9 +1,7 @@[39m
+[2m  {[22m
+[2m    "payload": {[22m
+[32m-     "currentTokenCount": Any<Number>,[39m
+[32m-     "existingSummary": undefined,[39m
+[2m      "messages": [[22m
+[2m        {[22m
+[2m          "content": "Hello",[22m
+[2m          "id": "user-1",[22m
+[2m          "role": "user",[22m
+[33m@@ -13,8 +11,9 @@[39m
+[2m          "id": "assistant-1",[22m
+[2m          "model": "gpt-4o-mini",[22m
+[2m          "role": "assistant",[22m
+[2m        },[22m
+[2m      ],[22m
+[31m+     "tools": undefined,[39m
+[2m    },[22m
+[32m-   "type": "compress_context",[39m
+[31m+   "type": "call_llm",[39m
+[2m  }[22m
+
+[36m [2m❯[22m src/agents/__tests__/GeneralChatAgent.compressionBaseline.test.ts:[2m74:20[22m[39m
+    [90m 72|[39m     const result = await createAgent().runner(createContext(), state);
+    [90m 73|[39m
+    [90m 74|[39m     expect(result).toEqual({
+    [90m   |[39m                    [31m^[39m
+    [90m 75|[39m       payload: {
+    [90m 76|[39m         currentTokenCount: expect.any(Number),
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m3 failed[39m[22m[90m (3)[39m
+[2m      Tests [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m38 passed[39m[22m[90m (42)[39m
+[2m   Start at [22m 18:45:34
+[2m   Duration [22m 2.40s[2m (transform 60%, import 20%, environment 17%, tests 2%)[22m
+
+[2m  Transform [22m [33mtransforming modules took 3.03s[39m[2m · 60% of tracked time, re-done on every run[22m
+[2m            [22m [2mpersist transforms across runs with [22m[33mfsModuleCache: true[39m
+[2m            [22m [2mlearn more: https://vitest.dev/guide/improving-performance#caching-between-reruns[22m

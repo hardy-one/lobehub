@@ -266,6 +266,30 @@ describe('tokenCounter', () => {
       expect(result.currentTokenCount).toBeGreaterThan(12_000);
     });
 
+    it('should drop an emptied assistantGroup shell and count following messages', () => {
+      const messages = [
+        mkMsg({
+          children: [
+            { content: 'first call', id: 'first', role: 'assistant' },
+            { content: 'anchor call', id: 'anchor', role: 'assistant' },
+          ],
+          content: 'wrapper content must not survive after its last child is anchored',
+          id: 'group-1',
+          role: 'assistantGroup',
+        } as any),
+        mkMsg({ content: 'y'.repeat(200_000), id: 'after', role: 'user' }),
+      ];
+
+      const result = shouldCompress(messages, {
+        ...options,
+        baselineLastMsgId: 'anchor',
+        baselineTokens: 10_000,
+      });
+
+      // The post-anchor message remains in the delta even though the group has
+      // no remaining children; this executes the emptied-shell fallback branch.
+      expect(result.currentTokenCount).toBeGreaterThan(10_000);
+    });
     it('should not charge tool schemas twice in baseline mode', () => {
       const messages = [
         mkMsg({ content: 'old question', id: 'anchor', role: 'assistant' }),

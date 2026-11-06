@@ -109,4 +109,14 @@ describe('GeneralChatAgent compression baseline', () => {
 
     expect((result as any).type).toBe('call_llm');
   });
+
+  it('uses the estimate path on the first turn without a baseline', async () => {
+    const state = createState({
+      messages: [{ content: 'First question', id: 'user-1', role: 'user' }] as any,
+    });
+
+    const result = await createAgent().runner(createContext(), state);
+
+    expect((result as any).type).toBe('call_llm');
+  });
 });

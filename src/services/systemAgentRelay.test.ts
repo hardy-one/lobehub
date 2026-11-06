@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { lambdaClient } from '@/libs/trpc/client';
 import { oneShotRelay } from '@/services/llmRelay';
+import { createServerConfigStore } from '@/store/serverConfig/store';
 import { useUserStore } from '@/store/user';
 
 import { expertiseService } from './expertise';
@@ -59,6 +60,9 @@ describe('system-agent browser entries and the one-shot relay', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(oneShotRelay.run).mockImplementation(async (_provider, request) => request(RELAY));
+    createServerConfigStore().setState({
+      serverConfig: { aiProvider: {}, telemetry: {} },
+    });
     act(() => {
       useUserStore.setState({
         settings: {
@@ -186,22 +190,28 @@ describe('system-agent browser entries and the one-shot relay', () => {
   describe('verify', () => {
     // Criteria / plans are split on the acceptance model, so a device-only
     // provider behind that slot still needs this tab standing by as the executor.
-    it('generateCriteria runs on the acceptance model', async () => {
+    it('generateCriteria stands by for the acceptance model', async () => {
       const params = { goal: 'ship it' };
       await verifyService.generateCriteria(params);
 
-      expect(oneShotRelay.run).toHaveBeenCalledWith('ollama', expect.any(Function));
+      expect(oneShotRelay.run).toHaveBeenCalledWith(
+        ['ollama', DEFAULT_VERIFY_PLAN_PROVIDER],
+        expect.any(Function),
+      );
       expect(lambdaClient.verify.generateCriteria.mutate).toHaveBeenCalledWith(
         params,
         RELAY_OPTIONS,
       );
     });
 
-    it('generateDraftPlan runs on the acceptance model', async () => {
+    it('generateDraftPlan stands by for the acceptance model', async () => {
       const params = { goal: 'ship it', operationId: 'op' };
       await verifyService.generateDraftPlan(params);
 
-      expect(oneShotRelay.run).toHaveBeenCalledWith('ollama', expect.any(Function));
+      expect(oneShotRelay.run).toHaveBeenCalledWith(
+        ['ollama', DEFAULT_VERIFY_PLAN_PROVIDER],
+        expect.any(Function),
+      );
       expect(lambdaClient.verify.generateDraftPlan.mutate).toHaveBeenCalledWith(
         params,
         RELAY_OPTIONS,
@@ -215,7 +225,29 @@ describe('system-agent browser entries and the one-shot relay', () => {
       await verifyService.generateDraftPlan({ goal: 'ship it', operationId: 'op' });
 
       expect(oneShotRelay.run).toHaveBeenCalledWith(
-        DEFAULT_VERIFY_PLAN_PROVIDER,
+        [DEFAULT_VERIFY_PLAN_PROVIDER],
+        expect.any(Function),
+      );
+    });
+
+    // The server resolves the slot as account → deployment `SYSTEM_AGENT=verify=`
+    // → floor, so a deployment that only sets the env still splits on that
+    // model; this tab has to be standing by for it, not just the floor's.
+    it('stands by for the deployment acceptance model too', async () => {
+      act(() => {
+        useUserStore.setState({ settings: { systemAgent: {} } as any });
+        createServerConfigStore().setState({
+          serverConfig: {
+            aiProvider: {},
+            systemAgent: { verify: { model: 'qwen3:1.7b', provider: 'ollama' } },
+            telemetry: {},
+          },
+        });
+      });
+      await verifyService.generateDraftPlan({ goal: 'ship it', operationId: 'op' });
+
+      expect(oneShotRelay.run).toHaveBeenCalledWith(
+        ['ollama', DEFAULT_VERIFY_PLAN_PROVIDER],
         expect.any(Function),
       );
     });

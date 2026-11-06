@@ -65,6 +65,7 @@ vi.mock('@/database/models/document', () => ({
     return {};
   }),
 }));
+vi.mock('@/envs/app', () => ({ appEnv: { SYSTEM_AGENT: '' } }));
 vi.mock('@/server/services/aiGeneration', () => ({
   AiGenerationService: vi.fn(function () {
     return { generateObject: generateObjectMock };
@@ -173,24 +174,10 @@ describe('generateDraftPlan — holistic fallback', () => {
 describe('verify plan generation model', () => {
   beforeEach(() => {
     generateObjectMock.mockReset();
+    getUserSettingsMock.mockResolvedValue(undefined);
   });
 
-  it('keeps generic task criteria generation on the verify-plan scenario and pinned model', async () => {
-    generateObjectMock.mockResolvedValue({ criteria: [] });
-
-    await new VerifyPlanGeneratorService(db, 'user-1').generateCriteria({
-      goal: 'Ship the feature',
-    });
-
-    expect(generateObjectMock).toHaveBeenCalledWith(
-      expect.objectContaining(VERIFY_PLAN_MODEL_CONFIG),
-      expect.objectContaining({
-        tracing: expect.objectContaining({ scenario: 'verify_plan_gen' }),
-      }),
-    );
-  });
-
-  it('splits an undecomposed requirement on the pinned model without a caller model', async () => {
+  it('splits an undecomposed requirement on the floor model when the account picked no acceptance model', async () => {
     generateObjectMock.mockResolvedValue({ criteria: [] });
 
     await new VerifyPlanGeneratorService(db, 'user-1').generateDraftPlan({
@@ -204,6 +191,48 @@ describe('verify plan generation model', () => {
     expect(generateObjectMock).toHaveBeenCalledWith(
       expect.objectContaining(VERIFY_PLAN_MODEL_CONFIG),
       expect.any(Object),
+    );
+  });
+
+  /**
+   * The split judges the same delivery the verifier will, so it follows the
+   * model the user picked for acceptance work instead of a deployment constant
+   * that may name a provider this account cannot reach.
+   */
+  it('splits an undecomposed requirement on the account acceptance model', async () => {
+    generateObjectMock.mockResolvedValue({ criteria: [] });
+    getUserSettingsMock.mockResolvedValue({
+      systemAgent: { verify: { model: 'gpt-6-luna', provider: 'magpie' } },
+    });
+
+    await new VerifyPlanGeneratorService(db, 'user-1').generateDraftPlan({
+      enableAiGeneration: true,
+      goal: 'Ship the feature',
+      holisticFallback: true,
+      operationId: 'op-1',
+    });
+
+    expect(generateObjectMock).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'gpt-6-luna', provider: 'magpie' }),
+      expect.any(Object),
+    );
+  });
+
+  it('keeps generic task criteria generation on the verify-plan scenario and the account acceptance model', async () => {
+    generateObjectMock.mockResolvedValue({ criteria: [] });
+    getUserSettingsMock.mockResolvedValue({
+      systemAgent: { verify: { model: 'gpt-6-luna', provider: 'magpie' } },
+    });
+
+    await new VerifyPlanGeneratorService(db, 'user-1').generateCriteria({
+      goal: 'Ship the feature',
+    });
+
+    expect(generateObjectMock).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'gpt-6-luna', provider: 'magpie' }),
+      expect.objectContaining({
+        tracing: expect.objectContaining({ scenario: 'verify_plan_gen' }),
+      }),
     );
   });
 

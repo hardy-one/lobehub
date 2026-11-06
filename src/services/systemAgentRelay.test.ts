@@ -1,4 +1,4 @@
-import { DEFAULT_VERIFY_PLAN_MODEL, DEFAULT_VERIFY_PLAN_PROVIDER } from '@lobechat/business-const';
+import { DEFAULT_VERIFY_PLAN_PROVIDER } from '@lobechat/business-const';
 import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -65,6 +65,7 @@ describe('system-agent browser entries and the one-shot relay', () => {
           systemAgent: {
             expertise: { enabled: true, model: 'qwen3-1.7b', provider: 'lmstudio' },
             goal: { enabled: true, model: 'qwen3:1.7b', provider: 'ollama' },
+            verify: { enabled: true, model: 'qwen3:1.7b', provider: 'ollama' },
           },
         } as any,
       });
@@ -183,32 +184,39 @@ describe('system-agent browser entries and the one-shot relay', () => {
   });
 
   describe('verify', () => {
-    it('generateCriteria runs on the pinned plan model', async () => {
+    // Criteria / plans are split on the acceptance model, so a device-only
+    // provider behind that slot still needs this tab standing by as the executor.
+    it('generateCriteria runs on the acceptance model', async () => {
       const params = { goal: 'ship it' };
       await verifyService.generateCriteria(params);
 
-      expect(DEFAULT_VERIFY_PLAN_MODEL).toBeTruthy();
-      expect(oneShotRelay.run).toHaveBeenCalledWith(
-        DEFAULT_VERIFY_PLAN_PROVIDER,
-        expect.any(Function),
-      );
+      expect(oneShotRelay.run).toHaveBeenCalledWith('ollama', expect.any(Function));
       expect(lambdaClient.verify.generateCriteria.mutate).toHaveBeenCalledWith(
         params,
         RELAY_OPTIONS,
       );
     });
 
-    it('generateDraftPlan runs on the pinned plan model', async () => {
+    it('generateDraftPlan runs on the acceptance model', async () => {
       const params = { goal: 'ship it', operationId: 'op' };
       await verifyService.generateDraftPlan(params);
+
+      expect(oneShotRelay.run).toHaveBeenCalledWith('ollama', expect.any(Function));
+      expect(lambdaClient.verify.generateDraftPlan.mutate).toHaveBeenCalledWith(
+        params,
+        RELAY_OPTIONS,
+      );
+    });
+
+    it('falls back to the deployment plan provider when the slot is unset', async () => {
+      act(() => {
+        useUserStore.setState({ settings: { systemAgent: {} } as any });
+      });
+      await verifyService.generateDraftPlan({ goal: 'ship it', operationId: 'op' });
 
       expect(oneShotRelay.run).toHaveBeenCalledWith(
         DEFAULT_VERIFY_PLAN_PROVIDER,
         expect.any(Function),
-      );
-      expect(lambdaClient.verify.generateDraftPlan.mutate).toHaveBeenCalledWith(
-        params,
-        RELAY_OPTIONS,
       );
     });
 

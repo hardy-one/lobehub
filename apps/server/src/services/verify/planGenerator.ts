@@ -20,7 +20,7 @@ import type { VerifyCriterionItem } from '@/database/schemas/verify';
 import type { LobeChatDatabase } from '@/database/type';
 import { AiGenerationService } from '@/server/services/aiGeneration';
 
-import { VERIFY_PLAN_MODEL_CONFIG } from './modelConfig';
+import { resolveVerifyPlanModelConfig } from './modelConfig';
 import { resolveVerifyResponseLanguage } from './responseLanguage';
 import { RawGeneratedCriteriaSchema } from './schema';
 
@@ -182,7 +182,7 @@ export class VerifyPlanGeneratorService {
           language: await resolveVerifyResponseLanguage(this.db, this.userId),
           maxCriteria,
         }),
-        ...VERIFY_PLAN_MODEL_CONFIG,
+        ...(await resolveVerifyPlanModelConfig(this.db, this.userId)),
         schema: GENERATED_CRITERIA_JSON_SCHEMA,
         thinking: { type: 'disabled' },
       },
@@ -337,7 +337,7 @@ export class VerifyPlanGeneratorService {
     const raw = await ai.generateObject(
       {
         ...chain,
-        ...VERIFY_PLAN_MODEL_CONFIG,
+        ...(await resolveVerifyPlanModelConfig(this.db, this.userId)),
         schema: GENERATED_CRITERIA_JSON_SCHEMA,
         thinking: { type: 'disabled' },
       },

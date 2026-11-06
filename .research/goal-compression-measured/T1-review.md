@@ -38,20 +38,22 @@ GeneralChatAgent.ts:660–666 第二生产流程复用判定结果
 
 ## 3. 锚点回退、模型与 assistantGroup 测试覆盖
 
-已覆盖的分支：
+以下逐项按验收要求核对：
 
-- 首轮无 baseline：`GeneralChatAgent.compressionBaseline.test.ts:113–121`，专门构造仅有 user 消息且没有 baseline，断言继续 `call_llm`。它与锚点已消失的测试独立。
-- 压缩后摘要/消息被删、baseline 锚点消失：agent 层 `GeneralChatAgent.compressionBaseline.test.ts:100–110` 覆盖走估算/继续请求；`tokenCounter.test.ts:226–238` 覆盖整组估算回退。
-- 跨模型 baseline：`GeneralChatAgent.compressionBaseline.test.ts:84–98` 覆盖忽略异模型 baseline；生产校验在 `GeneralChatAgent.ts:530–534`。
-- assistantGroup 子消息锚点：`tokenCounter.test.ts:240–267` 覆盖只估算子消息锚点之后的内容。
-- 锚点后 group 壳被清空：`tokenCounter.test.ts:269–292` 覆盖丢弃空壳并继续计入后续消息。
-- estimated 与真实 usage 分流：`callLlmFinalizer.test.ts:716–779` 覆盖真实 usage、estimated usage 与缺少 usage 三种情况。
+| 场景 | 覆盖结论 | 测试名称与位置 | 未覆盖说明 |
+|---|---|---|---|
+| 首轮无锚点 / 无 baseline | 已覆盖 | `GeneralChatAgent.compressionBaseline.test.ts:113–121`，`uses the estimate path on the first turn without a baseline`，仅 user 消息且无 baseline | 无此分支缺口 |
+| 压缩后摘要作为当前可见消息、旧锚点不在对话 | 已覆盖 | `GeneralChatAgent.compressionBaseline.test.ts:100–110`，`ignores a baseline whose anchor message is no longer in the conversation`，消息为 `Compressed summary` | 覆盖摘要替代原锚点的情况；未单测多轮连续压缩后摘要链 |
+| baseline 锚点消息被删除 / 消失 | 已覆盖 | `tokenCounter.test.ts:226–238`，`should ignore a baseline whose anchor message is gone`；agent 层同见上一个用例 | 锚点消失后整组按可见消息估算；删除发生的所有业务入口未逐一集成覆盖 |
+| 跨模型 baseline | 已覆盖 | `GeneralChatAgent.compressionBaseline.test.ts:84–98`，`ignores a baseline measured by another model` | `currentModel` 缺失时兼容通过的分支没有独立测试，见 `GeneralChatAgent.ts:534` |
+| assistantGroup 子消息锚点 | 已覆盖 | `tokenCounter.test.ts:240–267`，`should count only the group children after the anchor child` | 顶层 wrapper 自身作为 anchor 的独立命名测试缺失；子消息锚点有直接覆盖 |
+| assistantGroup 锚点后清空容器 | 已覆盖 | `tokenCounter.test.ts:269–292`，`should drop an emptied assistantGroup shell and count following messages` | 空壳分支及后续消息计入已覆盖 |
 
-未覆盖或仍有边界：没有逐 provider 集成测试证明每个 adapter 的 `totalTokens` 等于该 provider 对输入/输出的计费口径；malformed baseline metadata 与 `currentModel` 为空时的兼容分支未单独测试；顶层 assistantGroup wrapper anchor 没有独立命名测试；所有客户端 provider 组合与中断/失败路径未在本任务完整覆盖。
+其它未覆盖分支：`GeneralChatAgent.ts:532–534` 的 malformed baseline metadata（msgId 类型错误、tokens 非正数）没有独立测试；没有逐 provider 集成测试证明每个 adapter 的 `totalTokens` 等于其计费口径；所有客户端 provider 组合以及中断/失败输出路径未完整覆盖。本报告不把这些未测分支描述为已验证。
 
 ## 4. 改动面、依赖与 UI
 
-相对当前 `origin/next` 的六个实现/测试文件统计：
+相对当前 `origin/next`，六个实现/测试文件的逐文件 `git diff --numstat`：
 
 ```text
 35  0  packages/agent-runtime/src/agents/GeneralChatAgent.ts
@@ -62,7 +64,7 @@ GeneralChatAgent.ts:660–666 第二生产流程复用判定结果
 73  1  packages/agent-runtime/src/utils/tokenCounter.ts
 ```
 
-合计 446 行新增、3 行删除。没有新增依赖，没有修改 package manifest 或 lockfile；未触及 i18n 或 UI。服务端、context-engine 命中项仅作只读核查，没有改动。
+以上六文件合计 446 行新增、3 行删除。全分支 `git diff --stat origin/next..HEAD` 另包含本报告，因此是 7 个文件、530 行新增、3 行删除；报告本身 84 行。改动路径检查确认 `package.json`、`pnpm-lock.yaml` 和 locales 均不在文件清单中；没有新增依赖、未触及 i18n 或 UI。服务端与 context-engine 命中项只读复核，无代码改动。
 
 相对旧审查基线 `3620c662ab4413fdbc4fd0bb6e185b5d7fa8d891` 的旧行数统计不可用于当前基线，本节以上述当前 `origin/next` 对比为准。
 

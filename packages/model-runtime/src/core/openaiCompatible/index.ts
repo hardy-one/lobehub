@@ -256,7 +256,14 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
     }
 
     private shouldUseResponsesAPI(params: ShouldUseResponsesAPIParams) {
-      return shouldUseResponsesAPI(params, this.logPrefix);
+      return shouldUseResponsesAPI(
+        {
+          ...params,
+          modelSdkType: this._options.modelSdkType,
+          responseApiMode: params.userApiMode ? undefined : this._options.responseApiMode,
+        },
+        this.logPrefix,
+      );
     }
 
     /** What the protocol modules read; built per call so it always reflects current state. */

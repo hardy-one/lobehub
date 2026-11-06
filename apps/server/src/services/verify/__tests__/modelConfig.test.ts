@@ -7,8 +7,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   isHeterogeneousVerifyProvider,
   resolveVerifyModelConfig,
+  resolveVerifyPlanModelConfig,
   REVIEW_PREDICT_MODEL_CONFIG,
   VERIFY_FALLBACK_MODEL_CONFIG,
+  VERIFY_PLAN_MODEL_CONFIG,
 } from '../modelConfig';
 
 const { appEnvMock, getAgentModelConfigMock, getUserSettingsMock } = vi.hoisted(() => ({
@@ -202,5 +204,42 @@ describe('REVIEW_PREDICT_MODEL_CONFIG', () => {
       `${REVIEW_PREDICT_MODEL_CONFIG.provider}/${REVIEW_PREDICT_MODEL_CONFIG.model} is not a chat model in model-bank`,
     ).toBeDefined();
     expect(card!.abilities?.vision).toBe(true);
+  });
+});
+
+describe('resolveVerifyPlanModelConfig', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    appEnvMock.SYSTEM_AGENT = '';
+    getUserSettingsMock.mockResolvedValue({});
+  });
+
+  /**
+   * The split used to be pinned to a deployment constant naming one provider.
+   * On a deployment that does not enable that provider the generation call
+   * threw, the failure was swallowed, and every task checklist collapsed into
+   * the single holistic "Task delivery acceptance" row.
+   */
+  it('uses the account acceptance model so the split runs on a reachable provider', async () => {
+    getUserSettingsMock.mockResolvedValue({
+      systemAgent: { verify: { model: 'gpt-6-luna', provider: 'magpie' } },
+    });
+
+    await expect(resolveVerifyPlanModelConfig(db, 'u')).resolves.toEqual({
+      model: 'gpt-6-luna',
+      provider: 'magpie',
+    });
+  });
+
+  it('falls through to the floor plan model when the account has picked none', async () => {
+    await expect(resolveVerifyPlanModelConfig(db, 'u')).resolves.toEqual(VERIFY_PLAN_MODEL_CONFIG);
+  });
+
+  it('ignores a heterogeneous provider, which cannot run the split', async () => {
+    getUserSettingsMock.mockResolvedValue({
+      systemAgent: { verify: { model: 'claude-opus-5-5', provider: 'claude-code' } },
+    });
+
+    await expect(resolveVerifyPlanModelConfig(db, 'u')).resolves.toEqual(VERIFY_PLAN_MODEL_CONFIG);
   });
 });

@@ -28,6 +28,7 @@ import type {
 } from '@/database/schemas/verify';
 import { lambdaClient, withLlmRelay } from '@/libs/trpc/client';
 import { oneShotRelay } from '@/services/llmRelay';
+import { getServerConfigStoreState } from '@/store/serverConfig';
 import { useUserStore } from '@/store/user';
 import { systemAgentSelectors } from '@/store/user/selectors';
 
@@ -35,16 +36,26 @@ import { systemAgentSelectors } from '@/store/user/selectors';
 const goalModelProvider = () => systemAgentSelectors.goal(useUserStore.getState()).provider;
 
 /**
- * The Acceptance Model's provider: verify criteria / plans are split on it
- * server-side.
+ * Providers the criteria / plan split may run on, in the order the server
+ * resolves them: the account's Acceptance Model, the deployment's
+ * `SYSTEM_AGENT=verify=`, then the floor.
  *
- * Read from the stored settings, not `systemAgentSelectors`: the selector merges
- * in the system recommendation, so an unset slot would report a provider the
- * server does not use (it falls through to `DEFAULT_VERIFY_PLAN_PROVIDER`) and
- * this tab would subscribe for the wrong one.
+ * A list rather than the winning provider: the server takes the first *usable*
+ * candidate (it also skips heterogeneous ones), and only it knows which one
+ * that is. This tab just has to be standing by when the winner only this device
+ * can reach. Read from the stored settings and the deployment config, not
+ * `systemAgentSelectors`: the selector merges in the code-level default, which
+ * the server never uses for this slot.
  */
-const verifyModelProvider = () =>
-  useUserStore.getState().settings?.systemAgent?.verify?.provider || DEFAULT_VERIFY_PLAN_PROVIDER;
+const verifyPlanModelProviders = () => [
+  ...new Set(
+    [
+      useUserStore.getState().settings?.systemAgent?.verify?.provider,
+      getServerConfigStoreState()?.serverConfig?.systemAgent?.verify?.provider,
+      DEFAULT_VERIFY_PLAN_PROVIDER,
+    ].filter((provider): provider is string => Boolean(provider)),
+  ),
+];
 
 /** Criterion row plus the judge instruction resolved from its linked document. */
 export type GoalCriterionWithInstruction = VerifyCriterionItem & { instruction?: string };
@@ -428,7 +439,7 @@ export class VerifyService {
    * generation runs on the account's Acceptance Model.
    */
   generateDraftPlan = (input: GenerateDraftPlanInput): Promise<VerifyCheckItem[]> =>
-    oneShotRelay.run(verifyModelProvider(), (relay) =>
+    oneShotRelay.run(verifyPlanModelProviders(), (relay) =>
       lambdaClient.verify.generateDraftPlan.mutate(input, withLlmRelay(relay)),
     ) as Promise<VerifyCheckItem[]>;
 
@@ -485,7 +496,7 @@ export class VerifyService {
     goal: string;
     maxCriteria?: number;
   }): Promise<VerifyCriterionDraft[]> =>
-    oneShotRelay.run(verifyModelProvider(), (relay) =>
+    oneShotRelay.run(verifyPlanModelProviders(), (relay) =>
       lambdaClient.verify.generateCriteria.mutate(input, withLlmRelay(relay)),
     ) as Promise<VerifyCriterionDraft[]>;
 

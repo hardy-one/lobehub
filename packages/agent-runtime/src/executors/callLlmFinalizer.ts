@@ -286,7 +286,7 @@ const buildFinalState = ({
   // results, and the prompt preamble is assembled later). `totalTokens` is
   // input + output, and the output is this message, which the next request
   // sends back — so the anchor covers everything up to its own content.
-  const measuredTokens = output.usage?.totalTokens;
+  const measuredTokens = output.usageEstimated ? undefined : output.usage?.totalTokens;
   if (measuredTokens) {
     newState.metadata = {
       ...newState.metadata,

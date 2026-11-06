@@ -734,6 +734,31 @@ describe('callLlmFinalizer', () => {
     });
   });
 
+  it('does not record estimated usage as the compression baseline', async () => {
+    const result = await finalizeCallLlmTurn({
+      assistantMessageId: 'assistant-estimated',
+      events: [],
+      host: createHost(createMessageTransport(), createStreamSink()),
+      model: 'llama3',
+      output: createOutput({
+        executionSite: 'client',
+        usage: { totalInputTokens: 90_000, totalOutputTokens: 1_000, totalTokens: 91_000 },
+        usageEstimated: true,
+      }),
+      provider: 'ollama',
+      shouldReplayAssistantReasoning: false,
+      state: AgentRuntime.createInitialState({
+        metadata: { compressionBaseline: { model: 'llama3', msgId: 'older', tokens: 1_000 } },
+        operationId: 'operation-estimated',
+      }),
+    });
+
+    expect(result.newState.metadata?.compressionBaseline).toEqual({
+      model: 'llama3',
+      msgId: 'older',
+      tokens: 1_000,
+    });
+  });
   it('leaves the compression baseline untouched when the provider reports no usage', async () => {
     const result = await finalizeCallLlmTurn({
       assistantMessageId: 'assistant-1',
@@ -755,4 +780,5 @@ describe('callLlmFinalizer', () => {
       tokens: 1_000,
     });
   });
+
 });

@@ -9,7 +9,6 @@ import type OpenAI from 'openai';
 import type { Stream } from 'openai/streaming';
 
 import { ErrorClassifier, refineErrorCode } from '../../errors';
-import { isResponsesAPIModel } from '../../providers/openai/modelId';
 import type {
   ASROptions,
   ASRPayload,
@@ -96,6 +95,8 @@ import {
   recordOpenAIResponsesResponse,
   resolveOpenAIResponseWithMetadata,
 } from './providerDiagnostics';
+import type { ShouldUseResponsesAPIParams } from './responseApiRoute';
+import { resolveUserApiMode, shouldUseResponsesAPI } from './responseApiRoute';
 import {
   convertChatCompletionToolToResponseTool,
   stripChatCompletionParameters,
@@ -341,104 +342,19 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
     }
 
     /**
-     * Determine if should use Responses API based on various configuration options
-     * @param params - Configuration parameters
-     * @returns true if should use Responses API, false otherwise
+     * Which endpoint this request takes. See {@link shouldUseResponsesAPI} for the precedence
+     * between the model's own name, the user's switch, and the factory's flags.
      */
-    private shouldUseResponsesAPI(params: {
-      /** Context for logging (e.g., 'chat', 'generateObject', 'tool calling') */
-      context?: string;
-      /** Factory/instance level useResponse flag */
-      flagUseResponse?: boolean;
-      /** Factory/instance level model patterns for Responses API */
-      flagUseResponseModels?: Array<string | RegExp>;
-      /** The model ID to check */
-      model?: string;
-      /** Explicit responseApi flag */
-      responseApi?: boolean;
-      /** User-specified API mode (highest priority) */
-      userApiMode?: string;
-    }): boolean {
-      const {
-        model,
-        userApiMode,
-        responseApi,
-        flagUseResponse,
-        flagUseResponseModels,
-        context = 'operation',
-      } = params;
+    private shouldUseResponsesAPI(params: ShouldUseResponsesAPIParams) {
+      return shouldUseResponsesAPI(params, {
+        log: debug(`${this.logPrefix}:shouldUseResponsesAPI`),
+        modelSdkType: this._options.modelSdkType,
+      });
+    }
 
-      const log = debug(`${this.logPrefix}:shouldUseResponsesAPI`);
-
-      // Provider-scoped protocol metadata is stronger than global model-name heuristics.
-      if (this._options.modelSdkType) {
-        return this._options.modelSdkType === 'openai-responses';
-      }
-
-      // Priority 0: Check built-in Responses API model rules FIRST (highest priority)
-      // These models MUST use Responses API regardless of user settings.
-      if (model && isResponsesAPIModel(model)) {
-        log('using Responses API: model %s matches built-in Responses API model rules', model);
-        return true;
-      }
-
-      // Priority 1: userApiMode is explicitly set to 'chatCompletion' (user disabled the switch)
-      if (userApiMode === 'chatCompletion') {
-        log('using Chat Completions API: userApiMode=%s', userApiMode);
-        return false;
-      }
-
-      // Priority 2: When user enables the switch (userApiMode === 'responses')
-      // Check if useResponseModels is configured - if so, only matching models use Responses API
-      // If useResponseModels is not configured, all models use Responses API
-      if (userApiMode === 'responses') {
-        if (model && flagUseResponseModels?.length) {
-          const matches = flagUseResponseModels.some((m: string | RegExp) =>
-            typeof m === 'string' ? model.includes(m) : (m as RegExp).test(model),
-          );
-          if (matches) {
-            log(
-              'using Responses API: userApiMode=responses and model %s matches useResponseModels',
-              model,
-            );
-            return true;
-          }
-          log(
-            'using Chat Completions API: userApiMode=responses but model %s does not match useResponseModels',
-            model,
-          );
-          return false;
-        }
-        // No useResponseModels configured, use Responses API for all models
-        log('using Responses API: userApiMode=responses (no useResponseModels filter)');
-        return true;
-      }
-
-      // Priority 3: Explicit responseApi flag
-      if (responseApi) {
-        log('using Responses API: explicit responseApi flag for %s', context);
-        return true;
-      }
-
-      // Priority 4: Factory/instance level useResponse flag
-      if (flagUseResponse) {
-        log('using Responses API: flagUseResponse=true for %s', context);
-        return true;
-      }
-
-      // Priority 5: Check if model matches useResponseModels patterns (without user switch)
-      if (model && flagUseResponseModels?.length) {
-        const matches = flagUseResponseModels.some((m: string | RegExp) =>
-          typeof m === 'string' ? model.includes(m) : (m as RegExp).test(model),
-        );
-        if (matches) {
-          log('using Responses API: model %s matches useResponseModels config', model);
-          return true;
-        }
-      }
-
-      log('using Chat Completions API for %s', context);
-      return false;
+    /** The provider's switch, for a call whose payload carries no `apiMode` of its own. */
+    private resolveUserApiMode(payloadApiMode?: string) {
+      return resolveUserApiMode(payloadApiMode, this._options.responseApiMode);
     }
 
     private resolvePromptCacheKey(model?: string, user?: string) {
@@ -509,7 +425,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
         if (payload.tools) payload.tools = normalizeToolsParameters(payload.tools as any) as any;
 
         let processedPayload: any = payload;
-        const userApiMode = (payload as any).apiMode as string | undefined;
+        const userApiMode = this.resolveUserApiMode((payload as any).apiMode);
         const modelId = (payload as any).model as string | undefined;
 
         const instanceChat = ((this._options as any).chatCompletion || {}) as {
@@ -1024,7 +940,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
 
     async generateObject(payload: GenerateObjectPayload, options?: GenerateObjectOptions) {
       try {
-        const { messages, schema, model, responseApi, tools } = payload;
+        const { messages, schema, model, responseApi, tools, apiMode } = payload;
 
         const log = debug(`${this.logPrefix}:generateObject`);
         log(
@@ -1072,6 +988,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
           flagUseResponseModels,
           model,
           responseApi,
+          userApiMode: this.resolveUserApiMode(apiMode),
         });
 
         // Apply schema transformation if configured
@@ -1626,7 +1543,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
       options?: GenerateObjectOptions,
       usagePayload?: ChatPayloadForTransformStream,
     ) {
-      const { messages, model, tools, responseApi } = payload;
+      const { messages, model, tools, responseApi, apiMode } = payload;
       const log = debug(`${this.logPrefix}:generateObject`);
 
       log(
@@ -1652,6 +1569,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
         flagUseResponseModels,
         model,
         responseApi,
+        userApiMode: this.resolveUserApiMode(apiMode),
       });
       const requestModel = this.getMappedModelId(payload.model);
 

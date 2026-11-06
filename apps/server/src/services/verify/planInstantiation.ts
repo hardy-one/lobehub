@@ -138,8 +138,15 @@ const instantiatePlan = async (
     // Undecomposed acceptance (goal-dispatched Task, one-sentence requirement):
     // spend one generation call splitting the requirement into named criteria,
     // so the checklist reads as distinguishable items instead of one generic
-    // "Task delivery acceptance" row. The split runs on the pinned plan model
-    // (VERIFY_PLAN_MODEL_CONFIG), not the verifier agent's chat model.
+    // "Task delivery acceptance" row. The split runs on the account's Acceptance
+    // Model (see `resolveVerifyPlanModelConfig`), not the verifier agent's chat
+    // model.
+    //
+    // Known limit: this call is fire-and-forget at run start, so it carries no
+    // browser tab to relay to. An Acceptance Model on a device-only provider
+    // (Ollama, LM Studio, a desktop magpie) fails here as `no_executor`, and the
+    // plan falls back to the single holistic check. The browser-initiated
+    // generation entries can stand by as its executor; this one cannot.
     await planGenerator.generateDraftPlan({
       // Ground the generated criteria in the acceptance text, not just the title.
       context: requirement,

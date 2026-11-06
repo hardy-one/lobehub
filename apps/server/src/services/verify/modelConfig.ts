@@ -11,12 +11,15 @@ import {
   LOCAL_HETEROGENEOUS_AGENT_TYPES,
   REMOTE_HETEROGENEOUS_AGENT_CONFIGS,
 } from '@lobechat/types';
+import debug from 'debug';
 
 import { AgentModel } from '@/database/models/agent';
 import { UserModel } from '@/database/models/user';
 import type { LobeChatDatabase } from '@/database/type';
 import { appEnv } from '@/envs/app';
 import { parseSystemAgent } from '@/server/globalConfig/parseSystemAgent';
+
+const log = debug('lobe-server:verify-model-config');
 
 export interface VerifyModelConfig {
   model: string;
@@ -58,18 +61,42 @@ export const REVIEW_PREDICT_MODEL_CONFIG: VerifyModelConfig = {
 };
 
 /**
- * The model every verify plan generation (requirement → named criteria) runs on.
- *
- * Deliberately NOT `resolveVerifyModelConfig`: that chain follows the verifier
- * agent's chat model, which may be a slow reasoning model that returns no
- * parsable structured output. A failed split is silent — the plan falls back
- * to one holistic "Task delivery acceptance" row — so the split runs on one
- * pinned model instead of whatever the user's verifier happens to use. The
- * values live in `@lobechat/business-const` so the cloud build can override them.
+ * The floor model for verify plan generation (requirement → named criteria),
+ * used when the account has picked no Acceptance Model. The values live in
+ * `@lobechat/business-const` so the cloud build can override them.
  */
 export const VERIFY_PLAN_MODEL_CONFIG: VerifyModelConfig = {
   model: DEFAULT_VERIFY_PLAN_MODEL,
   provider: DEFAULT_VERIFY_PLAN_PROVIDER,
+};
+
+/**
+ * The model a verify plan generation (requirement → named criteria) runs on.
+ *
+ * The account's Acceptance Model first — the `verify` service slot in
+ * Settings → Service Model, then the deployment's `SYSTEM_AGENT=verify=`. It is
+ * the model the user picked for acceptance work, so the checklist is split by
+ * the same model that will judge it; `VERIFY_PLAN_MODEL_CONFIG` is only the
+ * floor for an account that picks nothing.
+ *
+ * Deliberately NOT `resolveVerifyModelConfig`: that chain begins with the
+ * verifier *agent's* chat model, which may be a slow reasoning model that
+ * returns no parsable structured output. A failed split is silent — the plan
+ * collapses to one holistic "Task delivery acceptance" row — so an implicitly
+ * inherited chat model must not decide it. An explicitly chosen 验收模型 does.
+ */
+export const resolveVerifyPlanModelConfig = async (
+  db: LobeChatDatabase,
+  userId: string,
+): Promise<VerifyModelConfig> => {
+  try {
+    return (await resolveVerifyServiceModel(db, userId)) ?? VERIFY_PLAN_MODEL_CONFIG;
+  } catch (error) {
+    // An unreadable settings row must not block the split: the floor model keeps
+    // plan generation working, exactly as it did when the plan model was a constant.
+    log('could not resolve the acceptance model for plan generation, using the floor: %O', error);
+    return VERIFY_PLAN_MODEL_CONFIG;
+  }
 };
 
 const isUsableVerifyModelConfig = (

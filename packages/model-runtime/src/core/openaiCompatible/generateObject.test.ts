@@ -308,3 +308,58 @@ describe('generateObject via Responses API', () => {
     expect(requestPayload.input).toEqual([{ content: 'Generate a handoff', role: 'user' }]);
   });
 });
+
+describe('generateObject and the provider Responses switch', () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const mockBothEndpoints = (instance: any) => ({
+    chatCreate: vi.spyOn(instance.client.chat.completions, 'create').mockResolvedValue({
+      choices: [{ message: { content: '{"summary":"s","title":"t"}' } }],
+    } as any),
+    responsesCreate: vi
+      .spyOn(instance.client.responses, 'create')
+      .mockResolvedValue({ output_text: '{"summary":"s","title":"t"}' } as any),
+  });
+
+  it('should follow the switch held by the runtime when the caller names no mode', async () => {
+    const instance = new TestRuntime({ apiKey: 'test', responseApiMode: 'responses' });
+    const { chatCreate, responsesCreate } = mockBothEndpoints(instance);
+
+    await instance.generateObject(generateObjectPayload as any);
+
+    expect(responsesCreate).toHaveBeenCalledTimes(1);
+    expect(chatCreate).not.toHaveBeenCalled();
+  });
+
+  it('should keep structured output on chat completions when the switch is off', async () => {
+    const instance = new TestRuntime({ apiKey: 'test', responseApiMode: 'chatCompletion' });
+    const { chatCreate, responsesCreate } = mockBothEndpoints(instance);
+
+    await instance.generateObject(generateObjectPayload as any);
+
+    expect(chatCreate).toHaveBeenCalledTimes(1);
+    expect(responsesCreate).not.toHaveBeenCalled();
+  });
+
+  it('should let the payload mode win over the runtime switch', async () => {
+    const instance = new TestRuntime({ apiKey: 'test', responseApiMode: 'responses' });
+    const { chatCreate, responsesCreate } = mockBothEndpoints(instance);
+
+    await instance.generateObject({ ...generateObjectPayload, apiMode: 'chatCompletion' } as any);
+
+    expect(chatCreate).toHaveBeenCalledTimes(1);
+    expect(responsesCreate).not.toHaveBeenCalled();
+  });
+
+  it('should leave the model-name default in charge when nothing set a mode', async () => {
+    const instance = new TestRuntime({ apiKey: 'test' });
+    const { chatCreate, responsesCreate } = mockBothEndpoints(instance);
+
+    await instance.generateObject(generateObjectPayload as any);
+
+    expect(chatCreate).toHaveBeenCalledTimes(1);
+    expect(responsesCreate).not.toHaveBeenCalled();
+  });
+});

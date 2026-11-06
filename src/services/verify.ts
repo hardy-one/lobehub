@@ -34,6 +34,18 @@ import { systemAgentSelectors } from '@/store/user/selectors';
 /** The `goal` system agent's provider: goal criteria / plans run on it server-side. */
 const goalModelProvider = () => systemAgentSelectors.goal(useUserStore.getState()).provider;
 
+/**
+ * The Acceptance Model's provider: verify criteria / plans are split on it
+ * server-side.
+ *
+ * Read from the stored settings, not `systemAgentSelectors`: the selector merges
+ * in the system recommendation, so an unset slot would report a provider the
+ * server does not use (it falls through to `DEFAULT_VERIFY_PLAN_PROVIDER`) and
+ * this tab would subscribe for the wrong one.
+ */
+const verifyModelProvider = () =>
+  useUserStore.getState().settings?.systemAgent?.verify?.provider || DEFAULT_VERIFY_PLAN_PROVIDER;
+
 /** Criterion row plus the judge instruction resolved from its linked document. */
 export type GoalCriterionWithInstruction = VerifyCriterionItem & { instruction?: string };
 
@@ -413,10 +425,10 @@ export class VerifyService {
   /**
    * The server-side LLM calls below run on a model only this device may reach;
    * such a call is relayed back to this tab (one-shot relay). Plan / criteria
-   * generation runs on the pinned plan model.
+   * generation runs on the account's Acceptance Model.
    */
   generateDraftPlan = (input: GenerateDraftPlanInput): Promise<VerifyCheckItem[]> =>
-    oneShotRelay.run(DEFAULT_VERIFY_PLAN_PROVIDER, (relay) =>
+    oneShotRelay.run(verifyModelProvider(), (relay) =>
       lambdaClient.verify.generateDraftPlan.mutate(input, withLlmRelay(relay)),
     ) as Promise<VerifyCheckItem[]>;
 
@@ -473,7 +485,7 @@ export class VerifyService {
     goal: string;
     maxCriteria?: number;
   }): Promise<VerifyCriterionDraft[]> =>
-    oneShotRelay.run(DEFAULT_VERIFY_PLAN_PROVIDER, (relay) =>
+    oneShotRelay.run(verifyModelProvider(), (relay) =>
       lambdaClient.verify.generateCriteria.mutate(input, withLlmRelay(relay)),
     ) as Promise<VerifyCriterionDraft[]>;
 

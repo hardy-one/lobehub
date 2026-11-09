@@ -26,12 +26,14 @@ export type {
   TokenSourceType,
   ToolDefinitionTokenBreakdown,
 } from './tokenAccounting';
+export type { EstimateRequestInputTokensOptions } from './tokenAccounting';
 export {
   addTokenBuckets,
   countContextTokens,
   DEFAULT_DRIFT_MULTIPLIER,
   EMPTY_TOKEN_BUCKETS,
   estimatePendingUploadTokenBuckets,
+  estimateRequestInputTokens,
   estimateSentMessageAttachmentTokenBuckets,
   isTextLikeUploadFile,
 } from './tokenAccounting';

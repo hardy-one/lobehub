@@ -11,6 +11,7 @@ import type {
   PageSelection,
   ResumeClientLlmWaitResult,
   RuntimeMentionedAgent,
+  RuntimeSelectedSkill,
   ScheduleAgentRunParams,
   ScheduleAgentRunResult,
   UserInterventionConfig,
@@ -181,6 +182,8 @@ export interface ExecAgentTaskParams {
   resumeToolResult?: ResumeToolResultParam;
   /** Skill identifiers the user selected in this message; the server injects their bodies. */
   selectedSkillIds?: string[];
+  /** Explicit slash-selected skills auto-loaded by the on-demand context pipeline. */
+  selectedSkills?: RuntimeSelectedSkill[];
   /** Tool identifiers the user @-mentioned in this message; the server enables them for this run. */
   selectedToolIds?: string[];
   slug?: string;

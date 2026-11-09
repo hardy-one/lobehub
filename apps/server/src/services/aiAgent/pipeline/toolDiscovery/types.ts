@@ -8,10 +8,12 @@ import type {
 } from '@lobechat/context-engine';
 import type { LobeChatDatabase } from '@lobechat/database';
 import type {
+  AgentContextMode,
   ChatTopicBotContext,
   EvalConnectorSnapshots,
   FrozenCredentialFacts,
   FrozenModelFacts,
+  OnDemandDiscoveryPool,
   RequestTrigger,
 } from '@lobechat/types';
 import type { ModelAbilities } from 'model-bank';
@@ -90,6 +92,8 @@ export interface ToolDiscoveryResult {
    * context: it travels on the operation and the context engine injects it.
    */
   connectorOwnershipNote?: string;
+  /** Explicit context strategy resolved for this run. */
+  contextMode: AgentContextMode;
   /**
    * Credentials listed once for the whole operation; see
    * {@link FrozenCredentialFacts}. Absent when the run cannot inject
@@ -102,6 +106,8 @@ export interface ToolDiscoveryResult {
    * reads the list live, as it did before the snapshot existed.
    */
   credentialFactsPromise?: Promise<FrozenCredentialFacts | undefined>;
+  /** Activation-only capabilities when `contextMode` is on-demand. */
+  discoveryPool?: OnDemandDiscoveryPool;
   executionPlan?: ExecutionPlan;
   hasAgentDocuments: boolean;
   hasEnabledKnowledgeBases: boolean;

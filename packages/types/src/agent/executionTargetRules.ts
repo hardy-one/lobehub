@@ -2,7 +2,7 @@ import { BRANDING_NAME } from '@lobechat/business-const';
 
 import type { DeviceExecutionTarget, ExecutionPlan } from './agencyConfig';
 import type { RuntimeEnvMode } from './agentConfig';
-import type { LobeAgentChatConfig } from './chatConfig';
+import type { AgentContextMode, LobeAgentChatConfig } from './chatConfig';
 
 /**
  * Tool-resolution mode: an explicit `toolMode` wins; otherwise derive from
@@ -73,3 +73,25 @@ export const describeLockedDevicePicker = (plan: ExecutionPlan): string | undefi
     }
   }
 };
+
+export interface ResolveContextModeOptions {
+  /** Whether the effective model supports native function calling. */
+  supportToolUse: boolean;
+}
+
+/**
+ * Resolve the context strategy without changing the legacy tool-mode matrix.
+ * On-demand is opt-in and only valid together with an effective agent tool mode
+ * and a model that supports function calling; every other combination safely
+ * falls back to the legacy default context behaviour.
+ */
+export const resolveContextMode = (
+  chatConfig:
+    Pick<LobeAgentChatConfig, 'contextMode' | 'enableAgentMode' | 'toolMode'> | undefined | null,
+  { supportToolUse }: ResolveContextModeOptions,
+): AgentContextMode =>
+  chatConfig?.contextMode === 'on-demand' &&
+  resolveToolMode(chatConfig) === 'agent' &&
+  supportToolUse === true
+    ? 'on-demand'
+    : 'default';

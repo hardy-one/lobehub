@@ -64,6 +64,7 @@ export const buildMessagesEngineParams = (snapshot: ContextSnapshot): MessagesEn
   return {
     // --- conversation + runtime flags ---
     additionalContexts: run.additionalContexts,
+    contextMode: run.contextMode,
     enableAgentMode: run.enableAgentMode,
     enableExpertise: run.enableExpertise,
     expertise: run.expertise,
@@ -72,10 +73,12 @@ export const buildMessagesEngineParams = (snapshot: ContextSnapshot): MessagesEn
     historySummary: run.historySummary,
     initialContext: run.initialContext,
     messages: run.messages,
+    onDemand: run.onDemand,
     stepContext: run.stepContext,
 
     // --- agent definition ---
     agentDocuments: agent.documents,
+    documentCards: agent.documentCards,
     agentIdentity: agent.identity,
     enableHistoryCount: agent.enableHistoryCount,
     enableStaleToolResultTrim: agent.enableStaleToolResultTrim,
@@ -97,6 +100,7 @@ export const buildMessagesEngineParams = (snapshot: ContextSnapshot): MessagesEn
     toolDiscoveryConfig: tools?.toolDiscoveryConfig,
     toolsConfig: {
       disabledToolIdentifiers,
+      discoveryCards: tools?.discoveryCards,
       manifests,
       tools: enabledToolIds,
     },

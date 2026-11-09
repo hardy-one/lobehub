@@ -464,6 +464,7 @@ export const execRouter = router({
           // other per-turn picks (`selectedToolIds`, `mentionedAgents`, `fileIds`)
           // are still dropped here, as before this field was added.
           selectedSkillIds: task.selectedSkillIds,
+          selectedSkills: task.selectedSkills,
           slug,
           trigger: trigger ?? RequestTrigger.Chat,
           // The user message's own content (rich text, attached content), with

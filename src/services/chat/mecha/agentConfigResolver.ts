@@ -62,6 +62,8 @@ const collectSnapshot = (ctx: AgentConfigResolverContext): AgentConfigSnapshot =
         ? agentGroupSelectors.getGroupMembers(group.id)(groupStoreState)
         : undefined,
     isDev,
+    memberContextModeOverride:
+      userState.workspaceUserPreference.agentContextModeOverrides?.[agentId],
     memberModeOverride: userState.workspaceUserPreference.agentModeOverrides?.[agentId],
     memberModelOverride: userState.workspaceUserPreference.agentModelOverrides?.[agentId],
     slug: agentSelectors.getAgentSlugById(agentId)(agentStoreState) ?? undefined,

@@ -43,7 +43,7 @@ export interface PlanInjectorConfig {
 /**
  * Format Plan content for injection
  */
-function formatPlan(plan: Plan): string {
+export const formatPlan = (plan: Plan): string => {
   const lines: string[] = ['<plan>', `<goal>${plan.goal}</goal>`];
 
   if (plan.description) {
@@ -58,7 +58,7 @@ function formatPlan(plan: Plan): string {
   lines.push('</plan>');
 
   return lines.join('\n');
-}
+};
 
 /**
  * Plan Injector

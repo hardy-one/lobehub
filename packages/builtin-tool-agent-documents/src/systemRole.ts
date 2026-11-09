@@ -10,7 +10,7 @@ Only use listDocuments/readDocument when the user is asking about agent document
 
 <core_capabilities>
 1. Create document (createDocument) - equivalent to touch/create with content
-2. Read document (readDocument) - equivalent to cat/read; only one read entry, by document ID
+2. Read document (readDocument) - equivalent to a windowed cat/read; one entry, by document ID
 3. Replace document content (replaceDocumentContent) - full-content overwrite by ID
 4. Modify nodes (modifyNodes) - apply precise LiteXML insert/modify/remove operations
 5. Remove document (removeDocument) - equivalent to rm/delete
@@ -45,6 +45,8 @@ Working with the tree:
 3. Use explicit IDs and content in arguments. Read documents by ID; if you only know the filename, listDocuments first to resolve it.
 4. If operation depends on existing content, read before writing/deleting.
 5. Confirm what changed after each operation.
+6. When readDocument reports a partial window, continue with the exact offset from its continuation notice or state. Never assume a window is the complete document.
+6. When readDocument reports hasMore=true, continue with the exact nextOffset and limit from its continuation payload. Never assume a window is the complete document.
 </workflow>
 
 <tool_selection_guidelines>
@@ -54,7 +56,7 @@ Working with the tree:
 - When the user asks to remember, save, or reuse a workflow, checklist, template, skill, or repeatable procedure for this agent or topic, prefer createDocument with hintIsSkill=true over user memory. This preserves scoped procedural knowledge without turning it into a global personal preference.
 - Do not create or maintain managed skills directly; Agent Signal decides whether hinted documents become skills.
 - **listDocuments**: list agent documents. Use scope="currentTopic" when the user asks about documents in the current topic. The default agent_documents_index hides web-crawled documents; pass sourceType="web" here to enumerate them, or sourceType="all" to see everything. The index also collapses folders into a single 📁 row, and the docs nested under a document into a single 📄 row — pass parentId=<id from that row> to expand it. Use this to resolve a title to a document ID before reading. For read and mutation calls, pass the result's \`id\`. For folder navigation, pass the folder's \`documentId\` (or the ID shown in a collapsed folder row) as \`listDocuments.parentId\`; the same works for a document that has nested docs.
-- **readDocument**: retrieve current content by agent document ID. Pass the \`id\` field returned by listDocuments, not \`documentId\`. This is the only way to read an agent document — there is no read-by-filename variant. Prefer format="xml" when you may edit content, because XML includes stable node IDs. If the response contains empty content, the document is genuinely empty; do not retry with a different format or filename.
+- **readDocument**: retrieve a line window of the current content by agent document ID. Pass the \`id\` field returned by listDocuments, not \`documentId\`. This is the only way to read an agent document — there is no read-by-filename variant. Prefer format="xml" when you may edit content, because XML includes stable node IDs. A partial response reports the exact line range and next offset; continue from that offset and never treat a partial window as the whole document. If the response contains empty content and no remaining window, the document is genuinely empty; do not retry with a different format or filename.
 - **modifyNodes**: preferred content-edit API. Use LiteXML insert/modify/remove operations after reading XML. For modify operations, include the existing node ID in the LiteXML and keep its tag (a <span> id stays a <span>, an <li> id stays an <li>). A modify gives the replaced node a new id and inserts create new nodes; every other node keeps its id, so readDocument again only when you need to address a node you just replaced or inserted.
 - **replaceDocumentContent**: overwrite the full content of an existing document only when replacing most or all content.
 - **removeDocument**: remove a document or folder by ID. Refused when it has children unless withChildren is true.

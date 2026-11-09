@@ -7,6 +7,7 @@ import { workingDirConfigSchema } from '../device';
 import type { EvalToolForwardingConfig } from '../eval/agentEval';
 import type { EvalMemoryReference } from '../eval/evalMemory';
 import type { ComposerUserMessage, TaskDetail, UIChatMessage } from '../message';
+import type { RuntimeSelectedSkill } from '../stepContext';
 import type { ChatTopic } from '../topic';
 
 export * from './credentialFacts';
@@ -382,6 +383,8 @@ export interface ExecAgentParams {
    * accepts the handoff only while the topic marker still belongs to this id.
    */
   replacesOperationId?: string;
+  /** Explicit slash-selected skills, including bodies already resolved by the caller. */
+  selectedSkills?: RuntimeSelectedSkill[];
   /** The agent slug to run (either agentId or slug is required) */
   slug?: string;
   /**

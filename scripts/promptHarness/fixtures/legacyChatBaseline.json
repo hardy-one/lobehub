@@ -1,0 +1,24 @@
+{
+  "agentId": "agt_T106CHAT01",
+  "agentPrompt": "  User-authored Agent Prompt\n\tkeep every byte and never rewrite this instruction.  ",
+  "canonicalization": "prompt-harness-baseline-json-v3",
+  "hashes": {
+    "full": "sha256:6356ec93c3b7e4ebf2e6e73f1b41777bc67434bce58c0c038b5f618111729442",
+    "messages": "sha256:1fce4e8ea0f8a2b0a11d8e91bb9a3586fd66f91398e183c99df6acdc033f1454",
+    "messagesAndTools": "sha256:a872d52669ce0ac04f3c7d40e806b3bd681f68b5f8bc47a42079ae5a375eb36c",
+    "tools": "sha256:2fcdd34bf6d6101c71255cd7d13a15407f58bf46c2269cf76e69c6d4f4d230d8"
+  },
+  "provenance": {
+    "capturedAt": "2026-11-09T14:57:42.966Z",
+    "environment": {
+      "availableAgents": [],
+      "availableTools": []
+    },
+    "note": "Refreshed by --update-baseline: stable hash over environment-normalized bytes; environment snapshot recorded in provenance.",
+    "requestCount": 1,
+    "scenario": "baseline-chat",
+    "source": "bash scripts/promptHarness/stack.sh --update-baseline --keep",
+    "sourceCommit": "aa756bf77a35d2cf66db97bdc88f289f945379a0"
+  },
+  "userMessage": "T105_BASELINE compare identical Agent Prompt and user turn"
+}

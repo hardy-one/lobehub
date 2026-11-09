@@ -1,6 +1,6 @@
 import type { PipelineContextMetadata } from '@lobechat/context-engine';
 import { MessagesEngine } from '@lobechat/context-engine';
-import type { OpenAIChatMessage } from '@lobechat/types';
+import type { OnDemandContextMetadata, OpenAIChatMessage } from '@lobechat/types';
 
 import { buildMessagesEngineParams } from './buildMessagesEngineParams';
 import type { ContextSnapshot } from './types';
@@ -13,6 +13,8 @@ export interface ContextEngineeringResult {
    * e.g. into operation trace steps — instead of dropping it at the boundary.
    */
   metadata: PipelineContextMetadata;
+  /** Convenience view of `metadata.onDemandContext` for server callers. */
+  onDemandContext?: OnDemandContextMetadata;
 }
 
 /**
@@ -24,7 +26,11 @@ export const runContextEngineering = async (
 ): Promise<ContextEngineeringResult> => {
   const engine = new MessagesEngine(buildMessagesEngineParams(snapshot));
   const result = await engine.process();
-  return { messages: result.messages, metadata: result.metadata };
+  return {
+    messages: result.messages,
+    metadata: result.metadata,
+    onDemandContext: result.metadata?.onDemandContext,
+  };
 };
 
 export { buildMessagesEngineParams } from './buildMessagesEngineParams';

@@ -73,16 +73,73 @@ const isOperationInterrupted = async (host: AgentRuntimeHost) => {
 const runWithTrace = <T>(trace: LLMTrace | undefined, task: () => Promise<T>) =>
   trace ? trace.run(task) : task();
 
-/** Build a non-terminal result that hands control back to the agent to compress. */
-const buildContextOverflowResult = (
+/** Whether an attempt produced any output (content/reasoning/tool calls). */
+const hasPartialOutput = (output?: LLMAttemptOutput): boolean =>
+  Boolean(
+    output &&
+      (output.content ||
+        output.thinkingContent ||
+        (output.toolCalls?.length ?? 0) > 0 ||
+        (output.toolsCalling?.length ?? 0) > 0),
+  );
+
+interface OverflowResultParams {
+  /** Assistant id involved, when the call reached message creation. */
+  assistantMessageId?: string;
+  /** Provider attempts made before the overflow (0 for a pre-send abort). */
+  attempts?: number;
+  /** Whether a resume-seeded placeholder was used (owns the row, don't delete). */
+  claimedSeed?: boolean;
+  /** Close the stream started for this attempt. */
+  closeStream?: boolean;
+  /** Delete the empty assistant row this attempt created (new-row case only). */
+  deleteAssistantRow?: boolean;
+  /** Whether the request was actually sent to the provider. */
+  sent: boolean;
+}
+
+/**
+ * Hand control back to the agent to compress, as a NON-terminal step (status
+ * stays running, nextContext.phase = context_overflow) so the runtime loop
+ * continues into recovery on both hosts. Performs message/stream ownership
+ * cleanup for a provider-side overflow that was already sent.
+ */
+const buildContextOverflowResult = async (
   host: AgentRuntimeHost,
   state: AgentState,
   tokenCount: number,
-): InstructionExecutionResult => {
+  params: OverflowResultParams,
+): Promise<InstructionExecutionResult> => {
+  if (params.closeStream) {
+    try {
+      await host.transports.stream.publishEvent({
+        data: { reason: 'context_overflow' },
+        stepIndex: host.operation.stepIndex,
+        type: 'stream_end',
+      });
+    } catch (error) {
+      console.warn('[call_llm] Failed to close stream on overflow:', error);
+    }
+  }
+  if (params.deleteAssistantRow && params.assistantMessageId) {
+    try {
+      await host.transports.messages.deleteMessage(params.assistantMessageId);
+    } catch (error) {
+      console.warn('[call_llm] Failed to clean up overflow assistant row:', error);
+    }
+  }
+
   const newState = structuredClone(state);
   newState.lastModified = new Date().toISOString();
   return {
     events: [],
+    llmExecution: {
+      sent: params.sent,
+      ...(params.attempts !== undefined && { attempts: params.attempts }),
+      ...(params.assistantMessageId && { assistantMessageId: params.assistantMessageId }),
+      ...(params.claimedSeed !== undefined && { claimedSeed: params.claimedSeed }),
+      recovery: 'context_overflow',
+    },
     newState,
     nextContext: {
       payload: { tokenCount },
@@ -130,7 +187,7 @@ const executePreparedCall = async (
       attemptsMade = attempt;
 
       if (execution.ok) {
-        return await finalizeCallLlmTurn({
+        const finalized = await finalizeCallLlmTurn({
           assistantMessageId: prepared.assistantMessageId,
           attempts: attemptsMade,
           events,
@@ -143,6 +200,15 @@ const executePreparedCall = async (
           state: prepared.state,
           stepLabel: prepared.stepLabel,
         });
+        return {
+          ...finalized,
+          llmExecution: {
+            sent: true,
+            attempts: attemptsMade,
+            assistantMessageId: prepared.assistantMessageId,
+            claimedSeed: Boolean(prepared.assistantMessageIdPreExisted),
+          },
+        };
       }
 
       const { error } = execution;
@@ -150,20 +216,30 @@ const executePreparedCall = async (
       const retryBudget = retryPolicy.resolveRetryBudget(prepared.provider, error);
       let interrupted = await isOperationInterrupted(host);
 
-      // Only treat an overflow as recoverable when the existing classifier did
-      // NOT already own this error as a retryable/stop kind (e.g. rate limits).
-      // Otherwise we'd hijack a token-quota backoff. Recover by handing the
-      // agent a non-terminal `context_overflow` step (status stays running), not
-      // by throwing — the runtime's error terminal path would stop the loop and
-      // the recovery branch would never run.
+      // Recover from a context-window overflow, using the structured error
+      // identity (`ExceededContextWindow`) first — so codes/labels the shared
+      // classifier already recognises (e.g. "conversation is too long",
+      // "too many input tokens") are covered — with the message-keyword check as
+      // a last resort. Require `kind === 'stop'` so token rate-limits that the
+      // classifier marked retryable keep their normal backoff. Only a request
+      // that produced no output is auto-recovered; a partial stream is saved and
+      // the run fails normally.
+      const windowErrorType = (error as { errorType?: unknown } | undefined)?.errorType;
       const recoverableOverflow =
-        !interrupted && classified.kind === 'stop' && isContextOverflowError(error);
-      if (recoverableOverflow) {
-        return buildContextOverflowResult(
-          host,
-          prepared.state,
-          prepared.estimatedTokens ?? 0,
-        );
+        !interrupted &&
+        classified.kind === 'stop' &&
+        (windowErrorType === 'ExceededContextWindow' ||
+          classified.code === 'ExceededContextWindow' ||
+          isContextOverflowError(error));
+      if (recoverableOverflow && !hasPartialOutput(lastOutput)) {
+        return buildContextOverflowResult(host, prepared.state, prepared.estimatedTokens ?? 0, {
+          attempts: attemptsMade,
+          assistantMessageId: prepared.assistantMessageId,
+          claimedSeed: Boolean(prepared.assistantMessageIdPreExisted),
+          deleteAssistantRow: !prepared.assistantMessageIdPreExisted,
+          closeStream: true,
+          sent: true,
+        });
       }
 
       if (!interrupted && shouldRetryLLM(classified.kind, attempt, retryBudget)) {
@@ -423,7 +499,9 @@ export const callLlm =
     const compressionThreshold = (llmPayload as { compressionThreshold?: number })
       .compressionThreshold;
     if (compressionThreshold !== undefined && estimatedTokens > compressionThreshold) {
-      return buildContextOverflowResult(host, state, estimatedTokens);
+      // Prepared but not sent: no assistant row, no stream_start, no provider
+      // call, seed not consumed. Hand back a non-terminal context_overflow step.
+      return await buildContextOverflowResult(host, state, estimatedTokens, { sent: false });
     }
 
     const assistantMessage = existingAssistantMessageId

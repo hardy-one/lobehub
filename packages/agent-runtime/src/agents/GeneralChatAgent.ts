@@ -33,7 +33,7 @@ import {
 } from '../utils/emptyArgumentsCalls';
 import { selectEffectiveToolManifestMap, selectRunTools } from '../utils/operationToolSet';
 import { selectSecurityBlacklist, selectUserInterventionConfig } from '../utils/stateSlots';
-import { getCompressionThreshold, shouldCompress } from '../utils/tokenCounter';
+import { DEFAULT_MAX_CONTEXT, getCompressionThreshold, shouldCompress } from '../utils/tokenCounter';
 import {
   findCurrentTurnPendingToolMessages,
   isFoldedAssistantGroup,
@@ -537,9 +537,11 @@ export class GeneralChatAgent implements Agent {
    */
   private planAttachmentPreviews(messages: any[], tools: any[] | undefined, state: AgentState) {
     const config = this.config.compressionConfig;
-    const window = config?.maxWindowToken;
-    // Without a window there is nothing to budget against.
-    if (window === undefined) return [];
+    // Attachment budgeting protects the request regardless of whether history
+    // compression is enabled, and uses the same default window (128k) as the
+    // compression threshold when none is configured — so disabling compression
+    // or omitting maxWindowToken never silently drops the preview plan.
+    const window = config?.maxWindowToken ?? DEFAULT_MAX_CONTEXT;
     return shouldCompress(messages, {
       maxWindowToken: window,
       thresholdRatio: config?.thresholdRatio,

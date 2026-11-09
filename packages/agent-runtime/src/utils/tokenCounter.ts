@@ -12,13 +12,22 @@ export interface TokenCountOptions {
   driftMultiplier?: number;
   /** Model's max context window token count */
   maxWindowToken?: number;
+  /**
+   * Raw (undrifted) input tokens already spent outside `messages` — the
+   * preamble the context engine assembles (system role, knowledge, memory,
+   * skills) plus the tool schemas. When supplied, attachment previews are
+   * planned against the room these leave under the threshold, and the reported
+   * totals include them.
+   */
+  overheadTokens?: number;
   /** Threshold ratio for triggering compression, default 0.5 */
   thresholdRatio?: number;
   /**
    * Optional top-level tool definitions for the upcoming LLM call. When
    * provided, tool definition tokens are counted toward the budget — matches
    * what the provider actually charges. Pass the same `tools` array that will
-   * be sent in the request payload.
+   * be sent in the request payload. Ignored when `overheadTokens` already
+   * accounts for them.
    */
   tools?: unknown[];
 }
@@ -48,16 +57,12 @@ export interface CompressionCheckResult {
    * them to the context engine with the `call_llm` payload.
    */
   attachmentPreviewFileIds: string[];
-  /**
-   * Best raw estimate of current input tokens (sum of message content +
-   * tool calls + reasoning + tool_call_id + tool definitions).
-   */
+  /** Raw estimate of the input tokens this request carries (context + overhead). */
   currentTokenCount: number;
   /**
-   * `true` when `adjustedTokenCount > threshold`. The adjusted count includes
-   * a drift multiplier (default 1.25×) to compensate for the gap between
-   * `tokenx`'s heuristic and provider tokenizers, so compression fires before
-   * upstream tokenizers actually overflow the model's context window.
+   * `true` when the drift-adjusted total exceeds `threshold`. The adjustment
+   * (default 1.25×) covers the gap between `tokenx`'s heuristic and provider
+   * tokenizers, so compression fires before the request actually overflows.
    */
   needsCompression: boolean;
   /** Compression threshold (`maxWindowToken × thresholdRatio`) */
@@ -65,30 +70,38 @@ export interface CompressionCheckResult {
 }
 
 /**
- * Check if messages need compression based on token count.
+ * Check if the upcoming request needs compression.
  *
- * Uses {@link countContextTokens} under the hood, so the input estimate
- * accounts for tool calls, reasoning, and tool definitions in addition to
- * `content` (see for the calibration data). Attachment text is fitted into the
- * remaining room first (see {@link planAttachmentPreviews}), so attachments
- * alone never trigger compression; the estimate reflects the planned previews.
+ * Pass the exact prompt the caller is about to send — after the context engine
+ * has assembled the preamble — so the estimate matches the real request body.
+ * Attachment text is fitted into the remaining room first (see
+ * {@link planAttachmentPreviews}), so attachments alone never trigger
+ * compression; the estimate reflects the planned previews.
  */
 export function shouldCompress(
   messages: UIChatMessage[],
   options: TokenCountOptions = {},
 ): CompressionCheckResult {
   const threshold = getCompressionThreshold(options);
+  const drift = options.driftMultiplier ?? DEFAULT_DRIFT_MULTIPLIER;
+  const overhead = options.overheadTokens ?? 0;
+
+  // Plan attachments against the room the preamble leaves. When the caller
+  // already folded the tool schemas into `overheadTokens`, do not count them a
+  // second time here.
   const { accounting, previewFileIds } = planAttachmentPreviews({
-    driftMultiplier: options.driftMultiplier ?? DEFAULT_DRIFT_MULTIPLIER,
+    driftMultiplier: drift,
     messages,
-    threshold,
-    tools: options.tools,
+    threshold: Math.max(0, threshold - overhead),
+    tools: options.overheadTokens !== undefined ? undefined : options.tools,
   });
+
+  const currentTokenCount = overhead + accounting.rawTotal;
 
   return {
     attachmentPreviewFileIds: [...previewFileIds],
-    currentTokenCount: accounting.rawTotal,
-    needsCompression: accounting.adjustedTotal > threshold,
+    currentTokenCount,
+    needsCompression: overhead + accounting.adjustedTotal > threshold,
     threshold,
   };
 }

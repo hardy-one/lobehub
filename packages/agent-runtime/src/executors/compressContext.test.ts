@@ -225,6 +225,9 @@ describe('compressContext executor', () => {
       type: 'compression_complete',
     });
     expect(result.newState.usage.llm.tokens).toEqual({ input: 10, output: 5, total: 15 });
+    // Each successful compression bumps the overflow counter so a request that
+    // still overflows after compressing stops instead of looping.
+    expect(result.newState.metadata?.contextOverflowAttempts).toBe(1);
     expect(lifecycleDispatch).toHaveBeenCalledWith(
       expect.objectContaining({
         event: expect.objectContaining({ tokenCount: 5000 }),

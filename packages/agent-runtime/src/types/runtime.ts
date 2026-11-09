@@ -2,8 +2,28 @@ import type { AgentEvent } from './event';
 import type { AgentInstruction, AgentRuntimeContext } from './instruction';
 import type { AgentState } from './state';
 
+/**
+ * What a `call_llm` execution actually did, so the runtime can update the
+ * resume seed and call accounting from the real outcome rather than guessing
+ * from the instruction type.
+ */
+export interface LLMExecutionInfo {
+  /** Assistant message id this call created or reused, when it reached that stage. */
+  assistantMessageId?: string;
+  /** Provider attempts actually made (0 when nothing was sent). */
+  attempts?: number;
+  /** Whether it reused a resume-seeded placeholder instead of creating a row. */
+  claimedSeed?: boolean;
+  /** A recoverable failure the agent should handle on the next step. */
+  recovery?: 'context_overflow';
+  /** Whether a request was actually dispatched to the provider. */
+  sent: boolean;
+}
+
 export interface InstructionExecutionResult {
   events: AgentEvent[];
+  /** Present for `call_llm` executions; absent for other instructions. */
+  llmExecution?: LLMExecutionInfo;
   newState: AgentState;
   /** Next context to pass to Agent runner (if execution should continue) */
   nextContext?: AgentRuntimeContext;

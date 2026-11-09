@@ -4,7 +4,11 @@ import type {
   ContextBuildInput,
   ContextBuildOutput,
 } from '@lobechat/agent-runtime';
-import { ToolResolver, type ToolsEngine } from '@lobechat/context-engine';
+import {
+  estimateRequestInputTokens,
+  ToolResolver,
+  type ToolsEngine,
+} from '@lobechat/context-engine';
 import type { MessageMetadata } from '@lobechat/types';
 import { TraceNameMap } from '@lobechat/types';
 import { dedupeBy } from '@lobechat/utils';
@@ -97,7 +101,15 @@ export class ClientContextBuilder implements ContextBuilder {
     );
     const { messages: preparedMessages = [], ...params } = prepared.params;
 
+    // Same budget contract as the server builder: estimate the real assembled
+    // request (provider message shape + tools) so the compression trigger works
+    // in the browser too, instead of the executor treating it as 0 tokens.
+    const estimatedInputTokens = estimateRequestInputTokens(preparedMessages as any, {
+      tools: resolvedTools.tools,
+    });
+
     return {
+      estimatedInputTokens,
       messages: preparedMessages,
       modelParameters: {
         options: prepared.options,

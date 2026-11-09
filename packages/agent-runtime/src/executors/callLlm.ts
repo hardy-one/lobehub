@@ -18,7 +18,11 @@ import type {
 import { withLlmAttemptCount } from '../utils/llmCalls';
 import { isContextOverflowError } from '../utils/llmErrorClassifier';
 import { getLLMRetryDelayMs, shouldRetryLLM } from '../utils/runtimeRetry';
-import { finalizeCallLlmTurn, persistInterruptedCallLlmResult } from './callLlmFinalizer';
+import {
+  finalizeCallLlmTurn,
+  persistFailedCallLlmOutput,
+  persistInterruptedCallLlmResult,
+} from './callLlmFinalizer';
 
 const CONVERSATION_PARENT_MISSING_ERROR_TYPE = 'ConversationParentMissing';
 
@@ -305,6 +309,14 @@ const executePreparedCall = async (
           host,
           output: execution.output,
         });
+      } else if (hasPartialOutput(execution.output)) {
+        // Normal terminal failure after partial output: save what was produced
+        // to the owned assistant so it is preserved with the run's error.
+        await persistFailedCallLlmOutput({
+          assistantMessageId: prepared.assistantMessageId,
+          host,
+          output: execution.output,
+        });
       }
       await runWithTrace(trace, async () => {
         await retryPolicy.onError?.({
@@ -328,6 +340,12 @@ const executePreparedCall = async (
       const interrupted = await isOperationInterrupted(host);
       if (interrupted && lastOutput) {
         await persistInterruptedCallLlmResult({
+          assistantMessageId: prepared.assistantMessageId,
+          host,
+          output: lastOutput,
+        });
+      } else if (!interrupted && lastOutput && hasPartialOutput(lastOutput)) {
+        await persistFailedCallLlmOutput({
           assistantMessageId: prepared.assistantMessageId,
           host,
           output: lastOutput,

@@ -440,6 +440,54 @@ export const finalizeCallLlmTurn = async ({
   };
 };
 
+/**
+ * Persist the output already produced by a failed (non-interrupted) attempt —
+ * e.g. a provider that streamed some text/media and then rejected the request.
+ * Unlike the interrupted variant this does NOT mark the message interrupted; the
+ * error is attributed separately by the runtime's error terminal. Saves the full
+ * supported output contract (multimodal content, reasoning, images, tools).
+ */
+export const persistFailedCallLlmOutput = async ({
+  assistantMessageId,
+  host,
+  output,
+}: PersistInterruptedCallLlmResultInput): Promise<void> => {
+  const hasAnyOutput =
+    output.content ||
+    output.thinkingContent ||
+    output.toolsCalling.length > 0 ||
+    (output.contentParts?.length ?? 0) > 0 ||
+    (output.reasoningParts?.length ?? 0) > 0 ||
+    (output.imageList?.length ?? 0) > 0 ||
+    output.hasContentImages ||
+    output.hasReasoningImages;
+  if (!hasAnyOutput) return;
+
+  const content = output.hasContentImages
+    ? serializePartsForStorage(output.contentParts)
+    : output.content;
+
+  try {
+    await host.transports.messages.update(assistantMessageId, {
+      content,
+      imageList: output.imageList.length > 0 ? output.imageList : undefined,
+      metadata: buildMessageMetadata({
+        currentStepSpeed: output.speed,
+        currentStepUsage: output.usage,
+        executionSite: output.executionSite,
+        usageEstimated: output.usageEstimated,
+      }),
+      observationId: output.observationId,
+      reasoning: buildFinalReasoning(output),
+      search: output.grounding,
+      tools: sanitizePersistedTools(output.toolsCalling),
+      traceId: output.traceId,
+    });
+  } catch (error) {
+    console.error('[call_llm] Failed to persist partial output on failure:', error);
+  }
+};
+
 export const persistInterruptedCallLlmResult = async ({
   assistantMessageId,
   host,

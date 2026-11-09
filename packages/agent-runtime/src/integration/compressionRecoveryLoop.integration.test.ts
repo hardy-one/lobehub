@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { GeneralChatAgent } from '../agents/GeneralChatAgent';
 import { AgentRuntime } from '../core/runtime';
 import { callLlm } from '../executors/callLlm';
+import { compressContext } from '../executors/compressContext';
 import type {
   AgentRuntimeHost,
   ContextBuilder,
@@ -12,19 +13,13 @@ import type {
   MessageTransport,
   StreamSink,
 } from '../transport';
-import type {
-  AgentRuntimeContext,
-  AgentState,
-  InstructionExecutor,
-} from '../types';
+import type { AgentRuntimeContext, AgentState, InstructionExecutor } from '../types';
 
 /**
  * Full-loop scheduling evidence for the compression-recovery contract: the REAL
- * `GeneralChatAgent` planning + REAL `callLlm`, driven through the REAL
- * `AgentRuntime.step` loop, with a simulated compress_context executor and fake
- * host/provider/message store. Covers the bounded recovery closed loop (compress
- * then retry success, budget reset, bounded failure, seed ownership), which a
- * single-step test cannot.
+ * `GeneralChatAgent` planning + REAL `callLlm` (and, for the failure path, the
+ * REAL `compressContext` executor) driven through the REAL `AgentRuntime.step`
+ * loop with a fake host/provider/message store, iterating to a terminal state.
  */
 
 const createAttemptOutput = (content = 'answer'): LLMAttemptOutput => ({
@@ -78,7 +73,7 @@ const createContext = (): AgentRuntimeContext => ({
 
 interface Harness {
   /** Queue of per-attempt outcomes. Defaults to success. */
-  attempts: Array<'ok' | 'window' | 'partial-window'>;
+  attempts: Array<'ok' | 'partial-window' | 'window'>;
   /** Queue of estimatedInputTokens returned by successive context.build calls. */
   budgets: number[];
   host: AgentRuntimeHost;
@@ -87,8 +82,10 @@ interface Harness {
 }
 
 const buildHarness = (opts: {
+  attempts?: Array<'ok' | 'partial-window' | 'window'>;
   budgets: number[];
-  attempts?: Array<'ok' | 'window' | 'partial-window'>;
+  /** When true the real compressContext summary stream throws (production catch path). */
+  summaryFails?: boolean;
 }): Harness => {
   const budgets = [...opts.budgets];
   const attempts = opts.attempts ? [...opts.attempts] : [];
@@ -101,7 +98,10 @@ const buildHarness = (opts: {
     findById: vi.fn().mockImplementation(async (id: string) => ({ id })),
     findToolMessageIdByToolCallId: vi.fn(),
     getToolMessage: vi.fn(),
-    query: vi.fn().mockResolvedValue([]),
+    query: vi.fn().mockResolvedValue([
+      { content: 'hello', id: 'u1', role: 'user' },
+      { content: 'prior answer', id: 'hist-1', role: 'assistant' },
+    ]),
     update: vi.fn().mockResolvedValue(undefined),
     updatePluginState: vi.fn(),
     updateToolIntervention: vi.fn(),
@@ -128,10 +128,9 @@ const buildHarness = (opts: {
   const runAttempt = vi.fn().mockImplementation(async () => {
     const kind = attempts.length > 0 ? attempts.shift()! : 'ok';
     if (kind === 'ok') return { ok: true, output: createAttemptOutput() };
-    const error = Object.assign(
-      new Error(kind === 'partial-window' ? 'maximum context length is 8192' : 'maximum context length is 8192'),
-      { errorType: 'ExceededContextWindow' },
-    );
+    const error = Object.assign(new Error('maximum context length is 8192'), {
+      errorType: 'ExceededContextWindow',
+    });
     if (kind === 'partial-window') {
       return { error, ok: false, output: createAttemptOutput('partial text already streamed') };
     }
@@ -153,26 +152,45 @@ const buildHarness = (opts: {
       waitForRetry: vi.fn().mockResolvedValue(undefined),
     },
     runAttempt,
-    stream: vi.fn(),
+    stream: opts.summaryFails
+      ? vi.fn().mockRejectedValue(new Error('summary provider failed'))
+      : vi.fn().mockResolvedValue({ content: 'summary of earlier turns' }),
+  };
+
+  const compression = {
+    buildPrompt: vi.fn().mockResolvedValue({ messages: [{ content: 'summarize', role: 'user' }] }),
+    createGroup: vi.fn().mockResolvedValue({
+      messageGroupId: 'g-1',
+      messagesToSummarize: [{ content: 'prior answer', id: 'hist-1', role: 'assistant' }],
+    }),
+    finalizeGroup: vi.fn().mockResolvedValue({
+      messages: [{ content: 'summary of earlier turns', id: 'g-1', role: 'compressedGroup' }],
+    }),
+    rollbackGroup: vi.fn().mockResolvedValue(undefined),
+    updateGroup: vi.fn(),
   };
 
   const host: AgentRuntimeHost = {
-    operation: { operationId: 'op-1', stepIndex: 0 },
-    transports: { context, llm, messages, stream },
+    operation: {
+      agentId: 'agent-1',
+      operationId: 'op-1',
+      stepIndex: 0,
+      topicId: 'topic-1',
+      userId: 'u-1',
+      workspaceId: 'ws-1',
+    },
+    transports: { compression: compression as any, context, llm, messages, stream },
   };
   return { attempts, budgets, host, messages, stream };
 };
 
-/** Simulated compress_context executor. mode controls whether it shrinks. */
-const fakeCompress = (
-  mode: 'success' | 'skip' | 'fail',
-): InstructionExecutor => async (_instruction, state) => {
+/** Simulated compress_context executor (shrinks on success, no-op on skip). */
+const fakeCompress = (mode: 'success' | 'skip'): InstructionExecutor => async (_instruction, state) => {
   const newState = structuredClone(state);
   newState.metadata = {
     ...newState.metadata,
     contextOverflowAttempts: Number(newState.metadata?.contextOverflowAttempts ?? 0) + 1,
   };
-  if (mode === 'fail') throw new Error('compression failed');
   if (mode === 'success') {
     newState.messages = [
       { content: 'summary of earlier turns', id: 'summary-1', role: 'compressedGroup' },
@@ -203,9 +221,12 @@ const agent = () =>
     operationId: 'op-1',
   });
 
-const buildRuntime = (h: Harness, compressMode: 'success' | 'skip' | 'fail') =>
+const buildRuntime = (h: Harness, compress: 'success' | 'skip' | 'real') =>
   new AgentRuntime(agent(), {
-    executors: { call_llm: callLlm(h.host), compress_context: fakeCompress(compressMode) },
+    executors: {
+      call_llm: callLlm(h.host),
+      compress_context: compress === 'real' ? compressContext(h.host) : fakeCompress(compress),
+    },
     operationId: 'op-1',
   });
 
@@ -223,7 +244,7 @@ const runLoop = async (runtime: AgentRuntime, state: AgentState) => {
   return { finalState: current, phases };
 };
 
-describe('compression recovery closed loop (real agent + real callLlm + real runtime)', () => {
+describe('compression recovery closed loop (real agent + real runtime)', () => {
   it('pre-send overflow with a seed: compress, retry succeeds, reply identity is the seed', async () => {
     const h = buildHarness({ budgets: [150_000, 50_000] });
     const runtime = buildRuntime(h, 'success');
@@ -233,73 +254,94 @@ describe('compression recovery closed loop (real agent + real callLlm + real run
 
     expect(phases).toContain('context_overflow');
     expect(phases).toContain('compression_result');
-    // Only the final successful send created no new row: it reused the seed.
     expect(h.messages.createAssistantMessage).not.toHaveBeenCalled();
     expect(finalState.status).toBe('done');
-    // Exactly one real send counted.
     expect(finalState.llmCalls).toBe(1);
-    // Seed consumed on the successful send.
     expect(finalState.pendingAssistantMessageId).toBeUndefined();
   });
 
   it('no seed: one assistant row created for the retry, unused calls not counted', async () => {
     const h = buildHarness({ budgets: [150_000, 50_000] });
     const runtime = buildRuntime(h, 'success');
-    const state = createState();
-
-    const { finalState } = await runLoop(runtime, state);
-
+    const { finalState } = await runLoop(runtime, createState());
     expect(h.messages.createAssistantMessage).toHaveBeenCalledTimes(1);
     expect(finalState.status).toBe('done');
     expect(finalState.llmCalls).toBe(1);
   });
 
-  it('success then an independent later overflow: recovery budget was reset', async () => {
-    // 1st send ok, then another send over-budget, compress, retry ok.
-    const h = buildHarness({ budgets: [50_000, 150_000, 50_000], attempts: ['ok', 'ok'] });
-    const runtime = buildRuntime(h, 'success');
-    // Two turns: first user turn, then a second independent user_input.
-    const first = await runLoop(runtime, createState());
+  it('two independent overflow rounds both recover: the reset really clears the consumed budget', async () => {
+    // Round 1: overflow -> compress (consume attempt) -> retry success (clear).
+    const h1 = buildHarness({ budgets: [150_000, 50_000] });
+    const first = await runLoop(buildRuntime(h1, 'success'), createState());
+    expect(first.phases).toContain('context_overflow');
     expect(first.finalState.status).toBe('done');
     expect(first.finalState.metadata?.contextOverflowAttempts).toBeUndefined();
 
-    // A later independent overflow must still be able to recover (budget reset).
-    const second = await runLoop(runtime, createState({ ...first.finalState, status: 'running' }));
-    expect(second.finalState.status).toBe('done');
+    // Round 2 continues the SAME state: another overflow must still recover.
+    // If the finalizer did not clear the consumed attempt, priorAttempts would be
+    // 1 here, this overflow would exceed the bound, and the run would end error.
+    // After the first compression the conversation carries a summary, so the
+    // recompression watermark is 0.8 (160k), not the initial 0.5 (100k).
+    const h2 = buildHarness({ budgets: [170_000, 50_000] });
+    const second = await runLoop(buildRuntime(h2, 'success'), {
+      ...first.finalState,
+      status: 'running',
+    });
     expect(second.phases).toContain('context_overflow');
+    expect(second.finalState.status).toBe('done');
+    // One real send per round, cumulative on the carried state.
+    expect(second.finalState.llmCalls).toBe(2);
   });
 
-  it('compression skipped and still over: bounded exit into error, bounded attempts', async () => {
-    // Always over budget; skip never shrinks -> second overflow exhausts budget.
-    const h = buildHarness({ budgets: [150_000], attempts: ['ok'] });
+  it('compression skipped and still over: bounded exit into error', async () => {
+    const h = buildHarness({ budgets: [150_000] });
     const runtime = buildRuntime(h, 'skip');
-    const state = createState();
-
-    const { finalState } = await runLoop(runtime, state);
-
+    const { finalState } = await runLoop(runtime, createState());
     expect(finalState.status).toBe('error');
-    // Never sent an LLM request (both context builds over budget).
     expect(finalState.llmCalls ?? 0).toBe(0);
   });
 
-  it('compression failure: bounded exit into error', async () => {
-    const h = buildHarness({ budgets: [150_000] });
-    const runtime = buildRuntime(h, 'fail');
-    const state = createState();
+  it('real compressContext summary failure: rollback -> skipped -> re-plan -> bounded error', async () => {
+    // Always over budget; the REAL compressContext summary stream throws, so it
+    // catches, rolls back and returns skipped; re-plan still over -> bound hit.
+    const h = buildHarness({ budgets: [150_000], summaryFails: true });
+    const runtime = buildRuntime(h, 'real');
+    const state = createState({
+      messages: [
+        { content: 'hello', id: 'u1', role: 'user' },
+        { content: 'prior answer', id: 'hist-1', role: 'assistant' },
+      ] as any,
+    });
 
-    const { finalState } = await runLoop(runtime, state);
+    const { finalState, phases } = await runLoop(runtime, state);
 
+    expect(phases).toContain('context_overflow');
+    // Production catch path ran: rollback was invoked.
+    expect((h.host.transports.compression as any).rollbackGroup).toHaveBeenCalled();
     expect(finalState.status).toBe('error');
   });
 
-  it('provider window rejection with partial output is NOT auto-recovered and fails', async () => {
+  it('provider window rejection with partial output: not auto-recovered, output saved to the owned reply', async () => {
     const h = buildHarness({ budgets: [50_000], attempts: ['partial-window'] });
     const runtime = buildRuntime(h, 'success');
-    const state = createState();
+    // A historical assistant that must NOT be touched.
+    const state = createState({
+      messages: [
+        { content: 'hello', id: 'u1', role: 'user' },
+        { content: 'old reply', id: 'hist-1', role: 'assistant' },
+      ] as any,
+    });
 
     const { finalState, phases } = await runLoop(runtime, state);
 
     expect(phases).not.toContain('context_overflow');
     expect(finalState.status).toBe('error');
+    // The partial output is saved to the assistant this operation created...
+    expect(h.messages.update).toHaveBeenCalledWith(
+      'assistant-1',
+      expect.objectContaining({ content: 'partial text already streamed' }),
+    );
+    // ...and the historical assistant is never updated.
+    expect(h.messages.update).not.toHaveBeenCalledWith('hist-1', expect.anything());
   });
 });

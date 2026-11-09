@@ -93,6 +93,7 @@ export * from './acceptanceFlow';
 export * from './acceptanceReview';
 export * from './agentRuntime';
 export * from './oauthApp';
+export * from './onDemand';
 export * from './openai/chat';
 export * from './openai/plugin';
 export * from './subscription';

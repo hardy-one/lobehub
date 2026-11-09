@@ -24,8 +24,10 @@ export const toContextSnapshot = ({
   botPlatformContext,
   capabilities,
   connectorOwnershipNote,
+  contextMode,
   discordContext,
   documentReferences,
+  documentCards,
   enableAgentMode,
   enableExpertise,
   enableHistoryCount,
@@ -44,6 +46,7 @@ export const toContextSnapshot = ({
   model,
   modelDisplayName,
   modelKnowledgeCutoff,
+  onDemand,
   onboardingContext,
   planTodo,
   projectInstructions,
@@ -59,6 +62,7 @@ export const toContextSnapshot = ({
 }: ServerMessagesEngineParams): ContextSnapshot => ({
   agent: {
     documents: agentDocuments,
+    documentCards,
     enableHistoryCount,
     enableStaleToolResultTrim,
     historyCount,
@@ -83,6 +87,7 @@ export const toContextSnapshot = ({
   },
   run: {
     additionalContexts,
+    contextMode,
     enableAgentMode,
     enableExpertise,
     expertise,
@@ -91,6 +96,7 @@ export const toContextSnapshot = ({
     historySummary,
     initialContext,
     messages,
+    onDemand,
   },
   step: {
     agentAccountContext,
@@ -105,9 +111,12 @@ export const toContextSnapshot = ({
   },
   tools: {
     disabledToolIdentifiers: toolsConfig?.disabledToolIdentifiers,
+    discoveryCards: toolsConfig?.discoveryCards,
     enabledSkills: skillsConfig?.enabledSkills,
     enabledToolIds: toolsConfig?.tools,
     manifests: toolsConfig?.manifests,
+    selectedSkills: contextMode === 'on-demand' ? initialContext?.selectedSkills : undefined,
+    selectedTools: contextMode === 'on-demand' ? initialContext?.selectedTools : undefined,
     toolDiscoveryConfig,
   },
   variables: additionalVariables,

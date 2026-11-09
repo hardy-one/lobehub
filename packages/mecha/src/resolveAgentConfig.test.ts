@@ -80,6 +80,19 @@ describe('resolveAgentConfig without a host', () => {
     expect(resolved.chatConfig.enableAgentMode).toBe(false);
   });
 
+  it('applies a workspace member context-mode override onto the chat config', () => {
+    const resolved = resolveAgentConfig(
+      { agentId: 'agt_1' },
+      snapshot({
+        agent: { visibility: 'public', workspaceId: 'ws_1' },
+        canManage: false,
+        memberContextModeOverride: 'on-demand',
+      }),
+    );
+
+    expect(resolved.chatConfig.contextMode).toBe('on-demand');
+  });
+
   it('lets a collaborative builtin member keep their own model, even as a manager', () => {
     const resolved = resolveAgentConfig(
       { agentId: 'agt_1' },
@@ -139,6 +152,19 @@ describe('resolveAgentConfig without a host', () => {
 
     // A manager reads the shared row, so their own member pick stays dormant.
     expect(resolved.chatConfig.enableAgentMode).toBeUndefined();
+  });
+
+  it('ignores a member context-mode override when the caller can manage the agent', () => {
+    const resolved = resolveAgentConfig(
+      { agentId: 'agt_1' },
+      snapshot({
+        agent: { visibility: 'public', workspaceId: 'ws_1' },
+        canManage: true,
+        memberContextModeOverride: 'on-demand',
+      }),
+    );
+
+    expect(resolved.chatConfig.contextMode).toBeUndefined();
   });
 
   it('lets a per-call model override outrank the member pick and the shared default', () => {

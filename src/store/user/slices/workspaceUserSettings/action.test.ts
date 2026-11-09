@@ -82,6 +82,21 @@ describe('WorkspaceUserSettingsActionImpl', () => {
     });
   });
 
+  it('optimistically deep-merges one Agent context mode without dropping other Agents', async () => {
+    seed({ agentContextModeOverrides: { existing: 'on-demand' } });
+
+    await act(() =>
+      state().updateWorkspaceUserPreference({
+        agentContextModeOverrides: { selected: 'default' },
+      }),
+    );
+
+    expect(state().workspaceUserPreference.agentContextModeOverrides).toEqual({
+      existing: 'on-demand',
+      selected: 'default',
+    });
+  });
+
   it('optimistically deep-merges one Agent device override without dropping others', async () => {
     seed({ agentDeviceOverrides: { keep: { executionTarget: 'local' } } });
 

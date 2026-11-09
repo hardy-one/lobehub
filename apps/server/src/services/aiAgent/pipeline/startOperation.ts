@@ -57,6 +57,7 @@ export interface StartOperationInput {
   enableExpertise: boolean;
   evalContext?: InternalExecAgentParams['evalContext'];
   evalRuntime?: InternalExecAgentParams['evalRuntime'];
+  globalMemoryEnabled?: boolean;
   hooks?: InternalExecAgentParams['hooks'];
   includeFinalState?: boolean;
   init: StartOperationInit;
@@ -134,6 +135,7 @@ export const startOperation = async (
     enableExpertise,
     evalContext,
     evalRuntime,
+    globalMemoryEnabled,
     hooks,
     init,
     initialLlmCalls,
@@ -300,6 +302,7 @@ export const startOperation = async (
         documentId: appContext?.documentId,
         groupId: appContext?.groupId,
         isSubAgent: appContext?.isSubAgent,
+        memoryEnabled: globalMemoryEnabled ?? false,
         // Persist the orchestration role on state.metadata so the
         // inactivity-watchdog abandon path can distinguish an isolated group
         // member ('member') from a genuine callSubAgent child.

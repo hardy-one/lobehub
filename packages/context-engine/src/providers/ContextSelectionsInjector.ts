@@ -23,6 +23,12 @@ const fromLegacyPageSelections = (
     xml: selection.xml,
   }));
 
+export const resolveContextSelections = (
+  metadata?: Record<string, any> | null,
+): ContextSelection[] | undefined =>
+  (metadata?.contextSelections as ContextSelection[] | undefined) ??
+  fromLegacyPageSelections(metadata?.pageSelections as PageSelection[] | undefined);
+
 export interface ContextSelectionsInjectorConfig {
   /** Whether generic contextSelections injection is enabled */
   enabled?: boolean;
@@ -53,9 +59,7 @@ export class ContextSelectionsInjector extends BaseEveryUserContentProvider {
       return null;
     }
 
-    const contextSelections =
-      (message.metadata?.contextSelections as ContextSelection[] | undefined) ??
-      fromLegacyPageSelections(message.metadata?.pageSelections as PageSelection[] | undefined);
+    const contextSelections = resolveContextSelections(message.metadata);
 
     if (!contextSelections || contextSelections.length === 0) {
       return null;

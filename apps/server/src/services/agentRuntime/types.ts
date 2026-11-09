@@ -19,6 +19,7 @@ import type {
   EvalToolForwardingConfig,
   ExpertiseContextSnapshot,
   FrozenCredentialFacts,
+  OnDemandDiscoveryPool,
   UserInterventionConfig,
 } from '@lobechat/types';
 import type { SearchDecision } from 'model-bank';
@@ -38,6 +39,8 @@ import { type AgentHook } from './hooks/types';
 export interface OperationToolSet {
   /** Tool IDs that may be restored from historical explicit activations for this run. */
   activatableToolIds?: string[];
+  /** Atomic capabilities the activator may load during this operation. */
+  discoveryPool?: OnDemandDiscoveryPool;
   enabledToolIds?: string[];
   executorMap?: Record<string, ToolExecutor>;
   manifestMap: Record<string, LobeToolManifest>;
@@ -480,6 +483,8 @@ export interface OperationCreationParams {
     editingGroupId?: string;
     groupId?: string | null;
     isSubAgent?: boolean;
+    /** Whether user-memory retrieval is enabled for this operation. */
+    memoryEnabled?: boolean;
     /**
      * Group orchestration role, stored on `state.origin.lineage.orchestrationRole`.
      * Lets the inactivity-watchdog abandon path tell an isolated group member

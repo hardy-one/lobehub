@@ -1,31 +1,47 @@
-import type { AgentItem } from '@lobechat/types';
+import type { AgentContextMode, AgentItem, LobeAgentChatConfig } from '@lobechat/types';
 
 import { useAgentManagementAccess } from '@/features/ResourcePermission/useAgentManagementAccess';
 import { getAgentStoreState, useAgentStore } from '@/store/agent';
-import { agentByIdSelectors } from '@/store/agent/selectors';
+import { agentByIdSelectors, chatConfigByIdSelectors } from '@/store/agent/selectors';
 import { useUserStore } from '@/store/user';
 import { userProfileSelectors } from '@/store/user/selectors';
 
 interface EffectiveAgentModePreferenceSources {
   agent?: Pick<Partial<AgentItem>, 'userId' | 'visibility' | 'workspaceId'>;
   currentUserId?: string;
-  memberOverride?: boolean;
+  memberContextModeOverride?: AgentContextMode;
+  memberModeOverride?: boolean;
+  sharedContextMode?: AgentContextMode;
   sharedEnableAgentMode: boolean;
+  sharedToolMode?: LobeAgentChatConfig['toolMode'];
 }
 
 const resolveEffectiveAgentModePreference = ({
   agent,
   currentUserId,
-  memberOverride,
+  memberContextModeOverride,
+  memberModeOverride,
+  sharedContextMode,
   sharedEnableAgentMode,
+  sharedToolMode,
 }: EffectiveAgentModePreferenceSources) => {
   const isAuthor = !!currentUserId && agent?.userId === currentUserId;
   const usesWorkspaceMemberMode =
     !!agent?.workspaceId && agent.visibility !== 'private' && !isAuthor;
 
-  return usesWorkspaceMemberMode
-    ? (memberOverride ?? sharedEnableAgentMode)
-    : sharedEnableAgentMode;
+  if (!usesWorkspaceMemberMode) {
+    return {
+      contextMode: sharedContextMode,
+      enableAgentMode: sharedEnableAgentMode,
+      toolMode: sharedToolMode,
+    };
+  }
+
+  return {
+    contextMode: memberContextModeOverride ?? sharedContextMode,
+    enableAgentMode: memberModeOverride ?? sharedEnableAgentMode,
+    toolMode: sharedToolMode,
+  };
 };
 
 /** Resolve the Chat/Agent preference used by generation for this agent. */
@@ -52,17 +68,21 @@ export const getEffectiveAgentModePreference = (agentId: string) => {
   return resolveEffectiveAgentModePreference({
     agent,
     currentUserId,
-    memberOverride: userState.workspaceUserPreference.agentModeOverrides?.[agentId],
+    memberModeOverride: userState.workspaceUserPreference.agentModeOverrides?.[agentId],
     sharedEnableAgentMode: agentByIdSelectors.getAgentEnableModeById(agentId)(agentState),
-  });
+  }).enableAgentMode;
 };
 
 /** Reactive counterpart used by capability-gated chat input controls. */
 export const useEffectiveAgentModePreference = (agentId: string) => {
-  const [agent, sharedEnableAgentMode] = useAgentStore((state) => [
-    agentByIdSelectors.getAgentById(agentId)(state),
-    agentByIdSelectors.getAgentEnableModeById(agentId)(state),
-  ]);
+  const [agent, sharedEnableAgentMode, sharedContextMode, sharedToolMode] = useAgentStore(
+    (state) => [
+      agentByIdSelectors.getAgentById(agentId)(state),
+      agentByIdSelectors.getAgentEnableModeById(agentId)(state),
+      chatConfigByIdSelectors.getContextModeById(agentId)(state),
+      chatConfigByIdSelectors.getChatConfigById(agentId)(state).toolMode,
+    ],
+  );
   const { canManageAgent, isAccessLoading } = useAgentManagementAccess(agentId);
   const usesWorkspaceMemberMode =
     !!agent?.workspaceId && agent.visibility !== 'private' && !canManageAgent;
@@ -71,13 +91,23 @@ export const useEffectiveAgentModePreference = (agentId: string) => {
     (state) => state.useFetchWorkspaceUserPreference,
   )();
   const preference = fetchedPreference === undefined ? storePreference : (fetchedPreference ?? {});
-  const memberOverride = usesWorkspaceMemberMode
-    ? preference.agentModeOverrides?.[agentId]
-    : undefined;
 
   return {
-    enableAgentMode: memberOverride ?? sharedEnableAgentMode,
+    ...resolveEffectiveAgentModePreference({
+      agent,
+      memberContextModeOverride: usesWorkspaceMemberMode
+        ? preference.agentContextModeOverrides?.[agentId]
+        : undefined,
+      memberModeOverride: usesWorkspaceMemberMode
+        ? preference.agentModeOverrides?.[agentId]
+        : undefined,
+      sharedContextMode,
+      sharedEnableAgentMode,
+      sharedToolMode,
+    }),
     isPreferenceLoading: isAccessLoading || (usesWorkspaceMemberMode && isLoading),
     usesWorkspaceMemberMode,
   };
 };
+
+export { resolveEffectiveAgentModePreference };

@@ -46,7 +46,7 @@ function formatRecentMessages(messages: Array<{ content: string; role: string }>
     .join('\n\n');
 }
 
-function formatTopicReferences(items: TopicReferenceItem[]): string | null {
+export const formatTopicReferences = (items: TopicReferenceItem[]): string | null => {
   if (items.length === 0) return null;
 
   const withContext = items.filter((item) => item.summary || item.recentMessages?.length);
@@ -82,7 +82,7 @@ function formatTopicReferences(items: TopicReferenceItem[]): string | null {
   lines.push('</referred_topics>');
 
   return lines.join('\n');
-}
+};
 
 /**
  * Topic Reference Context Injector

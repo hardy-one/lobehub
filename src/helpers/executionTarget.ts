@@ -7,18 +7,18 @@ import type {
   LobeAgentChatConfig,
   RuntimeEnvMode,
 } from '@lobechat/types';
-import {
-  executionTargetToRuntimeMode,
-  isDeviceCapablePlan,
-  isDeviceLockedPlan,
-  RequestTrigger,
-  resolveToolMode,
-} from '@lobechat/types';
+import { executionTargetToRuntimeMode, RequestTrigger, resolveToolMode } from '@lobechat/types';
 
 // The pure mode / plan predicates live in `@lobechat/types` so the shared
 // tool rules in `@lobechat/mecha` can use them; re-exported here for the
 // existing host consumers.
-export { executionTargetToRuntimeMode, isDeviceCapablePlan, isDeviceLockedPlan, resolveToolMode };
+export {
+  executionTargetToRuntimeMode,
+  isDeviceCapablePlan,
+  isDeviceLockedPlan,
+  resolveContextMode,
+  resolveToolMode,
+} from '@lobechat/types';
 
 /**
  * Whether a workspace config still needs the shared-row safety coercion.

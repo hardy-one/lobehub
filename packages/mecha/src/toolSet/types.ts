@@ -24,7 +24,10 @@ export interface ToolRuleDeviceAccess {
 /** Everything the tool rules read about the run. Assembled by the host. */
 export interface ToolRuleRequest {
   agent: {
-    chatConfig?: Pick<LobeAgentChatConfig, 'enableAgentMode' | 'searchMode' | 'toolMode'> | null;
+    chatConfig?: Pick<
+      LobeAgentChatConfig,
+      'contextMode' | 'enableAgentMode' | 'searchMode' | 'toolMode'
+    > | null;
     /** Pinned plugin identifiers (tri-state entries already collapsed). */
     plugins?: readonly string[] | null;
   };
@@ -105,6 +108,8 @@ export interface ResolvedToolRules {
    * source: the agent's disabled plugins plus the device walls.
    */
   excludedIdentifiers: Set<string>;
+  /** The effective context strategy is the opt-in on-demand mode. */
+  onDemand: boolean;
   /** Per-tool enablement for the enable checker; absent means disabled. */
   rules: Record<string, boolean>;
   runtimeMode: RuntimeEnvMode;

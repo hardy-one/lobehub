@@ -226,6 +226,7 @@ export const runOperationInit = async (
         runAttachments: request.runAttachments,
         runFromHistory: request.resumeFromHistory,
         selectedSkillIds: request.selectedSkillIds,
+        selectedSkills: request.selectedSkills,
         taskId: request.taskId,
         throwIfExecutionAborted: deps.throwIfExecutionAborted,
       },

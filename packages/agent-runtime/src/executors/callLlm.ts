@@ -12,9 +12,11 @@ import type {
   AgentInstruction,
   AgentState,
   CallLLMPayload,
+  InstructionExecutionResult,
   InstructionExecutor,
 } from '../types';
 import { withLlmAttemptCount } from '../utils/llmCalls';
+import { isContextOverflowError } from '../utils/llmErrorClassifier';
 import { getLLMRetryDelayMs, shouldRetryLLM } from '../utils/runtimeRetry';
 import { finalizeCallLlmTurn, persistInterruptedCallLlmResult } from './callLlmFinalizer';
 
@@ -27,8 +29,13 @@ interface LLMCallTransport {
 
 interface PreparedCallLlmInput {
   assistantMessageId: string;
+  /** Whether the assistant row predated this attempt (reused, not created here). */
+  assistantMessageIdPreExisted?: boolean;
   context: ContextBuildOutput;
+  /** Raw input tokens of the assembled prompt, for the overflow hand-back. */
+  estimatedTokens?: number;
   model: string;
+  parentId?: string;
   provider: string;
   state: AgentState;
   stepLabel?: string;
@@ -65,6 +72,30 @@ const isOperationInterrupted = async (host: AgentRuntimeHost) => {
 
 const runWithTrace = <T>(trace: LLMTrace | undefined, task: () => Promise<T>) =>
   trace ? trace.run(task) : task();
+
+/** Build a non-terminal result that hands control back to the agent to compress. */
+const buildContextOverflowResult = (
+  host: AgentRuntimeHost,
+  state: AgentState,
+  tokenCount: number,
+): InstructionExecutionResult => {
+  const newState = structuredClone(state);
+  newState.lastModified = new Date().toISOString();
+  return {
+    events: [],
+    newState,
+    nextContext: {
+      payload: { tokenCount },
+      phase: 'context_overflow',
+      session: {
+        messageCount: newState.messages.length,
+        sessionId: host.operation.operationId,
+        status: 'running',
+        stepCount: newState.stepCount,
+      },
+    },
+  };
+};
 
 const executePreparedCall = async (
   host: AgentRuntimeHost,
@@ -118,6 +149,22 @@ const executePreparedCall = async (
       const classified = retryPolicy.classifyError(error);
       const retryBudget = retryPolicy.resolveRetryBudget(prepared.provider, error);
       let interrupted = await isOperationInterrupted(host);
+
+      // Only treat an overflow as recoverable when the existing classifier did
+      // NOT already own this error as a retryable/stop kind (e.g. rate limits).
+      // Otherwise we'd hijack a token-quota backoff. Recover by handing the
+      // agent a non-terminal `context_overflow` step (status stays running), not
+      // by throwing — the runtime's error terminal path would stop the loop and
+      // the recovery branch would never run.
+      const recoverableOverflow =
+        !interrupted && classified.kind === 'stop' && isContextOverflowError(error);
+      if (recoverableOverflow) {
+        return buildContextOverflowResult(
+          host,
+          prepared.state,
+          prepared.estimatedTokens ?? 0,
+        );
+      }
 
       if (!interrupted && shouldRetryLLM(classified.kind, attempt, retryBudget)) {
         const delayMs = getLLMRetryDelayMs(attempt);
@@ -347,6 +394,38 @@ export const callLlm =
         console.warn('[call_llm] Failed to stamp operation id provenance:', error);
       }
     }
+    // Assemble the exact prompt BEFORE creating the assistant row, so an
+    // over-budget request can be abandoned (handed back as `context_overflow`)
+    // without leaving an orphaned assistant message behind.
+    const context = await contextBuilder
+      .build({
+        model,
+        payload: llmPayload,
+        provider,
+        state,
+      })
+      .catch(async (error) => {
+        await transports.stream.publishError?.({
+          error,
+          phase: 'llm_execution',
+          stepIndex: operation.stepIndex,
+        });
+        throw error;
+      });
+
+    // Measure the assembled request — the only place where the full preamble
+    // (system role, memory, skills, tool schemas) and the real provider message
+    // shape are visible. Prefer the request-prep layer's estimate; when the
+    // agent supplied a threshold and the prompt exceeds it, hand back a
+    // non-terminal `context_overflow` step BEFORE the assistant row and
+    // stream_start, so the agent can compress and retry and no row is orphaned.
+    const estimatedTokens = context.estimatedInputTokens ?? 0;
+    const compressionThreshold = (llmPayload as { compressionThreshold?: number })
+      .compressionThreshold;
+    if (compressionThreshold !== undefined && estimatedTokens > compressionThreshold) {
+      return buildContextOverflowResult(host, state, estimatedTokens);
+    }
+
     const assistantMessage = existingAssistantMessageId
       ? { id: existingAssistantMessageId }
       : await transports.messages.createAssistantMessage(
@@ -393,27 +472,14 @@ export const callLlm =
       type: 'stream_start',
     });
 
-    const context = await contextBuilder
-      .build({
-        model,
-        payload: llmPayload,
-        provider,
-        state,
-      })
-      .catch(async (error) => {
-        await transports.stream.publishError?.({
-          error,
-          phase: 'llm_execution',
-          stepIndex: operation.stepIndex,
-        });
-        throw error;
-      });
-
     try {
       const prepared: PreparedCallLlmInput = {
         assistantMessageId: assistantMessage.id,
+        assistantMessageIdPreExisted: Boolean(existingAssistantMessageId),
         context,
+        estimatedTokens,
         model,
+        parentId,
         provider,
         state,
         stepLabel,

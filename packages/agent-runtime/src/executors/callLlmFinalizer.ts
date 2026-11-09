@@ -6,8 +6,6 @@ import type {
   ModelReasoning,
   ModelUsage,
 } from '@lobechat/types';
-import { serializePartsForStorage } from '../utils/multimodalContent';
-import { sanitizeToolCallArguments } from '../utils/sanitizeToolCallArguments';
 
 import { UsageCounter } from '../core/UsageCounter';
 import type { AgentRuntimeHost, LLMAttemptOutput } from '../transport';
@@ -17,6 +15,8 @@ import type {
   GeneralAgentCallLLMResultPayload,
   InstructionExecutionResult,
 } from '../types';
+import { serializePartsForStorage } from '../utils/multimodalContent';
+import { sanitizeToolCallArguments } from '../utils/sanitizeToolCallArguments';
 import {
   hasRepeatedToolCall,
   TOOL_CALL_REPEAT_LIMIT,
@@ -241,6 +241,11 @@ const buildFinalState = ({
   // are rehydrated into display groups before the next runtime step.
   newState.metadata = { ...newState.metadata, workAssistantMessageId: assistantMessageId };
   newState.toolCallRepeatGuard = toolCallRepeatGuard;
+  // A completed call means the request fit: reset the overflow-recovery budget
+  // so a later, independent budget shortfall still gets its own compression.
+  if (newState.metadata?.contextOverflowAttempts !== undefined) {
+    delete newState.metadata.contextOverflowAttempts;
+  }
   newState.messages.push({
     content: output.content,
     id: assistantMessageId,

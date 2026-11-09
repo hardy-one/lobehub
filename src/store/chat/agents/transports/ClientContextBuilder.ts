@@ -5,6 +5,7 @@ import type {
   ContextBuildOutput,
 } from '@lobechat/agent-runtime';
 import {
+  estimateRequestInputTokens,
   ToolResolver,
   type ToolsEngine,
   tryCountRequestPayloadTokens,
@@ -104,12 +105,20 @@ export class ClientContextBuilder implements ContextBuilder {
     );
     const { messages: preparedMessages = [], ...params } = prepared.params;
 
+    // Same budget contract as the server builder: estimate the real assembled
+    // request (provider message shape + tools) so the compression trigger works
+    // in the browser too, instead of the executor treating it as 0 tokens.
+    const estimatedInputTokens = estimateRequestInputTokens(preparedMessages as any, {
+      tools: resolvedTools.tools,
+    });
+
     return {
       // The client transport sends these messages and `params.tools` as-is.
       contextAccounting: tryCountRequestPayloadTokens({
         messages: preparedMessages,
         tools: params.tools,
       }),
+      estimatedInputTokens,
       messages: preparedMessages,
       modelParameters: {
         options: prepared.options,

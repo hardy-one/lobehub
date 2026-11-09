@@ -47,6 +47,14 @@ export const compressContext =
     const { operationId, stepIndex, userId } = operation;
     const events: AgentEvent[] = [];
     const newState = structuredClone(state);
+    // Consume one overflow-recovery attempt as soon as we start compressing, so
+    // a skipped or failed summary still counts and cannot loop forever. The
+    // context_overflow phase only emits compress_context when an attempt is
+    // available; a successful call later clears this counter.
+    newState.metadata = {
+      ...newState.metadata,
+      contextOverflowAttempts: Number(newState.metadata?.contextOverflowAttempts ?? 0) + 1,
+    };
     const topicId = state.origin?.topicId ?? operation.topicId;
     const workspaceId = state.origin?.workspaceId ?? operation.workspaceId;
     const agentId = operation.agentId ?? state.origin?.agentId;

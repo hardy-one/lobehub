@@ -73,14 +73,23 @@ const isOperationInterrupted = async (host: AgentRuntimeHost) => {
 const runWithTrace = <T>(trace: LLMTrace | undefined, task: () => Promise<T>) =>
   trace ? trace.run(task) : task();
 
-/** Whether an attempt produced any output (content/reasoning/tool calls). */
+/**
+ * Whether an attempt produced any output — text, reasoning, tool calls, or any
+ * multimodal part. A failure with any of these must not be auto-recovered and
+ * its row must not be deleted.
+ */
 const hasPartialOutput = (output?: LLMAttemptOutput): boolean =>
   Boolean(
     output &&
       (output.content ||
         output.thinkingContent ||
         (output.toolCalls?.length ?? 0) > 0 ||
-        (output.toolsCalling?.length ?? 0) > 0),
+        (output.toolsCalling?.length ?? 0) > 0 ||
+        (output.contentParts?.length ?? 0) > 0 ||
+        (output.reasoningParts?.length ?? 0) > 0 ||
+        (output.imageList?.length ?? 0) > 0 ||
+        output.hasContentImages ||
+        output.hasReasoningImages),
   );
 
 interface OverflowResultParams {
@@ -152,6 +161,22 @@ const buildContextOverflowResult = async (
       },
     },
   };
+};
+
+/**
+ * Tag a thrown error with the assistant message this operation was writing, so
+ * a client error consumer can attribute the failure to THIS operation's reply
+ * instead of guessing (e.g. the last historical assistant).
+ */
+const attachAssistantId = <T>(error: T, assistantMessageId?: string): T => {
+  if (assistantMessageId && error && typeof error === 'object') {
+    try {
+      (error as { assistantMessageId?: string }).assistantMessageId = assistantMessageId;
+    } catch {
+      // Frozen/hostile error object: attribution is best-effort.
+    }
+  }
+  return error;
 };
 
 const executePreparedCall = async (
@@ -290,12 +315,12 @@ const executePreparedCall = async (
           retryBudget,
         });
       });
-      throw withLlmAttemptCount(error, attemptsMade);
+      throw attachAssistantId(withLlmAttemptCount(error, attemptsMade), prepared.assistantMessageId);
     }
 
-    throw withLlmAttemptCount(
-      new Error('LLM execution retry loop exited unexpectedly'),
-      attemptsMade,
+    throw attachAssistantId(
+      withLlmAttemptCount(new Error('LLM execution retry loop exited unexpectedly'), attemptsMade),
+      prepared.assistantMessageId,
     );
   } catch (error) {
     terminalError = error;
@@ -317,7 +342,7 @@ const executePreparedCall = async (
         });
       });
     }
-    throw withLlmAttemptCount(error, attemptsMade);
+    throw attachAssistantId(withLlmAttemptCount(error, attemptsMade), prepared.assistantMessageId);
   } finally {
     await trace?.close(terminalError);
   }
@@ -577,6 +602,6 @@ export const callLlm =
         phase: 'llm_execution',
         stepIndex: operation.stepIndex,
       });
-      throw error;
+      throw attachAssistantId(error, assistantMessage.id);
     }
   };

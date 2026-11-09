@@ -1041,11 +1041,17 @@ export class GeneralChatAgent implements Agent {
         const canRecover = compressionEnabled && !state.forceFinish && priorAttempts < 1;
         if (!canRecover) {
           // Unrecoverable: throw so the runtime records a REAL error terminal
-          // (status 'error'), not a normal completion. The generic runtime maps a
-          // thrown executor error to the error state and message pipeline.
-          throw new Error(
+          // (status 'error'), not a normal completion. Tag the operation's own
+          // assistant (a reuse seed, when present) so a client error consumer can
+          // attribute the failure to THIS operation and never to a historical
+          // assistant message.
+          const unrecoverable = new Error(
             'Context window exceeded and could not be recovered by compression.',
-          );
+          ) as Error & { assistantMessageId?: string };
+          if (state.pendingAssistantMessageId) {
+            unrecoverable.assistantMessageId = state.pendingAssistantMessageId;
+          }
+          throw unrecoverable;
         }
 
         return {

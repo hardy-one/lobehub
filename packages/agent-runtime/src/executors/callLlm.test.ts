@@ -645,4 +645,96 @@ describe('callLlm executor', () => {
       stepIndex: 0,
     });
   });
+
+  it('returns a non-terminal context_overflow step before sending when the assembled prompt exceeds the threshold', async () => {
+    const transport = createCallTransport();
+    const messages = createMessageTransport();
+    const stream = createStreamSink();
+    const context: ContextBuilder = {
+      build: vi.fn().mockResolvedValue({
+        messages: [{ content: 'x'.repeat(4000), role: 'user' }],
+        estimatedInputTokens: 5000,
+        replayAssistantReasoning: false,
+        resolvedTools: { enabledToolIds: [], manifestMap: {}, promptManifestMap: {}, sourceMap: {}, tools: [] },
+      }),
+    };
+    const host = createHost(transport.llm, messages, stream, context);
+
+    const result = await callLlm(host)(
+      {
+        payload: {
+          compressionThreshold: 10,
+          messages: [{ content: 'hello', role: 'user' }],
+          model: 'gpt-4',
+          provider: 'openai',
+          tools: [],
+        },
+        type: 'call_llm',
+      },
+      createState(),
+    );
+
+    expect(result.nextContext?.phase).toBe('context_overflow');
+    expect((result.nextContext?.payload as { tokenCount?: number }).tokenCount).toBe(5000);
+    expect(result.newState.status).toBe('running');
+    // Nothing was created or sent before the check.
+    expect(transport.runAttempt).not.toHaveBeenCalled();
+    expect(messages.createAssistantMessage).not.toHaveBeenCalled();
+  });
+
+  it('returns a non-terminal context_overflow step on a provider context-window error', async () => {
+    const runAttempt = vi
+      .fn()
+      .mockResolvedValue({ error: new Error('maximum context length is 8192 tokens'), ok: false });
+    const policy = createRetryPolicy({
+      classifyError: vi.fn().mockReturnValue({ kind: 'stop', message: 'maximum context length is 8192 tokens' }),
+      maxAttempts: vi.fn().mockReturnValue(1),
+    });
+    const transport = createCallTransport({ policy, runAttempt });
+    const host = createHost(transport.llm, createMessageTransport(), createStreamSink());
+
+    const result = await callLlm(host)(
+      {
+        payload: {
+          messages: [{ content: 'hello', role: 'user' }],
+          model: 'gpt-4',
+          provider: 'openai',
+          tools: [],
+        },
+        type: 'call_llm',
+      },
+      createState(),
+    );
+
+    expect(runAttempt).toHaveBeenCalledTimes(1);
+    expect(result.nextContext?.phase).toBe('context_overflow');
+    expect(result.newState.status).toBe('running');
+  });
+
+  it('does not hijack a rate-limit error the classifier already owns', async () => {
+    const error = new Error('too many tokens, rate limit exceeded');
+    const runAttempt = vi.fn().mockResolvedValue({ error, ok: false });
+    const policy = createRetryPolicy({
+      classifyError: vi.fn().mockReturnValue({ kind: 'retry', message: 'rate limit' }),
+      maxAttempts: vi.fn().mockReturnValue(1),
+      resolveRetryBudget: vi.fn().mockReturnValue(0),
+    });
+    const transport = createCallTransport({ policy, runAttempt });
+    const host = createHost(transport.llm, createMessageTransport(), createStreamSink());
+
+    await expect(
+      callLlm(host)(
+        {
+          payload: {
+            messages: [{ content: 'hello', role: 'user' }],
+            model: 'gpt-4',
+            provider: 'openai',
+            tools: [],
+          },
+          type: 'call_llm',
+        },
+        createState(),
+      ),
+    ).rejects.toBeTruthy();
+  });
 });

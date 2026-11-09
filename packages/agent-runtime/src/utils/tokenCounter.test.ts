@@ -184,4 +184,5 @@ describe('tokenCounter', () => {
       expect(withTools.currentTokenCount).toBeGreaterThan(withoutTools.currentTokenCount);
     });
   });
+
 });

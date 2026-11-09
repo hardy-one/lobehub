@@ -3,7 +3,10 @@ import type {
   ContextBuildInput,
   ContextBuildOutput,
 } from '@lobechat/agent-runtime';
-import { tryCountRequestPayloadTokens } from '@lobechat/context-engine';
+import {
+  estimateRequestInputTokens,
+  tryCountRequestPayloadTokens,
+} from '@lobechat/context-engine';
 
 import type { RuntimeExecutorContext } from '../context';
 import { buildServerCallLlmContext } from './serverCallLlmContextBuilder';
@@ -41,6 +44,9 @@ export class ServerContextBuilder implements ContextBuilder {
       preserveThinking: result.preserveThinkingForPayload,
       replayAssistantReasoning: result.shouldReplayAssistantReasoning,
       resolvedTools: tooling.resolved,
+      estimatedInputTokens: estimateRequestInputTokens(result.processedMessages as any, {
+        tools: tooling.resolved.tools,
+      }),
     };
   }
 }

@@ -29,7 +29,7 @@ export const runContextEngineering = async (
   return {
     messages: result.messages,
     metadata: result.metadata,
-    onDemandContext: result.metadata.onDemandContext,
+    onDemandContext: result.metadata?.onDemandContext,
   };
 };
 

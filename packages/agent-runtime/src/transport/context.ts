@@ -25,6 +25,12 @@ export interface ContextBuildOutput {
    */
   contextAccounting?: MessageContextAccounting;
   getToolActivationContext?: ResolveToolActivationContext;
+  /**
+   * Raw input tokens of the assembled request (messages + tool schemas),
+   * estimated with the provider-compatible counter. When present the runtime
+   * uses it as the authoritative budget measurement for the assembled prompt.
+   */
+  estimatedInputTokens?: number;
   /** Adapter-native prepared messages; kept in-memory and out of serialized state. */
   messages: unknown[];
   /** Adapter-native model extension parameters consumed by the LLM transport. */

@@ -1,15 +1,20 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { estimateTokenCount } from 'tokenx';
 
 import {
+  type EnvironmentSnapshot,
+  extractEnvironmentSnapshot,
   findSensitiveHeader,
+  hashBaselineRequest,
   hashPromptRequest,
+  PROMPT_HARNESS_BASELINE_CANONICALIZATION,
   PROMPT_HARNESS_CANONICALIZATION,
 } from './canonical';
 import { readDocumentWindowNotice } from './documentWindow';
 import {
+  getScenario,
   HARNESS_AGENT_PROMPT,
   HARNESS_BASELINE_USER_MESSAGE,
   nextReplyLanguageSystemRole,
@@ -89,6 +94,61 @@ const readJson = async <T>(file: string): Promise<T> =>
 
 const text = (value: unknown): string =>
   typeof value === 'string' ? value : JSON.stringify(value ?? '');
+
+interface BaselineFixture {
+  canonicalization: string;
+  hashes: ReturnType<typeof hashPromptRequest>;
+  provenance?: ({ environment?: EnvironmentSnapshot } & Record<string, unknown>) | undefined;
+}
+
+const describeEnvironmentDrift = (
+  baselineEnvironment: EnvironmentSnapshot | undefined,
+  request: CapturedRequest,
+): string => {
+  const current = extractEnvironmentSnapshot(request.request);
+  if (!baselineEnvironment) return ' (no environment snapshot in baseline provenance)';
+  const compare = (name: string, recorded: string[] | undefined, observed: string[]) => {
+    const before = new Set(recorded ?? []);
+    const after = new Set(observed);
+    const added = observed.filter((item) => !before.has(item)).length;
+    const removed = (recorded ?? []).filter((item) => !after.has(item)).length;
+    return added || removed ? `${name} +${added}/-${removed}` : undefined;
+  };
+  const diffs = [
+    compare('availableTools', baselineEnvironment.availableTools, current.availableTools),
+    compare('availableAgents', baselineEnvironment.availableAgents, current.availableAgents),
+  ].filter(Boolean);
+  return diffs.length > 0
+    ? ` (environment drift excluded from stable hash: ${diffs.join(', ')})`
+    : ' (environment snapshot unchanged)';
+};
+
+const writeBaselineFixture = async (
+  file: string,
+  request: CapturedRequest,
+  scenarioId: 'baseline-legacy' | 'baseline-chat',
+  note: string,
+  sourceCommit?: string,
+): Promise<void> => {
+  const scenario = getScenario(scenarioId);
+  const fixture = {
+    agentId: scenario.agentId,
+    agentPrompt: scenario.agentPrompt,
+    canonicalization: PROMPT_HARNESS_BASELINE_CANONICALIZATION,
+    hashes: hashBaselineRequest(request.request),
+    provenance: {
+      capturedAt: new Date().toISOString(),
+      environment: extractEnvironmentSnapshot(request.request),
+      note,
+      requestCount: 1,
+      scenario: scenarioId,
+      source: 'bash scripts/promptHarness/stack.sh --update-baseline --keep',
+      sourceCommit: sourceCommit ?? 'unknown',
+    },
+    userMessage: HARNESS_BASELINE_USER_MESSAGE,
+  };
+  await writeFile(file, `${JSON.stringify(fixture, null, 2)}\n`);
+};
 
 const BOOTSTRAP_TOOLS = [
   'lobe-activator____activateTools',
@@ -517,10 +577,14 @@ export const verifyHarnessRun = async ({
   legacyChatBaselinePath,
   legacyBaselinePath,
   manifest,
+  sourceCommit,
+  updateBaseline,
 }: {
   legacyChatBaselinePath?: string;
   legacyBaselinePath?: string;
   manifest: HarnessManifest;
+  sourceCommit?: string;
+  updateBaseline?: boolean;
 }): Promise<VerificationCheck[]> => {
   const checks: VerificationCheck[] = [];
   const check = async (id: string, run: () => Promise<string> | string) => {
@@ -729,41 +793,67 @@ export const verifyHarnessRun = async ({
 
   if (legacyBaselinePath && captures.has('baseline-legacy')) {
     await check('legacy-baseline', async () => {
-      const baseline = await readJson<{
-        canonicalization: string;
-        hashes: ReturnType<typeof hashPromptRequest>;
-      }>(legacyBaselinePath);
       const request = captures.get('baseline-legacy')?.[0];
       require(request, 'legacy baseline request is missing');
-      require(baseline.canonicalization ===
+      if (updateBaseline) {
+        await writeBaselineFixture(
+          legacyBaselinePath,
+          request,
+          'baseline-legacy',
+          'Refreshed by --update-baseline: stable hash over environment-normalized bytes; environment snapshot recorded in provenance.',
+          sourceCommit,
+        );
+        return 'Refreshed legacy baseline fixture (stable v3 hash, environment snapshot recorded).';
+      }
+      const baseline = await readJson<BaselineFixture>(legacyBaselinePath);
+      const stableBaseline = baseline.canonicalization === PROMPT_HARNESS_BASELINE_CANONICALIZATION;
+      require(stableBaseline || baseline.canonicalization ===
         PROMPT_HARNESS_CANONICALIZATION, 'legacy baseline canonicalization version is unknown');
+      const observed = stableBaseline ? hashBaselineRequest(request.request) : request.hashes;
       for (const key of ['full', 'messages', 'messagesAndTools', 'tools'] as const) {
         require(baseline.hashes[key] ===
-          request.hashes[
+          observed[
             key
-          ], `legacy ${key} hash drifted: ${baseline.hashes[key]} != ${request.hashes[key]}`);
+          ], `legacy ${key} hash drifted: ${baseline.hashes[key]} != ${observed[key]}`);
       }
-      return `Legacy request hashes match the frozen baseline: full=${request.hashes.full}, messages=${request.hashes.messages}, tools=${request.hashes.tools}.`;
+      const mode = stableBaseline ? 'stable-v3, environment-normalized' : 'raw-v2';
+      const drift = stableBaseline
+        ? describeEnvironmentDrift(baseline.provenance?.environment, request)
+        : '';
+      return `Legacy request hashes match the frozen baseline [${mode}]: full=${observed.full}, messages=${observed.messages}, tools=${observed.tools}${drift}.`;
     });
   }
 
   if (legacyChatBaselinePath && captures.has('baseline-chat')) {
     await check('legacy-chat-baseline', async () => {
-      const baseline = await readJson<{
-        canonicalization: string;
-        hashes: ReturnType<typeof hashPromptRequest>;
-      }>(legacyChatBaselinePath);
       const request = captures.get('baseline-chat')?.[0];
       require(request, 'legacy chat baseline request is missing');
-      require(baseline.canonicalization ===
+      if (updateBaseline) {
+        await writeBaselineFixture(
+          legacyChatBaselinePath,
+          request,
+          'baseline-chat',
+          'Refreshed by --update-baseline: stable hash over environment-normalized bytes; environment snapshot recorded in provenance.',
+          sourceCommit,
+        );
+        return 'Refreshed legacy chat baseline fixture (stable v3 hash, environment snapshot recorded).';
+      }
+      const baseline = await readJson<BaselineFixture>(legacyChatBaselinePath);
+      const stableBaseline = baseline.canonicalization === PROMPT_HARNESS_BASELINE_CANONICALIZATION;
+      require(stableBaseline || baseline.canonicalization ===
         PROMPT_HARNESS_CANONICALIZATION, 'legacy chat baseline canonicalization version is unknown');
+      const observed = stableBaseline ? hashBaselineRequest(request.request) : request.hashes;
       for (const key of ['full', 'messages', 'messagesAndTools', 'tools'] as const) {
         require(baseline.hashes[key] ===
-          request.hashes[
+          observed[
             key
-          ], `legacy chat ${key} hash drifted: ${baseline.hashes[key]} != ${request.hashes[key]}`);
+          ], `legacy chat ${key} hash drifted: ${baseline.hashes[key]} != ${observed[key]}`);
       }
-      return `Legacy chat request hashes match the pre-change baseline: full=${request.hashes.full}, messages=${request.hashes.messages}, tools=${request.hashes.tools}.`;
+      const mode = stableBaseline ? 'stable-v3, environment-normalized' : 'raw-v2';
+      const drift = stableBaseline
+        ? describeEnvironmentDrift(baseline.provenance?.environment, request)
+        : '';
+      return `Legacy chat request hashes match the frozen baseline [${mode}]: full=${observed.full}, messages=${observed.messages}, tools=${observed.tools}${drift}.`;
     });
   }
 

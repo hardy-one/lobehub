@@ -4,7 +4,14 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { canonicalHash, findSensitiveHeader, hashPromptRequest, redactHeaders } from './canonical';
+import {
+  canonicalHash,
+  extractEnvironmentSnapshot,
+  findSensitiveHeader,
+  hashBaselineRequest,
+  hashPromptRequest,
+  redactHeaders,
+} from './canonical';
 import { buildDatabaseUrl, parseDatabaseUrl } from './database';
 import { readDocumentWindowNotice } from './documentWindow';
 import {
@@ -81,6 +88,47 @@ describe('prompt harness smoke', () => {
     expect(hashPromptRequest(left)).toEqual(hashPromptRequest(right));
     expect(hashPromptRequest(left).messages).not.toBe(hashPromptRequest(changed).messages);
     expect(canonicalHash({ a: 1, b: 2 })).toBe(canonicalHash({ b: 2, a: 1 }));
+  });
+
+  it('excludes environment-derived blocks from the stable baseline hash and snapshots them', () => {
+    const build = (tools: string[], agents: string[]) => ({
+      messages: [
+        {
+          content: `<user_memory>\nkeep me\n</user_memory>\n<available_tools description="installed">\n${tools.join('\n')}\n</available_tools>\n<agent_management_context>\n${agents.join('\n')}\n</agent_management_context>`,
+          role: 'system',
+        },
+        { content: 'keep the user turn', role: 'user' },
+      ],
+      tools: [{ a: 1 }],
+    });
+
+    const first = build(['- lobe-browser', '- lobe-local-system'], ['- T106UI01', '- T106NEGATIVE01']);
+    const drifted = build(
+      ['- lobe-local-system', '- lobe-browser'],
+      ['- T106NEGATIVE01', '- T106UI01', '- T106NEW01'],
+    );
+
+    // The raw messages hash drifts with the environment-derived blocks...
+    expect(hashPromptRequest(first).messages).not.toBe(hashPromptRequest(drifted).messages);
+    // ...but the stable baseline hash ignores them.
+    expect(hashBaselineRequest(first)).toEqual(hashBaselineRequest(drifted));
+
+    // The excluded blocks are still recorded (sorted, de-duplicated) for provenance.
+    expect(extractEnvironmentSnapshot(first).availableTools).toEqual([
+      '- lobe-browser',
+      '- lobe-local-system',
+    ]);
+    expect(extractEnvironmentSnapshot(first).availableAgents).toEqual([
+      '- T106NEGATIVE01',
+      '- T106UI01',
+    ]);
+
+    // Bytes the PR actually controls still move the stable hash.
+    const changedTurn = {
+      ...first,
+      messages: [first.messages[0], { content: 'keep the user turn!', role: 'user' }],
+    };
+    expect(hashBaselineRequest(first).messages).not.toBe(hashBaselineRequest(changedTurn).messages);
   });
 
   it('redacts every credential-bearing header without touching request data', () => {

@@ -48,6 +48,7 @@ const parseArgs = (argv: string[]) => {
   let infoFile: string | undefined;
   let keep = false;
   let serve = false;
+  let updateBaseline = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -55,6 +56,8 @@ const parseArgs = (argv: string[]) => {
       keep = true;
     } else if (arg === '--serve') {
       serve = true;
+    } else if (arg === '--update-baseline') {
+      updateBaseline = true;
     } else if (arg === '--info-file') {
       infoFile = argv[++index];
     } else if (arg.startsWith('--info-file=')) {
@@ -68,7 +71,7 @@ const parseArgs = (argv: string[]) => {
     }
   }
 
-  return { infoFile, keep, scenarioIds: scenarioIds.map(getScenario), serve };
+  return { infoFile, keep, scenarioIds: scenarioIds.map(getScenario), serve, updateBaseline };
 };
 
 const readCaptureFiles = async (captureDir: string): Promise<string[]> =>
@@ -355,7 +358,7 @@ const inspectTrace = async ({
 
 const main = async () => {
   assertTestEnvironment();
-  const { infoFile, keep, scenarioIds, serve } = parseArgs(process.argv.slice(2));
+  const { infoFile, keep, scenarioIds, serve, updateBaseline } = parseArgs(process.argv.slice(2));
   const runId = `t105-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
   const runRoot = await mkdtemp(path.join(tmpdir(), `lobehub-${runId}.`));
   const captureDir = path.join(runRoot, 'captures');
@@ -642,9 +645,19 @@ const main = async () => {
     } catch {
       hasChatBaseline = false;
     }
+    const sourceCommit = updateBaseline
+      ? await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot })
+          .then((result) => result.stdout.trim())
+          .catch(() => undefined)
+      : undefined;
     checks = await verifyHarnessRun({
-      ...(hasBaseline && { legacyBaselinePath: baselinePath }),
-      ...(hasChatBaseline && { legacyChatBaselinePath: chatBaselinePath }),
+      ...(updateBaseline
+        ? { legacyBaselinePath: baselinePath, legacyChatBaselinePath: chatBaselinePath }
+        : {
+            ...(hasBaseline && { legacyBaselinePath: baselinePath }),
+            ...(hasChatBaseline && { legacyChatBaselinePath: chatBaselinePath }),
+          }),
+      ...(updateBaseline && { sourceCommit, updateBaseline }),
       manifest,
     });
   }

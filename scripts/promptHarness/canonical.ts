@@ -54,6 +54,127 @@ export const hashPromptRequest = (
   tools: canonicalHash(request.tools),
 });
 
+/**
+ * Schema version for the environment-stable legacy baseline hash. Bumped when
+ * the baseline hash scope changes so a hash difference has an explicit cause.
+ */
+export const PROMPT_HARNESS_BASELINE_CANONICALIZATION = 'prompt-harness-baseline-json-v3';
+
+/**
+ * Context blocks whose contents are derived from runtime environment state: the
+ * installed-but-disabled plugin catalogue (`<available_tools>`) and the recent
+ * agent roster (`<agent_management_context>`). They drift with plugin install
+ * state and seed data, so they are excluded from the stable baseline hash and
+ * recorded separately in fixture provenance instead.
+ */
+export const ENV_DERIVED_BLOCKS = ['available_tools', 'agent_management_context'] as const;
+
+export interface EnvironmentSnapshot {
+  availableAgents: string[];
+  availableTools: string[];
+}
+
+const envBlockContentRegExp = (tag: string): RegExp =>
+  new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)</${tag}>`, 'g');
+
+const envBlockWholeRegExp = (tag: string): RegExp =>
+  new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?</${tag}>`, 'g');
+
+const stripEnvBlocks = (value: string): string => {
+  let result = value;
+  for (const tag of ENV_DERIVED_BLOCKS) {
+    result = result.replace(envBlockWholeRegExp(tag), `[<${tag}>]`);
+  }
+  return result;
+};
+
+const transformContent = (content: unknown): unknown => {
+  if (typeof content === 'string') return stripEnvBlocks(content);
+  if (Array.isArray(content)) {
+    return content.map((part) => {
+      if (
+        part &&
+        typeof part === 'object' &&
+        typeof (part as { text?: unknown }).text === 'string'
+      ) {
+        return { ...(part as Record<string, unknown>), text: stripEnvBlocks((part as { text: string }).text) };
+      }
+      return part;
+    });
+  }
+  return content;
+};
+
+const collectContentText = (content: unknown): string[] => {
+  if (typeof content === 'string') return [content];
+  if (Array.isArray(content)) {
+    return content.flatMap((part) =>
+      part && typeof part === 'object' && typeof (part as { text?: unknown }).text === 'string'
+        ? [(part as { text: string }).text]
+        : [],
+    );
+  }
+  return [];
+};
+
+const messageTexts = (request: { messages?: unknown }): string[] =>
+  Array.isArray(request.messages)
+    ? request.messages.flatMap((message) =>
+        message && typeof message === 'object'
+          ? collectContentText((message as { content?: unknown }).content)
+          : [],
+      )
+    : [];
+
+/**
+ * Replace environment-derived blocks with a stable placeholder so the baseline
+ * hash only covers request bytes the PR actually controls. Object key order and
+ * array order are still canonicalized/hashed; only the drifting block bodies are
+ * neutralized.
+ */
+export const normalizeRequestForBaseline = <T extends { messages?: unknown }>(request: T): T => {
+  if (!Array.isArray(request.messages)) return request;
+  return {
+    ...request,
+    messages: request.messages.map((message) =>
+      message && typeof message === 'object'
+        ? { ...message, content: transformContent((message as { content?: unknown }).content) }
+        : message,
+    ),
+  };
+};
+
+const extractBlockLines = (request: { messages?: unknown }, tag: string): string[] => {
+  const lines: string[] = [];
+  for (const content of messageTexts(request)) {
+    const re = envBlockContentRegExp(tag);
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(content)) !== null) {
+      for (const line of match[1].split('\n')) {
+        const trimmed = line.trim();
+        if (trimmed) lines.push(trimmed);
+      }
+    }
+  }
+  return [...new Set(lines)].sort();
+};
+
+/** Snapshot of the environment-derived inputs, recorded in fixture provenance. */
+export const extractEnvironmentSnapshot = (request: {
+  messages?: unknown;
+}): EnvironmentSnapshot => ({
+  availableAgents: extractBlockLines(request, 'agent_management_context'),
+  availableTools: extractBlockLines(request, 'available_tools'),
+});
+
+/**
+ * Stable baseline hash: same four hash fields as `hashPromptRequest`, but over
+ * the environment-normalized request so plugin/roster drift cannot move it.
+ */
+export const hashBaselineRequest = (
+  request: { messages?: unknown; tools?: unknown } & Record<string, unknown>,
+): PromptRequestHashes => hashPromptRequest(normalizeRequestForBaseline(request));
+
 const SECRET_HEADERS = new Set([
   'authorization',
   'cookie',

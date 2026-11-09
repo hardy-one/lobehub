@@ -81,13 +81,45 @@ Each capture envelope contains:
 
 ## Canonical baseline
 
-`fixtures/legacyBaseline.json` is a hash-only regression fixture. Its
-canonicalization is `prompt-harness-canonical-json-v1`: recursively sorted
-object keys, array order preserved, compact JSON and SHA-256. When the file is
-present, every run regenerates the legacy request and fails if any of its four
-request hashes changes.
+`fixtures/legacyBaseline.json` and `fixtures/legacyChatBaseline.json` are hash-only
+regression fixtures. Their canonicalization is `prompt-harness-baseline-json-v3`:
+recursively sorted object keys, array order preserved, compact JSON and SHA-256 —
+the same canonicalizer as the request captures, but computed over an
+**environment-normalized** request. Two context blocks derived from runtime
+environment state are excluded from the stable baseline hash by replacing their
+bodies with a fixed placeholder before hashing:
+
+- `<available_tools>` — the installed-but-disabled plugin catalogue, which drifts
+  with plugin install state;
+- `<agent_management_context>` — the recent-agent roster, which drifts with seed data.
+
+The normalized request still hashes object/array order, so any byte the PR itself
+controls still moves the hash; only the drifting block bodies are neutralized. The
+two excluded blocks are recorded verbatim (sorted, de-duplicated) in the fixture
+`provenance.environment` snapshot (`availableTools`, `availableAgents`), so drift
+stays observable without making the hash unstable.
+
+When the file is present, every run fails if any of the four stable request hashes
+(`full`, `messages`, `messagesAndTools`, `tools`) changes. Fixtures that still
+declare `prompt-harness-canonical-json-v2` are compared against the raw
+(non-normalized) hashes for backward compatibility; refresh them to v3 as below.
+
+### Refreshing the baseline fixture
+
+Fixtures may be refreshed per branch when the legacy request shape legitimately
+changes. Refresh on a machine that can run the full stack:
+
+```bash
+bash scripts/promptHarness/stack.sh --update-baseline --scenario baseline-legacy,baseline-chat --keep
+```
+
+This rewrites both baseline fixtures with the stable v3 hash and records
+`provenance.sourceCommit`, `capturedAt`, `note` and the `environment` snapshot (the
+`<available_tools>` catalogue and `<agent_management_context>` roster). Only refresh
+when the change is intended, and record the reason in the `note` and the PR. Never
+hand-edit the hashes.
 
 The authoritative Task 0 artifact was not present in the repository or tracked
 history. This fixture therefore records its provenance explicitly instead of
-claiming that a later capture is Task 0. It freezes the legacy request from the
-first complete T105 capture and makes future drift observable.
+claiming that a later capture is Task 0.
+

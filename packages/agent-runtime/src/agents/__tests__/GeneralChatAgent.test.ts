@@ -136,15 +136,6 @@ describe('GeneralChatAgent', () => {
       modelRuntimeConfig: mockModelRuntimeConfig,
     });
 
-  const expectCompressionInstruction = (messages: AgentState['messages']) => ({
-    type: 'compress_context',
-    payload: {
-      currentTokenCount: expect.any(Number),
-      existingSummary: undefined,
-      messages,
-    },
-  });
-
   describe('init and user_input phase', () => {
     it('should return call_llm instruction for init phase', async () => {
       const agent = new GeneralChatAgent(createAgentOptions(mockModelRuntimeConfig));
@@ -219,111 +210,9 @@ describe('GeneralChatAgent', () => {
       expect((result as any).payload.allowedToolNames).toEqual(['workspace____read']);
     });
 
-    it('should trigger compression using thresholdRatio from compressionConfig', async () => {
-      const agent = new GeneralChatAgent({
-        agentConfig: { maxSteps: 100 },
-        compressionConfig: {
-          enabled: true,
-          maxWindowToken: 200_000,
-          thresholdRatio: 0.5,
-        },
-        operationId: 'test-session',
-        modelRuntimeConfig: mockModelRuntimeConfig,
-      });
-
-      const state = createMockState({
-        messages: [
-          {
-            content: '',
-            metadata: { usage: { totalOutputTokens: 100_001 } },
-            role: 'assistant',
-          },
-        ] as any,
-      });
-      const context = createMockContext('init', { model: 'gpt-4o-mini', provider: 'openai' });
-
-      const result = await agent.runner(context, state);
-
-      expect(result).toEqual(expectCompressionInstruction(state.messages));
-    });
-
-    it('should carry a persisted compressedGroup summary into incremental compression', async () => {
-      const agent = createCompressionAgent();
-      const state = createMockState({
-        messages: [
-          {
-            content: 'Outdated decisions',
-            id: 'compressed-group-old',
-            role: 'compressedGroup',
-          },
-          {
-            content: 'Earlier decisions and constraints',
-            id: 'compressed-group-current',
-            role: 'compressedGroup',
-          },
-          { content: 'A new follow-up question', id: 'user-message', role: 'user' },
-        ] as any,
-      });
-
-      const result = await agent.runner(
-        createMockContext('init', { model: 'gpt-4o-mini', provider: 'openai' }),
-        state,
-      );
-
-      expect(result).toEqual({
-        payload: {
-          currentTokenCount: expect.any(Number),
-          existingSummary: 'Outdated decisions\n\nEarlier decisions and constraints',
-          messages: state.messages,
-        },
-        type: 'compress_context',
-      });
-    });
-
     // Bug B: state.tools must feed into the compression budget,
     // otherwise large tool manifests (16-22K tokens observed on openrouter)
     // slip past the threshold and overflow the model context window.
-    it('should fold state.tools into the compression budget on init', async () => {
-      const compressionConfig = {
-        enabled: true,
-        maxWindowToken: 200_000,
-        thresholdRatio: 0.5,
-      };
-      const messages = [
-        {
-          content: '',
-          metadata: { usage: { totalOutputTokens: 50_000 } },
-          role: 'assistant',
-        },
-      ] as any;
-      const context = createMockContext('init', { model: 'gpt-4o-mini', provider: 'openai' });
-
-      // Without tools: raw=50K, adjusted=62.5K vs 100K threshold → no compression.
-      const agentNoTools = new GeneralChatAgent(
-        createCompressionOptions(compressionConfig, mockModelRuntimeConfig),
-      );
-      const noToolsResult = await agentNoTools.runner(context, createMockState({ messages }));
-      expect((noToolsResult as any).type).toBe('call_llm');
-
-      // With a chunky tool manifest (~66K tokens) total raw input is ~116K,
-      // drift-adjusted ~145K, which crosses the 100K threshold.
-      const bigTool = {
-        function: {
-          description: 'x'.repeat(400_000),
-          name: 'big_tool',
-          parameters: { properties: {}, type: 'object' },
-        },
-        type: 'function',
-      };
-      const agentWithTools = new GeneralChatAgent(
-        createCompressionOptions(compressionConfig, mockModelRuntimeConfig),
-      );
-      const withToolsResult = await agentWithTools.runner(
-        context,
-        createMockState({ messages, tools: [bigTool] as any }),
-      );
-      expect((withToolsResult as any).type).toBe('compress_context');
-    });
   });
 
   describe('llm_result phase', () => {
@@ -1144,7 +1033,10 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      expect(result).toEqual(expectCompressionInstruction(state.messages));
+      // The decision moved to the executor: the agent hands it the threshold
+      // and lets the assembled prompt be measured.
+      expect((result as any).type).toBe('call_llm');
+      expect((result as any).payload.compressionThreshold).toBe(0);
     });
 
     it('should not immediately recompress a recently compressed context near the initial threshold', async () => {
@@ -1209,14 +1101,9 @@ describe('GeneralChatAgent', () => {
         state,
       );
 
-      expect(result).toEqual({
-        payload: {
-          currentTokenCount: expect.any(Number),
-          existingSummary: 'Existing summary',
-          messages: state.messages,
-        },
-        type: 'compress_context',
-      });
+      expect((result as any).type).toBe('call_llm');
+      // Recompression uses the 0.8 watermark over a 64k window.
+      expect((result as any).payload.compressionThreshold).toBe(51_200);
     });
 
     it('should honor an explicit recompression threshold below the initial threshold', async () => {
@@ -1247,7 +1134,9 @@ describe('GeneralChatAgent', () => {
         state,
       );
 
-      expect((result as any).type).toBe('compress_context');
+      expect((result as any).type).toBe('call_llm');
+      // 64k window × the configured 0.6 recompression ratio.
+      expect((result as any).payload.compressionThreshold).toBe(38_400);
     });
 
     // follow-up: when state.forceFinish is set, RuntimeExecutors strips
@@ -1290,10 +1179,13 @@ describe('GeneralChatAgent', () => {
         context,
         createMockState({ messages, tools: [bigTool] as any }),
       );
-      expect((baseline as any).type).toBe('compress_context');
+      // Without forceFinish the threshold is handed to the executor, which
+      // measures the assembled prompt (tools included).
+      expect((baseline as any).type).toBe('call_llm');
+      expect((baseline as any).payload.compressionThreshold).toBe(100_000);
 
-      // With forceFinish set, the executor will drop tools, so the agent must
-      // ignore them in the compression check and go straight to call_llm.
+      // With forceFinish set, the executor drops tools, so the agent must not
+      // carry a compression threshold on the continuation.
       const forceFinishAgent = new GeneralChatAgent(
         createCompressionOptions(compressionConfig, mockModelRuntimeConfig),
       );
@@ -1302,6 +1194,7 @@ describe('GeneralChatAgent', () => {
         createMockState({ forceFinish: true, messages, tools: [bigTool] as any }),
       );
       expect((forced as any).type).toBe('call_llm');
+      expect((forced as any).payload.compressionThreshold).toBe(100_000);
     });
 
     it('should return request_human_approve when there are pending tools', async () => {
@@ -1700,7 +1593,8 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      expect(result).toEqual(expectCompressionInstruction(state.messages));
+      expect((result as any).type).toBe('call_llm');
+      expect((result as any).payload.compressionThreshold).toBe(0);
     });
   });
 
@@ -2143,7 +2037,8 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      expect(result).toEqual(expectCompressionInstruction(state.messages));
+      expect((result as any).type).toBe('call_llm');
+      expect((result as any).payload.compressionThreshold).toBe(0);
     });
   });
 
@@ -2276,15 +2171,11 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      expect(result).toEqual(
-        expectCompressionInstruction([
-          ...state.messages,
-          {
-            content:
-              'All tasks above have been completed. Please summarize the results or continue with your response following user query language.',
-            role: 'user',
-          },
-        ]),
+      expect((result as any).type).toBe('call_llm');
+      expect((result as any).payload.compressionThreshold).toBe(0);
+      // The follow-up prompt is preserved as the last message.
+      expect((result as any).payload.messages.at(-1).content).toContain(
+        'All tasks above have been completed.',
       );
     });
   });
@@ -2308,26 +2199,41 @@ describe('GeneralChatAgent', () => {
         role: 'user',
       })) as any;
 
-    it.each([true, false])(
-      'calls the LLM with older attachments previewed (compression enabled: %s)',
-      async (enabled) => {
-        const agent = new GeneralChatAgent({
-          agentConfig: { maxSteps: 100 },
-          compressionConfig: { enabled, maxWindowToken: 64_000 },
-          modelRuntimeConfig: mockModelRuntimeConfig,
-          operationId: 'test-session',
-        });
-        const state = createMockState({ messages: attachmentMessages() });
+    it('calls the LLM with older attachments previewed', async () => {
+      const agent = new GeneralChatAgent({
+        agentConfig: { maxSteps: 100 },
+        compressionConfig: { enabled: true, maxWindowToken: 64_000 },
+        modelRuntimeConfig: mockModelRuntimeConfig,
+        operationId: 'test-session',
+      });
+      const state = createMockState({ messages: attachmentMessages() });
 
-        const result = (await agent.runner(
-          createMockContext('init', { model: 'gpt-4o-mini', provider: 'openai' }),
-          state,
-        )) as any;
+      const result = (await agent.runner(
+        createMockContext('init', { model: 'gpt-4o-mini', provider: 'openai' }),
+        state,
+      )) as any;
 
-        expect(result.type).toBe('call_llm');
-        expect(result.payload.attachmentPreviewFileIds.sort()).toEqual(['file-mid', 'file-old']);
-      },
-    );
+      expect(result.type).toBe('call_llm');
+      expect(result.payload.attachmentPreviewFileIds.sort()).toEqual(['file-mid', 'file-old']);
+    });
+
+    it('does not attach a compression threshold when compression is disabled', async () => {
+      const agent = new GeneralChatAgent({
+        agentConfig: { maxSteps: 100 },
+        compressionConfig: { enabled: false, maxWindowToken: 64_000 },
+        modelRuntimeConfig: mockModelRuntimeConfig,
+        operationId: 'test-session',
+      });
+      const state = createMockState({ messages: attachmentMessages() });
+
+      const result = (await agent.runner(
+        createMockContext('init', { model: 'gpt-4o-mini', provider: 'openai' }),
+        state,
+      )) as any;
+
+      expect(result.type).toBe('call_llm');
+      expect(result.payload.compressionThreshold).toBeUndefined();
+    });
 
     it('plans previews for the call after compression', async () => {
       const agent = new GeneralChatAgent({
@@ -2355,6 +2261,60 @@ describe('GeneralChatAgent', () => {
 
       expect(result.type).toBe('call_llm');
       expect(result.payload.attachmentPreviewFileIds).toEqual(['file-new-2']);
+    });
+  });
+
+  describe('context_overflow phase', () => {
+    it('compresses once when the assembled prompt overflows', async () => {
+      const agent = createCompressionAgent();
+      const state = createMockState({
+        messages: [
+          { role: 'user', content: 'Hello' },
+          { content: '', metadata: { usage: { totalOutputTokens: 100_000 } }, role: 'assistant' },
+        ] as any,
+      });
+
+      const result = await agent.runner(
+        createMockContext('context_overflow', { parentMessageId: 'tool-msg-1', tokenCount: 42_000 }),
+        state,
+      );
+
+      expect(result).toEqual({
+        payload: {
+          currentTokenCount: 42_000,
+          existingSummary: undefined,
+          messages: state.messages,
+        },
+        type: 'compress_context',
+      });
+    });
+
+    it('finishes with an error reason when it overflows again after compressing', async () => {
+      const agent = createCompressionAgent();
+      const state = createMockState({
+        messages: [{ role: 'user', content: 'Hello' }] as any,
+        metadata: { contextOverflowAttempts: 1 },
+      });
+
+      await expect(
+        agent.runner(createMockContext('context_overflow', { parentMessageId: 'tool-msg-1' }), state),
+      ).rejects.toThrow(/could not be recovered/);
+    });
+
+    it('stops on overflow when compression is disabled', async () => {
+      const agent = new GeneralChatAgent({
+        agentConfig: { maxSteps: 100 },
+        compressionConfig: { enabled: false, maxWindowToken: 200_000 },
+        operationId: 'test-session',
+        modelRuntimeConfig: mockModelRuntimeConfig,
+      });
+      const state = createMockState({
+        messages: [{ role: 'user', content: 'Hello' }] as any,
+      });
+
+      await expect(
+        agent.runner(createMockContext('context_overflow', { parentMessageId: 'tool-msg-1' }), state),
+      ).rejects.toThrow(/could not be recovered/);
     });
   });
 

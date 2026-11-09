@@ -45,6 +45,7 @@ export interface AgentRuntimeContext {
     | 'human_approved_tool'
     | 'human_abort'
     | 'compression_result'
+    | 'context_overflow'
     | 'error';
 
   /** Session info (kept for backward compatibility, will be optional in the future) */
@@ -127,6 +128,14 @@ export interface CallLLMPayload {
    * `shouldCompress` so attachment text fits under the compression threshold.
    */
   attachmentPreviewFileIds?: string[];
+  /**
+   * Token threshold (already ratio-applied by the agent) the built prompt must
+   * stay under. When set, the `call_llm` executor measures the exact assembled
+   * request — after the context engine adds system role, memory, skills and tool
+   * schemas — and hands control back to the agent with a `context_overflow`
+   * phase instead of sending an oversized request.
+   */
+  compressionThreshold?: number;
   isFirstMessage?: boolean;
   messages: any[];
   model: string;

@@ -800,9 +800,17 @@ export class StreamingExecutorActionImpl {
 
           case 'error': {
             log('[executeClientAgent] Received error event: %o', event.error);
-            // Find the assistant message to update error
+            // Attribute the error to THIS operation's reply only. The runtime
+            // tags the thrown error with the assistant message it was writing
+            // when it knows one; we never fall back to the last historical
+            // assistant, which could belong to a different operation. With no
+            // owned message, the operation's own error/status carrier is used.
             const currentMessages = this.#get().messagesMap[messageKey] || [];
-            const assistantMessage = currentMessages.findLast((m) => m.role === 'assistant');
+            const errorAssistantId = (event.error as { assistantMessageId?: string } | undefined)
+              ?.assistantMessageId;
+            const assistantMessage = errorAssistantId
+              ? currentMessages.find((m) => m.id === errorAssistantId)
+              : undefined;
             // A Stop during a retry backoff surfaces as the last attempt's
             // provider error. The user ended the run, so the reply must read
             // as stopped, not as failed.

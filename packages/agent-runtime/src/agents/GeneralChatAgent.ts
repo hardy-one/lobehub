@@ -34,7 +34,7 @@ import {
 } from '../utils/emptyArgumentsCalls';
 import { selectEffectiveToolManifestMap, selectRunTools } from '../utils/operationToolSet';
 import { selectSecurityBlacklist, selectUserInterventionConfig } from '../utils/stateSlots';
-import { shouldCompress } from '../utils/tokenCounter';
+import { DEFAULT_MAX_CONTEXT, getCompressionThreshold, shouldCompress } from '../utils/tokenCounter';
 import {
   findCurrentTurnPendingToolMessages,
   isFoldedAssistantGroup,
@@ -515,21 +515,39 @@ export class GeneralChatAgent implements Agent {
   }
 
   /**
-   * Fit the upcoming request under the compression threshold. Runs whether or
-   * not compression is enabled: the attachment preview plan keeps attachment
-   * text within the room the conversation leaves even when the conversation
-   * itself is never compressed.
+   * The token threshold for automatically compressing history, or `undefined`
+   * when automatic compression is disabled. Applies the hysteresis ratio for a
+   * conversation that already carries a summary. Handed to the executor so it
+   * can measure the assembled prompt — disabled compression must NOT arm this.
    */
-  private checkContextBudget(messages: any[], tools: any[] | undefined, state: AgentState) {
-    // Mirror RuntimeExecutors.callLlm: when state.forceFinish is set, the
-    // executor strips all tools via buildStepToolDelta (deactivatedToolIds: ['*']),
-    // so they must not count against the compression budget either — otherwise
-    // we'd burn an extra summarization pass on tool tokens that won't be sent.
-    return shouldCompress(messages, {
-      maxWindowToken: this.config.compressionConfig?.maxWindowToken,
+  private getCompressionThreshold(messages: any[]): number | undefined {
+    const config = this.config.compressionConfig;
+    if (!config || config.enabled === false) return undefined;
+    return getCompressionThreshold({
+      maxWindowToken: config.maxWindowToken,
       thresholdRatio: this.getCompressionThresholdRatio(messages),
-      tools: state.forceFinish ? undefined : tools,
     });
+  }
+
+  /**
+   * Plan attachment previews so attachment text never pushes the request over
+   * the window on its own. Independent of whether history compression is
+   * enabled: attachment budgeting protects the request either way. Runs on the
+   * visible messages before the context engine assembles the prompt; the
+   * authoritative over-budget check happens in the `call_llm` executor.
+   */
+  private planAttachmentPreviews(messages: any[], tools: any[] | undefined, state: AgentState) {
+    const config = this.config.compressionConfig;
+    // Attachment budgeting protects the request regardless of whether history
+    // compression is enabled, and uses the same default window (128k) as the
+    // compression threshold when none is configured — so disabling compression
+    // or omitting maxWindowToken never silently drops the preview plan.
+    const window = config?.maxWindowToken ?? DEFAULT_MAX_CONTEXT;
+    return shouldCompress(messages, {
+      maxWindowToken: window,
+      thresholdRatio: config?.thresholdRatio,
+      tools: state.forceFinish ? undefined : tools,
+    }).attachmentPreviewFileIds;
   }
 
   private withAttachmentPreviews<T extends object>(
@@ -554,29 +572,23 @@ export class GeneralChatAgent implements Agent {
         state.pendingAssistantMessageId && { assistantMessageId: state.pendingAssistantMessageId }),
       ...this.getAllowedToolNamesPayload(),
     };
-    const compressionEnabled = this.config.compressionConfig?.enabled ?? true;
     const messages = payloadWithAllowedToolNames.messages;
-    const compressionCheck = this.checkContextBudget(
+    const compressionThreshold = this.getCompressionThreshold(messages);
+    const attachmentPreviewFileIds = this.planAttachmentPreviews(
       messages,
       payloadWithAllowedToolNames.tools,
       state,
     );
 
-    if (compressionEnabled && compressionCheck.needsCompression) {
-      return {
-        payload: {
-          currentTokenCount: compressionCheck.currentTokenCount,
-          existingSummary: this.findExistingSummary(messages),
-          messages,
-        },
-        type: 'compress_context',
-      };
-    }
-
     return {
       payload: this.withAttachmentPreviews(
-        payloadWithAllowedToolNames,
-        compressionCheck.attachmentPreviewFileIds,
+        // The executor verifies the assembled prompt against this threshold and
+        // hands back `context_overflow` instead of sending an oversized request.
+        {
+          ...payloadWithAllowedToolNames,
+          ...(compressionThreshold !== undefined && { compressionThreshold }),
+        },
+        attachmentPreviewFileIds,
       ),
       type: 'call_llm',
     };
@@ -621,30 +633,17 @@ export class GeneralChatAgent implements Agent {
     switch (context.phase) {
       case 'init':
       case 'user_input': {
-        // Check if context compression is enabled and needed before calling LLM
-        const compressionEnabled = this.config.compressionConfig?.enabled ?? true; // Default to enabled
-        const compressionCheck = this.checkContextBudget(
-          state.messages,
-          this.getTools(state),
-          state,
-        );
-
-        if (compressionEnabled && compressionCheck.needsCompression) {
-          // Context exceeds threshold, compress ALL messages into a single summary
-          return {
-            payload: {
-              currentTokenCount: compressionCheck.currentTokenCount,
-              existingSummary: this.findExistingSummary(state.messages),
-              messages: state.messages,
-            },
-            type: 'compress_context',
-          } as AgentInstructionCompressContext;
-        }
-
-        // User input received, call LLM to generate response
-        // At this point, messages may have been preprocessed with RAG/Search
+        // User input received, call LLM to generate response. The threshold is
+        // handed to the executor, which checks the assembled prompt and returns
+        // `context_overflow` if it no longer fits.
         const basePayload = context.payload as any;
         const tools = this.getTools(state, basePayload?.tools);
+        const compressionThreshold = this.getCompressionThreshold(state.messages);
+        const attachmentPreviewFileIds = this.planAttachmentPreviews(
+          state.messages,
+          tools,
+          state,
+        );
         return {
           payload: this.withAttachmentPreviews(
             {
@@ -652,8 +651,9 @@ export class GeneralChatAgent implements Agent {
               ...this.getAllowedToolNamesPayload(),
               messages: state.messages,
               tools,
+              ...(compressionThreshold !== undefined && { compressionThreshold }),
             } as GeneralAgentCallLLMInstructionPayload,
-            compressionCheck.attachmentPreviewFileIds,
+            attachmentPreviewFileIds,
           ),
           type: 'call_llm',
         };
@@ -1006,7 +1006,8 @@ export class GeneralChatAgent implements Agent {
         const messages = compressionPayload.compressedMessages ?? state.messages;
         // The kept latest user message can still carry more attachment text than
         // the compressed context has room for.
-        const { attachmentPreviewFileIds } = this.checkContextBudget(messages, tools, state);
+        const compressionThreshold = this.getCompressionThreshold(messages);
+        const attachmentPreviewFileIds = this.planAttachmentPreviews(messages, tools, state);
 
         return {
           payload: this.withAttachmentPreviews(
@@ -1021,11 +1022,51 @@ export class GeneralChatAgent implements Agent {
               provider: this.config.modelRuntimeConfig?.provider,
               tools,
               ...this.getAllowedToolNamesPayload(),
+              ...(compressionThreshold !== undefined && { compressionThreshold }),
             } as GeneralAgentCallLLMInstructionPayload,
             attachmentPreviewFileIds,
           ),
           type: 'call_llm',
         };
+      }
+
+      case 'context_overflow': {
+        // The assembled request exceeded the budget (measured after the context
+        // engine added the preamble, or the provider rejected it as too large).
+        // This is the single, bounded recovery entry: consume one retry by
+        // compressing, then let the next call_llm re-plan on the smaller
+        // context. A successful call clears the attempt counter (finalizer), so
+        // a later independent overflow gets its own recovery; when compression
+        // cannot help (disabled, forceFinish strips tools, or the attempt was
+        // already spent without a successful call) finish with an error reason
+        // so the run is not reported as a normal completion.
+        const compressionEnabled = this.config.compressionConfig?.enabled ?? true;
+        const priorAttempts = Number(state.metadata?.contextOverflowAttempts ?? 0);
+        const canRecover = compressionEnabled && !state.forceFinish && priorAttempts < 1;
+        if (!canRecover) {
+          // Unrecoverable: throw so the runtime records a REAL error terminal
+          // (status 'error'), not a normal completion. Tag the operation's own
+          // assistant (a reuse seed, when present) so a client error consumer can
+          // attribute the failure to THIS operation and never to a historical
+          // assistant message.
+          const unrecoverable = new Error(
+            'Context window exceeded and could not be recovered by compression.',
+          ) as Error & { assistantMessageId?: string };
+          if (state.pendingAssistantMessageId) {
+            unrecoverable.assistantMessageId = state.pendingAssistantMessageId;
+          }
+          throw unrecoverable;
+        }
+
+        return {
+          payload: {
+            currentTokenCount:
+              (context.payload as { tokenCount?: number } | undefined)?.tokenCount ?? 0,
+            existingSummary: this.findExistingSummary(state.messages),
+            messages: state.messages,
+          },
+          type: 'compress_context',
+        } as AgentInstructionCompressContext;
       }
 
       case 'human_abort': {

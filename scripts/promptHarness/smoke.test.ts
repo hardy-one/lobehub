@@ -23,6 +23,7 @@ import {
   PROMPT_SCENARIOS,
 } from './fixtures';
 import { assertHarnessPort } from './ports';
+import { resolvedTraceMetadata, resolveTraceStep } from './verify';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -129,6 +130,34 @@ describe('prompt harness smoke', () => {
       messages: [first.messages[0], { content: 'keep the user turn!', role: 'user' }],
     };
     expect(hashBaselineRequest(first).messages).not.toBe(hashBaselineRequest(changedTurn).messages);
+  });
+
+  it('resolves legacy and pooled Context Engine trace steps to the same input/metadata', () => {
+    const legacy = {
+      steps: [
+        {
+          contextEngine: { input: { systemRole: 'PROMPT' }, metadata: { protocolVersion: '1' } },
+          stepIndex: 0,
+        },
+      ],
+    };
+    const pooled = {
+      steps: [
+        {
+          contextEngine: {
+            inputRefs: { systemRole: 'sr-ref' },
+            metadata: { protocolVersion: '1' },
+            pool: { 'sr-ref': 'PROMPT' },
+          },
+          stepIndex: 0,
+        },
+      ],
+    };
+
+    expect(resolveTraceStep(legacy, 0)?.input).toEqual({ systemRole: 'PROMPT' });
+    expect(resolveTraceStep(pooled, 0)?.input).toEqual({ systemRole: 'PROMPT' });
+    expect(resolvedTraceMetadata(legacy)[0]).toEqual({ protocolVersion: '1' });
+    expect(resolvedTraceMetadata(pooled)[0]).toEqual({ protocolVersion: '1' });
   });
 
   it('redacts every credential-bearing header without touching request data', () => {

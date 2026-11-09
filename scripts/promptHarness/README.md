@@ -119,6 +119,11 @@ This rewrites both baseline fixtures with the stable v3 hash and records
 when the change is intended, and record the reason in the `note` and the PR. Never
 hand-edit the hashes.
 
+Before refreshing, confirm `.env` points at the harness's isolated stack: `APP_URL`
+must not use `:3010` (use the isolated port, e.g. `3311`), the Postgres port must
+match the test container (commonly `5433`), Redis the test port (commonly `6380`),
+and the CLI key must exist in the seeded database (e.g. `ak_harness0001`).
+
 The authoritative Task 0 artifact was not present in the repository or tracked
 history. This fixture therefore records its provenance explicitly instead of
 claiming that a later capture is Task 0.

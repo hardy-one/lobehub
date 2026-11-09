@@ -1,6 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import { resolveContextEngineSteps, type StepSnapshot } from '@lobechat/agent-tracing';
 import { estimateTokenCount } from 'tokenx';
 
 import {
@@ -176,31 +177,67 @@ const require = (condition: unknown, message: string): asserts condition => {
   if (!condition) throw new Error(message);
 };
 
-const validateOnDemandTrace = (
-  scenario: PromptScenario,
-  trace: {
-    steps?: Array<{
-      contextEngine?: {
-        input?: Record<string, unknown>;
-        metadata?: Record<string, unknown>;
-        output?: Array<{ content?: unknown; role?: string }>;
-      };
-    }>;
-  },
-) => {
-  const first = trace.steps?.[0]?.contextEngine;
+/**
+ * Trace steps may store the Context Engine snapshot either as full values
+ * (`input` / `output`, older recordings) or pool-referenced (`inputRefs` /
+ * `outputRef` pointing into a shared `pool`, current recordings). Reading the
+ * raw fields directly only works for the old shape, so resolve through the
+ * shared `@lobechat/agent-tracing` resolver, which handles both. `metadata`
+ * always uses the changed-fields form and is read as-is.
+ */
+interface TraceStepLike {
+  contextEngine?: {
+    input?: Record<string, unknown>;
+    inputRefs?: Record<string, string>;
+    metadata?: unknown;
+    output?: unknown;
+    outputRef?: string;
+    pool?: Record<string, unknown>;
+  };
+  stepIndex?: number;
+}
+
+interface TraceLike {
+  steps?: TraceStepLike[];
+}
+
+const traceSteps = (trace: TraceLike): StepSnapshot[] =>
+  (Array.isArray(trace.steps) ? trace.steps : []) as unknown as StepSnapshot[];
+
+export const resolveTraceStep = (
+  trace: TraceLike,
+  index = 0,
+): { input?: unknown; metadata?: unknown; output?: unknown } | undefined => {
+  const steps = traceSteps(trace);
+  const resolved = resolveContextEngineSteps(steps);
+  const step = steps[index];
+  return step ? resolved.get(step) : undefined;
+};
+
+export const resolvedTraceMetadata = (
+  trace: TraceLike,
+): Array<Record<string, unknown> | undefined> => {
+  const steps = traceSteps(trace);
+  const resolved = resolveContextEngineSteps(steps);
+  return steps.map((step) => resolved.get(step)?.metadata as Record<string, unknown> | undefined);
+};
+
+const validateOnDemandTrace = (scenario: PromptScenario, trace: TraceLike) => {
+  const first = resolveTraceStep(trace, 0);
   require(first, 'trace step 0 has no contextEngine');
+  const input = first.input as { onDemandContext?: unknown; systemRole?: string } | undefined;
+  const metadata = first.metadata as Record<string, unknown> | undefined;
   const expectedSystemRole = nextReplyLanguageSystemRole(scenario.agentPrompt);
-  require(first.input?.systemRole === expectedSystemRole, 'trace systemRole is not byte-exact');
-  require(first.metadata, 'trace step 0 has no on-demand metadata');
-  require(first.metadata.rawSystemRole ===
+  require(input?.systemRole === expectedSystemRole, 'trace systemRole is not byte-exact');
+  require(metadata, 'trace step 0 has no on-demand metadata');
+  require(metadata.rawSystemRole ===
     expectedSystemRole, 'trace metadata rawSystemRole is not byte-exact');
-  require(first.metadata.protocolVersion === '1', 'trace protocolVersion is missing');
-  require(typeof first.metadata.stablePrefixHash === 'string' &&
-    first.metadata.stablePrefixHash.length > 0, 'trace stablePrefixHash is missing');
-  require(Array.isArray(first.metadata.messageSegments) &&
-    first.metadata.messageSegments.length > 0, 'trace messageSegments is empty');
-  const segments = first.metadata.messageSegments as Array<Record<string, unknown>>;
+  require(metadata.protocolVersion === '1', 'trace protocolVersion is missing');
+  require(typeof metadata.stablePrefixHash === 'string' &&
+    metadata.stablePrefixHash.length > 0, 'trace stablePrefixHash is missing');
+  require(Array.isArray(metadata.messageSegments) &&
+    metadata.messageSegments.length > 0, 'trace messageSegments is empty');
+  const segments = metadata.messageSegments as Array<Record<string, unknown>>;
   require(segments[0]?.source === 'stable_system', 'first message segment is not stable_system');
   require(segments.some(
     (segment) => segment.source === 'current_user',
@@ -212,8 +249,8 @@ const validateOnDemandTrace = (
       typeof segment.role === 'string',
   ), 'message segment is missing hash/tokens/role');
 
-  require(Array.isArray(first.metadata.dynamicEntries), 'trace dynamicEntries is missing');
-  const entries = first.metadata.dynamicEntries as Array<Record<string, unknown>>;
+  require(Array.isArray(metadata.dynamicEntries), 'trace dynamicEntries is missing');
+  const entries = metadata.dynamicEntries as Array<Record<string, unknown>>;
   require(entries.every(
     (entry) =>
       typeof entry.kind === 'string' &&
@@ -228,28 +265,27 @@ const validateOnDemandTrace = (
       ), `dynamic entry kind ${kind} was not observed`);
     }
   }
-  require(Array.isArray(first.metadata.bootstrapTools), 'bootstrapTools is missing');
-  require((first.metadata.bootstrapTools as Array<Record<string, unknown>>).every(
+  require(Array.isArray(metadata.bootstrapTools), 'bootstrapTools is missing');
+  require((metadata.bootstrapTools as Array<Record<string, unknown>>).every(
     (tool) => typeof tool.identifier === 'string' && typeof tool.manifestHash === 'string',
   ), 'bootstrap tool metadata is incomplete');
-  require(Array.isArray(first.metadata.activatedToolBundles), 'activatedToolBundles is missing');
-  require(first.metadata.tokens, 'token metadata is missing');
-  const tokens = first.metadata.tokens as Record<string, unknown>;
+  require(Array.isArray(metadata.activatedToolBundles), 'activatedToolBundles is missing');
+  require(metadata.tokens, 'token metadata is missing');
+  const tokens = metadata.tokens as Record<string, unknown>;
   require(typeof tokens.activeToolContracts === 'number' &&
     typeof tokens.bootstrapTools === 'number' &&
     typeof tokens.currentUserMessage === 'number' &&
     typeof tokens.dynamic === 'number' &&
     typeof tokens.messageTotal === 'number' &&
     typeof tokens.stableSystem === 'number', 'measured token totals are missing');
-  require(!JSON.stringify(first.input?.onDemandContext ?? {}).includes(
+  require(!JSON.stringify(input?.onDemandContext ?? {}).includes(
     '<on_demand_context ',
   ), 'ordinary context metadata leaked a dynamic message body');
 
   if (scenario.id === 'tool-activation') {
-    const activated = (trace.steps ?? []).flatMap(
-      (step) =>
-        (step.contextEngine?.metadata?.activatedToolBundles as
-          Array<Record<string, unknown>> | undefined) ?? [],
+    const activated = resolvedTraceMetadata(trace).flatMap(
+      (stepMetadata) =>
+        (stepMetadata?.activatedToolBundles as Array<Record<string, unknown>> | undefined) ?? [],
     );
     require(activated.length > 0, 'tool activation produced no activatedToolBundles');
     require(activated.every(
@@ -273,21 +309,11 @@ const validateOnDemandTrace = (
   }
 };
 
-const validateLegacyTrace = (
-  scenario: PromptScenario,
-  trace: {
-    steps?: Array<{
-      contextEngine?: {
-        input?: Record<string, unknown>;
-        metadata?: unknown;
-        output?: Array<{ content?: unknown; role?: string }>;
-      };
-    }>;
-  },
-) => {
-  const first = trace.steps?.[0]?.contextEngine;
+const validateLegacyTrace = (scenario: PromptScenario, trace: TraceLike) => {
+  const first = resolveTraceStep(trace, 0);
   require(first, 'legacy trace step 0 has no contextEngine');
-  require(first.input?.systemRole ===
+  const input = first.input as { contextMode?: string; systemRole?: string } | undefined;
+  require(input?.systemRole ===
     nextReplyLanguageSystemRole(scenario.agentPrompt), 'legacy systemRole is not byte-exact');
   const metadata =
     first.metadata && typeof first.metadata === 'object'
@@ -297,8 +323,8 @@ const validateLegacyTrace = (
     (!('protocolVersion' in metadata) &&
       !('dynamicEntries' in metadata) &&
       !('messageSegments' in metadata)), 'legacy trace unexpectedly contains on-demand metadata');
-  require(first.input?.contextMode === undefined ||
-    first.input.contextMode === 'default', 'legacy trace contextMode is not default');
+  require(input?.contextMode === undefined ||
+    input.contextMode === 'default', 'legacy trace contextMode is not default');
 };
 
 const validateCapture = (scenario: PromptScenario, request: CapturedRequest) => {
@@ -417,11 +443,12 @@ const retrievalMetadata = (
   trace.steps?.[stepIndex]?.contextEngine?.metadata?.retrieval as
     Record<string, unknown> | undefined;
 
-const topicIdFromTrace = (trace: Parameters<typeof validateOnDemandTrace>[1]): string | undefined =>
+const topicIdFromTrace = (trace: TraceLike): string | undefined =>
   (
-    trace.steps?.[0]?.contextEngine?.input?.additionalVariables as
-      Record<string, unknown> | undefined
-  )?.topic_id as string | undefined;
+    resolveTraceStep(trace, 0)?.input as
+      | { additionalVariables?: Record<string, unknown> }
+      | undefined
+  )?.additionalVariables?.topic_id as string | undefined;
 
 const validateMemoryFollowUp = (
   first: CapturedRequest,

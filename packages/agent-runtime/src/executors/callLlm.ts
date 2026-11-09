@@ -12,11 +12,17 @@ import type {
   AgentInstruction,
   AgentState,
   CallLLMPayload,
+  InstructionExecutionResult,
   InstructionExecutor,
 } from '../types';
 import { withLlmAttemptCount } from '../utils/llmCalls';
+import { isContextOverflowError } from '../utils/llmErrorClassifier';
 import { getLLMRetryDelayMs, shouldRetryLLM } from '../utils/runtimeRetry';
-import { finalizeCallLlmTurn, persistInterruptedCallLlmResult } from './callLlmFinalizer';
+import {
+  finalizeCallLlmTurn,
+  persistFailedCallLlmOutput,
+  persistInterruptedCallLlmResult,
+} from './callLlmFinalizer';
 
 const CONVERSATION_PARENT_MISSING_ERROR_TYPE = 'ConversationParentMissing';
 
@@ -27,8 +33,13 @@ interface LLMCallTransport {
 
 interface PreparedCallLlmInput {
   assistantMessageId: string;
+  /** Whether the assistant row predated this attempt (reused, not created here). */
+  assistantMessageIdPreExisted?: boolean;
   context: ContextBuildOutput;
+  /** Raw input tokens of the assembled prompt, for the overflow hand-back. */
+  estimatedTokens?: number;
   model: string;
+  parentId?: string;
   provider: string;
   state: AgentState;
   stepLabel?: string;
@@ -66,6 +77,112 @@ const isOperationInterrupted = async (host: AgentRuntimeHost) => {
 const runWithTrace = <T>(trace: LLMTrace | undefined, task: () => Promise<T>) =>
   trace ? trace.run(task) : task();
 
+/**
+ * Whether an attempt produced any output — text, reasoning, tool calls, or any
+ * multimodal part. A failure with any of these must not be auto-recovered and
+ * its row must not be deleted.
+ */
+const hasPartialOutput = (output?: LLMAttemptOutput): boolean =>
+  Boolean(
+    output &&
+      (output.content ||
+        output.thinkingContent ||
+        (output.toolCalls?.length ?? 0) > 0 ||
+        (output.toolsCalling?.length ?? 0) > 0 ||
+        (output.contentParts?.length ?? 0) > 0 ||
+        (output.reasoningParts?.length ?? 0) > 0 ||
+        (output.imageList?.length ?? 0) > 0 ||
+        output.hasContentImages ||
+        output.hasReasoningImages),
+  );
+
+interface OverflowResultParams {
+  /** Assistant id involved, when the call reached message creation. */
+  assistantMessageId?: string;
+  /** Provider attempts made before the overflow (0 for a pre-send abort). */
+  attempts?: number;
+  /** Whether a resume-seeded placeholder was used (owns the row, don't delete). */
+  claimedSeed?: boolean;
+  /** Close the stream started for this attempt. */
+  closeStream?: boolean;
+  /** Delete the empty assistant row this attempt created (new-row case only). */
+  deleteAssistantRow?: boolean;
+  /** Whether the request was actually sent to the provider. */
+  sent: boolean;
+}
+
+/**
+ * Hand control back to the agent to compress, as a NON-terminal step (status
+ * stays running, nextContext.phase = context_overflow) so the runtime loop
+ * continues into recovery on both hosts. Performs message/stream ownership
+ * cleanup for a provider-side overflow that was already sent.
+ */
+const buildContextOverflowResult = async (
+  host: AgentRuntimeHost,
+  state: AgentState,
+  tokenCount: number,
+  params: OverflowResultParams,
+): Promise<InstructionExecutionResult> => {
+  if (params.closeStream) {
+    try {
+      await host.transports.stream.publishEvent({
+        data: { reason: 'context_overflow' },
+        stepIndex: host.operation.stepIndex,
+        type: 'stream_end',
+      });
+    } catch (error) {
+      console.warn('[call_llm] Failed to close stream on overflow:', error);
+    }
+  }
+  if (params.deleteAssistantRow && params.assistantMessageId) {
+    try {
+      await host.transports.messages.deleteMessage(params.assistantMessageId);
+    } catch (error) {
+      console.warn('[call_llm] Failed to clean up overflow assistant row:', error);
+    }
+  }
+
+  const newState = structuredClone(state);
+  newState.lastModified = new Date().toISOString();
+  return {
+    events: [],
+    llmExecution: {
+      sent: params.sent,
+      ...(params.attempts !== undefined && { attempts: params.attempts }),
+      ...(params.assistantMessageId && { assistantMessageId: params.assistantMessageId }),
+      ...(params.claimedSeed !== undefined && { claimedSeed: params.claimedSeed }),
+      recovery: 'context_overflow',
+    },
+    newState,
+    nextContext: {
+      payload: { tokenCount },
+      phase: 'context_overflow',
+      session: {
+        messageCount: newState.messages.length,
+        sessionId: host.operation.operationId,
+        status: 'running',
+        stepCount: newState.stepCount,
+      },
+    },
+  };
+};
+
+/**
+ * Tag a thrown error with the assistant message this operation was writing, so
+ * a client error consumer can attribute the failure to THIS operation's reply
+ * instead of guessing (e.g. the last historical assistant).
+ */
+const attachAssistantId = <T>(error: T, assistantMessageId?: string): T => {
+  if (assistantMessageId && error && typeof error === 'object') {
+    try {
+      (error as { assistantMessageId?: string }).assistantMessageId = assistantMessageId;
+    } catch {
+      // Frozen/hostile error object: attribution is best-effort.
+    }
+  }
+  return error;
+};
+
 const executePreparedCall = async (
   host: AgentRuntimeHost,
   llm: LLMCallTransport,
@@ -99,7 +216,7 @@ const executePreparedCall = async (
       attemptsMade = attempt;
 
       if (execution.ok) {
-        return await finalizeCallLlmTurn({
+        const finalized = await finalizeCallLlmTurn({
           assistantMessageId: prepared.assistantMessageId,
           attempts: attemptsMade,
           events,
@@ -112,12 +229,47 @@ const executePreparedCall = async (
           state: prepared.state,
           stepLabel: prepared.stepLabel,
         });
+        return {
+          ...finalized,
+          llmExecution: {
+            sent: true,
+            attempts: attemptsMade,
+            assistantMessageId: prepared.assistantMessageId,
+            claimedSeed: Boolean(prepared.assistantMessageIdPreExisted),
+          },
+        };
       }
 
       const { error } = execution;
       const classified = retryPolicy.classifyError(error);
       const retryBudget = retryPolicy.resolveRetryBudget(prepared.provider, error);
       let interrupted = await isOperationInterrupted(host);
+
+      // Recover from a context-window overflow, using the structured error
+      // identity (`ExceededContextWindow`) first — so codes/labels the shared
+      // classifier already recognises (e.g. "conversation is too long",
+      // "too many input tokens") are covered — with the message-keyword check as
+      // a last resort. Require `kind === 'stop'` so token rate-limits that the
+      // classifier marked retryable keep their normal backoff. Only a request
+      // that produced no output is auto-recovered; a partial stream is saved and
+      // the run fails normally.
+      const windowErrorType = (error as { errorType?: unknown } | undefined)?.errorType;
+      const recoverableOverflow =
+        !interrupted &&
+        classified.kind === 'stop' &&
+        (windowErrorType === 'ExceededContextWindow' ||
+          classified.code === 'ExceededContextWindow' ||
+          isContextOverflowError(error));
+      if (recoverableOverflow && !hasPartialOutput(lastOutput)) {
+        return buildContextOverflowResult(host, prepared.state, prepared.estimatedTokens ?? 0, {
+          attempts: attemptsMade,
+          assistantMessageId: prepared.assistantMessageId,
+          claimedSeed: Boolean(prepared.assistantMessageIdPreExisted),
+          deleteAssistantRow: !prepared.assistantMessageIdPreExisted,
+          closeStream: true,
+          sent: true,
+        });
+      }
 
       if (!interrupted && shouldRetryLLM(classified.kind, attempt, retryBudget)) {
         const delayMs = getLLMRetryDelayMs(attempt);
@@ -157,6 +309,14 @@ const executePreparedCall = async (
           host,
           output: execution.output,
         });
+      } else if (hasPartialOutput(execution.output)) {
+        // Normal terminal failure after partial output: save what was produced
+        // to the owned assistant so it is preserved with the run's error.
+        await persistFailedCallLlmOutput({
+          assistantMessageId: prepared.assistantMessageId,
+          host,
+          output: execution.output,
+        });
       }
       await runWithTrace(trace, async () => {
         await retryPolicy.onError?.({
@@ -167,12 +327,12 @@ const executePreparedCall = async (
           retryBudget,
         });
       });
-      throw withLlmAttemptCount(error, attemptsMade);
+      throw attachAssistantId(withLlmAttemptCount(error, attemptsMade), prepared.assistantMessageId);
     }
 
-    throw withLlmAttemptCount(
-      new Error('LLM execution retry loop exited unexpectedly'),
-      attemptsMade,
+    throw attachAssistantId(
+      withLlmAttemptCount(new Error('LLM execution retry loop exited unexpectedly'), attemptsMade),
+      prepared.assistantMessageId,
     );
   } catch (error) {
     terminalError = error;
@@ -180,6 +340,12 @@ const executePreparedCall = async (
       const interrupted = await isOperationInterrupted(host);
       if (interrupted && lastOutput) {
         await persistInterruptedCallLlmResult({
+          assistantMessageId: prepared.assistantMessageId,
+          host,
+          output: lastOutput,
+        });
+      } else if (!interrupted && lastOutput && hasPartialOutput(lastOutput)) {
+        await persistFailedCallLlmOutput({
           assistantMessageId: prepared.assistantMessageId,
           host,
           output: lastOutput,
@@ -194,7 +360,7 @@ const executePreparedCall = async (
         });
       });
     }
-    throw withLlmAttemptCount(error, attemptsMade);
+    throw attachAssistantId(withLlmAttemptCount(error, attemptsMade), prepared.assistantMessageId);
   } finally {
     await trace?.close(terminalError);
   }
@@ -347,6 +513,40 @@ export const callLlm =
         console.warn('[call_llm] Failed to stamp operation id provenance:', error);
       }
     }
+    // Assemble the exact prompt BEFORE creating the assistant row, so an
+    // over-budget request can be abandoned (handed back as `context_overflow`)
+    // without leaving an orphaned assistant message behind.
+    const context = await contextBuilder
+      .build({
+        model,
+        payload: llmPayload,
+        provider,
+        state,
+      })
+      .catch(async (error) => {
+        await transports.stream.publishError?.({
+          error,
+          phase: 'llm_execution',
+          stepIndex: operation.stepIndex,
+        });
+        throw error;
+      });
+
+    // Measure the assembled request — the only place where the full preamble
+    // (system role, memory, skills, tool schemas) and the real provider message
+    // shape are visible. Prefer the request-prep layer's estimate; when the
+    // agent supplied a threshold and the prompt exceeds it, hand back a
+    // non-terminal `context_overflow` step BEFORE the assistant row and
+    // stream_start, so the agent can compress and retry and no row is orphaned.
+    const estimatedTokens = context.estimatedInputTokens ?? 0;
+    const compressionThreshold = (llmPayload as { compressionThreshold?: number })
+      .compressionThreshold;
+    if (compressionThreshold !== undefined && estimatedTokens > compressionThreshold) {
+      // Prepared but not sent: no assistant row, no stream_start, no provider
+      // call, seed not consumed. Hand back a non-terminal context_overflow step.
+      return await buildContextOverflowResult(host, state, estimatedTokens, { sent: false });
+    }
+
     const assistantMessage = existingAssistantMessageId
       ? { id: existingAssistantMessageId }
       : await transports.messages.createAssistantMessage(
@@ -393,27 +593,14 @@ export const callLlm =
       type: 'stream_start',
     });
 
-    const context = await contextBuilder
-      .build({
-        model,
-        payload: llmPayload,
-        provider,
-        state,
-      })
-      .catch(async (error) => {
-        await transports.stream.publishError?.({
-          error,
-          phase: 'llm_execution',
-          stepIndex: operation.stepIndex,
-        });
-        throw error;
-      });
-
     try {
       const prepared: PreparedCallLlmInput = {
         assistantMessageId: assistantMessage.id,
+        assistantMessageIdPreExisted: Boolean(existingAssistantMessageId),
         context,
+        estimatedTokens,
         model,
+        parentId,
         provider,
         state,
         stepLabel,
@@ -433,6 +620,6 @@ export const callLlm =
         phase: 'llm_execution',
         stepIndex: operation.stepIndex,
       });
-      throw error;
+      throw attachAssistantId(error, assistantMessage.id);
     }
   };

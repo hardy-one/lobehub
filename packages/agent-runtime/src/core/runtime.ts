@@ -12,6 +12,7 @@ import type {
   AgentState,
   Cost,
   GeneralAgentCallToolsBatchResultPayload,
+  InstructionExecutionResult,
   InstructionExecutor,
   RuntimeConfig,
   ToolRegistry,
@@ -269,13 +270,16 @@ export class AgentRuntime {
           result = await executor(instruction, currentState, instructionContext);
         }
 
-        // Count a `call_llm` only once its executor returned. A preflight
-        // failure — missing model/provider, absent parent message, or a rejected
-        // context — throws before the transport is invoked, so no provider call
-        // happened. Counting it up-front would let the fallback in the success
-        // and error paths report a model call that never ran, and inflate the
-        // `maxSteps` budget with it.
-        if (instruction.type === 'call_llm') executedLlmInstructions += 1;
+        // Count a `call_llm` only by what it actually sent. A pre-send budget
+        // abort returns `llmExecution.sent === false` and made no provider call,
+        // so it must not increment the LLM-call count or the `maxSteps` budget.
+        if (instruction.type === 'call_llm') {
+          const llm = (result as InstructionExecutionResult).llmExecution;
+          // `sent: false` is an explicit pre-send abort (no provider call).
+          // Any other case — a real send, or a legacy executor that reports no
+          // llmExecution — counts, using the reported attempt count when known.
+          if (llm?.sent !== false) executedLlmInstructions += llm?.attempts ?? 1;
+        }
 
         // Accumulate events
         allEvents.push(...result.events);
@@ -285,12 +289,19 @@ export class AgentRuntime {
         latestState = currentState;
 
 
-        // A call_llm consumes any resume-seeded assistant placeholder exactly
-        // once — it has now either reused that message id or created its own —
-        // so clear the seed before the next step. Otherwise a later assistant
-        // turn in the same operation would reuse the id and overwrite this one.
+        // A call_llm consumes the resume-seeded assistant placeholder only when
+        // it actually sent through it — then clear it so a later turn cannot
+        // overwrite the reply. A pre-send budget abort (sent=false) or a
+        // recoverable provider overflow (recovery set) keeps the seed so the
+        // compressed retry can still fill the same message.
         if (instruction.type === 'call_llm' && currentState.pendingAssistantMessageId) {
-          currentState.pendingAssistantMessageId = undefined;
+          const llm = (result as InstructionExecutionResult).llmExecution;
+          // Consume the seed unless this was a pre-send abort (`sent:false`) or a
+          // recoverable overflow (`recovery`) that kept the row for the retry.
+          // A legacy executor with no llmExecution is treated as having consumed
+          // it, preserving the previous behavior.
+          const consumedSeed = !llm ? true : llm.sent && !llm.recovery;
+          if (consumedSeed) currentState.pendingAssistantMessageId = undefined;
         }
 
         // Keep the last nextContext

@@ -243,6 +243,11 @@ const buildFinalState = ({
   // are rehydrated into display groups before the next runtime step.
   newState.metadata = { ...newState.metadata, workAssistantMessageId: assistantMessageId };
   newState.toolCallRepeatGuard = toolCallRepeatGuard;
+  // A completed call means the request fit: reset the overflow-recovery budget
+  // so a later, independent budget shortfall still gets its own compression.
+  if (newState.metadata?.contextOverflowAttempts !== undefined) {
+    delete newState.metadata.contextOverflowAttempts;
+  }
   newState.messages.push({
     content: output.content,
     id: assistantMessageId,
@@ -442,6 +447,54 @@ export const finalizeCallLlmTurn = async ({
       stepUsage: finalizedOutput.usage,
     },
   };
+};
+
+/**
+ * Persist the output already produced by a failed (non-interrupted) attempt —
+ * e.g. a provider that streamed some text/media and then rejected the request.
+ * Unlike the interrupted variant this does NOT mark the message interrupted; the
+ * error is attributed separately by the runtime's error terminal. Saves the full
+ * supported output contract (multimodal content, reasoning, images, tools).
+ */
+export const persistFailedCallLlmOutput = async ({
+  assistantMessageId,
+  host,
+  output,
+}: PersistInterruptedCallLlmResultInput): Promise<void> => {
+  const hasAnyOutput =
+    output.content ||
+    output.thinkingContent ||
+    output.toolsCalling.length > 0 ||
+    (output.contentParts?.length ?? 0) > 0 ||
+    (output.reasoningParts?.length ?? 0) > 0 ||
+    (output.imageList?.length ?? 0) > 0 ||
+    output.hasContentImages ||
+    output.hasReasoningImages;
+  if (!hasAnyOutput) return;
+
+  const content = output.hasContentImages
+    ? serializePartsForStorage(output.contentParts)
+    : output.content;
+
+  try {
+    await host.transports.messages.update(assistantMessageId, {
+      content,
+      imageList: output.imageList.length > 0 ? output.imageList : undefined,
+      metadata: buildMessageMetadata({
+        currentStepSpeed: output.speed,
+        currentStepUsage: output.usage,
+        executionSite: output.executionSite,
+        usageEstimated: output.usageEstimated,
+      }),
+      observationId: output.observationId,
+      reasoning: buildFinalReasoning(output),
+      search: output.grounding,
+      tools: sanitizePersistedTools(output.toolsCalling),
+      traceId: output.traceId,
+    });
+  } catch (error) {
+    console.error('[call_llm] Failed to persist partial output on failure:', error);
+  }
 };
 
 export const persistInterruptedCallLlmResult = async ({

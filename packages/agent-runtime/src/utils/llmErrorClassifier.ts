@@ -279,3 +279,26 @@ export const createLLMErrorClassifier = (options: LLMErrorClassifierOptions = {}
 };
 
 export const classifyLLMError = createLLMErrorClassifier();
+
+/**
+ * Keywords providers put in their error when the request exceeds the model's
+ * context window. Detecting this lets the runtime compress and retry instead
+ * of surfacing a hard failure.
+ */
+const CONTEXT_OVERFLOW_KEYWORDS = [
+  'context length',
+  'context window',
+  'maximum context',
+  'context_length_exceeded',
+  'too many tokens',
+  'reduce the length of the messages',
+  'prompt is too long',
+  'input is too long',
+];
+
+/** Whether a provider error looks like a context-window overflow. */
+export const isContextOverflowError = (error: unknown): boolean => {
+  const text = bestEffortMessage(error).toLowerCase();
+  if (!text) return false;
+  return CONTEXT_OVERFLOW_KEYWORDS.some((keyword) => text.includes(keyword));
+};

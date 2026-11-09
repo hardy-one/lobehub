@@ -374,6 +374,10 @@ export const countContextTokens = ({
   };
 };
 
+export {
+  estimateRequestInputTokens,
+  type EstimateRequestInputTokensOptions,
+} from './estimateRequestInputTokens';
 export type {
   ContextTokenAccounting,
   CountContextTokensParams,

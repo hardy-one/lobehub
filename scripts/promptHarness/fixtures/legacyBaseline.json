@@ -1,21 +1,51 @@
 {
   "agentId": "agt_T101LEGACY01",
   "agentPrompt": "  User-authored Agent Prompt\n\tkeep every byte and never rewrite this instruction.  ",
-  "canonicalization": "prompt-harness-canonical-json-v2",
+  "canonicalization": "prompt-harness-baseline-json-v3",
   "hashes": {
-    "full": "sha256:af0f1a615e25d51afaa048c1a47b0f3fb06e7e213564aebd9c30c2cf50397c6c",
-    "messages": "sha256:20621f7b1ded8b1d2c6e02acc769d1ef186645dca8bd5cf40fd26980fc5b0267",
-    "messagesAndTools": "sha256:5abef9e6558eaf9d3e85578afd32357aeaaefeebd17556db8f1296912d1cdde5",
+    "full": "sha256:80362a40fb2f17955b832932daa68c36d0fa933edc914f0ec35a8b873b9912dd",
+    "messages": "sha256:8a3d6b98f584879341e5d2c32c73adf5719516a8f3fd9599d735ddb8fc9c6855",
+    "messagesAndTools": "sha256:8b0f2e96b50ee267a7cce00a3c7807a0d50922a262db4e52a968e495ed2cd88c",
     "tools": "sha256:acbb247b0455bd0be152cddac8e24acd799ca492755ca95de95d073253b5a0ff"
   },
   "provenance": {
-    "capturedAt": "2026-11-03T05:34:18.355Z",
-    "frozenTime": "2026-11-02T12:00:00.000Z",
-    "note": "Refreshed after removing the retired budget-only harness Agents. This isolates the legacy runtime baseline from test-fixture roster changes while preserving the same legacy pipeline request shape.",
+    "capturedAt": "2026-11-09T14:57:42.964Z",
+    "environment": {
+      "availableAgents": [
+        "</available_agents>",
+        "<agent id=\"agt_T106CHAT01\">T106 Legacy chat control</agent>",
+        "<agent id=\"agt_T106NEGATIVE01\">T106 fail-closed harness</agent>",
+        "<agent id=\"agt_T106UI01\">T106 intervention UI harness</agent>",
+        "<agent id=\"agt_yLie7JpbUr2K\">T105 On-demand harness</agent>",
+        "<available_agents>",
+        "<current_agent id=\"agt_T101LEGACY01\" title=\"T105 Legacy control\" />",
+        "<instruction>The `current_agent` tag is YOU — your own agent ID. When the user asks to modify your settings (model, plugins, system prompt, etc.), use this ID with updateAgent, getAgentDetail, installPlugin, or other Agent Management tools to manage yourself. Do NOT call yourself via callAgent. The `available_agents` section lists the user's other existing agents (you are not in this list). When the user's request clearly matches one of them, you may delegate to it via the Agent Management `callAgent` tool (activating the tool first if it is not already enabled). If no listed agent matches, use `searchAgent` to look further (including the marketplace).</instruction>"
+      ],
+      "availableTools": [
+        "<tool identifier=\"builtin-goal\" name=\"Goal\">Plan and start goals with editable acceptance criteria</tool>",
+        "<tool identifier=\"lobe-agent-account\" name=\"Agent Accounts\">Act on the agent's own addresses: list them, send from them, or wait for the next message</tool>",
+        "<tool identifier=\"lobe-agent-documents\" name=\"Documents\">Manage agent-scoped documents and folders (list/create/read/edit/remove/rename/copy/move, create folders) and load rules. Not for the user's uploaded files — use the Knowledge Base tool for those.</tool>",
+        "<tool identifier=\"lobe-agent-management\" name=\"Agent Management\">Create, manage, and orchestrate AI agents</tool>",
+        "<tool identifier=\"lobe-attachments\" name=\"Attachments\">Page through attached files that were too long to include in full</tool>",
+        "<tool identifier=\"lobe-browser\" name=\"Browser\">Drive a browser on the device: navigate, inspect pages via accessibility snapshots, click, fill forms, and capture screenshots. In the desktop app it is the sidebar browser the user watches live; under the CLI it is a headless browser.</tool>",
+        "<tool identifier=\"lobe-calculator\" name=\"Calculator\">Perform mathematical calculations, solve equations, and work with symbolic expressions</tool>",
+        "<tool identifier=\"lobe-canvas\" name=\"Canvas\">Default for reports, analyses, comparisons and data dashboards: a versioned page built from LobeHub components that the user can revisit and publish. Prefer it over inline HTML or Artifacts for these</tool>",
+        "<tool identifier=\"lobe-computer-use\" name=\"Computer Use\">Uses the active desktop device, including from Web through a connected device. Activate lobe-computer-use with activateTools only when the task needs native application controls, mouse or keyboard input, or screenshots. Do not activate for ordinary conversation, web research, or file and shell operations.</tool>",
+        "<tool identifier=\"lobe-creds\" name=\"Credentials\">Manage user credentials for authentication, environment variable injection, and API verification. Use this tool when tasks require API keys, OAuth tokens, or secrets - such as calling third-party APIs, authenticating with external services, or injecting credentials into sandbox environments.</tool>",
+        "<tool identifier=\"lobe-image-generation\" name=\"Image Generation\">Generate images from chat through LobeHub image generation models, including models that are not native image-output chat models.</tool>",
+        "<tool identifier=\"lobe-knowledge-base\" name=\"Knowledge Base\">Find, browse, and read the user's uploaded files (resource library), and search organized knowledge bases via semantic vector search — the tool for any request about the user's own files or uploads</tool>",
+        "<tool identifier=\"lobe-local-system\" name=\"Local System\">Access and manage local files, run shell commands on your desktop</tool>",
+        "<tool identifier=\"lobe-message\" name=\"Message\">Send, read, edit, and manage messages across multiple messaging platforms with a unified interface</tool>",
+        "<tool identifier=\"lobe-remote-device\" name=\"Remote Device\">Discover and manage remote desktop device connections</tool>",
+        "<tool identifier=\"lobe-task\" name=\"Task Tools\">Create, list, edit, comment on, and delete tasks with dependencies</tool>",
+        "<tool identifier=\"lobe-video-generation\" name=\"Video Generation\">Generate videos from chat through LobeHub video generation models, with optional reference frames and model-specific controls.</tool>"
+      ]
+    },
+    "note": "Refreshed by --update-baseline: stable hash over environment-normalized bytes; environment snapshot recorded in provenance.",
     "requestCount": 1,
     "scenario": "baseline-legacy",
-    "source": "bash scripts/promptHarness/stack.sh --keep",
-    "sourceCommit": "9c8ce56f9361ece644fcfd345991e6bb7780d791"
+    "source": "bash scripts/promptHarness/stack.sh --update-baseline --keep",
+    "sourceCommit": "aa756bf77a35d2cf66db97bdc88f289f945379a0"
   },
   "userMessage": "T105_BASELINE compare identical Agent Prompt and user turn"
 }

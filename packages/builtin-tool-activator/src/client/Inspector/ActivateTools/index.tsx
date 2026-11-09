@@ -32,7 +32,16 @@ const styles = stylex.create({
     backgroundColor: cssVar.colorFillTertiary,
     backgroundImage: 'none',
   },
+  toolMeta: {
+    overflow: 'hidden',
+    maxWidth: '280px',
+    fontSize: '10px',
+    color: cssVar.colorTextDescription,
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
   toolName: { overflow: 'hidden', minWidth: '0', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  toolText: { display: 'flex', flexDirection: 'column', minWidth: '0' },
   tools: {
     display: 'inline-flex',
     flexWrap: 'wrap',
@@ -105,7 +114,16 @@ export const ActivateToolsInspector = memo<
           {visibleTools.map((tool) => (
             <span {...stylex.props(styles.tool)} key={tool.identifier}>
               {tool.avatar && <Avatar avatar={tool.avatar} size={14} title={tool.name} />}
-              <span {...stylex.props(styles.toolName)}>{tool.name}</span>
+              <span {...stylex.props(styles.toolText)}>
+                <span {...stylex.props(styles.toolName)}>{tool.name}</span>
+                {tool.capabilitySummary && (
+                  <span {...stylex.props(styles.toolMeta)} title={tool.capabilitySummary}>
+                    {[tool.source, tool.executionEnvironment, tool.capabilitySummary]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                )}
+              </span>
             </span>
           ))}
         </span>

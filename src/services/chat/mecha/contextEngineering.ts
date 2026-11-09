@@ -14,6 +14,7 @@ import { mentionsTopic } from '@lobechat/context-engine';
 import { type ContextSnapshot, gatherContextFacts, runContextEngineering } from '@lobechat/mecha';
 import { historySummaryPrompt } from '@lobechat/prompts';
 import {
+  type AgentContextMode,
   agentIdentityLabel,
   type OpenAIChatMessage,
   type RuntimeAdditionalContextFragment,
@@ -67,6 +68,8 @@ interface ContextEngineeringContext {
    * budget is spent (planned by `shouldCompress`).
    */
   attachmentPreviewFileIds?: string[];
+  /** Explicit third-mode context strategy. Default keeps the legacy pipeline. */
+  contextMode?: AgentContextMode;
   /**
    * Identifiers the agent has explicitly disabled (`agents.plugins` tri-state).
    * Excluded from the client skill candidate pool entirely — not just left
@@ -134,6 +137,7 @@ export const contextEngineering = async ({
   historyCount,
   historySummary,
   agentId,
+  contextMode,
   disabledPluginIds,
   enableAgentMode,
   groupId,
@@ -348,6 +352,7 @@ export const contextEngineering = async ({
     },
     run: {
       additionalContexts,
+      contextMode,
       // MessagesEngine force-disables skills / agent-document injectors when this
       // is `false` (chat mode). ChatService resolves it from stored user intent
       // plus the selected model's function-call ability.

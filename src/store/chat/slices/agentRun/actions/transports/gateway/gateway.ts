@@ -23,6 +23,7 @@ import type {
   ExecAgentResult,
   MessageMetadata,
   RuntimeMentionedAgent,
+  RuntimeSelectedSkill,
 } from '@lobechat/types';
 
 import { canUseGatewayProtocolV2 } from '@/helpers/gatewayProtocol';
@@ -69,6 +70,7 @@ import {
   resolveUserInterventionConfig,
 } from './execRequest';
 import { retireLocalRowIfServerSettled } from './externalProducerSettle';
+import { waitForGatewayConnected } from './gatewayConnectionWait';
 import { createGatewayEventBuffer } from './gatewayEventBuffer';
 import { createGatewayEventHandler } from './gatewayEventHandler';
 import { createGatewayEventRouter } from './gatewayEventRouter';
@@ -1003,6 +1005,12 @@ export class GatewayActionImpl {
      */
     selectedToolIds?: string[];
     /**
+     * Explicit slash-selected skills. On-demand runs auto-load their bodies as
+     * provenance-bearing suffix messages instead of relying on a second model
+     * activation call.
+     */
+    selectedSkills?: RuntimeSelectedSkill[];
+    /**
      * Agents the user @-mentioned in this message (multi-mention). Forwarded to
      * the server so the supervisor run enables the callAgent tool and injects the
      * mentioned-agents delegation context — mirrors the client runtime's
@@ -1049,6 +1057,7 @@ export class GatewayActionImpl {
       resumeToolResult,
       selectedSkillIds,
       selectedToolIds,
+      selectedSkills,
       mentionedAgents,
       tempMessageIds,
       userMessage,
@@ -1157,6 +1166,7 @@ export class GatewayActionImpl {
               resumeToolResult,
               selectedSkillIds,
               selectedToolIds,
+              selectedSkills,
               // A queued follow-up keeps its continuation mark on the row the
               // server persists, which replaces the optimistic one.
               steer: metadata?.steer,
@@ -2620,16 +2630,3 @@ export type GatewayAction = Pick<GatewayActionImpl, keyof GatewayActionImpl>;
  * published its own `runningOperation` / `running` status.
  */
 const LOCAL_RUN_SETTLE_MIN_AGE_MS = 30_000;
-
-const GATEWAY_CONNECT_WAIT_MS = 5000;
-
-/** Resolve once the connection reads `connected`, or after a bounded wait. */
-const waitForGatewayConnected = async (
-  readStatus: () => ConnectionStatus | undefined,
-): Promise<boolean> => {
-  const deadline = Date.now() + GATEWAY_CONNECT_WAIT_MS;
-  while (readStatus() !== 'connected' && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  return readStatus() === 'connected';
-};

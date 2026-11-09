@@ -39,7 +39,7 @@ import type { LobeAgentChatConfig, LobeAgentConfig } from '@/types/agent';
 
 import { useAgentId } from '../../hooks/useAgentId';
 import { useChatInputResourceAccess } from '../../hooks/useChatInputResourceAccess';
-import { useEffectiveAgentMode } from '../../hooks/useEffectiveAgentMode';
+import { type ChatInputMode, useEffectiveAgentMode } from '../../hooks/useEffectiveAgentMode';
 import { useToggleAgentMode } from '../../hooks/useToggleAgentMode';
 import { useUpdateAgentConfig } from '../../hooks/useUpdateAgentConfig';
 import { useParamsModelConfig } from './useParamsModelConfig';
@@ -743,7 +743,7 @@ const Controls = ({ variant = 'popover' }: ControlsProps) => {
                   ]}
                   onChange={(value) => {
                     if (value === 'agent' && !canSelectAgentMode) return;
-                    void toggleAgentMode(value === 'agent');
+                    void toggleAgentMode(value as ChatInputMode);
                   }}
                 />
               }

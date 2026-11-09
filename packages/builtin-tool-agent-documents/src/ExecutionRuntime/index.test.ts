@@ -639,7 +639,7 @@ describe('AgentDocumentsExecutionRuntime', () => {
     });
   });
 
-  it('truncates an oversized readDocument content but keeps full content in state', async () => {
+  it('returns an explicit first window for an oversized readDocument and keeps the full snapshot in state', async () => {
     const hugeXml = 'x'.repeat(500_000);
     const hugeMarkdown = 'm'.repeat(500_000);
     const readDocument = vi.fn().mockResolvedValue({
@@ -658,10 +658,25 @@ describe('AgentDocumentsExecutionRuntime', () => {
       'Line 1 is 500000 characters long and was cut at 200000; the rest of that line cannot be paged.',
     );
     // Inspector still receives the untruncated document via state.
-    expect(result.state).toMatchObject({ content: hugeMarkdown, xml: hugeXml });
+    expect(result.state).toMatchObject({
+      content: hugeMarkdown,
+      format: 'xml',
+      hasMore: true,
+      nextOffset: 2,
+      range: {
+        endLine: 1,
+        endOffset: 200_000,
+        length: 200_000,
+        startLine: 1,
+        startOffset: 0,
+        totalLength: 500_000,
+        totalLines: 1,
+      },
+      xml: hugeXml,
+    });
   });
 
-  it('does not truncate a readDocument content under the cap', async () => {
+  it('does not add window metadata when a read is complete from offset zero', async () => {
     const readDocument = vi.fn().mockResolvedValue({
       content: 'short markdown',
       id: 'agent-doc-1',
@@ -673,13 +688,24 @@ describe('AgentDocumentsExecutionRuntime', () => {
     const result = await runtime.readDocument({ id: 'agent-doc-1' }, { agentId: 'agent-1' });
 
     expect(result.content).toBe('<doc>short</doc>');
-    expect(result.content).not.toContain('document truncated');
+    expect(result.state).toMatchObject({
+      format: 'xml',
+      hasMore: false,
+      range: {
+        endLine: 1,
+        endOffset: 16,
+        length: 16,
+        startLine: 1,
+        startOffset: 0,
+        totalLength: 16,
+        totalLines: 1,
+      },
+    });
   });
 
   it('does not split a surrogate pair when the cutoff lands mid-emoji', async () => {
     // Place a 2-code-unit emoji so its high surrogate sits exactly at the
-    // 200,000-char cutoff; a naive slice would emit a lone `\uD83D`, which some
-    // providers reject and would re-break the large-document request.
+    // 200,000-char cutoff.
     const content = `${'a'.repeat(199_999)}😀${'b'.repeat(2000)}`;
     const readDocument = vi.fn().mockResolvedValue({
       content: 'markdown',
@@ -694,9 +720,11 @@ describe('AgentDocumentsExecutionRuntime', () => {
     // No lone high/low surrogate survives in the LLM-facing content.
     const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
     expect(result.content).not.toMatch(loneSurrogate);
-    // JSON serialization (the actual failure surface) stays well-formed.
+    // JSON.stringify is the provider-wire serialization this regression protects.
+    // eslint-disable-next-line unicorn/prefer-structured-clone
     expect(() => JSON.parse(JSON.stringify(result.content))).not.toThrow();
     expect(result.content).toContain('was cut at 199999');
+    expect(result.state).toMatchObject({ hasMore: true, nextOffset: 2 });
   });
 
   it('pages a long document by line with the exact call for the next window', async () => {
@@ -721,6 +749,17 @@ describe('AgentDocumentsExecutionRuntime', () => {
     expect(readDocument).toHaveBeenCalledWith(
       expect.not.objectContaining({ limit: expect.anything() }),
     );
+    expect(result.state).toMatchObject({
+      format: 'markdown',
+      hasMore: true,
+      nextOffset: 7,
+      range: {
+        endLine: 6,
+        length: 20,
+        startLine: 4,
+        totalLines: 10,
+      },
+    });
   });
 
   describe('modifyNodes operation shapes', () => {

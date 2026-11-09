@@ -1,7 +1,12 @@
 import { resolveSubAgentChatConfig } from '@lobechat/const';
 import type { LobeChatDatabase } from '@lobechat/database';
 import { type AgentConfigSnapshot, resolveAgentConfig } from '@lobechat/mecha';
-import type { AgentModelOverride, LobeAgentAgencyConfig, MessageMapScope } from '@lobechat/types';
+import type {
+  AgentModelOverride,
+  LobeAgentAgencyConfig,
+  LobeAgentChatConfig,
+  MessageMapScope,
+} from '@lobechat/types';
 import {
   applyTopicModelToHeterogeneousProvider,
   getDisabledPluginIds,
@@ -17,6 +22,7 @@ import { isResourceAuthorOrAdmin } from '@/server/services/resourcePermission';
 import { isSandboxAvailableForUser } from '@/server/services/sandbox/availability';
 
 import type { InternalExecAgentParams } from '../types';
+import { getWorkspaceMemberChatOverrides } from '../workspaceMemberChatConfig';
 
 const log = debug('lobe-server:ai-agent-service');
 
@@ -70,6 +76,7 @@ export interface ResolvedRunAgentConfig {
 }
 
 interface WorkspaceMemberOverrides {
+  contextMode?: LobeAgentChatConfig['contextMode'];
   device?: Pick<LobeAgentAgencyConfig, 'boundDeviceId' | 'executionTarget'>;
   mode?: boolean;
   model?: AgentModelOverride;
@@ -92,9 +99,11 @@ const loadWorkspaceMemberOverrides = async (
       deps.userId,
       deps.workspaceId,
     ).getPreference();
+    const chatOverrides = getWorkspaceMemberChatOverrides(preference, agentId);
     return {
+      contextMode: chatOverrides.contextMode,
       device: preference.agentDeviceOverrides?.[agentId],
-      mode: preference.agentModeOverrides?.[agentId],
+      mode: chatOverrides.enableAgentMode,
       model: preference.agentModelOverrides?.[agentId],
     };
   } catch (error) {
@@ -230,6 +239,7 @@ export const resolveRunAgentConfig = async (
     agentConfig: row,
     canManage: canManageAgent,
     chatConfig: row.chatConfig,
+    memberContextModeOverride: overrides.contextMode,
     memberModeOverride: overrides.mode,
     memberModelOverride: overrides.model,
     slug: row.slug ?? undefined,
@@ -318,6 +328,7 @@ export const resolveRunAgentConfig = async (
     const storedToolMode = agentConfig.chatConfig?.toolMode;
     agentConfig.chatConfig = {
       ...agentConfig.chatConfig,
+      contextMode: 'default',
       enableAgentMode: toolModeOverride === 'agent',
       toolMode:
         toolModeOverride === 'agent' && storedToolMode === 'custom' ? 'custom' : toolModeOverride,

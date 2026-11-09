@@ -90,7 +90,12 @@ export const buildPreInitState = (
       queue: { retries: queueRetries, retryDelay: queueRetryDelay },
     },
     // Run ledger — everything fixed at creation lives in the typed slots.
-    metadata: {},
+    metadata: {
+      ...(params.toolSet.discoveryPool ? { contextMode: 'on-demand' as const } : {}),
+      ...(appContext?.memoryEnabled === undefined
+        ? {}
+        : { memoryEnabled: appContext.memoryEnabled }),
+    },
     // Where the run came from — frozen from here on. Mirrors the
     // agent_operations row so the runtime can hang its output on the right
     // conversation node without a lookup.

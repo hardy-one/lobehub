@@ -4,6 +4,7 @@ import {
   isDesktop,
 } from '@lobechat/const';
 import {
+  type AgentContextMode,
   type DeviceExecutionTarget,
   type LobeAgentChatConfig,
   type RuntimeEnvMode,
@@ -116,8 +117,14 @@ const getToolModeById =
 const isChatModeById = (agentId: string) => (s: AgentStoreState) =>
   getToolModeById(agentId)(s) === 'chat';
 
+const getContextModeById =
+  (agentId: string) =>
+  (s: AgentStoreState): AgentContextMode =>
+    getChatConfigById(agentId)(s).contextMode ?? 'default';
+
 export const chatConfigByIdSelectors = {
   getChatConfigById,
+  getContextModeById,
   getEnableHistoryCountById,
   getHistoryCountById,
   getRuntimeEnvConfigById,

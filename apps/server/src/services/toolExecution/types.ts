@@ -1,6 +1,7 @@
 import { type LobeToolManifest } from '@lobechat/context-engine';
 import { type LobeChatDatabase } from '@lobechat/database';
 import {
+  type AgentContextMode,
   type AgentShareVisitorContext,
   type ChatToolPayload,
   type ChatTopicBotContext,
@@ -9,6 +10,7 @@ import {
   type EvalMemoryReference,
   type ExecSubAgentParams,
   type ExecutionPlan,
+  type OnDemandDiscoveryPool,
   type StepActivatedSkill,
   type StepContextTodoItem,
   type WorkRegistrationIntent,
@@ -226,6 +228,8 @@ export interface ToolExecutionContext {
   botContext?: ChatTopicBotContext;
   /** Originating request IP propagated through the operation metadata. */
   clientIp?: string;
+  /** Explicit context-loading mode resolved for the run. */
+  contextMode?: AgentContextMode;
   /**
    * Todo items as of this tool call, reconstructed from the operation's message
    * history by the runtime executors — the tool-execution counterpart of what
@@ -245,6 +249,8 @@ export interface ToolExecutionContext {
    * gates then fall back to `activeDeviceId`).
    */
   deviceCapable?: boolean;
+  /** Validated discoverable capabilities for an on-demand operation. */
+  discoveryPool?: OnDemandDiscoveryPool;
   /** Current page document ID for page-scoped conversations */
   documentId?: string | null;
   /**

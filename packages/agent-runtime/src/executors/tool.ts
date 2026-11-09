@@ -21,6 +21,7 @@ import {
 } from '../utils';
 import { selectEffectiveToolManifestMap, selectToolSourceMap } from '../utils/operationToolSet';
 import { settleAbortedToolRows } from './abortedToolRows';
+import { persistActivatedTools } from './toolActivation';
 import {
   createToolMessage,
   isBlockedBeforeExecution,
@@ -407,46 +408,6 @@ const pauseForTools = async ({
     ],
     newState,
   };
-};
-
-const persistActivatedTools = ({
-  effectiveManifestMap,
-  newState,
-  results,
-  stepCount,
-}: {
-  effectiveManifestMap: Record<string, any>;
-  newState: AgentState;
-  results: ToolResultEntry[];
-  stepCount: number;
-}) => {
-  const existingIds = new Set((newState.activatedStepTools ?? []).map((tool) => tool.id));
-
-  for (const result of results) {
-    const discoveredTools = result.data.state?.activatedTools as
-      Array<{ identifier: string }> | undefined;
-    if (!discoveredTools?.length) continue;
-
-    // The set is updated inside the filter, not after mapping the batch: two
-    // results in the same step (or one result listing the same tool twice)
-    // would otherwise both pass and be appended twice.
-    const newActivations = discoveredTools
-      .filter((tool) => {
-        if (existingIds.has(tool.identifier)) return false;
-        existingIds.add(tool.identifier);
-        return true;
-      })
-      .map((tool) => ({
-        activatedAtStep: stepCount,
-        id: tool.identifier,
-        manifest: effectiveManifestMap[tool.identifier],
-        source: 'discovery' as const,
-      }));
-
-    if (newActivations.length > 0) {
-      newState.activatedStepTools = [...(newState.activatedStepTools ?? []), ...newActivations];
-    }
-  }
 };
 
 export const callTool =

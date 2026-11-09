@@ -65,6 +65,7 @@ export interface StepSnapshot {
   contextEngine?: {
     input?: unknown;
     inputRefs?: Record<string, string>;
+    /** Explicit on-demand trace envelope; may contain the raw Agent Prompt. */
     metadata?: unknown;
     output?: unknown;
     outputRef?: string;

@@ -118,6 +118,8 @@ export interface AgentConfigSnapshot {
   groupMembers?: { id: string; isSupervisor?: boolean; title?: string | null }[];
   /** Development build — reaches builtin agents as a prompt flag. */
   isDev?: boolean;
+  /** Workspace member's own context strategy, when one applies. */
+  memberContextModeOverride?: LobeAgentChatConfig['contextMode'];
   /** Workspace member's own model pick, when one applies. */
   memberModelOverride?: AgentModelOverride | null;
   /** Workspace member's own mode pick, when one applies. */
@@ -302,6 +304,9 @@ export const resolveAgentConfig = (
     isPublicWorkspaceAgent && (personalModelSelection || !canManage)
       ? snapshot.memberModelOverride
       : undefined;
+  const memberContextModeOverride = usesWorkspaceMemberSelection
+    ? snapshot.memberContextModeOverride
+    : undefined;
   const memberModeOverride = usesWorkspaceMemberSelection ? snapshot.memberModeOverride : undefined;
   const agentConfig = {
     ...sharedAgentConfig,
@@ -321,9 +326,15 @@ export const resolveAgentConfig = (
   const model = ctx.model ?? agentConfig.model;
   const sharedChatConfig = snapshot.chatConfig;
   const chatConfig =
-    memberModeOverride === undefined
+    memberModeOverride === undefined && memberContextModeOverride === undefined
       ? sharedChatConfig
-      : { ...sharedChatConfig, enableAgentMode: memberModeOverride };
+      : {
+          ...sharedChatConfig,
+          ...(memberModeOverride === undefined ? {} : { enableAgentMode: memberModeOverride }),
+          ...(memberContextModeOverride === undefined
+            ? {}
+            : { contextMode: memberContextModeOverride }),
+        };
 
   // Base plugins from agent config (pinned identifiers only — disabled entries excluded)
   const basePlugins = getActivePluginIds(agentConfig?.plugins);

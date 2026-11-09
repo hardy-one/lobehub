@@ -51,7 +51,17 @@ export {
   formatSelectedToolsContext,
   SelectedToolInjector,
 } from './SelectedToolInjector';
-export { selectActivatedSkills, SkillContextProvider } from './SkillContextProvider';
+export {
+  buildOnDemandSkillCards,
+  buildOnDemandSkillReferenceCards,
+  ON_DEMAND_SKILL_CARD_RELEVANCE,
+  renderOnDemandSkillCard,
+  renderOnDemandSkillReferenceCard,
+  scoreOnDemandSkillRelevance,
+  selectActivatedSkills,
+  selectOnDemandSkillCards,
+  SkillContextProvider,
+} from './SkillContextProvider';
 export {
   extractSkillImportRoutes,
   formatSkillImportRoutes,
@@ -139,7 +149,12 @@ export type {
 export type { RuntimeAdditionalContextProviderConfig } from './RuntimeAdditionalContextProvider';
 export type { SelectedSkillInjectorConfig } from './SelectedSkillInjector';
 export type { SelectedToolInjectorConfig } from './SelectedToolInjector';
-export type { SkillContextProviderConfig, SkillMeta } from './SkillContextProvider';
+export type {
+  OnDemandSkillCard,
+  OnDemandSkillReferenceCard,
+  SkillContextProviderConfig,
+  SkillMeta,
+} from './SkillContextProvider';
 export type { SkillImportRoute, SkillImportRouteInjectorConfig } from './SkillImportRouteInjector';
 export type { SystemDateProviderConfig } from './SystemDateProvider';
 export type { SystemRoleInjectorConfig } from './SystemRoleInjector';

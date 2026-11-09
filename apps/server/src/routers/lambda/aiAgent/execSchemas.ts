@@ -288,6 +288,30 @@ export const ExecAgentFieldsSchema = z.object({
    */
   selectedSkillIds: z.array(z.string()).optional(),
   /**
+   * Explicit slash-selected skills. On-demand loads these bodies into the
+   * post-user-message suffix without waiting for an activation call.
+   */
+  selectedSkills: z
+    .array(
+      z.object({
+        content: z.string().optional(),
+        identifier: z.string(),
+        name: z.string(),
+        resources: z
+          .record(
+            z.string(),
+            z.object({
+              documentId: z.string().optional(),
+              fileHash: z.string(),
+              size: z.number(),
+            }),
+          )
+          .optional(),
+        source: z.enum(['builtin', 'device', 'market', 'project', 'user']).optional(),
+      }),
+    )
+    .optional(),
+  /**
    * Agents the user @-mentioned in this message (multi-mention). When present
    * (and non-group), the run enables the callAgent tool and injects the
    * mentioned-agents delegation context so the supervisor delegates to them

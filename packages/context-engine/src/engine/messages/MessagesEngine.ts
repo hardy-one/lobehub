@@ -57,6 +57,7 @@ import {
   KnowledgeInjector,
   LocalSystemToolSnapshotInjector,
   ModelInfoProvider,
+  ON_DEMAND_PINNED_TOOL_IDS,
   OnboardingActionHintInjector,
   OnboardingContextInjector,
   OnboardingSyntheticStateInjector,
@@ -268,9 +269,16 @@ export class MessagesEngine {
       isAgentMode && (skillsConfig?.enabledSkills?.length ?? 0) > 0
         ? selectActivatedSkills(skillsConfig?.enabledSkills)
         : [];
+    // In on-demand mode only the pinned manuals reach the system prompt, so only
+    // those activation results may be trimmed — an indexed tool's manual is not
+    // carried anywhere else.
     const injectedToolManifests =
       (toolsConfig?.manifests?.length ?? 0) > 0 && !!canUseFC(model, provider)
-        ? selectToolPromptManifests(toolsConfig?.manifests)
+        ? selectToolPromptManifests(toolsConfig?.manifests).filter(
+            (manifest) =>
+              !toolManualOnDemand ||
+              (ON_DEMAND_PINNED_TOOL_IDS as readonly string[]).includes(manifest.identifier),
+          )
         : [];
 
     // The skill-import route is only actionable when the Skill Store is reachable this

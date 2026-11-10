@@ -49,6 +49,13 @@ export interface ActivatorRuntimeService {
    * `getToolManifests`.
    */
   listToolManifests?: () => Promise<ToolManifestInfo[]>;
+  /**
+   * True when this run loads tool manuals on demand. The manual of a tool that
+   * is not pinned must then travel with the activation result: it is carried
+   * nowhere else, and the payload-boundary trim keeps it because the manifest
+   * is not among the injected ones.
+   */
+  manualOnDemand?: boolean;
   markActivated: (identifiers: string[]) => void;
 }
 
@@ -58,6 +65,25 @@ export interface ActivatorExecutionRuntimeOptions {
 
 /** Same separator the tool-call wire names use (`identifier____apiName`). */
 const TOOL_NAME_SEPARATOR = '____';
+
+/**
+ * Render one tool's manual the way the system prompt would, so an on-demand run
+ * gets the same text from the activation result instead.
+ */
+const renderToolManual = (manifest: ToolManifestInfo): string => {
+  const apiLines = manifest.apiDescriptions
+    .map((api) => `- ${api.name}: ${api.description}`)
+    .join('\n');
+
+  return [
+    `<tool name="${manifest.name}">`,
+    manifest.systemRole ? `<tool.instructions>${manifest.systemRole}</tool.instructions>` : '',
+    apiLines ? `<tool.apis>\n${apiLines}\n</tool.apis>` : '',
+    '</tool>',
+  ]
+    .filter(Boolean)
+    .join('\n');
+};
 
 /**
  * Mirror of `ToolNameResolver`'s MD5 compression (`PLUGIN_SCHEMA_API_MD5_PREFIX`
@@ -330,7 +356,14 @@ export class ActivatorExecutionRuntime {
             : [manifest.identifier],
         );
         parts.push(`Successfully activated tools: ${apiNames.join(', ')}.`);
-        parts.push('Usage instructions for the activated items are in the system prompt.');
+        if (this.service.manualOnDemand) {
+          parts.push(
+            'Usage manuals follow. They stay in this conversation; do not activate the same tool again.',
+          );
+          parts.push(manifests.map(renderToolManual).join('\n'));
+        } else {
+          parts.push('Usage instructions for the activated items are in the system prompt.');
+        }
       }
 
       if (activatedSkillResults.length > 0) {

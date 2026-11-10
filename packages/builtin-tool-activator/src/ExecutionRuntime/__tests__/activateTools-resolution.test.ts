@@ -291,4 +291,38 @@ describe('ActivatorExecutionRuntime.activateTools — request-name resolution', 
     expect(result.content).toContain('Successfully activated tools: other-tool.targetApi');
     expect(result.state?.notFound).toEqual([]);
   });
+
+  it('carries the manual in the result when this run loads manuals on demand', async () => {
+    const indexed: ToolManifestInfo = {
+      ...webBrowsingManifest,
+      systemRole: 'WEB_BROWSING_MANUAL_BODY',
+    };
+    const service = { ...buildService([indexed]), manualOnDemand: true };
+    const runtime = new ActivatorExecutionRuntime({ service });
+
+    const result = await runtime.activateTools({
+      identifiers: ['lobe-web-browsing'],
+      reason: 'test',
+    });
+
+    expect(result.content).toContain('WEB_BROWSING_MANUAL_BODY');
+    expect(result.content).toContain('- search: Search the web.');
+    expect(result.content).not.toContain('in the system prompt');
+  });
+
+  it('points at the system prompt when manuals stay inline', async () => {
+    const inline: ToolManifestInfo = {
+      ...webBrowsingManifest,
+      systemRole: 'WEB_BROWSING_MANUAL_BODY',
+    };
+    const runtime = new ActivatorExecutionRuntime({ service: buildService([inline]) });
+
+    const result = await runtime.activateTools({
+      identifiers: ['lobe-web-browsing'],
+      reason: 'test',
+    });
+
+    expect(result.content).toContain('in the system prompt');
+    expect(result.content).not.toContain('WEB_BROWSING_MANUAL_BODY');
+  });
 });

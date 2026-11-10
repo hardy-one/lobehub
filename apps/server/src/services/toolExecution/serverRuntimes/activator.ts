@@ -129,6 +129,7 @@ export const activatorRuntime: ServerRuntimeRegistration = {
     }
 
     const service: ActivatorRuntimeService = {
+      manualOnDemand: context.toolManualOnDemand === true,
       activateSkill: skillsRuntime
         ? async (args) => {
             try {

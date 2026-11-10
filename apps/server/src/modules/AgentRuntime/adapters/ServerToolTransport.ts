@@ -331,6 +331,7 @@ export class ServerToolTransport implements ToolTransport {
               toolCallId: chatToolPayload.id,
               enabledToolIds,
               toolManifestMap: context.effectiveManifestMap,
+              toolManualOnDemand: context.state.world?.toolManualOnDemand === true,
               toolMessageId: context.toolMessageId,
               toolResultMaxLength: context.toolResultMaxLength,
               topicId: this.ctx.topicId,

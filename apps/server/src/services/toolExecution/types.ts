@@ -355,6 +355,11 @@ export interface ToolExecutionContext {
   /** Stable LLM tool call ID for structured tool outcome identity. */
   toolCallId?: string;
   toolManifestMap: Record<string, LobeToolManifest>;
+  /**
+   * True when this run loads tool manuals on demand, so a tool whose manual is
+   * not in the system prompt must get it from the activator's result.
+   */
+  toolManualOnDemand?: boolean;
   /** Source tool result message ID, when it already exists. */
   toolMessageId?: string;
   /**

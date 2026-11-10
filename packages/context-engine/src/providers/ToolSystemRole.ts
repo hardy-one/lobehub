@@ -55,6 +55,63 @@ export const selectToolPromptManifests = (manifests?: LobeToolManifest[]): LobeT
   (manifests ?? []).filter((manifest) => manifest.api.length > 0 || manifest.systemRole);
 
 /**
+ * Tools whose manual stays in the system prompt even in on-demand mode.
+ *
+ * `lobe-local-system` covers the shell/file work nearly every session needs, and
+ * `lobe-activator` is the only way to load any other manual, so neither can be
+ * left behind an activation step. Everything else is announced as a one-line
+ * index entry.
+ */
+export const ON_DEMAND_PINNED_TOOL_IDS = ['lobe-activator', 'lobe-local-system'] as const;
+
+/** Longest index line kept for a non-pinned tool. */
+const TOOL_INDEX_ENTRY_MAX_CHARS = 120;
+
+const escapeXmlAttr = (value: string): string =>
+  value
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+
+const escapeXmlText = (value: string): string =>
+  value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+
+/**
+ * One line per tool: enough for the model to decide whether to activate it,
+ * short enough that a dozen of them cost less than a single manual.
+ */
+const summarizeCapability = (manifest: LobeToolManifest): string => {
+  const raw = (manifest.meta?.description ?? manifest.systemRole ?? '')
+    .trim()
+    .replaceAll(/\s+/g, ' ');
+  if (raw.length <= TOOL_INDEX_ENTRY_MAX_CHARS) return raw;
+
+  const firstSentence = raw.match(/^.*?[.!?。！？](?=\s|$)/)?.[0] ?? raw;
+  const clipped =
+    firstSentence.length <= TOOL_INDEX_ENTRY_MAX_CHARS
+      ? firstSentence
+      : `${firstSentence.slice(0, TOOL_INDEX_ENTRY_MAX_CHARS - 1)}…`;
+
+  return clipped;
+};
+
+const renderToolIndex = (manifests: LobeToolManifest[]): string => {
+  const entries = manifests
+    .map((manifest) => {
+      const name = manifest.meta?.title || manifest.identifier;
+      return `  <tool identifier="${escapeXmlAttr(manifest.identifier)}" name="${escapeXmlAttr(name)}">${escapeXmlText(summarizeCapability(manifest))}</tool>`;
+    })
+    .join('\n');
+
+  return [
+    '<tool_index description="Tools not yet loaded. Call the activator with a tool identifier to load its usage manual before first use.">',
+    entries,
+    '</tool_index>',
+  ].join('\n');
+};
+
+/**
  * Tool System Role Provider
  * Responsible for injecting tool-related system roles for models that support tool calling
  */
@@ -112,7 +169,20 @@ export class ToolSystemRoleProvider extends BaseSystemRoleProvider {
       return undefined;
     }
 
-    const tools: Tool[] = selectToolPromptManifests(manifests).map((manifest) => ({
+    const promptManifests = selectToolPromptManifests(manifests);
+    const pinnedManifests = this.config.onDemand
+      ? promptManifests.filter((manifest) =>
+          (ON_DEMAND_PINNED_TOOL_IDS as readonly string[]).includes(manifest.identifier),
+        )
+      : promptManifests;
+    const indexedManifests = this.config.onDemand
+      ? promptManifests.filter(
+          (manifest) =>
+            !(ON_DEMAND_PINNED_TOOL_IDS as readonly string[]).includes(manifest.identifier),
+        )
+      : [];
+
+    const tools: Tool[] = pinnedManifests.map((manifest) => ({
       apis: manifest.api.map((api): API => ({
         desc: api.description,
         name: this.toolNameResolver.generate(manifest.identifier, api.name, manifest.type),
@@ -123,15 +193,12 @@ export class ToolSystemRoleProvider extends BaseSystemRoleProvider {
       systemRole: manifest.systemRole,
     }));
 
-    if (tools.length === 0) {
-      log('No meaningful tools to inject (all manifests have empty APIs and no systemRole)');
-      return undefined;
-    }
-
-    const toolSystemRole = pluginPrompts({ tools });
+    const manualSection = tools.length > 0 ? (pluginPrompts({ tools }) ?? '') : '';
+    const indexSection = indexedManifests.length > 0 ? renderToolIndex(indexedManifests) : '';
+    const toolSystemRole = [manualSection, indexSection].filter(Boolean).join('\n\n');
 
     if (!toolSystemRole) {
-      log('Failed to generate tool system role content');
+      log('No meaningful tools to inject (all manifests have empty APIs and no systemRole)');
       return undefined;
     }
 

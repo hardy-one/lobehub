@@ -6,13 +6,11 @@ import { resolveMissingTaskModelConfig } from '@/server/services/task/modelSnaps
 
 import { resolveRunAgentConfig } from '../pipeline/resolveRunAgentConfig';
 
-const { getInfoForAIGeneration, getPreference, getUserPreference, isResourceAuthorOrAdmin } =
-  vi.hoisted(() => ({
-    getInfoForAIGeneration: vi.fn(),
-    getPreference: vi.fn(),
-    getUserPreference: vi.fn(),
-    isResourceAuthorOrAdmin: vi.fn(),
-  }));
+const { getInfoForAIGeneration, getPreference, isResourceAuthorOrAdmin } = vi.hoisted(() => ({
+  getInfoForAIGeneration: vi.fn(),
+  getPreference: vi.fn(),
+  isResourceAuthorOrAdmin: vi.fn(),
+}));
 
 vi.mock('@/database/models/workspaceUserSettings', () => ({
   WorkspaceUserSettingsModel: class {
@@ -21,10 +19,7 @@ vi.mock('@/database/models/workspaceUserSettings', () => ({
 }));
 
 vi.mock('@/database/models/user', () => ({
-  UserModel: class {
-    static getInfoForAIGeneration = getInfoForAIGeneration;
-    getUserPreference = getUserPreference;
-  },
+  UserModel: { getInfoForAIGeneration },
 }));
 
 vi.mock('@/server/services/resourcePermission', () => ({
@@ -57,7 +52,6 @@ describe('resolveRunAgentConfig', () => {
     vi.clearAllMocks();
     getPreference.mockResolvedValue({});
     isResourceAuthorOrAdmin.mockResolvedValue(false);
-    getUserPreference.mockResolvedValue({});
     getInfoForAIGeneration.mockResolvedValue({ responseLanguage: 'en-US' });
   });
 
@@ -115,11 +109,12 @@ describe('resolveRunAgentConfig', () => {
   });
 
   it('resolves the on-demand context mode when the Labs switch is on', async () => {
-    getUserPreference.mockResolvedValue({ lab: { enableOnDemandContext: true } });
-
     const { agentConfig } = await resolveRunAgentConfig(
       {
         ...deps,
+        runFacts: {
+          userPreference: async () => ({ lab: { enableOnDemandContext: true } }),
+        } as never,
         resolveAgentConfigOrThrow: async () =>
           ({ ...(webOnboardingRow() as object), id: 'agent-regular', slug: null }) as never,
       },
@@ -134,6 +129,7 @@ describe('resolveRunAgentConfig', () => {
     const { agentConfig } = await resolveRunAgentConfig(
       {
         ...deps,
+        runFacts: { userPreference: async () => ({}) } as never,
         resolveAgentConfigOrThrow: async () =>
           ({
             ...(webOnboardingRow() as object),
@@ -174,7 +170,6 @@ describe('Codex Task model overrides', () => {
     vi.clearAllMocks();
     getPreference.mockResolvedValue({});
     isResourceAuthorOrAdmin.mockResolvedValue(false);
-    getUserPreference.mockResolvedValue({});
     getInfoForAIGeneration.mockResolvedValue({ responseLanguage: 'en-US' });
   });
 

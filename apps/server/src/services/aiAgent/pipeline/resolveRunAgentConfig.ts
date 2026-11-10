@@ -21,6 +21,7 @@ import type { AgentConfigWithId } from '@/server/services/agent';
 import { isResourceAuthorOrAdmin } from '@/server/services/resourcePermission';
 import { isSandboxAvailableForUser } from '@/server/services/sandbox/availability';
 
+import type { RunFacts } from '../runFacts';
 import type { InternalExecAgentParams } from '../types';
 import { getWorkspaceMemberChatOverrides } from '../workspaceMemberChatConfig';
 
@@ -29,6 +30,11 @@ const log = debug('lobe-server:ai-agent-service');
 export interface ResolveRunAgentConfigDeps {
   db: LobeChatDatabase;
   resolveAgentConfigOrThrow: (identifier: string) => Promise<AgentConfigWithId>;
+  /**
+   * Per-turn memoized facts. When present, the Labs on-demand switch reuses the
+   * run's single `users.preference` read instead of querying again.
+   */
+  runFacts?: RunFacts;
   userId: string;
   workspaceId?: string;
 }
@@ -164,8 +170,11 @@ const loadUserLocale = async (
  * is user-scoped, so the run owner's preference is authoritative here.
  */
 const loadOnDemandContextFlag = async (deps: ResolveRunAgentConfigDeps): Promise<boolean> => {
+  // Reuse the run's single `users.preference` read. Paths without a RunFacts
+  // (e.g. pre-created-topic model pinning) do not need the context mode.
+  if (!deps.runFacts) return false;
   try {
-    const preference = await new UserModel(deps.db, deps.userId).getUserPreference();
+    const preference = await deps.runFacts.userPreference();
     return preference?.lab?.enableOnDemandContext === true;
   } catch (error) {
     log('execAgent: failed to load on-demand context lab flag: %O', error);

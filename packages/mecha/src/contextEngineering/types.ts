@@ -87,6 +87,11 @@ export interface ContextRunSnapshot {
   initialContext?: RuntimeInitialContext;
   messages: UIChatMessage[];
   stepContext?: RuntimeStepContext;
+  /**
+   * Load each tool's usage manual on demand instead of injecting every enabled
+   * tool's manual into the system prompt for this turn.
+   */
+  toolManualOnDemand?: boolean;
 }
 
 /**

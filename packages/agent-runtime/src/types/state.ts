@@ -333,6 +333,11 @@ export interface AgentWorldSnapshot {
   projectInstructions?: ProjectInstructionFile[];
   /** Search route resolved before the run started. */
   searchDecision?: SearchDecisionSnapshot;
+  /**
+   * Load each tool's usage manual on demand instead of injecting every enabled
+   * tool's manual into the system prompt for this run.
+   */
+  toolManualOnDemand?: boolean;
   /** User memory the model may recall from. */
   userMemory?: UserMemoryConfig;
   /** IANA timezone used to render "now" for the model. */

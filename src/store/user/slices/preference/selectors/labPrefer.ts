@@ -25,6 +25,8 @@ export const labPreferSelectors = {
     false,
   enableOAuthApps: (s: UserState): boolean => s.preference.lab?.enableOAuthApps ?? false,
   enableSelfLearning: (s: UserState): boolean => s.preference.lab?.enableSelfLearning ?? false,
+  enableToolManualOnDemand: (s: UserState): boolean =>
+    s.preference.lab?.enableToolManualOnDemand ?? false,
   enableProjects: (s: UserState): boolean => s.preference.lab?.enableProjects ?? false,
   // `updateLab` writes both keys, but older clients only write the legacy
   // `enableTopicAcceptance` — so while both exist it holds the latest choice.

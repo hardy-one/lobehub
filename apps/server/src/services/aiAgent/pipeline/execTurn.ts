@@ -578,10 +578,10 @@ export const execAgentTurn = async (
   }
 
   // 4. Fetch user settings (memory config + timezone)
-  const { enableExpertise, globalMemoryEnabled, userTimezone } = await traceSendStage(
-    'run_settings',
-    () => resolveRunSettings({ agentConfig, runFacts, shareGate }),
-  );
+  const { enableExpertise, globalMemoryEnabled, toolManualOnDemand, userTimezone } =
+    await traceSendStage('run_settings', () =>
+      resolveRunSettings({ agentConfig, runFacts, shareGate }),
+    );
   log(
     'execAgent: globalMemoryEnabled=%s, timezone=%s',
     globalMemoryEnabled,
@@ -824,6 +824,7 @@ export const execAgentTurn = async (
         clientProtocol: params.clientProtocol,
         includeFinalState: params.includeFinalState,
         llmExecutor: params.llmExecutor,
+        toolManualOnDemand,
         topicStartOwnerOperationId: params.topicStartOwnerOperationId,
         updateAbortedAssistantMessage,
         userAgent,

@@ -12,6 +12,7 @@ declare module '../types' {
     toolSystemRole?: {
       contentLength: number;
       injected: boolean;
+      manualLoading: 'inline' | 'on-demand';
       supportsFunctionCall: boolean;
       toolsCount: number;
     };
@@ -31,6 +32,13 @@ export interface ToolSystemRoleConfig {
   manifests?: LobeToolManifest[];
   /** Model name */
   model: string;
+  /**
+   * Resolved per run from the user's Lab preference. When true the manuals are
+   * meant to load per tool on activation instead of staying inline; the switch
+   * is carried through so the choice is recorded and observable before the
+   * per-tool loading path is wired up.
+   */
+  onDemand?: boolean;
   /** Provider name */
   provider: string;
 }
@@ -81,6 +89,7 @@ export class ToolSystemRoleProvider extends BaseSystemRoleProvider {
     context.metadata.toolSystemRole = {
       contentLength: content.length,
       injected: true,
+      manualLoading: this.config.onDemand ? 'on-demand' : 'inline',
       supportsFunctionCall: !!this.config.isCanUseFC(this.config.model, this.config.provider),
       toolsCount: this.config.manifests?.length ?? 0,
     };

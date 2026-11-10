@@ -82,6 +82,8 @@ export interface StartOperationInput {
   reservedOperation?: boolean;
   signal?: AbortSignal;
   stream?: boolean;
+  /** Load tool manuals on demand; frozen on the operation's world slot. */
+  toolManualOnDemand?: boolean;
   topicStartOwnerOperationId?: string;
   updateAbortedAssistantMessage: (errorMessage: string) => Promise<void>;
   userAgent?: string;
@@ -148,6 +150,7 @@ export const startOperation = async (
     reservedOperation,
     signal,
     stream,
+    toolManualOnDemand,
     topicStartOwnerOperationId,
     updateAbortedAssistantMessage,
     userAgent,
@@ -326,6 +329,7 @@ export const startOperation = async (
       evalContext,
       evalRuntime,
       enableExpertise,
+      toolManualOnDemand,
       initialLlmCalls,
       initialStepCount,
       ...(providedApprovalResolutionRequestId && approvalSourceOperationId

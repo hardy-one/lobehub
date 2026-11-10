@@ -181,6 +181,7 @@ export class MessagesEngine {
       selectedSkills,
       selectedTools,
       toolDiscoveryConfig,
+      toolManualOnDemand,
       toolsConfig,
       capabilities,
       variableGenerators,
@@ -377,6 +378,7 @@ export class MessagesEngine {
         isCanUseFC: capabilities?.isCanUseFC || (() => true),
         manifests: toolsConfig?.manifests,
         model,
+        onDemand: toolManualOnDemand === true,
         provider,
       }),
       // History summary (conversation summary from compression)

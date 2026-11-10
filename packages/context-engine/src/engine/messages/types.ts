@@ -311,6 +311,13 @@ export interface MessagesEngineParams {
   /** Tool Discovery configuration (available tools for dynamic activation) */
   toolDiscoveryConfig?: ToolDiscoveryConfig;
 
+  /**
+   * Load each tool's usage manual on demand instead of injecting every enabled
+   * tool's manual into the system prompt. Off (default) keeps the manuals
+   * inline, byte-identical to the behavior every released client expects.
+   */
+  toolManualOnDemand?: boolean;
+
   // ========== Tools ==========
   /** Tools configuration */
   toolsConfig?: ToolsConfig;

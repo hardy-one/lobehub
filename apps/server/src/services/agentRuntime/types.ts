@@ -643,6 +643,12 @@ export interface OperationCreationParams {
    * Defaults to true. Set to false for non-streaming scenarios (e.g., bot integrations).
    */
   stream?: boolean;
+  /**
+   * Load each tool's usage manual on demand instead of injecting every enabled
+   * tool's manual into the system prompt. Resolved from the user's Lab
+   * preference once per run and frozen on `state.world`.
+   */
+  toolManualOnDemand?: boolean;
   toolSet: OperationToolSet;
   userId?: string;
   /**

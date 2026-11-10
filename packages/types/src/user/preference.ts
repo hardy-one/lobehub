@@ -232,6 +232,12 @@ export const UserLabSchema = z.object({
    */
   enableSelfLearning: z.boolean().optional(),
   /**
+   * load tool usage manuals on demand instead of keeping every enabled tool's
+   * manual in the system prompt. Off means the manuals stay inline, which is
+   * the behavior every released client relies on.
+   */
+  enableToolManualOnDemand: z.boolean().optional(),
+  /**
    * enable the task delivery-acceptance (verify) config UI on the task detail
    */
   enableTaskVerify: z.boolean().optional(),

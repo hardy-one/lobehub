@@ -98,6 +98,11 @@ export interface ServerMessagesEngineParams {
   expertise?: ExpertiseContextSnapshot;
   /** Whether to inject the operation expertise snapshot. */
   enableExpertise?: boolean;
+  /**
+   * Load each tool's usage manual on demand instead of injecting every enabled
+   * tool's manual into the system prompt for this turn.
+   */
+  toolManualOnDemand?: boolean;
   /** User's timezone for time-related variables (e.g. 'Asia/Shanghai') */
   userTimezone?: string;
   // ========== Extended contexts ==========

@@ -27,3 +27,12 @@ export const selectExpertise = (
 export const selectEnableExpertise = (
   state: Pick<AgentState, 'enableExpertise' | 'world'>,
 ): boolean | undefined => state.world?.enableExpertise ?? state.enableExpertise;
+
+/**
+ * Whether this run loads tool manuals on demand. Read from the frozen world
+ * snapshot only: the decision is made once at operation creation, so a mid-run
+ * preference change cannot move a manual out of a history that already
+ * carries it.
+ */
+export const selectToolManualOnDemand = (state: Pick<AgentState, 'world'>): boolean | undefined =>
+  state.world?.toolManualOnDemand;

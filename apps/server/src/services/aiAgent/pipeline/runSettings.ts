@@ -16,6 +16,7 @@ export interface RunSettingsInput {
 export interface RunSettings {
   enableExpertise: boolean;
   globalMemoryEnabled: boolean;
+  toolManualOnDemand: boolean;
   userTimezone?: string;
 }
 
@@ -29,6 +30,7 @@ export const resolveRunSettings = async ({
   const agentMemoryEnabled = agentConfig.chatConfig?.memory?.enabled;
   let globalMemoryEnabled = agentMemoryEnabled ?? false;
   let enableExpertise = false;
+  let toolManualOnDemand = false;
   let userTimezone: string | undefined;
   try {
     const settings = await runFacts.userSettings();
@@ -56,6 +58,7 @@ export const resolveRunSettings = async ({
   try {
     const preference = await runFacts.userPreference();
     enableExpertise = preference?.lab?.enableSelfLearning === true;
+    toolManualOnDemand = preference?.lab?.enableToolManualOnDemand === true;
   } catch (error) {
     console.error('Failed to resolve expertise injection Lab preference:', error);
   }
@@ -67,5 +70,5 @@ export const resolveRunSettings = async ({
     enableExpertise = false;
   }
 
-  return { enableExpertise, globalMemoryEnabled, userTimezone };
+  return { enableExpertise, globalMemoryEnabled, toolManualOnDemand, userTimezone };
 };

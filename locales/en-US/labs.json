@@ -41,6 +41,8 @@
   "features.selfLearning.title": "Self-evolving",
   "features.taskVerify.desc": "Add an Acceptance section to the task detail: describe acceptance in one sentence and let AI generate editable verify criteria.",
   "features.taskVerify.title": "Acceptance",
+  "features.toolManualOnDemand.desc": "Stop keeping every tool manual in the system prompt. Manuals load per tool only when needed, which cuts the fixed overhead of every request.",
+  "features.toolManualOnDemand.title": "On-demand Tool Manuals",
   "features.topicBugReport.desc": "Adds Report Bug to the topic menu. Send the topic’s IDs, your app environment, and optional attachments to the LobeHub support team.",
   "features.topicBugReport.title": "Report Bug",
   "group.desktop": "Desktop",

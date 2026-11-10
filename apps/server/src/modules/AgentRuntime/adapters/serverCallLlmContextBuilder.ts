@@ -3,6 +3,7 @@ import {
   type CallLLMPayload,
   selectEnableExpertise,
   selectExpertise,
+  selectToolManualOnDemand,
 } from '@lobechat/agent-runtime';
 import { GroupAgentBuilderIdentifier } from '@lobechat/builtin-tool-group-agent-builder';
 import { gatherContextFacts } from '@lobechat/mecha';
@@ -181,6 +182,7 @@ export const buildServerCallLlmContext = async ({
     evalContext: state.world?.eval,
     expertise: selectExpertise(state),
     forceFinish: state.forceFinish,
+    toolManualOnDemand: selectToolManualOnDemand(state),
     ...(facts.step.groupAgentBuilderContext && {
       groupAgentBuilderContext: facts.step.groupAgentBuilderContext,
     }),

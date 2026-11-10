@@ -71,6 +71,7 @@ export const buildPreInitState = (
     queueRetries,
     queueRetryDelay,
     stream,
+    toolManualOnDemand,
     userId,
     userInterventionConfig,
     userTimezone,
@@ -172,6 +173,7 @@ export const buildPreInitState = (
       disabledPluginIds,
       enableExpertise,
       eval: evalContext,
+      toolManualOnDemand,
       userTimezone,
     },
   } as Partial<AgentState>;

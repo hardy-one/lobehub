@@ -57,6 +57,9 @@ export default {
   'features.taskVerify.desc':
     'Add an Acceptance section to the task detail: describe acceptance in one sentence and let AI generate editable verify criteria.',
   'features.taskVerify.title': 'Acceptance',
+  'features.toolManualOnDemand.desc':
+    'Stop keeping every tool manual in the system prompt. Manuals load per tool only when needed, which cuts the fixed overhead of every request.',
+  'features.toolManualOnDemand.title': 'On-demand Tool Manuals',
   'features.selfLearning.desc':
     'Agents learn from your conversations in the background and review their day each night. See the results under Memory → Self-evolving.',
   'features.selfLearning.note':

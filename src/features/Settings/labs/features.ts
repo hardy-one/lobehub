@@ -29,6 +29,7 @@ type LabFeatureI18nKey =
   | 'oauthApps'
   | 'projects'
   | 'selfLearning'
+  | 'toolManualOnDemand'
   | 'topicBugReport';
 
 /** Locale key stems that also carry a `features.${stem}.note` line */
@@ -95,6 +96,18 @@ const ALL_LAB_FEATURES: LabFeatureItem[] = [
       'memory rules',
       'delivery rules',
       'verifier',
+    ],
+    stage: 'alpha',
+  },
+  {
+    flag: 'enableToolManualOnDemand',
+    i18nKey: 'toolManualOnDemand',
+    searchKeywords: [
+      'tool manual',
+      'tool documentation',
+      'on-demand context',
+      'system prompt',
+      'prompt tokens',
     ],
     stage: 'alpha',
   },

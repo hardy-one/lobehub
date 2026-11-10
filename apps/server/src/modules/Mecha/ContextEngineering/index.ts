@@ -51,6 +51,7 @@ export const toContextSnapshot = ({
   skillsConfig,
   systemRole,
   toolDiscoveryConfig,
+  toolManualOnDemand = false,
   toolsConfig,
   topicReferences,
   userMemory,
@@ -91,6 +92,7 @@ export const toContextSnapshot = ({
     historySummary,
     initialContext,
     messages,
+    toolManualOnDemand,
   },
   step: {
     agentAccountContext,

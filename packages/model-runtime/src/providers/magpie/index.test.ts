@@ -150,6 +150,73 @@ describe('the model list magpie serves', () => {
     expect(cards[0]).not.toHaveProperty('vision', true);
   });
 
+  it('takes the other modalities magpie lists, sound and video among them', async () => {
+    const cards = await load([
+      model({
+        id: 'google/gemini-omni-3',
+        modalities: { input: ['text', 'image', 'audio', 'video'], output: ['text', 'image'] },
+      }),
+    ]);
+
+    expect(cards[0]).toMatchObject({ audio: true, imageOutput: true, video: true, vision: true });
+  });
+
+  it('reads a modality magpie leaves out as one the model does not have', async () => {
+    const cards = await load([
+      model({ id: 'openai/gpt-5.6-sol', modalities: { input: ['text', 'image'] } }),
+    ]);
+
+    expect(cards[0].audio).toBe(false);
+    expect(cards[0].video).toBe(false);
+  });
+
+  it('leaves sound unsaid when magpie lists no modalities', async () => {
+    const cards = await load([model({ id: 'openai/gpt-5.6-sol' })]);
+
+    expect(cards[0].audio).toBeUndefined();
+  });
+
+  it('reads magpie’s price, USD a token, as the USD a million model-bank prices in', async () => {
+    const cards = await load([
+      model({
+        id: 'openai/gpt-5.6-sol',
+        pricing: {
+          completion: '0.00001',
+          input_cache_read: '0.0000001',
+          input_cache_write: '0.00000125',
+          prompt: '0.000003',
+        },
+      }),
+    ]);
+
+    expect(cards[0].pricing).toEqual({
+      currency: 'USD',
+      units: [
+        { name: 'textInput', rate: 3, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 10, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheRead', rate: 0.1, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput_cacheWrite', rate: 1.25, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    });
+  });
+
+  it('takes magpie’s price over model-bank’s, which is what the gateway bills', async () => {
+    const cards = await load([
+      model({ id: 'openai/gpt-5.6-sol', pricing: { completion: '0.00001', prompt: '0.000003' } }),
+    ]);
+
+    expect(cards[0].pricing?.units).toEqual([
+      { name: 'textInput', rate: 3, strategy: 'fixed', unit: 'millionTokens' },
+      { name: 'textOutput', rate: 10, strategy: 'fixed', unit: 'millionTokens' },
+    ]);
+  });
+
+  it('keeps model-bank’s price when magpie gives none', async () => {
+    const cards = await load([model({ id: 'openai/gpt-5.6-sol' })]);
+
+    expect(cards[0].pricing?.units?.length).toBeGreaterThan(0);
+  });
+
   it('takes the reasoning levels magpie kept', async () => {
     const cards = await load([
       model({ id: 'openai/gpt-5.6-sol', reasoning_levels: ['low', 'high'] }),

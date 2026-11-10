@@ -314,10 +314,42 @@ export class ExpertiseIngestionService {
         }),
       );
     }
+    // Runs after the night's hits are written, so a lesson applied tonight is
+    // never judged stale by the same pass that recorded the hit.
+    const retired = await this.retireStaleExpertise();
+
     return {
       ingested: results.reduce((sum, result) => sum + result.ingested, 0),
       reason: 'nightly-review',
+      retired,
     } as const;
+  };
+
+  /**
+   * Retires lessons no recent practice has applied. Best-effort: a failure here
+   * must not lose the night's ingestion, which has already been committed.
+   */
+  private retireStaleExpertise = async (): Promise<number> => {
+    try {
+      const result = await new ExpertiseModel(
+        this.db,
+        this.userId,
+        this.workspaceId,
+      ).retireStaleLessons();
+
+      if (result.retired.length > 0) {
+        log(
+          'retired %d stale lessons: %s',
+          result.retired.length,
+          result.retired.map((lesson) => lesson.code).join(', '),
+        );
+      }
+
+      return result.retired.length;
+    } catch (error) {
+      log('failed to retire stale lessons: %O', error);
+      return 0;
+    }
   };
 
   /**

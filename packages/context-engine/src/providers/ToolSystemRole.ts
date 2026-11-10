@@ -25,6 +25,11 @@ const log = debug('context-engine:provider:ToolSystemRoleProvider');
  * Tool System Role Configuration
  */
 export interface ToolSystemRoleConfig {
+  /**
+   * Installed but disabled tools. In on-demand mode they join the same list as
+   * enabled tools whose manual is not loaded, since both need activation.
+   */
+  availableTools?: AvailableToolEntry[];
   enabled?: boolean;
   /** Function to check if function calling is supported */
   isCanUseFC: (model: string, provider: string) => boolean | undefined;
@@ -81,10 +86,8 @@ const escapeXmlText = (value: string): string =>
  * One line per tool: enough for the model to decide whether to activate it,
  * short enough that a dozen of them cost less than a single manual.
  */
-const summarizeCapability = (manifest: LobeToolManifest): string => {
-  const raw = (manifest.meta?.description ?? manifest.systemRole ?? '')
-    .trim()
-    .replaceAll(/\s+/g, ' ');
+const summarizeText = (text: string | undefined): string => {
+  const raw = (text ?? '').trim().replaceAll(/\s+/g, ' ');
   if (raw.length <= TOOL_INDEX_ENTRY_MAX_CHARS) return raw;
 
   const firstSentence = raw.match(/^.*?[.!?。！？](?=\s|$)/)?.[0] ?? raw;
@@ -96,18 +99,33 @@ const summarizeCapability = (manifest: LobeToolManifest): string => {
   return clipped;
 };
 
-const renderToolIndex = (manifests: LobeToolManifest[]): string => {
-  const entries = manifests
-    .map((manifest) => {
-      const name = manifest.meta?.title || manifest.identifier;
-      return `  <tool identifier="${escapeXmlAttr(manifest.identifier)}" name="${escapeXmlAttr(name)}">${escapeXmlText(summarizeCapability(manifest))}</tool>`;
-    })
+const summarizeCapability = (manifest: LobeToolManifest): string =>
+  summarizeText(manifest.meta?.description ?? manifest.systemRole);
+
+export interface AvailableToolEntry {
+  description: string;
+  identifier: string;
+  name: string;
+}
+
+/**
+ * The single list of tools the model cannot call yet: installed tools that are
+ * disabled, and enabled tools whose manual has not been loaded. Both become
+ * callable the same way, so they share one block instead of two lists whose
+ * difference the model would have to remember.
+ */
+const renderAvailableTools = (entries: AvailableToolEntry[]): string => {
+  const lines = entries
+    .map(
+      (entry) =>
+        `  <tool identifier="${escapeXmlAttr(entry.identifier)}" name="${escapeXmlAttr(entry.name)}">${escapeXmlText(entry.description)}</tool>`,
+    )
     .join('\n');
 
   return [
-    '<tool_index description="Tools not yet loaded. Call the activator with a tool identifier to load its usage manual before first use.">',
-    entries,
-    '</tool_index>',
+    '<available_tools description="These tools cannot be called yet. Call activateTools with the identifier to load one before first use.">',
+    lines,
+    '</available_tools>',
   ].join('\n');
 };
 
@@ -194,7 +212,27 @@ export class ToolSystemRoleProvider extends BaseSystemRoleProvider {
     }));
 
     const manualSection = tools.length > 0 ? (pluginPrompts({ tools }) ?? '') : '';
-    const indexSection = indexedManifests.length > 0 ? renderToolIndex(indexedManifests) : '';
+    const indexedEntries: AvailableToolEntry[] = this.config.onDemand
+      ? [
+          ...indexedManifests.map((manifest) => ({
+            description: summarizeCapability(manifest),
+            identifier: manifest.identifier,
+            name: manifest.meta?.title || manifest.identifier,
+          })),
+          ...(this.config.availableTools ?? [])
+            .filter(
+              (tool) =>
+                !pinnedManifests.some((manifest) => manifest.identifier === tool.identifier) &&
+                !indexedManifests.some((manifest) => manifest.identifier === tool.identifier),
+            )
+            .map((tool) => ({
+              description: summarizeText(tool.description),
+              identifier: tool.identifier,
+              name: tool.name,
+            })),
+        ]
+      : [];
+    const indexSection = indexedEntries.length > 0 ? renderAvailableTools(indexedEntries) : '';
     const toolSystemRole = [manualSection, indexSection].filter(Boolean).join('\n\n');
 
     if (!toolSystemRole) {

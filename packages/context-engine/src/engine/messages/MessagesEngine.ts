@@ -382,6 +382,7 @@ export class MessagesEngine {
       }),
       // Tool system role (tool manifests and API definitions)
       new ToolSystemRoleProvider({
+        availableTools: toolDiscoveryConfig?.availableTools,
         enabled: !!(toolsConfig?.manifests && toolsConfig.manifests.length > 0),
         isCanUseFC: capabilities?.isCanUseFC || (() => true),
         manifests: toolsConfig?.manifests,
@@ -431,11 +432,15 @@ export class MessagesEngine {
       }),
       // Agent documents → before first user message
       new AgentDocumentContextInjector(agentDocConfig),
-      // Tool Discovery (available tools for dynamic activation)
+      // Tool Discovery (available tools for dynamic activation). In on-demand
+      // mode the same list ships inside the system prompt next to the skill
+      // inventory, so injecting it here too would announce every tool twice.
       new ToolDiscoveryProvider({
         availableTools: toolDiscoveryConfig?.availableTools,
         enabled:
-          !!toolDiscoveryConfig?.availableTools && toolDiscoveryConfig.availableTools.length > 0,
+          !toolManualOnDemand &&
+          !!toolDiscoveryConfig?.availableTools &&
+          toolDiscoveryConfig.availableTools.length > 0,
       }),
       // Agent Builder context (current agent config/meta for editing)
       new AgentBuilderContextInjector({

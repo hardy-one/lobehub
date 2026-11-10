@@ -43,7 +43,7 @@ describe('ToolSystemRoleProvider on-demand switch', () => {
 
     expect(content).toContain('LOCAL_SYSTEM_MANUAL_BODY');
     expect(content).toContain('DOCUMENTS_MANUAL_BODY');
-    expect(content).not.toContain('<tool_index');
+    expect(content).not.toContain('<available_tools');
   });
 
   it('indexes non-pinned manuals and keeps the pinned one inline', async () => {
@@ -60,7 +60,7 @@ describe('ToolSystemRoleProvider on-demand switch', () => {
 
     expect(content).toContain('LOCAL_SYSTEM_MANUAL_BODY');
     expect(content).not.toContain('DOCUMENTS_MANUAL_BODY');
-    expect(content).toContain('<tool_index');
+    expect(content).toContain('<available_tools');
     expect(content).toContain('lobe-agent-documents');
     expect(content).toContain('Documents one line capability');
   });
@@ -77,5 +77,28 @@ describe('ToolSystemRoleProvider on-demand switch', () => {
     const result = await provider.process(createContext([]) as any);
 
     expect(result.metadata.toolSystemRole?.manualLoading).toBe('on-demand');
+  });
+
+  it('lists disabled tools in the same block as unloaded manuals', async () => {
+    const provider = new ToolSystemRoleProvider({
+      availableTools: [
+        { description: 'DISABLED_TOOL_CAPABILITY', identifier: 'lobe-creds', name: 'Credentials' },
+        { description: 'already listed', identifier: 'lobe-agent-documents', name: 'Documents' },
+        { description: 'pinned, must not repeat', identifier: 'lobe-local-system', name: 'Local' },
+      ],
+      isCanUseFC: () => true,
+      manifests: [localSystem, documents],
+      model: 'gpt-4',
+      onDemand: true,
+      provider: 'openai',
+    });
+
+    const content = (await provider.process(createContext([]) as any)).messages[0]
+      .content as string;
+
+    expect(content).toContain('DISABLED_TOOL_CAPABILITY');
+    const indexBlock = content.slice(content.indexOf('<available_tools'));
+    expect(indexBlock.match(/lobe-agent-documents/g)?.length).toBe(1);
+    expect(indexBlock).not.toContain('lobe-local-system');
   });
 });

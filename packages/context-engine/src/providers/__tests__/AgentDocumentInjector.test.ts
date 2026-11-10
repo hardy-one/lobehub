@@ -1,3 +1,4 @@
+import { estimateTokenCount } from 'tokenx';
 import { describe, expect, it } from 'vitest';
 
 import type { PipelineContext } from '../../types';
@@ -216,11 +217,10 @@ describe('AgentDocumentInjector', () => {
 
       expect(result.messages[0].content).toMatchInlineSnapshot(`
         "<agent_documents_index>
-        User-created docs, when present, are listed below — use readDocument(id) for full content.
+        User-created docs by title. Resolve a title with listDocuments; readDocument(id) reads it.
 
-        TITLE                     ID                                    SIZE   UPDATED
-        Daily Brief 提取框架          2af6eb88-8bdb-468f-887f-620baa394efa  <1k    2026-04-27
-        cfg-constrained-decoding  32e12975-7db2-4818-8415-9b5c3d383f05  ~1k    2026-04-10
+        - Daily Brief 提取框架
+        - cfg-constrained-decoding
         </agent_documents_index>"
       `);
       expect(result.messages[0].content).not.toContain('Full content that should NOT appear');
@@ -264,12 +264,11 @@ describe('AgentDocumentInjector', () => {
 
       expect(result.messages[0].content).toMatchInlineSnapshot(`
         "<agent_documents_index>
-        User-created docs, when present, are listed below — use readDocument(id) for full content.
-        Docs marked (new since last user message) (or counted that way in a folder row) were created after the user's latest message — by you or elsewhere (another topic, or the user). A marked doc you created was new; creating it did not overwrite an existing doc.
+        User-created docs by title. Resolve a title with listDocuments; readDocument(id) reads it.
+        Docs marked (new since last user message) were created after the user's latest message.
 
-        TITLE                                    ID        SIZE   UPDATED
-        FASE G-2C (new since last user message)  ce2c4f3a  empty  2026-09-23
-        FASE G-2B                                452eea73  empty  2026-09-21
+        - FASE G-2C (new since last user message)
+        - FASE G-2B
         </agent_documents_index>"
       `);
     });
@@ -301,7 +300,7 @@ describe('AgentDocumentInjector', () => {
       const content = result.messages[0].content as string;
 
       expect(content).toContain("were created after the user's latest message");
-      expect(content).toMatch(/📁 Reports\s+folder-1\s+2 docs \(1 new since last user message\)/);
+      expect(content).toContain('- 📁 Reports [folder-1] 2 docs (1 new since last user message)');
     });
 
     it('folds the docs nested under a document into a 📄 row', async () => {
@@ -329,8 +328,8 @@ describe('AgentDocumentInjector', () => {
       );
       const content = result.messages[0].content as string;
 
-      expect(content).toMatch(/📄 Fix-round SOP\s+docs_sop\s+2 docs/);
-      expect(content).toContain('1 document with nested docs collapsed (📄');
+      expect(content).toContain('- 📄 Fix-round SOP [docs_sop] 2 docs');
+      expect(content).toContain('1 document with nested docs (📄) collapsed');
       expect(content).not.toContain('folder collapsed');
       expect(content).not.toContain('tick-1');
     });
@@ -398,7 +397,7 @@ describe('AgentDocumentInjector', () => {
       expect(first).not.toContain('ago');
     });
 
-    it('should bucket index sizes so an edit inside a bucket keeps the index byte-identical', async () => {
+    it('keeps the index byte-identical when only a document body grows', async () => {
       const renderWithSize = async (contentCharCount: number) => {
         const provider = new AgentDocumentContextInjector({
           currentTime: new Date('2026-04-29T00:00:00.000Z'),
@@ -422,13 +421,12 @@ describe('AgentDocumentInjector', () => {
         return result.messages[0].content;
       };
 
-      // Growing inside one order of magnitude must not rewrite the index.
+      // The index carries titles only, so a body edit never rewrites the prefix.
       expect(await renderWithSize(6000)).toBe(await renderWithSize(8600));
-      // Crossing an order of magnitude still moves, so the model keeps the signal.
-      expect(await renderWithSize(6000)).not.toBe(await renderWithSize(12_000));
+      expect(await renderWithSize(6000)).toBe(await renderWithSize(12_000));
     });
 
-    it('should render progressive index sizes from contentCharCount when content is omitted', async () => {
+    it('lists a progressive document whose content is omitted', async () => {
       const provider = new AgentDocumentContextInjector({
         currentTime: new Date('2026-04-29T00:00:00.000Z'),
         documents: [
@@ -451,7 +449,7 @@ describe('AgentDocumentInjector', () => {
       const result = await provider.process(context);
 
       expect(result.messages[0].content).toContain('Large Note');
-      expect(result.messages[0].content).toContain('~10k');
+      expect(result.messages[0].content).not.toContain('~10k');
       expect(result.messages[0].content).not.toContain('empty');
     });
 
@@ -499,11 +497,10 @@ describe('AgentDocumentInjector', () => {
 
       expect(result.messages[0].content).toMatchInlineSnapshot(`
         "<agent_documents_index>
-        User-created docs, when present, are listed below — use readDocument(id) for full content.
-        Web-crawled docs are available but omitted here — call listDocuments(sourceType='web') to discover them.
+        User-created docs by title. Resolve a title with listDocuments; readDocument(id) reads it.
+        Web-crawled docs are omitted; call listDocuments(sourceType='web').
 
-        TITLE        ID                                    SIZE   UPDATED
-        Daily Brief  2af6eb88-8bdb-468f-887f-620baa394efa  <1k    2026-04-27
+        - Daily Brief
         </agent_documents_index>"
       `);
       expect(result.messages[0].content).not.toContain('Gold price');
@@ -584,13 +581,12 @@ describe('AgentDocumentInjector', () => {
 
       expect(result.messages[0].content).toMatchInlineSnapshot(`
         "<agent_documents_index>
-        User-created docs, when present, are listed below — use readDocument(id) for full content.
-        1 folder collapsed (📁) — call listDocuments(parentId=<id>) to list a folder's docs.
+        User-created docs by title. Resolve a title with listDocuments; readDocument(id) reads it.
+        1 folder collapsed (📁); listDocuments(parentId=<id>) expands one.
 
-        TITLE      ID      SIZE   UPDATED
-        Root note  root-1  <1k    2026-04-28
+        - Root note
 
-        📁 dailyBrief  folder-daily  3 docs, ~1k–~10k  2026-04-27
+        - 📁 dailyBrief [folder-daily] 3 docs, ~1k–~10k
         </agent_documents_index>"
       `);
       // Individual folded doc ids are hidden — the model expands via listDocuments.
@@ -622,13 +618,46 @@ describe('AgentDocumentInjector', () => {
       const result = await provider.process(context);
 
       const injected = result.messages[0].content;
-      // Rendered as a normal flat row (id readable), not a 📁 fold.
-      expect(injected).toContain('solo-1');
+      // Rendered as a normal flat row, not a 📁 fold.
+      expect(injected).toContain('- Solo');
       expect(injected).not.toContain('📁');
       expect(injected).not.toContain('folder collapsed');
     });
 
-    it('should render empty docs with size=empty so the LLM does not retry', async () => {
+    it('caps the index so a large library stays under 400 tokens', async () => {
+      const titles = [
+        'origin/next 相对 upstream/canary 分叉点的全部文件改动清单',
+        'T-13 逐条核对表：origin/next 64 条提交的描述、实际改动与结论（全文）',
+        '水泥基材料配比设计研究 — 各类材料论文调研汇总',
+        'LobeHub 首轮注入上下文重构方案（20k 目标）',
+      ];
+      const documents = Array.from({ length: 120 }, (_, i) => ({
+        content: '',
+        contentCharCount: 10_000,
+        filename: `doc-${i}.md`,
+        id: `doc-${i}`,
+        loadPosition: 'before-first-user' as const,
+        loadRules: { rule: 'always' as const },
+        policyLoad: 'progressive' as const,
+        sourceType: 'file' as const,
+        title: `${titles[i % titles.length]} ${i}`,
+        updatedAt: new Date(Date.UTC(2026, 9, 1 + (i % 20))),
+      }));
+
+      const provider = new AgentDocumentContextInjector({ documents });
+      const result = await provider.process(
+        createContext([{ content: 'Hello', id: 'user-1', role: 'user' }]),
+      );
+      const content = result.messages[0].content as string;
+
+      expect(estimateTokenCount(content)).toBeLessThan(400);
+      expect(content).toContain('108 more; listDocuments lists them.');
+      // Titles stay; ids, sizes and dates do not.
+      expect(content).not.toContain('doc-119');
+      expect(content).not.toContain('~10k');
+    });
+
+    it('still lists an empty document so the LLM does not retry creating it', async () => {
       const provider = new AgentDocumentContextInjector({
         currentTime: new Date('2026-04-29T00:00:00.000Z'),
         documents: [
@@ -651,10 +680,9 @@ describe('AgentDocumentInjector', () => {
 
       expect(result.messages[0].content).toMatchInlineSnapshot(`
         "<agent_documents_index>
-        User-created docs, when present, are listed below — use readDocument(id) for full content.
+        User-created docs by title. Resolve a title with listDocuments; readDocument(id) reads it.
 
-        TITLE      ID                                    SIZE   UPDATED
-        周报与平台对话分析  d14dca54-7b38-44d5-9bdb-f3fed8c5f947  empty  2026-04-16
+        - 周报与平台对话分析
         </agent_documents_index>"
       `);
     });
@@ -690,8 +718,7 @@ describe('AgentDocumentInjector', () => {
       const injected = result.messages[0].content;
       expect(injected).toContain('Always-loaded full content');
       expect(injected).toContain('<agent_documents_index>');
-      expect(injected).toContain('Summary');
-      expect(injected).toContain('doc-p');
+      expect(injected).toContain('- Summary');
       expect(injected).not.toContain('Progressive content hidden');
     });
 
@@ -761,10 +788,9 @@ describe('AgentDocumentInjector', () => {
       const result = await provider.process(context);
 
       const injected = result.messages[0].content;
-      // Surfaced via the index (title + id), not inlined as full content.
+      // Surfaced via the index by title, not inlined as full content.
       expect(injected).toContain('<agent_documents_index>');
-      expect(injected).toContain('Setup');
-      expect(injected).toContain('no-policy-1');
+      expect(injected).toContain('- Setup');
       expect(injected).not.toContain('Body of a doc that forgot to set policyLoad');
     });
   });

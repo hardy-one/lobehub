@@ -162,16 +162,9 @@ export function formatDocument(
 }
 
 /**
- * Bucket the document size instead of printing the exact count.
- *
- * This column sits in the shared prompt prefix, so a size that moves on every
- * edit invalidates the provider-side cache for the whole conversation — the
- * same trap `formatUpdatedDate` below avoids. Buckets keep the signal the
- * model triages on (is this document worth reading?) and only move when a
- * document crosses an order of magnitude. Measured on real traffic: eight
- * consecutive edits of one document used to produce seven distinct values.
- *
- * Empty content is rendered as "empty" so the LLM does not retry reading it.
+ * Bucket the document size instead of printing the exact count, so a folder
+ * summary only moves when a document crosses an order of magnitude. Empty
+ * content renders as "empty" so the LLM does not retry reading it.
  */
 function formatSize(doc: Pick<AgentContextDocument, 'content' | 'contentCharCount'>): string {
   const len = doc.contentCharCount ?? doc.content?.length ?? 0;
@@ -183,30 +176,7 @@ function formatSize(doc: Pick<AgentContextDocument, 'content' | 'contentCharCoun
   return '~1M';
 }
 
-/**
- * Render a Date / ISO string as an absolute UTC date like "2026-04-27".
- *
- * Deliberately NOT a relative time ("15m ago"): the index sits at the very
- * front of the prompt, so any string that drifts as wall-clock time passes
- * invalidates the provider-side prompt cache on every request even when no
- * document changed. An absolute date only changes when the document itself
- * is updated. See https://github.com/lobehub/lobehub/issues/15624
- */
-function formatUpdatedDate(at: Date | string | undefined): string {
-  if (!at) return '—';
-  const date = typeof at === 'string' ? new Date(at) : at;
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toISOString().slice(0, 10);
-}
-
 const TITLE_MAX_WIDTH = 60;
-
-/**
- * Width of the SIZE column. Every bucket label from `formatSize` fits, so the
- * column never re-pads: one row changing length would otherwise rewrite the
- * padding of every other row in the table.
- */
-const SIZE_COLUMN_WIDTH = 'empty'.length;
 
 function pickRowTitle(doc: AgentContextDocument): string {
   return doc.title || doc.filename || '(untitled)';
@@ -234,42 +204,32 @@ function isNewSinceUserMessage(doc: AgentContextDocument, context: AgentDocument
  *   TITLE                ID                                    SIZE    UPDATED
  *   daily-brief.txt      2af6eb88-8bdb-468f-887f-620baa394efa  ~1k     2026-04-27
  */
+/**
+ * Keep at most two docs per folder collapsed, and this many loose docs listed.
+ * The index exists to say what is there; the ids and metadata a read needs come
+ * from `listDocuments` at that point.
+ */
+const MAX_INDEX_ROWS = 12;
+
 function buildIndexTable(
   docs: AgentContextDocument[],
   context: AgentDocumentFilterContext,
 ): string {
-  const rows = docs.map((d) => {
-    const title = truncate(pickRowTitle(d), TITLE_MAX_WIDTH);
-    return {
-      id: d.id ?? '',
-      size: formatSize(d),
-      title: isNewSinceUserMessage(d, context) ? `${title} ${NEW_SINCE_USER_MESSAGE_MARK}` : title,
-      updated: formatUpdatedDate(d.updatedAt),
-    };
+  const sorted = sortByRecency(docs);
+  const shown = sorted.slice(0, MAX_INDEX_ROWS);
+
+  const lines = shown.map((doc) => {
+    const title = truncate(pickRowTitle(doc), TITLE_MAX_WIDTH);
+    const mark = isNewSinceUserMessage(doc, context) ? ` ${NEW_SINCE_USER_MESSAGE_MARK}` : '';
+    return `- ${title}${mark}`;
   });
 
-  const titleWidth = Math.max('TITLE'.length, ...rows.map((r) => r.title.length));
-  const idWidth = Math.max('ID'.length, ...rows.map((r) => r.id.length));
-  const sizeWidth = SIZE_COLUMN_WIDTH;
+  const hidden = sorted.length - shown.length;
+  if (hidden > 0) {
+    lines.push(`- … ${hidden} more; listDocuments lists them.`);
+  }
 
-  const sep = '  ';
-  const headerLine = [
-    'TITLE'.padEnd(titleWidth),
-    'ID'.padEnd(idWidth),
-    'SIZE'.padEnd(sizeWidth),
-    'UPDATED',
-  ].join(sep);
-
-  const dataLines = rows.map((row) =>
-    [
-      row.title.padEnd(titleWidth),
-      row.id.padEnd(idWidth),
-      row.size.padEnd(sizeWidth),
-      row.updated,
-    ].join(sep),
-  );
-
-  return [headerLine, ...dataLines].join('\n');
+  return lines.join('\n');
 }
 
 const FOLDER_ICON = '📁';
@@ -352,7 +312,7 @@ function formatFolderSummary(docs: AgentContextDocument[]): string {
  * `listDocuments(parentId=…)` to expand the folder on demand.
  */
 function buildFolderTable(folders: FolderGroup[], context: AgentDocumentFilterContext): string {
-  const rows = folders
+  return folders
     .map((f) => ({
       id: f.parentId,
       summary: withNewSinceUserMessageCount(
@@ -362,22 +322,8 @@ function buildFolderTable(folders: FolderGroup[], context: AgentDocumentFilterCo
       time: newestTime(f.docs),
       title: `${f.kind === 'document' ? PARENT_DOCUMENT_ICON : FOLDER_ICON} ${truncate(f.title, TITLE_MAX_WIDTH)}`,
     }))
-    .sort((a, b) => b.time - a.time);
-
-  const titleWidth = Math.max(...rows.map((r) => r.title.length));
-  const idWidth = Math.max(...rows.map((r) => r.id.length));
-  const summaryWidth = Math.max(...rows.map((r) => r.summary.length));
-
-  const sep = '  ';
-  return rows
-    .map((row) =>
-      [
-        row.title.padEnd(titleWidth),
-        row.id.padEnd(idWidth),
-        row.summary.padEnd(summaryWidth),
-        row.time ? formatUpdatedDate(new Date(row.time)) : '—',
-      ].join(sep),
-    )
+    .sort((a, b) => b.time - a.time)
+    .map((row) => `- ${row.title} [${row.id}] ${row.summary}`)
     .join('\n');
 }
 
@@ -432,28 +378,26 @@ export function combineDocuments(
     const { flat, folders } = partitionFolders(userDocs);
 
     const headerLines: string[] = [
-      'User-created docs, when present, are listed below — use readDocument(id) for full content.',
+      'User-created docs by title. Resolve a title with listDocuments; readDocument(id) reads it.',
     ];
     if (hasHiddenWebDocs) {
-      headerLines.push(
-        `Web-crawled docs are available but omitted here — call listDocuments(sourceType='web') to discover them.`,
-      );
+      headerLines.push(`Web-crawled docs are omitted; call listDocuments(sourceType='web').`);
     }
     if (userDocs.some((doc) => isNewSinceUserMessage(doc, context))) {
       headerLines.push(
-        `Docs marked ${NEW_SINCE_USER_MESSAGE_MARK} (or counted that way in a folder row) were created after the user's latest message — by you or elsewhere (another topic, or the user). A marked doc you created was new; creating it did not overwrite an existing doc.`,
+        `Docs marked ${NEW_SINCE_USER_MESSAGE_MARK} were created after the user's latest message.`,
       );
     }
     const folderCount = folders.filter((f) => f.kind === 'folder').length;
     const parentDocCount = folders.length - folderCount;
     if (folderCount > 0) {
       headerLines.push(
-        `${folderCount} folder${folderCount === 1 ? '' : 's'} collapsed (${FOLDER_ICON}) — call listDocuments(parentId=<id>) to list a folder's docs.`,
+        `${folderCount} folder${folderCount === 1 ? '' : 's'} collapsed (${FOLDER_ICON}); listDocuments(parentId=<id>) expands one.`,
       );
     }
     if (parentDocCount > 0) {
       headerLines.push(
-        `${parentDocCount} document${parentDocCount === 1 ? '' : 's'} with nested docs collapsed (${PARENT_DOCUMENT_ICON}, e.g. a workflow and its run records) — the parent itself is listed by title; call listDocuments(parentId=<id>) to list what is nested under it.`,
+        `${parentDocCount} document${parentDocCount === 1 ? '' : 's'} with nested docs (${PARENT_DOCUMENT_ICON}) collapsed; listDocuments(parentId=<id>) lists the children.`,
       );
     }
 

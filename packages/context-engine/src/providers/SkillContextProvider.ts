@@ -61,6 +61,21 @@ export const selectActivatedSkills = (enabledSkills?: SkillMeta[]): SkillMeta[] 
   (enabledSkills ?? []).filter((s) => s.activated && s.content);
 
 /**
+ * Longest skill description kept in `<available_skills>`.
+ *
+ * The list only has to say what a skill is for; the full description sits in
+ * the skill's own SKILL.md and arrives with `activateSkill`. Descriptions are
+ * authored per skill and cannot be rewritten here, so this is a hard clip.
+ */
+const SKILL_DESCRIPTION_MAX_CHARS = 100;
+
+const clipSkillDescription = (description: string): string => {
+  const normalized = description.trim().replaceAll(/\s+/g, ' ');
+  if (normalized.length <= SKILL_DESCRIPTION_MAX_CHARS) return normalized;
+  return `${normalized.slice(0, SKILL_DESCRIPTION_MAX_CHARS - 1)}…`;
+};
+
+/**
  * Skill Context Provider
  * Injects lightweight skill metadata into the system prompt so the LLM knows
  * which skills are available and can invoke them via `activateSkill`.
@@ -100,7 +115,7 @@ export class SkillContextProvider extends BaseSystemRoleProvider {
     // Generate <available_skills> list for non-activated skills
     if (availableSkills.length > 0) {
       const skills: SkillItem[] = availableSkills.map((skill) => ({
-        description: skill.description,
+        description: clipSkillDescription(skill.description),
         identifier: skill.identifier,
         location: skill.location,
         name: skill.name,

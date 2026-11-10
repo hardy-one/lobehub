@@ -44,6 +44,35 @@ describe('SkillContextProvider', () => {
     });
   });
 
+  it('clips a long description to keep the list scannable', async () => {
+    const longDescription = 'A'.repeat(400);
+    const provider = new SkillContextProvider({
+      enabledSkills: [{ description: longDescription, identifier: 'long', name: 'Long' }],
+    });
+
+    const result = await provider.process(
+      createContext([{ content: 'Hello', id: 'u1', role: 'user' }]),
+    );
+    const content = result.messages.find((msg) => msg.role === 'system')!.content as string;
+
+    expect(content).toContain(`${'A'.repeat(99)}…`);
+    expect(content).not.toContain('A'.repeat(101));
+  });
+
+  it('leaves a short description untouched', async () => {
+    const provider = new SkillContextProvider({
+      enabledSkills: [{ description: 'Short and useful', identifier: 'short', name: 'Short' }],
+    });
+
+    const result = await provider.process(
+      createContext([{ content: 'Hello', id: 'u1', role: 'user' }]),
+    );
+    const content = result.messages.find((msg) => msg.role === 'system')!.content as string;
+
+    expect(content).toContain('>Short and useful</skill>');
+    expect(content).not.toContain('…');
+  });
+
   it('should merge with existing system message', async () => {
     const skills = createSkills();
     const provider = new SkillContextProvider({ enabledSkills: skills });

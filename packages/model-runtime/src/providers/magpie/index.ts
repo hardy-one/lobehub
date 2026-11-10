@@ -1,6 +1,12 @@
 import { CURRENT_VERSION } from '@lobechat/const';
 import type { ChatModelCard } from '@lobechat/types';
-import { loadModels, MODEL_REASONING_EXTEND_PARAMS, ModelProvider } from 'model-bank';
+import {
+  loadModels,
+  MODEL_REASONING_EXTEND_PARAMS,
+  ModelProvider,
+  type Pricing,
+  type PricingUnitName,
+} from 'model-bank';
 import OpenAI from 'openai';
 
 import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatible';
@@ -21,9 +27,9 @@ const REASONING_PARAMS = new Set<string>(MODEL_REASONING_EXTEND_PARAMS);
  *
  * The specs magpie can rewrite belong to magpie. Its window and reply limit
  * come from the vendor's list or models.dev and then from what the user set;
- * whether it takes images and which reasoning levels it has are the user's to
- * override too. Everything magpie neither lists nor rewrites is read from
- * model-bank.
+ * which modalities a model takes and gives, what it costs and which reasoning
+ * levels it has are the user's to override too. Everything magpie neither lists
+ * nor rewrites is read from model-bank.
  */
 interface MagpieModelCard {
   context_length?: number;
@@ -119,10 +125,12 @@ const findKnownModel = (
 const fromMagpie = (model: MagpieModelCard): Partial<ChatModelCard> => {
   const contextWindow = model.context_length ?? model.max_input_tokens;
 
-  // magpie answers what a model takes; saying nothing is no answer, not `false`.
-  const takesImages = model.modalities?.input
-    ? model.modalities.input.includes('image')
-    : undefined;
+  // magpie answers what a model takes and gives; saying nothing is no answer,
+  // not `false`.
+  const takes = (kind: string) =>
+    model.modalities?.input ? model.modalities.input.includes(kind) : undefined;
+  const gives = (kind: string) =>
+    model.modalities?.output ? model.modalities.output.includes(kind) : undefined;
 
   // A model thinks when magpie says so, or when it kept reasoning levels for it.
   // Its `false` is the user switching reasoning off, which must survive rather
@@ -131,13 +139,68 @@ const fromMagpie = (model: MagpieModelCard): Partial<ChatModelCard> => {
   const thinks =
     model.reasoning === undefined ? (levels?.length ? true : undefined) : model.reasoning;
 
+  const vision = takes('image');
+  const audio = takes('audio');
+  const video = takes('video');
+  const imageOutput = gives('image');
+  const pricing = pricingOf(model.pricing);
+
   return {
     displayName: plainName(model),
     ...(contextWindow ? { contextWindowTokens: contextWindow } : {}),
     ...(model.max_output_tokens ? { maxOutput: model.max_output_tokens } : {}),
-    ...(takesImages === undefined ? {} : { vision: takesImages }),
+    ...(audio === undefined ? {} : { audio }),
+    ...(imageOutput === undefined ? {} : { imageOutput }),
+    ...(pricing ? { pricing } : {}),
     ...(thinks === undefined ? {} : { reasoning: thinks }),
+    ...(video === undefined ? {} : { video }),
+    ...(vision === undefined ? {} : { vision }),
   };
+};
+
+/** magpie's price keys, as model-bank names the same unit. */
+const PRICE_UNITS: ReadonlyArray<[PricingUnitName, string]> = [
+  ['textInput', 'prompt'],
+  ['textOutput', 'completion'],
+  ['textInput_cacheRead', 'input_cache_read'],
+  ['textInput_cacheWrite', 'input_cache_write'],
+];
+
+/**
+ * A price a token as model-bank writes it, a million tokens.
+ *
+ * magpie gives USD a token as decimal strings, the shape its list has; the
+ * decimal point moves back six places to the unit model-bank prices in, and no
+ * further, so $0.3 a million reads 0.3 rather than 0.30000000000000004.
+ */
+const perMillion = (perToken: unknown): number | undefined => {
+  const value =
+    typeof perToken === 'number'
+      ? perToken
+      : typeof perToken === 'string'
+        ? Number(perToken)
+        : Number.NaN;
+
+  if (!Number.isFinite(value) || value < 0) return undefined;
+
+  return Number((value * 1_000_000).toPrecision(12));
+};
+
+/**
+ * magpie's pricing for one model as model-bank's units, when it told any: the
+ * gateway gives prices to a caller on this computer, and to one it is shared
+ * with, and leaves the field out elsewhere.
+ */
+const pricingOf = (raw: Record<string, unknown> | undefined): Pricing | undefined => {
+  if (!raw) return undefined;
+
+  const units: Pricing['units'] = [];
+  for (const [name, key] of PRICE_UNITS) {
+    const rate = perMillion(raw[key]);
+    if (rate !== undefined) units.push({ name, rate, strategy: 'fixed', unit: 'millionTokens' });
+  }
+
+  return units.length ? { currency: 'USD', units } : undefined;
 };
 
 /** What magpie appends to a routing group's label, which LobeHub says by its tag. */
@@ -253,7 +316,7 @@ const fetchMagpieModels = async (client: OpenAI): Promise<ChatModelCard[]> => {
     return true;
   });
 
-  return processMultiProviderModelList(unique, ModelProvider.Magpie);
+  return processMultiProviderModelList(unique, ModelProvider.Magpie, { preferCardValues: true });
 };
 
 export const params = {

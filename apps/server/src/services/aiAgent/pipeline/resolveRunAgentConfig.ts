@@ -21,6 +21,7 @@ import type { AgentConfigWithId } from '@/server/services/agent';
 import { isResourceAuthorOrAdmin } from '@/server/services/resourcePermission';
 import { isSandboxAvailableForUser } from '@/server/services/sandbox/availability';
 
+import type { RunFacts } from '../runFacts';
 import type { InternalExecAgentParams } from '../types';
 import { getWorkspaceMemberChatOverrides } from '../workspaceMemberChatConfig';
 
@@ -29,6 +30,11 @@ const log = debug('lobe-server:ai-agent-service');
 export interface ResolveRunAgentConfigDeps {
   db: LobeChatDatabase;
   resolveAgentConfigOrThrow: (identifier: string) => Promise<AgentConfigWithId>;
+  /**
+   * Per-turn memoized facts. When present, the Labs on-demand switch reuses the
+   * run's single `users.preference` read instead of querying again.
+   */
+  runFacts?: RunFacts;
   userId: string;
   workspaceId?: string;
 }
@@ -160,6 +166,23 @@ const loadUserLocale = async (
 };
 
 /**
+ * The global Labs on-demand context switch lives in the user's preference. It
+ * is user-scoped, so the run owner's preference is authoritative here.
+ */
+const loadOnDemandContextFlag = async (deps: ResolveRunAgentConfigDeps): Promise<boolean> => {
+  // Reuse the run's single `users.preference` read. Paths without a RunFacts
+  // (e.g. pre-created-topic model pinning) do not need the context mode.
+  if (!deps.runFacts) return false;
+  try {
+    const preference = await deps.runFacts.userPreference();
+    return preference?.lab?.enableOnDemandContext === true;
+  } catch (error) {
+    log('execAgent: failed to load on-demand context lab flag: %O', error);
+    return false;
+  }
+};
+
+/**
  * Stages 1–2.5 of {@link AiAgentService.execAgent}: resolve the effective agent
  * configuration for this run.
  *
@@ -205,16 +228,19 @@ export const resolveRunAgentConfig = async (
   const isPublicWorkspaceAgent = !!agentWorkspaceId && row.visibility !== 'private';
 
   const scope = (appContext?.scope ?? undefined) as MessageMapScope | undefined;
-  const [overrides, canManageAgent, userLocale, pageSandboxAvailable] = await Promise.all([
-    input.agentConfigSnapshot
-      ? Promise.resolve({} as WorkspaceMemberOverrides)
-      : loadWorkspaceMemberOverrides(deps, resolvedAgentId),
-    resolveCanManage(deps, row, agentWorkspaceId, isPublicWorkspaceAgent),
-    // A share visitor replies in their own language, not the owner's.
-    loadUserLocale(deps, shareVisitorUserId ?? deps.userId),
-    // The page agent edits through the sandbox; without one it would only fail.
-    scope === 'page' ? isSandboxAvailableForUser(deps.db, deps.userId) : true,
-  ]);
+  const [overrides, canManageAgent, userLocale, pageSandboxAvailable, onDemandContextEnabled] =
+    await Promise.all([
+      input.agentConfigSnapshot
+        ? Promise.resolve({} as WorkspaceMemberOverrides)
+        : loadWorkspaceMemberOverrides(deps, resolvedAgentId),
+      resolveCanManage(deps, row, agentWorkspaceId, isPublicWorkspaceAgent),
+      // A share visitor replies in their own language, not the owner's.
+      loadUserLocale(deps, shareVisitorUserId ?? deps.userId),
+      // The page agent edits through the sandbox; without one it would only fail.
+      scope === 'page' ? isSandboxAvailableForUser(deps.db, deps.userId) : true,
+      // Global Labs switch for the on-demand context mode.
+      loadOnDemandContextFlag(deps),
+    ]);
 
   // The caller's device preference layers onto the shared row BEFORE the
   // shared rules run, so a builtin runtime that pins its own execution target
@@ -242,6 +268,7 @@ export const resolveRunAgentConfig = async (
     memberContextModeOverride: overrides.contextMode,
     memberModeOverride: overrides.mode,
     memberModelOverride: overrides.model,
+    onDemandContextEnabled,
     slug: row.slug ?? undefined,
     userLocale,
   };

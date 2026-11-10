@@ -51,6 +51,9 @@ export default {
   'features.oauthApps.desc':
     'Show OAuth app management in personal and workspace settings. This feature is hidden by default.',
   'features.oauthApps.title': 'OAuth Apps',
+  'features.onDemandContext.desc':
+    'Load tools, memory, skills and documents on demand instead of injecting them up front. Off keeps the legacy Agent mode. Experimental.',
+  'features.onDemandContext.title': 'On-demand Context Mode',
   'features.projects.desc':
     'Organize long-running goals into dedicated workspaces with their own agents, knowledge bases, and tasks.',
   'features.projects.title': 'Project Workspaces',

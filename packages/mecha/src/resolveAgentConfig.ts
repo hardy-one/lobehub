@@ -125,6 +125,12 @@ export interface AgentConfigSnapshot {
   /** Workspace member's own mode pick, when one applies. */
   memberModeOverride?: LobeAgentChatConfig['enableAgentMode'];
   /**
+   * Global Labs switch. When true, resolve the run to the opt-in on-demand
+   * context mode (and agent mode). Off leaves the stored config untouched, so
+   * behavior stays the legacy Agent path.
+   */
+  onDemandContextEnabled?: boolean;
+  /**
    * The agent's slug, which identifies a builtin agent — and, together with
    * `agent.virtual` and `agent.workspaceId`, a COLLABORATIVE one whose members
    * each keep a personal model choice. A host that cannot express all three
@@ -325,7 +331,7 @@ export const resolveAgentConfig = (
   // Runtime templates render `{{model}}` for the model the run will actually use.
   const model = ctx.model ?? agentConfig.model;
   const sharedChatConfig = snapshot.chatConfig;
-  const chatConfig =
+  const memberChatConfig =
     memberModeOverride === undefined && memberContextModeOverride === undefined
       ? sharedChatConfig
       : {
@@ -335,6 +341,12 @@ export const resolveAgentConfig = (
             ? {}
             : { contextMode: memberContextModeOverride }),
         };
+  // The global Labs switch outranks the stored config: on-demand mode requires
+  // agent mode and function calling. `resolveContextMode` still falls back to
+  // legacy for a model without FC, so forcing it here is safe for every caller.
+  const chatConfig = snapshot.onDemandContextEnabled
+    ? { ...memberChatConfig, contextMode: 'on-demand' as const, enableAgentMode: true }
+    : memberChatConfig;
 
   // Base plugins from agent config (pinned identifiers only — disabled entries excluded)
   const basePlugins = getActivePluginIds(agentConfig?.plugins);

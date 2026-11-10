@@ -27,6 +27,7 @@ type LabFeatureI18nKey =
   | 'imessage'
   | 'messageTextSelectionActions'
   | 'oauthApps'
+  | 'onDemandContext'
   | 'projects'
   | 'selfLearning'
   | 'topicBugReport';
@@ -134,6 +135,12 @@ const ALL_LAB_FEATURES: LabFeatureItem[] = [
     i18nKey: 'oauthApps',
     searchKeywords: ['oauth', 'oauth apps'],
     stage: 'beta',
+  },
+  {
+    flag: 'enableOnDemandContext',
+    i18nKey: 'onDemandContext',
+    searchKeywords: ['on-demand', 'on demand', 'context mode', '按需', '按需加载'],
+    stage: 'alpha',
   },
   {
     flag: 'enableArtifactDeployment',

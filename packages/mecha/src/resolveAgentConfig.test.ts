@@ -26,6 +26,22 @@ describe('resolveAgentConfig without a host', () => {
     expect(resolved.chatConfig).toBeDefined();
   });
 
+  it('forces the on-demand context mode when the Labs switch is on', () => {
+    const off = resolveAgentConfig(
+      { agentId: 'agt_1' },
+      snapshot({ chatConfig: { contextMode: 'default', enableAgentMode: true } as never }),
+    );
+    expect(off.chatConfig.contextMode).toBe('default');
+    expect(off.chatConfig.enableAgentMode).toBe(true);
+
+    const on = resolveAgentConfig(
+      { agentId: 'agt_1' },
+      snapshot({ chatConfig: { enableAgentMode: false } as never, onDemandContextEnabled: true }),
+    );
+    expect(on.chatConfig.contextMode).toBe('on-demand');
+    expect(on.chatConfig.enableAgentMode).toBe(true);
+  });
+
   it('appends the reply-language instruction from the snapshot', () => {
     const resolved = resolveAgentConfig({ agentId: 'agt_1' }, snapshot({ userLocale: 'zh-CN' }));
 

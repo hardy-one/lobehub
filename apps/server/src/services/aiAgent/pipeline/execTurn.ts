@@ -254,6 +254,16 @@ export const execAgentTurn = async (
 
   throwIfAborted(signal, 'Agent execution aborted before startup');
 
+  // One memoized reader for facts that cannot change within the turn (user
+  // preference / settings / routed device). Created before agent-config
+  // resolution so the Labs on-demand switch reuses the same `users.preference`
+  // row instead of issuing a second query.
+  const runFacts = createRunFacts({
+    db: deps.db,
+    userId: deps.userId,
+    workspaceId: deps.workspaceId,
+  });
+
   // Stages 1–2.5 — resolve the effective agent config for this run
   // (see `pipeline/resolveRunAgentConfig`).
   const {
@@ -272,6 +282,7 @@ export const execAgentTurn = async (
       {
         db: deps.db,
         resolveAgentConfigOrThrow: deps.resolveAgentConfigOrThrow,
+        runFacts,
         userId: deps.userId,
         workspaceId: deps.workspaceId,
       },
@@ -481,15 +492,8 @@ export const execAgentTurn = async (
   // Shared context for the extracted execAgent pipeline stages
   // (`pipeline/*`). Built after the turn rows exist so every stage sees the
   // persisted anchors; `agentConfig` stays the same mutable object so stage
-  // systemRole appends remain visible to `createOperation` below.
-  // One reader for the facts that cannot change within this turn, so the
-  // send window asks the routed device and the user's row once each.
-  const runFacts = createRunFacts({
-    db: deps.db,
-    userId: deps.userId,
-    workspaceId: deps.workspaceId,
-  });
-
+  // systemRole appends remain visible to `createOperation` below. `runFacts`
+  // is the memoized reader created before agent-config resolution.
   const runContext: ExecRunContext = {
     agentConfig,
     // Facts the turn resolved (builder target, project) ride on the context so

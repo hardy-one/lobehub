@@ -11,6 +11,7 @@ export const DEFAULT_PREFERENCE: UserPreference = {
     enableAgentGraphConfig: false,
     enableMessageTextSelectionActions: false,
     enableOAuthApps: false,
+    enableOnDemandContext: false,
   },
   projectTopicGroupMode: 'byAgent',
   topicGroupMode: 'byTime',

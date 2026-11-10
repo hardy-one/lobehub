@@ -34,6 +34,8 @@
   "features.messageTextSelectionActions.title": "消息文本选择操作",
   "features.oauthApps.desc": "在个人和工作区设置中显示 OAuth 应用管理入口。此功能默认隐藏。",
   "features.oauthApps.title": "OAuth 应用",
+  "features.onDemandContext.desc": "按需加载工具、记忆、技能与文档，而不是每轮预注入全部上下文。关闭则保持原 Agent 模式。实验特性。",
+  "features.onDemandContext.title": "按需上下文模式",
   "features.projects.desc": "将长期目标组织到独立工作空间中，并集中管理相关智能体、资料库与任务。",
   "features.projects.title": "项目工作空间",
   "features.selfLearning.desc": "让 Agent 在后台从对话中学习，并在每晚复盘。在「记忆 → 自进化」中查看结果。",

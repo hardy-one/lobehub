@@ -6,11 +6,13 @@ import { resolveMissingTaskModelConfig } from '@/server/services/task/modelSnaps
 
 import { resolveRunAgentConfig } from '../pipeline/resolveRunAgentConfig';
 
-const { getInfoForAIGeneration, getPreference, isResourceAuthorOrAdmin } = vi.hoisted(() => ({
-  getInfoForAIGeneration: vi.fn(),
-  getPreference: vi.fn(),
-  isResourceAuthorOrAdmin: vi.fn(),
-}));
+const { getInfoForAIGeneration, getPreference, getUserPreference, isResourceAuthorOrAdmin } =
+  vi.hoisted(() => ({
+    getInfoForAIGeneration: vi.fn(),
+    getPreference: vi.fn(),
+    getUserPreference: vi.fn(),
+    isResourceAuthorOrAdmin: vi.fn(),
+  }));
 
 vi.mock('@/database/models/workspaceUserSettings', () => ({
   WorkspaceUserSettingsModel: class {
@@ -19,7 +21,10 @@ vi.mock('@/database/models/workspaceUserSettings', () => ({
 }));
 
 vi.mock('@/database/models/user', () => ({
-  UserModel: { getInfoForAIGeneration },
+  UserModel: class {
+    static getInfoForAIGeneration = getInfoForAIGeneration;
+    getUserPreference = getUserPreference;
+  },
 }));
 
 vi.mock('@/server/services/resourcePermission', () => ({
@@ -52,6 +57,7 @@ describe('resolveRunAgentConfig', () => {
     vi.clearAllMocks();
     getPreference.mockResolvedValue({});
     isResourceAuthorOrAdmin.mockResolvedValue(false);
+    getUserPreference.mockResolvedValue({});
     getInfoForAIGeneration.mockResolvedValue({ responseLanguage: 'en-US' });
   });
 
@@ -108,6 +114,40 @@ describe('resolveRunAgentConfig', () => {
     expect(getInfoForAIGeneration).toHaveBeenCalledWith(expect.anything(), 'member-1');
   });
 
+  it('resolves the on-demand context mode when the Labs switch is on', async () => {
+    getUserPreference.mockResolvedValue({ lab: { enableOnDemandContext: true } });
+
+    const { agentConfig } = await resolveRunAgentConfig(
+      {
+        ...deps,
+        resolveAgentConfigOrThrow: async () =>
+          ({ ...(webOnboardingRow() as object), id: 'agent-regular', slug: null }) as never,
+      },
+      { identifier: 'agent-regular', throwIfExecutionAborted: async () => {} },
+    );
+
+    expect(agentConfig.chatConfig?.contextMode).toBe('on-demand');
+    expect(agentConfig.chatConfig?.enableAgentMode).toBe(true);
+  });
+
+  it('keeps the stored context mode when the Labs switch is off', async () => {
+    const { agentConfig } = await resolveRunAgentConfig(
+      {
+        ...deps,
+        resolveAgentConfigOrThrow: async () =>
+          ({
+            ...(webOnboardingRow() as object),
+            chatConfig: { contextMode: 'default', enableAgentMode: true },
+            id: 'agent-regular',
+            slug: null,
+          }) as never,
+      },
+      { identifier: 'agent-regular', throwIfExecutionAborted: async () => {} },
+    );
+
+    expect(agentConfig.chatConfig?.contextMode).toBe('default');
+  });
+
   it('applies a saved member device override to a regular workspace agent', async () => {
     getPreference.mockResolvedValue({
       agentDeviceOverrides: {
@@ -134,6 +174,7 @@ describe('Codex Task model overrides', () => {
     vi.clearAllMocks();
     getPreference.mockResolvedValue({});
     isResourceAuthorOrAdmin.mockResolvedValue(false);
+    getUserPreference.mockResolvedValue({});
     getInfoForAIGeneration.mockResolvedValue({ responseLanguage: 'en-US' });
   });
 

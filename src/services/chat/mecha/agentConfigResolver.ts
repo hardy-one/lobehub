@@ -15,7 +15,11 @@ import {
 import { getChatGroupStoreState } from '@/store/agentGroup';
 import { agentGroupByIdSelectors, agentGroupSelectors } from '@/store/agentGroup/selectors';
 import { useUserStore } from '@/store/user';
-import { userGeneralSettingsSelectors, userProfileSelectors } from '@/store/user/selectors';
+import {
+  labPreferSelectors,
+  userGeneralSettingsSelectors,
+  userProfileSelectors,
+} from '@/store/user/selectors';
 import { isDev } from '@/utils/env';
 
 export type { AgentConfigResolverContext, ResolvedAgentConfig };
@@ -62,6 +66,8 @@ const collectSnapshot = (ctx: AgentConfigResolverContext): AgentConfigSnapshot =
         ? agentGroupSelectors.getGroupMembers(group.id)(groupStoreState)
         : undefined,
     isDev,
+    // Global Labs switch: on turns the run into the on-demand context mode.
+    onDemandContextEnabled: labPreferSelectors.enableOnDemandContext(userState),
     memberContextModeOverride:
       userState.workspaceUserPreference.agentContextModeOverrides?.[agentId],
     memberModeOverride: userState.workspaceUserPreference.agentModeOverrides?.[agentId],

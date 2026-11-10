@@ -178,6 +178,12 @@ export const UserLabSchema = z.object({
    */
   enableAgentGraphConfig: z.boolean().optional(),
   /**
+   * Use the opt-in on-demand context mode: tools, memory, skills and documents
+   * are loaded on demand instead of injected up front. Off keeps the legacy
+   * Agent mode (no behavior change).
+   */
+  enableOnDemandContext: z.boolean().optional(),
+  /**
    * enable artifact deployment features (publish artifacts to a hosted URL)
    */
   enableArtifactDeployment: z.boolean().optional(),

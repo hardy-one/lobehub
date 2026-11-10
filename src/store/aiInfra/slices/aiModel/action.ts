@@ -155,6 +155,7 @@ export class AiModelActionImpl {
         const isCustom = existingModel?.source === 'custom';
 
         const hasAnyAbility =
+          model.audio !== undefined ||
           model.files !== undefined ||
           model.functionCall !== undefined ||
           model.imageOutput !== undefined ||
@@ -166,6 +167,7 @@ export class AiModelActionImpl {
         const remoteAbilities = hasAnyAbility
           ? Object.fromEntries(
               Object.entries({
+                audio: model.audio,
                 files: model.files,
                 functionCall: model.functionCall,
                 imageOutput: model.imageOutput,
@@ -195,8 +197,9 @@ export class AiModelActionImpl {
               }
             : undefined;
 
-        // Priority during fetch action: model-bank (in model) > custom (existing) > remote
-        // model contains model-bank metadata when known; if custom model has properties, preserve them
+        // Priority during fetch action: the abilities the user set by hand, then
+        // what the pull came back with, then the row as it was. A gateway's card
+        // already carries its own answer over model-bank's for the models it serves.
         return {
           ...model,
           abilities: isCustom ? existingModel?.abilities : mergedAbilities,

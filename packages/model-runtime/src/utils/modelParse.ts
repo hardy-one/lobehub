@@ -562,12 +562,32 @@ const getModelLocalEnableConfig = (
 /**
  * Common logic for processing model cards
  */
+interface ProcessModelCardOptions {
+  includeKnownExtendParams?: boolean;
+  includeSearchSettings?: boolean;
+  /**
+   * Read a field the incoming card carries before model-bank's.
+   *
+   * The card is the provider's own answer about the models it serves, and for a
+   * gateway it is the gateway's user who set the window, the reply limit and
+   * which modalities a model takes. model-bank's card says what the model
+   * usually is, so it only fills what the card leaves unsaid.
+   */
+  preferCardValues?: boolean;
+}
+
 const processModelCard = (
   model: { [key: string]: any; id: string },
   config: ModelProcessorConfig,
   knownModel?: any,
-  options?: { includeKnownExtendParams?: boolean; includeSearchSettings?: boolean },
+  options?: ProcessModelCardOptions,
 ): ChatModelCard | undefined => {
+  const preferCard = options?.preferCardValues ?? false;
+
+  /** The card's value when it is the preferred source, model-bank's otherwise. */
+  const pick = <T>(cardValue: T | undefined, knownValue: T | undefined): T | undefined =>
+    preferCard ? (cardValue ?? knownValue) : (knownValue ?? cardValue);
+
   const {
     functionCallKeywords = [],
     visionKeywords = [],
@@ -675,57 +695,48 @@ const processModelCard = (
     return { ...metadata, units };
   };
 
+  const ability = (
+    cardValue: boolean | undefined,
+    knownValue: boolean | undefined,
+    keywords: readonly string[],
+  ): boolean =>
+    pick(cardValue, knownValue) ??
+    ((isKeywordListMatch(model.id.toLowerCase(), keywords) && !isExcludedModel) || false);
+
   return {
     ...(model.sdkType ? { sdkType: model.sdkType } : {}),
-    contextWindowTokens: knownModel?.contextWindowTokens ?? model.contextWindowTokens ?? undefined,
+    // No keyword says a model takes sound, and nothing but the card tells this
+    // one apart from a model that does not: unsaid stays unsaid.
+    audio: pick(model.audio, knownModel?.abilities?.audio),
+    contextWindowTokens:
+      pick(model.contextWindowTokens, knownModel?.contextWindowTokens) ?? undefined,
     description: knownModel?.description ?? model.description ?? '',
-    displayName: processDisplayName(knownModel?.displayName ?? model.displayName ?? model.id),
+    displayName: processDisplayName(pick(model.displayName, knownModel?.displayName) ?? model.id),
     enabled: model?.enabled || false,
-    functionCall:
-      knownModel?.abilities?.functionCall ??
-      (model.functionCall !== undefined
-        ? model.functionCall
-        : (isKeywordListMatch(model.id.toLowerCase(), functionCallKeywords) && !isExcludedModel) ||
-          false),
+    functionCall: ability(
+      model.functionCall,
+      knownModel?.abilities?.functionCall,
+      functionCallKeywords,
+    ),
     id: model.id,
-    imageOutput:
-      knownModel?.abilities?.imageOutput ??
-      (model.imageOutput !== undefined
-        ? model.imageOutput
-        : (isKeywordListMatch(model.id.toLowerCase(), imageOutputKeywords) && !isExcludedModel) ||
-          false),
-    maxOutput: knownModel?.maxOutput ?? model.maxOutput ?? undefined,
-    pricing: formatPricing(knownModel?.pricing) ?? formatPricing(model?.pricing) ?? undefined,
-    reasoning:
-      knownModel?.abilities?.reasoning ??
-      (model.reasoning !== undefined
-        ? model.reasoning
-        : (isKeywordListMatch(model.id.toLowerCase(), reasoningKeywords) && !isExcludedModel) ||
-          false),
+    imageOutput: ability(
+      model.imageOutput,
+      knownModel?.abilities?.imageOutput,
+      imageOutputKeywords,
+    ),
+    maxOutput: pick(model.maxOutput, knownModel?.maxOutput) ?? undefined,
+    pricing: pick(formatPricing(model?.pricing), formatPricing(knownModel?.pricing)) ?? undefined,
+    reasoning: ability(model.reasoning, knownModel?.abilities?.reasoning, reasoningKeywords),
     releasedAt: processReleasedAt(model, knownModel),
-    search:
-      knownModel?.abilities?.search ??
-      (model.search !== undefined
-        ? model.search
-        : (isKeywordListMatch(model.id.toLowerCase(), searchKeywords) && !isExcludedModel) ||
-          false),
+    search: ability(model.search, knownModel?.abilities?.search, searchKeywords),
     type: modelType,
     // current, only image model use the parameters field
     ...(modelType === 'image' && {
       parameters: knownModel?.parameters ?? model.parameters,
     }),
     ...(mergedSettings ? { settings: mergedSettings } : {}),
-    video:
-      knownModel?.abilities?.video ??
-      (model.video !== undefined
-        ? model.video
-        : (isKeywordListMatch(model.id.toLowerCase(), videoKeywords) && !isExcludedModel) || false),
-    vision:
-      knownModel?.abilities?.vision ??
-      (model.vision !== undefined
-        ? model.vision
-        : (isKeywordListMatch(model.id.toLowerCase(), visionKeywords) && !isExcludedModel) ||
-          false),
+    video: ability(model.video, knownModel?.abilities?.video, videoKeywords),
+    vision: ability(model.vision, knownModel?.abilities?.vision, visionKeywords),
   };
 };
 
@@ -780,11 +791,13 @@ export const processModelList = async (
  * Process model list for mixed providers
  * @param modelList Model list
  * @param providerid Optional provider ID, used to get its local configuration file
+ * @param options Optional processing options
  * @returns Processed model card list
  */
 export const processMultiProviderModelList = async (
   modelList: Array<{ id: string; sdkType?: ChatModelCard['sdkType'] }>,
   providerid?: ModelProviderKey,
+  options?: Pick<ProcessModelCardOptions, 'preferCardValues'>,
 ): Promise<ChatModelCard[]> => {
   const { loadModels } =
     (await import('@lobechat/business-model-bank/model-config')) as BusinessModelConfigModule;
@@ -816,6 +829,7 @@ export const processMultiProviderModelList = async (
       const processedModel = processModelCard(model, config, knownModel, {
         includeKnownExtendParams,
         includeSearchSettings,
+        preferCardValues: options?.preferCardValues,
       });
 
       if (processedModel && includeSearchSettings && providerLocalModelConfig?.settings) {

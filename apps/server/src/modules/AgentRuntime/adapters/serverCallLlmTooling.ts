@@ -2,6 +2,7 @@ import { type AgentState, selectOperationToolSet } from '@lobechat/agent-runtime
 import {
   buildStepSkillDelta,
   buildStepToolDelta,
+  ON_DEMAND_PINNED_TOOL_IDS,
   type OperationToolSet,
   type ResolvedSkillSet,
   type ResolvedToolSet,
@@ -66,11 +67,18 @@ export const resolveServerCallLlmTooling = (
   });
 
   const toolResolver = new ToolResolver();
+  // On-demand manual loading gates the schemas too: a tool's manual and its
+  // function definitions are one description in two places, so both are held
+  // back together until the tool is activated.
+  const schemaToolIds = state.world?.toolManualOnDemand
+    ? [...ON_DEMAND_PINNED_TOOL_IDS]
+    : undefined;
   const resolved: ResolvedToolSet = toolResolver.resolve(
     operationToolSet,
     stepDelta,
     state.activatedStepTools ?? [],
     allowedToolNames,
+    schemaToolIds,
   );
 
   const tools = resolved.tools.length > 0 ? resolved.tools : undefined;

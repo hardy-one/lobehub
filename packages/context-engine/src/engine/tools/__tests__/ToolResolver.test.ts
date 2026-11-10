@@ -410,4 +410,60 @@ describe('ToolResolver', () => {
       expect(opSet.manifestMap['local-system']).toBeUndefined();
     });
   });
+
+  describe('on-demand schemas', () => {
+    it('keeps only the listed schemas while every manifest stays discoverable', () => {
+      const opSet = makeOperationToolSet([
+        mockSearchManifest,
+        mockCalcManifest,
+        mockLocalSystemManifest,
+      ]);
+
+      const result = resolver.resolve(opSet, emptyDelta, [], undefined, ['local-system']);
+
+      expect(result.tools.map((tool) => tool.function.name)).toEqual([
+        'local-system____run_command',
+        'local-system____read_file',
+      ]);
+      // The manifest map is what the activator searches, so nothing may drop out of it.
+      expect(Object.keys(result.manifestMap).sort()).toEqual([
+        'calculator',
+        'local-system',
+        'web-search',
+      ]);
+    });
+
+    it('releases a held-back schema when the tool is activated', () => {
+      const opSet = makeOperationToolSet([mockSearchManifest, mockCalcManifest]);
+      const delta: StepToolDelta = {
+        activatedTools: [{ id: 'calculator', source: 'discovery' }],
+      };
+
+      const result = resolver.resolve(opSet, delta, [], undefined, ['web-search']);
+
+      expect(result.tools.map((tool) => tool.function.name)).toEqual([
+        'web-search____search',
+        'calculator____calculate',
+      ]);
+    });
+
+    it('does not duplicate a schema that was already sent', () => {
+      const opSet = makeOperationToolSet([mockSearchManifest]);
+      const delta: StepToolDelta = {
+        activatedTools: [{ id: 'web-search', source: 'discovery' }],
+      };
+
+      const result = resolver.resolve(opSet, delta, [], undefined, ['web-search']);
+
+      expect(result.tools).toHaveLength(1);
+    });
+
+    it('sends every schema when no list is given', () => {
+      const opSet = makeOperationToolSet([mockSearchManifest, mockCalcManifest]);
+
+      const result = resolver.resolve(opSet, emptyDelta);
+
+      expect(result.tools).toHaveLength(2);
+    });
+  });
 });

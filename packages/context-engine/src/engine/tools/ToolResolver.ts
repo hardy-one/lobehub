@@ -31,9 +31,10 @@ export class ToolResolver {
     stepDelta: StepToolDelta,
     accumulatedActivations: ActivatedStepTool[] = [],
     allowedToolNames?: string[],
+    schemaToolIds?: readonly string[],
   ): ResolvedToolSet {
     // Start from operation-level snapshot (shallow copies, with safe defaults)
-    const tools: UniformTool[] = [...(operationToolSet.tools ?? [])];
+    let tools: UniformTool[] = [...(operationToolSet.tools ?? [])];
     const sourceMap: Record<string, ToolSource> = { ...operationToolSet.sourceMap };
     const executorMap: Record<string, ToolExecutor> = { ...operationToolSet.executorMap };
     const enabledToolIds: string[] = [...(operationToolSet.enabledToolIds ?? [])];
@@ -47,14 +48,30 @@ export class ToolResolver {
       }
     }
 
+    // On-demand manual loading also gates the schemas: a tool is described in
+    // one place, so its manual and its function definitions travel together.
+    // The set starts with the pinned tools plus whatever the caller passes and
+    // grows as step-level activations land.
+    let schemaIds: Set<string> | undefined;
+    if (schemaToolIds) {
+      schemaIds = new Set(schemaToolIds.filter((id) => !!manifestMap[id]));
+      const idByToolName = new Map<string, string>();
+      for (const [id, manifest] of Object.entries(manifestMap)) {
+        for (const tool of generateToolsFromManifest(manifest)) {
+          idByToolName.set(tool.function.name, id);
+        }
+      }
+      tools = tools.filter((tool) => schemaIds!.has(idByToolName.get(tool.function.name) ?? ''));
+    }
+
     // Apply accumulated step-level activations from previous steps
     for (const activation of accumulatedActivations) {
-      this.applyActivation(activation, tools, manifestMap, sourceMap, enabledToolIds);
+      this.applyActivation(activation, tools, manifestMap, sourceMap, enabledToolIds, schemaIds);
     }
 
     // Apply current step delta activations
     for (const activation of stepDelta.activatedTools) {
-      this.applyActivation(activation, tools, manifestMap, sourceMap, enabledToolIds);
+      this.applyActivation(activation, tools, manifestMap, sourceMap, enabledToolIds, schemaIds);
     }
 
     const shouldFilterByToolNames = allowedToolNames !== undefined;
@@ -125,15 +142,27 @@ export class ToolResolver {
     manifestMap: Record<string, LobeToolManifest>,
     sourceMap: Record<string, ToolSource>,
     enabledToolIds: string[],
+    schemaIds?: Set<string>,
   ): void {
-    // Skip if already present
-    if (manifestMap[activation.id]) return;
+    const known = manifestMap[activation.id];
+
+    // A tool can be discoverable (its manifest is loaded so the activator can
+    // name it) while its schemas are still held back by on-demand loading.
+    // Activation is the only thing that releases them.
+    if (known) {
+      if (schemaIds && !schemaIds.has(activation.id)) {
+        tools.push(...generateToolsFromManifest(known));
+        schemaIds.add(activation.id);
+      }
+      return;
+    }
 
     if (activation.manifest) {
       manifestMap[activation.id] = activation.manifest;
       const newTools = generateToolsFromManifest(activation.manifest);
       tools.push(...newTools);
       enabledToolIds.push(activation.id);
+      schemaIds?.add(activation.id);
 
       // Only set source if not already present — the operation-level sourceMap
       // may already have the correct routing source (e.g., 'lobehubSkill', 'composio')

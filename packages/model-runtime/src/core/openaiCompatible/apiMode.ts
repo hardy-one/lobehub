@@ -35,6 +35,8 @@ export const shouldUseResponsesAPI = (
     responseApi,
     flagUseResponse,
     flagUseResponseModels,
+    modelSdkType,
+    responseApiMode,
     context = 'operation',
   } = params;
 

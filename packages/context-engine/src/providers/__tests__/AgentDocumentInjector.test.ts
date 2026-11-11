@@ -29,6 +29,7 @@ describe('AgentDocumentInjector', () => {
   describe('AgentDocumentContextInjector (before-first-user)', () => {
     it('should inject documents before first user message', async () => {
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         documents: [
           {
             content: 'Core runtime guardrails',
@@ -54,6 +55,7 @@ describe('AgentDocumentInjector', () => {
 
     it('should not inject document when by-keywords rule does not match', async () => {
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         currentUserMessage: 'Please focus on tomorrow action items',
         documents: [
           {
@@ -74,6 +76,7 @@ describe('AgentDocumentInjector', () => {
 
     it('should keep raw format unwrapped by default', async () => {
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         documents: [
           {
             content: 'Direct instruction content',
@@ -94,6 +97,7 @@ describe('AgentDocumentInjector', () => {
 
     it('should inject document when by-keywords rule matches', async () => {
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         currentUserMessage: 'Please draft the launch checklist for next week',
         documents: [
           {
@@ -117,6 +121,7 @@ describe('AgentDocumentInjector', () => {
 
     it('should inject document when by-regexp rule matches', async () => {
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         currentUserMessage: 'Need TODO items for this sprint',
         documents: [
           {
@@ -136,6 +141,7 @@ describe('AgentDocumentInjector', () => {
 
     it('should inject document only inside by-time-range window', async () => {
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         currentTime: new Date('2026-03-13T12:00:00.000Z'),
         documents: [
           {
@@ -158,6 +164,7 @@ describe('AgentDocumentInjector', () => {
 
     it('should wrap file format content with agent_document tag', async () => {
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         documents: [
           {
             content: 'File mode content',
@@ -185,6 +192,7 @@ describe('AgentDocumentInjector', () => {
 
     it('should inject progressive documents as index instead of full content', async () => {
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         currentTime: new Date('2026-04-29T00:00:00.000Z'),
         documents: [
           {
@@ -231,6 +239,7 @@ describe('AgentDocumentInjector', () => {
     it('marks docs created after the latest user message in the progressive index', async () => {
       const runStartedAt = new Date('2026-09-23T22:57:30.000Z').getTime();
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         documents: [
           {
             createdAt: new Date('2026-09-23T22:57:58.000Z'),
@@ -288,6 +297,7 @@ describe('AgentDocumentInjector', () => {
         updatedAt: new Date(createdAt),
       });
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         documents: [
           inFolder('new-report', '2026-09-23T22:57:58.000Z'),
           inFolder('old-report', '2026-09-21T23:12:00.000Z'),
@@ -317,6 +327,7 @@ describe('AgentDocumentInjector', () => {
         updatedAt: new Date(updatedAt),
       });
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         documents: [
           run('tick-1', '2026-10-10T05:10:00.000Z'),
           run('tick-2', '2026-10-11T05:10:00.000Z'),
@@ -340,6 +351,7 @@ describe('AgentDocumentInjector', () => {
     it('does not attribute docs created after the latest user message to the current run', async () => {
       const lastUserMessageAt = new Date('2026-09-23T22:57:30.000Z').getTime();
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         documents: [
           {
             createdAt: new Date('2026-09-23T22:58:10.000Z'),
@@ -384,7 +396,11 @@ describe('AgentDocumentInjector', () => {
         },
       ] satisfies AgentContextDocument[];
       const renderAt = async (currentTime: Date) => {
-        const provider = new AgentDocumentContextInjector({ currentTime, documents });
+        const provider = new AgentDocumentContextInjector({
+          compactIndex: true,
+          currentTime,
+          documents,
+        });
         const context = createContext([{ content: 'Hello', id: 'user-1', role: 'user' }]);
         const result = await provider.process(context);
         return result.messages[0].content;
@@ -400,6 +416,7 @@ describe('AgentDocumentInjector', () => {
     it('keeps the index byte-identical when only a document body grows', async () => {
       const renderWithSize = async (contentCharCount: number) => {
         const provider = new AgentDocumentContextInjector({
+          compactIndex: true,
           currentTime: new Date('2026-04-29T00:00:00.000Z'),
           documents: [
             {
@@ -428,6 +445,7 @@ describe('AgentDocumentInjector', () => {
 
     it('lists a progressive document whose content is omitted', async () => {
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         currentTime: new Date('2026-04-29T00:00:00.000Z'),
         documents: [
           {
@@ -488,6 +506,7 @@ describe('AgentDocumentInjector', () => {
         },
       ] satisfies AgentContextDocument[];
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         currentTime: new Date('2026-04-29T00:00:00.000Z'),
         documents,
       });
@@ -511,6 +530,7 @@ describe('AgentDocumentInjector', () => {
       expect(injectedContent.split("listDocuments(sourceType='web')")).toHaveLength(2);
 
       const oneWebDocumentProvider = new AgentDocumentContextInjector({
+        compactIndex: true,
         currentTime: new Date('2026-04-29T00:00:00.000Z'),
         documents: documents.slice(0, 2),
       });
@@ -521,6 +541,7 @@ describe('AgentDocumentInjector', () => {
 
     it('should collapse same-folder docs into a summary row and keep root docs flat', async () => {
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         currentTime: new Date('2026-04-29T00:00:00.000Z'),
         documents: [
           {
@@ -596,6 +617,7 @@ describe('AgentDocumentInjector', () => {
 
     it('should keep a lone doc-in-folder flat instead of collapsing it', async () => {
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         currentTime: new Date('2026-04-29T00:00:00.000Z'),
         documents: [
           {
@@ -644,7 +666,7 @@ describe('AgentDocumentInjector', () => {
         updatedAt: new Date(Date.UTC(2026, 9, 1 + (i % 20))),
       }));
 
-      const provider = new AgentDocumentContextInjector({ documents });
+      const provider = new AgentDocumentContextInjector({ compactIndex: true, documents });
       const result = await provider.process(
         createContext([{ content: 'Hello', id: 'user-1', role: 'user' }]),
       );
@@ -657,8 +679,39 @@ describe('AgentDocumentInjector', () => {
       expect(content).not.toContain('~10k');
     });
 
+    it('keeps the full table when the run has not opted into compact mode', async () => {
+      const provider = new AgentDocumentContextInjector({
+        currentTime: new Date('2026-04-29T00:00:00.000Z'),
+        documents: [
+          {
+            content: 'body',
+            contentCharCount: 900,
+            filename: 'note.md',
+            id: 'doc-plain',
+            loadPosition: 'before-first-user',
+            loadRules: { rule: 'always' },
+            policyLoad: 'progressive',
+            sourceType: 'file',
+            title: 'Plain Note',
+            updatedAt: new Date('2026-04-27T00:00:00.000Z'),
+          },
+        ],
+      });
+
+      const result = await provider.process(
+        createContext([{ content: 'Hello', id: 'user-1', role: 'user' }]),
+      );
+      const content = result.messages[0].content as string;
+
+      expect(content).toContain('TITLE');
+      expect(content).toContain('UPDATED');
+      expect(content).toContain('doc-plain');
+      expect(content).not.toContain('- Plain Note');
+    });
+
     it('still lists an empty document so the LLM does not retry creating it', async () => {
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         currentTime: new Date('2026-04-29T00:00:00.000Z'),
         documents: [
           {
@@ -689,6 +742,7 @@ describe('AgentDocumentInjector', () => {
 
     it('should mix full-content and progressive documents', async () => {
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         currentTime: new Date('2026-04-29T00:00:00.000Z'),
         documents: [
           {
@@ -728,6 +782,7 @@ describe('AgentDocumentInjector', () => {
     // payload. The disabled row must show up in neither bucket.
     it('should drop disabled documents from both inline and progressive index', async () => {
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         currentTime: new Date('2026-04-29T00:00:00.000Z'),
         documents: [
           {
@@ -769,6 +824,7 @@ describe('AgentDocumentInjector', () => {
     // in the index, not silently dropped from BOTH buckets).
     it('routes documents with missing policyLoad into the progressive index', async () => {
       const provider = new AgentDocumentContextInjector({
+        compactIndex: true,
         currentTime: new Date('2026-04-29T00:00:00.000Z'),
         documents: [
           {

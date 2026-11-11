@@ -45,6 +45,12 @@ export interface SkillMeta {
  * Skill Context Provider Configuration
  */
 export interface SkillContextProviderConfig {
+  /**
+   * Clip each description to {@link SKILL_DESCRIPTION_MAX_CHARS}. Set when the
+   * run loads tool manuals on demand, where the list exists to say what is
+   * activatable and the full text arrives with `activateSkill`.
+   */
+  clipDescriptions?: boolean;
   enabled?: boolean;
   enabledSkills?: SkillMeta[];
 }
@@ -115,7 +121,9 @@ export class SkillContextProvider extends BaseSystemRoleProvider {
     // Generate <available_skills> list for non-activated skills
     if (availableSkills.length > 0) {
       const skills: SkillItem[] = availableSkills.map((skill) => ({
-        description: clipSkillDescription(skill.description),
+        description: this.config.clipDescriptions
+          ? clipSkillDescription(skill.description)
+          : skill.description,
         identifier: skill.identifier,
         location: skill.location,
         name: skill.name,

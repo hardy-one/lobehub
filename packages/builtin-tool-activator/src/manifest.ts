@@ -1,6 +1,6 @@
 import type { BuiltinToolManifest } from '@lobechat/types';
 
-import { systemPrompt } from './systemRole';
+import { compactSystemPrompt, systemPrompt } from './systemRole';
 import { ActivatorApiName, LobeActivatorIdentifier } from './types';
 
 export const LobeActivatorManifest: BuiltinToolManifest = {
@@ -38,5 +38,7 @@ export const LobeActivatorManifest: BuiltinToolManifest = {
     title: 'Tools Activator',
   },
   systemRole: systemPrompt,
+  // Shorter trigger-only variant, used when this run loads tool manuals on demand.
+  systemRoleOnDemand: compactSystemPrompt,
   type: 'builtin',
 };

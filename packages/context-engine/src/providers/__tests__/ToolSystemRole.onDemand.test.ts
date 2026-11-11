@@ -79,6 +79,29 @@ describe('ToolSystemRoleProvider on-demand switch', () => {
     expect(result.metadata.toolSystemRole?.manualLoading).toBe('on-demand');
   });
 
+  it('prefers the compact manual when the manifest ships one', async () => {
+    const withCompact = { ...localSystem, systemRoleOnDemand: 'COMPACT_MANUAL_BODY' };
+
+    const onDemand = await new ToolSystemRoleProvider({
+      isCanUseFC: () => true,
+      manifests: [withCompact],
+      model: 'gpt-4',
+      onDemand: true,
+      provider: 'openai',
+    }).process(createContext([]) as any);
+    expect(onDemand.messages[0].content).toContain('COMPACT_MANUAL_BODY');
+    expect(onDemand.messages[0].content).not.toContain('LOCAL_SYSTEM_MANUAL_BODY');
+
+    const inline = await new ToolSystemRoleProvider({
+      isCanUseFC: () => true,
+      manifests: [withCompact],
+      model: 'gpt-4',
+      provider: 'openai',
+    }).process(createContext([]) as any);
+    expect(inline.messages[0].content).toContain('LOCAL_SYSTEM_MANUAL_BODY');
+    expect(inline.messages[0].content).not.toContain('COMPACT_MANUAL_BODY');
+  });
+
   it('lists disabled tools in the same block as unloaded manuals', async () => {
     const provider = new ToolSystemRoleProvider({
       availableTools: [

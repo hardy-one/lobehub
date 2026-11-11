@@ -208,7 +208,9 @@ export class ToolSystemRoleProvider extends BaseSystemRoleProvider {
       description: manifest.meta?.description,
       identifier: manifest.identifier,
       name: manifest.meta?.title || manifest.identifier,
-      systemRole: manifest.systemRole,
+      systemRole: this.config.onDemand
+        ? (manifest.systemRoleOnDemand ?? manifest.systemRole)
+        : manifest.systemRole,
     }));
 
     const manualSection = tools.length > 0 ? (pluginPrompts({ tools }) ?? '') : '';

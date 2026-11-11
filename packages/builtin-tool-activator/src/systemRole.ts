@@ -68,7 +68,7 @@ ${withSkillStoreAndCreds ? bestPracticesSkillMarketplace : ''}- Only activate to
 - After activation, use the tools' APIs directly — no need to call activateTools again for the same tools
 </best_practices>`;
 
-export const systemPrompt = `${intro}
+export const compactSystemPrompt = `${intro}
 
 ${howItWorks({ withSkills: true })}
 
@@ -81,19 +81,4 @@ ${credentialsManagement}
 ${bestPractices({ withSkillStoreAndCreds: true })}
 `;
 
-/**
- * Variant for Agent Share visitor runs. `lobe-skill-store` and `lobe-creds`
- * are never available to a visitor, so the sections that send the model to
- * activate them first would divert requests (skills, auth, GitHub/Notion…)
- * toward an impossible prerequisite instead of the granted tools. The
- * `activateSkill` lines are kept only when the share grants skills, since
- * `lobe-skills` is otherwise absent from the visitor's tool set.
- */
-export const getSystemPromptForShareVisitor = ({ withSkills }: { withSkills: boolean }) => `${intro}
-
-${howItWorks({ withSkills })}
-
-${toolSelectionGuidelines({ withSkills })}
-
-${bestPractices({ withSkillStoreAndCreds: false })}
-`;
+export { getSystemPromptForShareVisitor, systemPrompt } from './systemRoleFull';

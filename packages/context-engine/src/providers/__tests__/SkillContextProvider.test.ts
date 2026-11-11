@@ -47,6 +47,7 @@ describe('SkillContextProvider', () => {
   it('clips a long description to keep the list scannable', async () => {
     const longDescription = 'A'.repeat(400);
     const provider = new SkillContextProvider({
+      clipDescriptions: true,
       enabledSkills: [{ description: longDescription, identifier: 'long', name: 'Long' }],
     });
 
@@ -61,6 +62,7 @@ describe('SkillContextProvider', () => {
 
   it('leaves a short description untouched', async () => {
     const provider = new SkillContextProvider({
+      clipDescriptions: true,
       enabledSkills: [{ description: 'Short and useful', identifier: 'short', name: 'Short' }],
     });
 
@@ -71,6 +73,20 @@ describe('SkillContextProvider', () => {
 
     expect(content).toContain('>Short and useful</skill>');
     expect(content).not.toContain('…');
+  });
+
+  it('leaves descriptions intact when the run has not opted into clipping', async () => {
+    const longDescription = 'B'.repeat(400);
+    const provider = new SkillContextProvider({
+      enabledSkills: [{ description: longDescription, identifier: 'long', name: 'Long' }],
+    });
+
+    const result = await provider.process(
+      createContext([{ content: 'Hello', id: 'u1', role: 'user' }]),
+    );
+    const content = result.messages.find((msg) => msg.role === 'system')!.content as string;
+
+    expect(content).toContain(`>${longDescription}</skill>`);
   });
 
   it('should merge with existing system message', async () => {

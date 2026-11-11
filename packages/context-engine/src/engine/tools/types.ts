@@ -31,6 +31,13 @@ export interface LobeToolManifest {
   identifier: string;
   meta: any;
   systemRole?: string;
+  /**
+   * Manual used instead of `systemRole` when this run loads tool manuals on
+   * demand. Only worth setting when the shorter variant says when to activate
+   * the tool and leaves the details to its own manual, which the model reads
+   * after activating it.
+   */
+  systemRoleOnDemand?: string;
   type?: 'default' | 'standalone' | 'markdown' | 'mcp' | 'builtin';
 }
 

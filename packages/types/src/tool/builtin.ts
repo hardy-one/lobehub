@@ -305,6 +305,13 @@ export interface BuiltinToolManifest {
   meta: Meta;
   systemRole: string;
   /**
+   * Manual used instead of `systemRole` when the run loads tool manuals on
+   * demand. Only worth setting when the shorter variant says when to activate
+   * the tool and leaves the details to the manual the model reads after
+   * activating it.
+   */
+  systemRoleOnDemand?: string;
+  /**
    * plugin runtime type
    * @default default
    */
@@ -319,6 +326,7 @@ export const BuiltinToolManifestSchema = z.object({
   identifier: z.string(),
   meta: MetaSchema,
   systemRole: z.string(),
+  systemRoleOnDemand: z.string().optional(),
   type: z.literal('builtin').optional(),
 });
 

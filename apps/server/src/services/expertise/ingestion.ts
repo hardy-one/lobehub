@@ -314,10 +314,46 @@ export class ExpertiseIngestionService {
         }),
       );
     }
+    // Runs after the night's hits are written, so a lesson applied tonight can
+    // never be judged unused by the same pass that recorded the hit.
+    const retirement = await this.retireStaleExpertise();
+
     return {
       ingested: results.reduce((sum, result) => sum + result.ingested, 0),
       reason: 'nightly-review',
+      retired: retirement.retired,
     } as const;
+  };
+
+  /**
+   * Retires lessons no recent topic has applied. Best-effort: the night's
+   * ingestion is already committed by the time this runs, and losing it over a
+   * cleanup failure would be the worse outcome.
+   */
+  private retireStaleExpertise = async () => {
+    try {
+      const result = await new ExpertiseModel(
+        this.db,
+        this.userId,
+        this.workspaceId,
+      ).retireStaleLessons();
+
+      if (result.retired.length > 0) {
+        log(
+          'retired %d stale lessons: %s',
+          result.retired.length,
+          result.retired.map((lesson) => lesson.code).join(', '),
+        );
+      }
+      for (const domain of result.skipped) {
+        log('retirement skipped domain=%s reason=%s', domain.title, domain.reason);
+      }
+
+      return result;
+    } catch (error) {
+      log('failed to retire stale lessons: %O', error);
+      return { retired: [], skipped: [] };
+    }
   };
 
   /**

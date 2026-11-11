@@ -19,6 +19,7 @@ import * as filing from './filing';
 import * as lessons from './lessons';
 import * as lineage from './lineage';
 import * as rules from './rules';
+import * as staleness from './staleness';
 
 export type { ExpertiseCarrier } from './domains';
 export type { ExpertiseGroupOwner } from './rules';
@@ -446,6 +447,8 @@ export class ExpertiseModel {
 
   retireLesson = (...args: ExpertiseArgs<typeof lessons.retireLesson>) =>
     lessons.retireLesson(this.ctx, ...args);
+  retireStaleLessons = (...args: ExpertiseArgs<typeof staleness.retireStaleLessons>) =>
+    staleness.retireStaleLessons(this.ctx, ...args);
 
   // Insights
 

@@ -902,6 +902,35 @@ describe('lobeAgentRuntime', () => {
     expect(mockChat).not.toHaveBeenCalled();
   });
 
+  it('should reject audio files when the configured model audio ability is unknown', async () => {
+    mockToolsEnv.MULTIMODAL_UNDERSTANDING_MODEL = 'unresolved-audio-model';
+    mockMessageModelQueryByIds.mockResolvedValue([
+      {
+        audioList: [
+          { alt: 'recording.mp3', id: 'file-audio', url: 'https://example.com/recording.mp3' },
+        ],
+        id: 'msg-1',
+        role: 'user',
+      },
+    ]);
+    const runtime = lobeAgentRuntime.factory(baseContext);
+    const stableAudioRef = createMediaFileRef({ index: 0, messageId: 'msg-1', type: 'audio' });
+
+    const result = await runtime.analyzeMedia({
+      question: 'what is said in the audio?',
+      refs: [stableAudioRef],
+    });
+
+    expect(result).toMatchObject({
+      content: expect.stringContaining('does not have confirmed audio support'),
+      error: { code: 'MULTIMODAL_MODEL_AUDIO_UNSUPPORTED' },
+      success: false,
+    });
+    expect(result.content).toContain('Use ASR');
+    expect(result.content).toContain('MULTIMODAL_UNDERSTANDING_MODEL');
+    expect(mockChat).not.toHaveBeenCalled();
+  });
+
   it('should reject video files when the configured model lacks video support', async () => {
     mockToolsEnv.MULTIMODAL_UNDERSTANDING_MODEL = 'image-only-model';
     mockMessageModelQueryByIds.mockResolvedValue([

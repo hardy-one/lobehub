@@ -632,9 +632,9 @@ class LobeAgentExecutionRuntime {
     const hasImages = selectedItems.some((item) => item.type === 'image');
     const hasVideos = selectedItems.some((item) => item.type === 'video');
 
-    if (hasAudios && abilities?.audio === false) {
+    if (hasAudios && abilities?.audio !== true) {
       return buildError(
-        `Configured multimodal understanding model "${provider}/${model}" does not support audio understanding.`,
+        `Configured multimodal understanding model "${provider}/${model}" does not have confirmed audio support. Use ASR for voice messages or configure MULTIMODAL_UNDERSTANDING_MODEL with a model that supports audio.`,
         'MULTIMODAL_MODEL_AUDIO_UNSUPPORTED',
       );
     }

@@ -100,6 +100,7 @@ describe('Context window token', () => {
         systemRoleToken: 1500,
         toolsToken: 1000,
         totalToken: 6000,
+        usedToken: 6000,
       })
       .mockReturnValue({
         chatsToken: 0,
@@ -108,6 +109,7 @@ describe('Context window token', () => {
         systemRoleToken: 0,
         toolsToken: 0,
         totalToken: 0,
+        usedToken: 0,
       });
 
     render(createElement(Token));
@@ -132,6 +134,7 @@ describe('Context window token', () => {
       systemRoleToken: 1500,
       toolsToken: 1000,
       totalToken: 6000,
+      usedToken: 6000,
     });
 
     render(createElement(Token));

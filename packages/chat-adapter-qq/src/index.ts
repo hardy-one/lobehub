@@ -18,6 +18,14 @@ export type {
   QQPassiveToken,
 } from './passive';
 export type {
+  QQPassiveLimits,
+  QQPassiveSlot,
+  QQPassiveStore,
+  QQPassiveThreadType,
+  QQPassiveToken,
+} from './passive';
+export { createMemoryQQPassiveStore, QQ_DEFERRED_PREFIX, QQ_PASSIVE_LIMITS } from './passive';
+export type {
   QQAccessTokenResponse,
   QQAdapterConfig,
   QQAttachment,

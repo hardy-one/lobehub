@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { getToolContextRefreshKey } from './utils';
+import {
+  getLatestProviderUsage,
+  getProviderInputTokens,
+  getToolContextRefreshKey,
+} from './utils';
 
 describe('Token tool utils', () => {
   describe('getToolContextRefreshKey', () => {
@@ -48,6 +52,35 @@ describe('Token tool utils', () => {
           enableAgentMode: true,
         }),
       ).not.toBe(chatModeKey);
+    });
+  });
+  describe('provider usage', () => {
+    it('sums uncached input, cache read, and cache write without totalInputTokens', () => {
+      expect(
+        getProviderInputTokens({
+          inputCacheMissTokens: 1_900,
+          inputCachedTokens: 25_200,
+          inputWriteCacheTokens: 0,
+        }),
+      ).toBe(27_100);
+    });
+
+    it('uses the latest successful assistant usage', () => {
+      expect(
+        getLatestProviderUsage([
+          {
+            id: 'failed',
+            role: 'assistant',
+            error: { type: 'provider' },
+            usage: { totalInputTokens: 10 },
+          },
+          { id: 'success', role: 'assistant', usage: { totalInputTokens: 20 } },
+        ]),
+      ).toEqual({ id: 'success', index: 1, inputTokens: 20 });
+    });
+
+    it('returns no baseline when a message only reports output usage', () => {
+      expect(getProviderInputTokens({ totalOutputTokens: 20 })).toBeUndefined();
     });
   });
 });

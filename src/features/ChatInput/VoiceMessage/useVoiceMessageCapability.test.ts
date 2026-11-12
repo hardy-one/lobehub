@@ -132,7 +132,7 @@ describe('useVoiceMessageCapability', () => {
     serverConfig.multimodalUnderstanding = undefined;
   });
 
-  it('enables DeepSeek V4 through configured multimodal understanding', () => {
+  it('rejects the Agent fallback when the configured model is not resolved', () => {
     const model = {
       abilities: { functionCall: true },
       enabled: true,
@@ -149,14 +149,68 @@ describe('useVoiceMessageCapability', () => {
 
     const { result } = renderHook(() => useVoiceMessageCapability(model.id, model.providerId));
 
-    expect(result.current).toBe(true);
+    expect(result.current).toBe(false);
     expect(
       getVoiceMessageCapability({
         enableAgentMode: true,
         model: model.id,
         provider: model.providerId,
       }),
-    ).toBe(true);
+    ).toBe(false);
+  });
+
+  it('enables the Agent fallback when the configured model explicitly supports audio', () => {
+    const model = {
+      abilities: { functionCall: true },
+      enabled: true,
+      id: 'text-model-with-audio-fallback',
+      providerId: ModelProvider.LobeHub,
+      type: 'chat',
+    } as const;
+    const fallbackModel = {
+      abilities: { audio: true },
+      enabled: true,
+      id: 'fallback-audio-model',
+      providerId: 'fallback-provider',
+      type: 'chat',
+    } as const;
+    useAiInfraStore.setState({ enabledAiModels: [model, fallbackModel] });
+    serverConfig.enableMultimodalUnderstanding = true;
+    serverConfig.multimodalUnderstanding = {
+      model: fallbackModel.id,
+      provider: fallbackModel.providerId,
+    };
+
+    const { result } = renderHook(() => useVoiceMessageCapability(model.id, model.providerId));
+
+    expect(result.current).toBe(true);
+  });
+
+  it('rejects the Agent fallback when the configured model explicitly lacks audio support', () => {
+    const model = {
+      abilities: { functionCall: true },
+      enabled: true,
+      id: 'text-model-without-audio-fallback',
+      providerId: ModelProvider.LobeHub,
+      type: 'chat',
+    } as const;
+    const fallbackModel = {
+      abilities: { audio: false },
+      enabled: true,
+      id: 'fallback-no-audio-model',
+      providerId: 'fallback-provider',
+      type: 'chat',
+    } as const;
+    useAiInfraStore.setState({ enabledAiModels: [model, fallbackModel] });
+    serverConfig.enableMultimodalUnderstanding = true;
+    serverConfig.multimodalUnderstanding = {
+      model: fallbackModel.id,
+      provider: fallbackModel.providerId,
+    };
+
+    const { result } = renderHook(() => useVoiceMessageCapability(model.id, model.providerId));
+
+    expect(result.current).toBe(false);
   });
 
   it('disables the multimodal fallback when Agent mode is off', () => {

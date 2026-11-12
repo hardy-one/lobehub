@@ -115,7 +115,7 @@ describe('useMediaUploadAbility', () => {
     expect(result.current.canUploadVideo).toBe(true);
   });
 
-  it('should allow fallback media upload when fallback model abilities are unknown', () => {
+  it('should reject audio fallback upload when fallback model abilities are unknown', () => {
     mockedUseModelSupportToolUse.mockReturnValue(true);
     mockedUseServerConfigStore.mockImplementation((selector) =>
       selector({
@@ -126,7 +126,7 @@ describe('useMediaUploadAbility', () => {
 
     const { result } = renderHook(() => useMediaUploadAbility('model', 'provider'));
 
-    expect(result.current.canUploadAudio).toBe(true);
+    expect(result.current.canUploadAudio).toBe(false);
     expect(result.current.canUploadImage).toBe(true);
     expect(result.current.canUploadVideo).toBe(true);
   });

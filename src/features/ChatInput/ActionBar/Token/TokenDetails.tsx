@@ -114,13 +114,13 @@ const TokenDetails = memo<TokenDetailsProps>(({ breakdown }) => {
             color: cssVar.colorSuccess,
             id: 'used',
             title: t('tokenDetails.used'),
-            value: totalToken,
+            value: usedToken,
           },
           {
             color: cssVar.colorFill,
             id: 'rest',
             title: t('tokenDetails.rest'),
-            value: maxTokens - totalToken,
+            value: Math.max(maxTokens - usedToken, 0),
           },
         ]}
       />

@@ -18,6 +18,7 @@ import { useAiInfraStore } from '@/store/aiInfra';
 import { aiModelSelectors, aiProviderSelectors } from '@/store/aiInfra/selectors';
 import { useChatStore } from '@/store/chat';
 import { topicSelectors } from '@/store/chat/selectors';
+import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 import { useToolStore } from '@/store/tool';
 import { pluginHelpers } from '@/store/tool/helpers';
 import { useUserStore } from '@/store/user';
@@ -28,7 +29,11 @@ import { useEffectiveModel } from '../../hooks/useEffectiveModel';
 import { useTopicId } from '../../hooks/useTopicId';
 import { useStoreApi } from '../../store';
 import type { ContextWindow } from '../../store/initialState';
-import { getToolContextRefreshKey, getToolExcludeDefaultToolIds } from './utils';
+import {
+  getLatestProviderUsage,
+  getToolContextRefreshKey,
+  getToolExcludeDefaultToolIds,
+} from './utils';
 
 const toolNameResolver = new ToolNameResolver();
 
@@ -165,6 +170,8 @@ export interface TokenBreakdown {
   /** The request's `tools` array. */
   toolsToken: number;
   totalToken: number;
+  /** Context actually used: provider-reported input plus local draft, or the local estimate. */
+  usedToken: number;
 }
 
 export const useTokenBreakdown = (): TokenBreakdown => {
@@ -180,6 +187,42 @@ export const useTokenBreakdown = (): TokenBreakdown => {
   );
 
   const agentId = useAgentId();
+  // Provider-reported input tokens are authoritative for the already-sent
+  // conversation. Resolve the same message bucket the runtime writes to so
+  // group/thread composers baseline against their own run.
+  const composerMessages = useChatStore((s) => {
+    const isActiveConversation = topicId === (s.activeTopicId ?? null);
+    const isGroupConversation = isActiveConversation && Boolean(s.activeGroupId);
+    const isGroupThread = isGroupConversation && Boolean(s.activeThreadId);
+    const activeThread =
+      isGroupThread && topicId
+        ? s.threadMaps[topicId]?.find((thread) => thread.id === s.activeThreadId)
+        : undefined;
+    const subAgentId = isGroupThread ? (activeThread?.agentId ?? undefined) : undefined;
+    const messagesKey = messageMapKey({
+      agentId,
+      groupId: isActiveConversation ? s.activeGroupId : undefined,
+      scope: isGroupConversation
+        ? isGroupThread
+          ? subAgentId
+            ? 'group_agent'
+            : 'thread'
+          : 'group'
+        : undefined,
+      subAgentId: subAgentId || undefined,
+      threadId: isActiveConversation ? s.activeThreadId : undefined,
+      topicId,
+    });
+    const messages = s.dbMessagesMap?.[messagesKey] ?? [];
+    const latestProviderUsage = getLatestProviderUsage(messages);
+
+    return {
+      latestProviderUsage,
+      messagesAfterProvider: latestProviderUsage
+        ? messages.slice(latestProviderUsage.index + 1)
+        : [],
+    };
+  });
   const { model, provider } = useEffectiveModel(agentId);
   // A request recorded for another model carried that model's tools and system
   // prompt; after a model switch, estimate the next request from scratch.
@@ -299,6 +342,11 @@ export const useTokenBreakdown = (): TokenBreakdown => {
   const toolsSystemRoleToken = useTokenCount(canUseTool ? toolsSystemRole : '');
   const systemRoleToken = useTokenCount(hasRequest ? '' : systemRole);
   const historySummaryToken = useTokenCount(hasRequest ? '' : historySummary);
+  const messagesAfterProviderToken = useTokenCount(
+    composerMessages.messagesAfterProvider
+      .map((message) => (typeof message.content === 'string' ? message.content : ''))
+      .join(''),
+  );
   const inputTokenCount = useTokenCount(input);
 
   const recorded = request?.accounting;
@@ -317,6 +365,13 @@ export const useTokenBreakdown = (): TokenBreakdown => {
     systemToken + toolsToken + chatsToken + fileContextToken + toolCallsToken + reasoningToken;
 
   const lastRequestInputTokens = request?.inputTokens;
+  const latestProviderUsage = composerMessages.latestProviderUsage;
+  const localIncrementToken = latestProviderUsage
+    ? messagesAfterProviderToken + inputTokenCount
+    : 0;
+  const usedToken = latestProviderUsage
+    ? latestProviderUsage.inputTokens + localIncrementToken
+    : totalToken;
 
   // A stable object, so the popover content only re-renders when a count changes.
   return useMemo(
@@ -330,6 +385,7 @@ export const useTokenBreakdown = (): TokenBreakdown => {
       toolCallsToken,
       toolsToken,
       totalToken,
+      usedToken,
     }),
     [
       chatsToken,
@@ -341,6 +397,7 @@ export const useTokenBreakdown = (): TokenBreakdown => {
       toolCallsToken,
       toolsToken,
       totalToken,
+      usedToken,
     ],
   );
 };

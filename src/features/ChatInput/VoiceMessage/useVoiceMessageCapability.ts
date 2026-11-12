@@ -167,6 +167,13 @@ export const getVoiceMessageCapability = ({
   }).audio;
 };
 
+export const getRawAudioMessageCapability = ({
+  model,
+  provider,
+  state,
+}: Pick<VoiceMessageCapabilityInput, 'model' | 'provider' | 'state'>) =>
+  getVoiceMessageCapability({ enableAgentMode: false, model, provider, state });
+
 export const useVoiceMessageCapability = (model?: string, provider?: string, agentId?: string) => {
   const { enableAgentMode, isPreferenceLoading } = useEffectiveAgentModePreference(agentId || '');
   const enabled = useServerConfigStore(serverConfigSelectors.enableMultimodalUnderstanding);
@@ -187,3 +194,6 @@ export const useVoiceMessageCapability = (model?: string, provider?: string, age
     }),
   );
 };
+
+export const useRawAudioMessageCapability = (model?: string, provider?: string) =>
+  useAiInfraStore((state) => getRawAudioMessageCapability({ model, provider, state }));

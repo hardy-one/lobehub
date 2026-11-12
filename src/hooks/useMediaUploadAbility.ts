@@ -28,7 +28,7 @@ export const getMultimodalUnderstandingMediaAbility = ({
     enableMultimodalUnderstanding && fallbackConfigured && supportToolUse;
 
   return {
-    audio: canUseMultimodalUnderstanding && fallbackModelAbilities?.audio !== false,
+    audio: canUseMultimodalUnderstanding && fallbackModelAbilities?.audio === true,
     video: canUseMultimodalUnderstanding && fallbackModelAbilities?.video !== false,
     vision: canUseMultimodalUnderstanding && fallbackModelAbilities?.vision !== false,
   };

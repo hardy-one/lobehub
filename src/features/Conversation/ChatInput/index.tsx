@@ -56,7 +56,7 @@ import {
 } from './utils';
 import {
   canSendVoiceMessage,
-  isVoiceMessageTranscribed,
+  resolveVoiceSendMode,
   useCanSendVoiceMessage,
 } from './voiceMessageCapability';
 
@@ -455,7 +455,7 @@ const ChatInput = memo<ChatInputProps>(
                 context: targetContext,
                 optimisticUserMessageId: messageId,
                 signal,
-                ...(isVoiceMessageTranscribed(targetContext)
+                ...(resolveVoiceSendMode(targetContext) === 'transcribe'
                   ? {
                       transcribe: (uploaded, transcribeSignal) =>
                         transcribeVoiceMessage(uploaded.id, transcribeSignal),

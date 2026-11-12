@@ -13,6 +13,7 @@ import { useAiInfraStore } from '@/store/aiInfra';
 import { aiModelSelectors, aiProviderSelectors } from '@/store/aiInfra/selectors';
 import { useChatStore } from '@/store/chat';
 import { topicSelectors } from '@/store/chat/selectors';
+import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 import { useToolStore } from '@/store/tool';
 import { pluginHelpers } from '@/store/tool/helpers';
 import { useUserStore } from '@/store/user';
@@ -22,7 +23,11 @@ import { useAgentId } from '../../hooks/useAgentId';
 import { useEffectiveModel } from '../../hooks/useEffectiveModel';
 import { useTopicId } from '../../hooks/useTopicId';
 import { useStoreApi } from '../../store';
-import { getToolContextRefreshKey, getToolExcludeDefaultToolIds } from './utils';
+import {
+  getLatestProviderUsage,
+  getToolContextRefreshKey,
+  getToolExcludeDefaultToolIds,
+} from './utils';
 
 const toolNameResolver = new ToolNameResolver();
 
@@ -74,11 +79,14 @@ const useComposerSource = (): ComposerSource => {
 
 export interface TokenBreakdown {
   chatsToken: number;
+  hasProviderUsage: boolean;
   historySummaryToken: number;
   maxTokens: number;
   systemRoleToken: number;
   toolsToken: number;
   totalToken: number;
+  usedToken: number;
+  usedTokenIsEstimated: boolean;
 }
 
 export const useTokenBreakdown = (): TokenBreakdown => {
@@ -94,6 +102,30 @@ export const useTokenBreakdown = (): TokenBreakdown => {
   );
 
   const agentId = useAgentId();
+  const composerMessages = useChatStore((s) => {
+    const isActiveConversation = topicId === (s.activeTopicId ?? null);
+    const messagesKey = messageMapKey({
+      agentId,
+      groupId: isActiveConversation ? s.activeGroupId : undefined,
+      scope:
+        isActiveConversation && s.activeGroupId
+          ? s.activeThreadId
+            ? 'group_agent'
+            : 'group'
+          : undefined,
+      threadId: isActiveConversation ? s.activeThreadId : undefined,
+      topicId,
+    });
+    const messages = s.dbMessagesMap?.[messagesKey] ?? [];
+    const latestProviderUsage = getLatestProviderUsage(messages);
+
+    return {
+      latestProviderUsage,
+      messagesAfterProvider: latestProviderUsage
+        ? messages.slice(latestProviderUsage.index + 1)
+        : [],
+    };
+  });
   const { model, provider } = useEffectiveModel(agentId);
   const [
     activeAgentId,
@@ -185,6 +217,11 @@ export const useTokenBreakdown = (): TokenBreakdown => {
 
   const toolsToken = useTokenCount(canUseTool ? toolsString : '');
 
+  const messagesAfterProviderToken = useTokenCount(
+    composerMessages.messagesAfterProvider
+      .map((message) => (typeof message.content === 'string' ? message.content : ''))
+      .join(''),
+  );
   const inputTokenCount = useTokenCount(input);
   const chatsToken = useTokenCount(messages) + inputTokenCount;
 
@@ -192,6 +229,24 @@ export const useTokenBreakdown = (): TokenBreakdown => {
   const historySummaryToken = useTokenCount(historySummary);
 
   const totalToken = systemRoleToken + historySummaryToken + toolsToken + chatsToken;
+  const latestProviderUsage = composerMessages.latestProviderUsage;
+  const localIncrementToken = latestProviderUsage
+    ? messagesAfterProviderToken + inputTokenCount
+    : 0;
+  const usedToken = latestProviderUsage
+    ? latestProviderUsage.inputTokens + localIncrementToken
+    : totalToken;
+  const usedTokenIsEstimated = !latestProviderUsage || localIncrementToken > 0;
 
-  return { chatsToken, historySummaryToken, maxTokens, systemRoleToken, toolsToken, totalToken };
+  return {
+    chatsToken,
+    hasProviderUsage: Boolean(latestProviderUsage),
+    historySummaryToken,
+    maxTokens,
+    systemRoleToken,
+    toolsToken,
+    totalToken,
+    usedToken,
+    usedTokenIsEstimated,
+  };
 };

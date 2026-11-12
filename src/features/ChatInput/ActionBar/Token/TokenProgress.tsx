@@ -4,6 +4,7 @@ import { memo } from 'react';
 
 interface TokenProgressItem {
   color: string;
+  estimated?: boolean;
   id: string;
   title: string;
   value: number;
@@ -13,10 +14,14 @@ interface TokenProgressProps {
   data: TokenProgressItem[];
   showIcon?: boolean;
   showTotal?: string;
+  totalValue?: number;
 }
 
-const TokenProgress = memo<TokenProgressProps>(({ data, showIcon, showTotal }) => {
-  const total = data.reduce((acc, item) => acc + item.value, 0);
+const formatTokenValue = (item: TokenProgressItem) =>
+  `${item.estimated ? '~' : ''}${formatUsageValue(item.value)}`;
+
+const TokenProgress = memo<TokenProgressProps>(({ data, showIcon, showTotal, totalValue }) => {
+  const total = totalValue ?? data.reduce((acc, item) => acc + item.value, 0);
   return (
     <Flexbox gap={8} style={{ position: 'relative' }} width={'100%'}>
       <Flexbox
@@ -55,7 +60,7 @@ const TokenProgress = memo<TokenProgressProps>(({ data, showIcon, showTotal }) =
               )}
               <div style={{ color: cssVar.colorTextSecondary }}>{item.title}</div>
             </Flexbox>
-            <div style={{ fontWeight: 500 }}>{formatUsageValue(item.value)}</div>
+            <div style={{ fontWeight: 500 }}>{formatTokenValue(item)}</div>
           </Flexbox>
         ))}
         {showTotal && (

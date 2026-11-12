@@ -14,28 +14,47 @@ const Token = memo(() => {
   const { t } = useTranslation('chat');
   const isMobile = useIsMobile();
 
-  const { chatsToken, historySummaryToken, maxTokens, systemRoleToken, toolsToken, totalToken } =
-    useTokenBreakdown();
+  const {
+    chatsToken,
+    hasProviderUsage,
+    historySummaryToken,
+    maxTokens,
+    systemRoleToken,
+    toolsToken,
+    usedToken,
+    usedTokenIsEstimated,
+  } = useTokenBreakdown();
   const isDevMode = useUserStore((s) => userGeneralSettingsSelectors.config(s).isDevMode);
   const content = useMemo(
     () => (
       <TokenDetails
         breakdown={{
           chatsToken,
+          hasProviderUsage,
           historySummaryToken,
           maxTokens,
           systemRoleToken,
           toolsToken,
-          totalToken,
+          usedToken,
+          usedTokenIsEstimated,
         }}
       />
     ),
-    [chatsToken, historySummaryToken, maxTokens, systemRoleToken, toolsToken, totalToken],
+    [
+      chatsToken,
+      hasProviderUsage,
+      historySummaryToken,
+      maxTokens,
+      systemRoleToken,
+      toolsToken,
+      usedToken,
+      usedTokenIsEstimated,
+    ],
   );
 
   // Keep the composer quiet for regular users until context pressure is real;
   // dev mode always shows the tag for inspection.
-  if (!isDevMode && maxTokens > 0 && totalToken / maxTokens <= 0.5) return null;
+  if (!isDevMode && maxTokens > 0 && usedToken / maxTokens <= 0.5) return null;
 
   return (
     <ActionPopover content={content} trigger={isMobile ? 'click' : 'hover'}>
@@ -43,7 +62,7 @@ const Token = memo(() => {
         maxValue={maxTokens}
         mode={'used'}
         size={isMobile ? { blockSize: 24, size: 16 } : { blockSize: 28, size: 18 }}
-        value={totalToken}
+        value={usedToken}
         text={{
           overload: t('tokenTag.overload'),
           remained: t('tokenTag.remained'),

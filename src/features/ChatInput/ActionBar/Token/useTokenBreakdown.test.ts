@@ -1,6 +1,8 @@
 import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { messageMapKey } from '@/store/chat/utils/messageMapKey';
+
 import { useTokenBreakdown } from './useTokenBreakdown';
 
 const state = vi.hoisted(() => ({
@@ -8,6 +10,7 @@ const state = vi.hoisted(() => ({
   /** `undefined`: the host publishes no topic; `null`: its conversation has none. */
   composerTopicId: undefined as string | null | undefined,
   summaries: {} as Record<string, string>,
+  apiUsage: undefined as number | undefined,
 }));
 
 // One token per character, so a count names the text it was taken from.
@@ -75,6 +78,15 @@ vi.mock('@/store/chat', () => ({
     selector({
       activeTopicId: state.activeTopicId,
       topicDataMap: {},
+      dbMessagesMap: {
+        [messageMapKey({
+          agentId: 'agent-1',
+          topicId: state.composerTopicId ?? state.activeTopicId,
+        })]:
+          state.apiUsage === undefined
+            ? []
+            : [{ role: 'assistant', usage: { totalInputTokens: state.apiUsage } }],
+      },
       topicDetailMap: Object.fromEntries(
         Object.entries(state.summaries).map(([id, historySummary]) => [id, { historySummary, id }]),
       ),
@@ -86,9 +98,18 @@ beforeEach(() => {
   state.activeTopicId = 'main-topic';
   state.composerTopicId = undefined;
   state.summaries = { 'main-topic': 'main column summary', 'pane-topic': 'pane' };
+  state.apiUsage = undefined;
 });
 
 describe('useTokenBreakdown', () => {
+  it('uses the latest API-reported input tokens for context usage', () => {
+    state.apiUsage = 1234;
+
+    const { result } = renderHook(() => useTokenBreakdown());
+
+    expect(result.current.usedToken).toBe(1234);
+  });
+
   it("counts the composer's own topic summary rather than the global active topic's", () => {
     state.composerTopicId = 'pane-topic';
 

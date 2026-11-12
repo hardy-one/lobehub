@@ -13,6 +13,7 @@ import { useAiInfraStore } from '@/store/aiInfra';
 import { aiModelSelectors, aiProviderSelectors } from '@/store/aiInfra/selectors';
 import { useChatStore } from '@/store/chat';
 import { topicSelectors } from '@/store/chat/selectors';
+import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 import { useToolStore } from '@/store/tool';
 import { pluginHelpers } from '@/store/tool/helpers';
 import { useUserStore } from '@/store/user';
@@ -79,6 +80,8 @@ export interface TokenBreakdown {
   systemRoleToken: number;
   toolsToken: number;
   totalToken: number;
+  /** The latest context size reported by the provider, when available. */
+  usedToken: number;
 }
 
 export const useTokenBreakdown = (): TokenBreakdown => {
@@ -95,6 +98,12 @@ export const useTokenBreakdown = (): TokenBreakdown => {
 
   const agentId = useAgentId();
   const { model, provider } = useEffectiveModel(agentId);
+  const latestApiUsedToken = useChatStore((s) => {
+    const key = messageMapKey({ agentId, topicId });
+    const messages = s.dbMessagesMap?.[key] ?? [];
+    return messages.findLast((message) => typeof message.usage?.totalInputTokens === 'number')
+      ?.usage?.totalInputTokens;
+  });
   const [
     activeAgentId,
     systemRole,
@@ -192,6 +201,15 @@ export const useTokenBreakdown = (): TokenBreakdown => {
   const historySummaryToken = useTokenCount(historySummary);
 
   const totalToken = systemRoleToken + historySummaryToken + toolsToken + chatsToken;
+  const usedToken = latestApiUsedToken ?? totalToken;
 
-  return { chatsToken, historySummaryToken, maxTokens, systemRoleToken, toolsToken, totalToken };
+  return {
+    chatsToken,
+    historySummaryToken,
+    maxTokens,
+    systemRoleToken,
+    toolsToken,
+    totalToken,
+    usedToken,
+  };
 };

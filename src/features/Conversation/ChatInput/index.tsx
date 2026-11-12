@@ -70,7 +70,7 @@ import {
 } from './utils';
 import {
   canSendVoiceMessage,
-  isVoiceMessageTranscribed,
+  resolveVoiceSendMode,
   useCanSendVoiceMessage,
 } from './voiceMessageCapability';
 
@@ -539,7 +539,7 @@ const ChatInput = memo<ChatInputProps>(
                 prepare: () =>
                   prepareComposerGitSend(targetContext ?? context, { snapshot: gitSnapshot }),
                 signal,
-                ...(isVoiceMessageTranscribed(targetContext)
+                ...(resolveVoiceSendMode(targetContext) === 'transcribe'
                   ? {
                       transcribe: (uploaded, transcribeSignal) =>
                         transcribeVoiceMessage(uploaded.id, transcribeSignal),

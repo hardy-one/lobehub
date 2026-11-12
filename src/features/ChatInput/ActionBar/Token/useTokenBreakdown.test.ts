@@ -7,9 +7,12 @@ import { useTokenBreakdown } from './useTokenBreakdown';
 
 const state = vi.hoisted(() => ({
   activeTopicId: undefined as string | undefined,
+  activeGroupId: undefined as string | undefined,
+  activeThreadId: undefined as string | undefined,
   /** `undefined`: the host publishes no topic; `null`: its conversation has none. */
   composerTopicId: undefined as string | null | undefined,
   composerInput: '',
+  threadAgentId: undefined as string | undefined,
   summaries: {} as Record<string, string>,
   messages: [] as Array<{
     content: string;
@@ -81,25 +84,77 @@ vi.mock('@/store/user/selectors', () => ({ settingsSelectors: { memoryEnabled: (
 
 // Store boundary: the real topic selectors run against this state.
 vi.mock('@/store/chat', () => ({
-  useChatStore: (selector: (s: object) => unknown) =>
-    selector({
-      activeTopicId: state.activeTopicId,
-      topicDataMap: {},
-      dbMessagesMap: {
-        [messageMapKey({
+  useChatStore: (selector: (s: object) => unknown) => {
+    const topicId = state.composerTopicId ?? state.activeTopicId;
+    const isActiveConversation = topicId === (state.activeTopicId ?? null);
+    const isGroupConversation = isActiveConversation && Boolean(state.activeGroupId);
+    const isGroupThread = isGroupConversation && Boolean(state.activeThreadId);
+    const scope = isGroupConversation
+      ? isGroupThread
+        ? state.threadAgentId
+          ? 'group_agent'
+          : 'thread'
+        : 'group'
+      : undefined;
+    const activeThread = state.activeThreadId
+      ? [
+          {
+            id: state.activeThreadId,
+            ...(state.threadAgentId ? { agentId: state.threadAgentId } : {}),
+          },
+        ]
+      : [];
+    const messagesKey = messageMapKey({
+      agentId: 'agent-1',
+      groupId: isActiveConversation ? state.activeGroupId : undefined,
+      scope,
+      subAgentId: state.threadAgentId,
+      threadId: isActiveConversation ? state.activeThreadId : undefined,
+      topicId,
+    });
+    const wrongGroupAgentKey = isGroupThread
+      ? messageMapKey({
           agentId: 'agent-1',
-          topicId: state.composerTopicId ?? state.activeTopicId,
-        })]: state.messages,
+          groupId: state.activeGroupId,
+          scope: 'group_agent',
+          topicId,
+        })
+      : undefined;
+
+    return selector({
+      activeTopicId: state.activeTopicId,
+      activeGroupId: state.activeGroupId,
+      activeThreadId: state.activeThreadId,
+      dbMessagesMap: {
+        [messagesKey]: state.messages,
+        ...(wrongGroupAgentKey
+          ? {
+              [wrongGroupAgentKey]: [
+                {
+                  content: 'wrong bucket',
+                  id: 'wrong',
+                  role: 'assistant',
+                  usage: { totalInputTokens: 999 },
+                },
+              ],
+            }
+          : {}),
       },
+      threadMaps: topicId ? { [topicId]: activeThread } : {},
+      topicDataMap: {},
       topicDetailMap: Object.fromEntries(
         Object.entries(state.summaries).map(([id, historySummary]) => [id, { historySummary, id }]),
       ),
-    }),
+    });
+  },
 }));
 
 beforeEach(() => {
   // The main column's topic stays globally active while another composer renders its own.
   state.activeTopicId = 'main-topic';
+  state.activeGroupId = undefined;
+  state.activeThreadId = undefined;
+  state.threadAgentId = undefined;
   state.composerTopicId = undefined;
   state.summaries = { 'main-topic': 'main column summary', 'pane-topic': 'pane' };
   state.composerInput = '';
@@ -107,6 +162,41 @@ beforeEach(() => {
 });
 
 describe('useTokenBreakdown', () => {
+  it('uses the group-agent bucket when the active group thread has a sub-agent identity', () => {
+    state.activeGroupId = 'group-1';
+    state.activeThreadId = 'thread-1';
+    state.threadAgentId = 'agent-2';
+    state.messages = [
+      {
+        content: 'group thread response',
+        id: 'assistant-1',
+        role: 'assistant',
+        usage: { totalInputTokens: 321 },
+      },
+    ];
+
+    const { result } = renderHook(() => useTokenBreakdown());
+
+    expect(result.current.usedToken).toBe(321);
+  });
+
+  it('falls back to the thread bucket when a group thread has no sub-agent identity', () => {
+    state.activeGroupId = 'group-1';
+    state.activeThreadId = 'thread-1';
+    state.messages = [
+      {
+        content: 'thread response',
+        id: 'assistant-1',
+        role: 'assistant',
+        usage: { totalInputTokens: 123 },
+      },
+    ];
+
+    const { result } = renderHook(() => useTokenBreakdown());
+
+    expect(result.current.usedToken).toBe(123);
+  });
+
   it('falls back to a local estimate when provider input is missing', () => {
     state.composerInput = 'draft';
     state.messages = [

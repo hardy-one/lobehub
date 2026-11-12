@@ -102,15 +102,24 @@ export const useTokenBreakdown = (): TokenBreakdown => {
   const agentId = useAgentId();
   const composerMessages = useChatStore((s) => {
     const isActiveConversation = topicId === (s.activeTopicId ?? null);
+    const isGroupConversation = isActiveConversation && Boolean(s.activeGroupId);
+    const isGroupThread = isGroupConversation && Boolean(s.activeThreadId);
+    const activeThread =
+      isGroupThread && topicId
+        ? s.threadMaps[topicId]?.find((thread) => thread.id === s.activeThreadId)
+        : undefined;
+    const subAgentId = isGroupThread ? (activeThread?.agentId ?? undefined) : undefined;
     const messagesKey = messageMapKey({
       agentId,
       groupId: isActiveConversation ? s.activeGroupId : undefined,
-      scope:
-        isActiveConversation && s.activeGroupId
-          ? s.activeThreadId
+      scope: isGroupConversation
+        ? isGroupThread
+          ? subAgentId
             ? 'group_agent'
-            : 'group'
-          : undefined,
+            : 'thread'
+          : 'group'
+        : undefined,
+      subAgentId: subAgentId || undefined,
       threadId: isActiveConversation ? s.activeThreadId : undefined,
       topicId,
     });

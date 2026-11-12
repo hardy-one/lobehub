@@ -13,7 +13,11 @@ import {
 } from '@/store/serverConfig/store';
 import { useUserStore } from '@/store/user';
 
-import { canSendVoiceMessage, useCanSendVoiceMessage } from './voiceMessageCapability';
+import {
+  canSendVoiceMessage,
+  resolveVoiceSendMode,
+  useCanSendVoiceMessage,
+} from './voiceMessageCapability';
 
 vi.mock('@/features/ResourcePermission/useAgentManagementAccess', () => ({
   useAgentManagementAccess: () => ({ canManageAgent: false, isAccessLoading: false }),
@@ -205,7 +209,8 @@ describe('heterogeneous agents', () => {
 
     setAgent(false);
     setAsr({ model: 'whisper-1', provider: 'openai' });
-    expect(canSendVoiceMessage({ agentId })).toBe(false);
+    expect(canSendVoiceMessage({ agentId })).toBe(true);
+    expect(resolveVoiceSendMode({ agentId })).toBe('transcribe');
 
     setAgent(true);
     expect(canSendVoiceMessage({ agentId })).toBe(true);
@@ -238,6 +243,114 @@ describe('heterogeneous agents', () => {
     });
 
     const { result } = renderHook(() => useCanSendVoiceMessage({ agentId }), {
+      wrapper: ServerConfigWrapper,
+    });
+
+    expect(result.current).toBe(false);
+
+    act(() => {
+      setEnabledProviders([openaiProvider]);
+    });
+
+    expect(result.current).toBe(true);
+  });
+});
+describe('voice send mode', () => {
+  const agentId = 'voice-send-mode-agent';
+  const textModel = {
+    abilities: { functionCall: true },
+    enabled: true,
+    id: 'voice-text-model',
+    providerId: ModelProvider.Google,
+    type: 'chat',
+  } as const;
+  const audioModel = {
+    abilities: { audio: true },
+    enabled: true,
+    id: 'voice-audio-model',
+    providerId: ModelProvider.Google,
+    type: 'chat',
+  } as const;
+  const fallbackModel = {
+    abilities: { audio: true },
+    enabled: true,
+    id: 'fallback-audio-model',
+    providerId: ModelProvider.LobeHub,
+    type: 'chat',
+  } as const;
+  const openaiProvider = { id: 'openai', name: 'OpenAI', source: 'builtin' } as const;
+  const context = { agentId };
+
+  const setModels = (...models: readonly unknown[]) =>
+    useAiInfraStore.setState({ enabledAiModels: models as any });
+
+  const setAgent = (model: { id: string; providerId: string }, enableAgentMode = false) =>
+    useAgentStore.setState({
+      agentMap: {
+        [agentId]: {
+          chatConfig: { enableAgentMode },
+          model: model.id,
+          provider: model.providerId,
+        },
+      },
+    } as any);
+
+  const setAsr = (model = 'whisper-1', provider = 'openai') =>
+    useUserStore.setState({
+      settings: { systemAgent: { asr: { model, provider } } },
+      workspaceUserPreference: {},
+    } as any);
+
+  const setEnabledProviders = (providers: readonly unknown[]) =>
+    useAiInfraStore.setState({ enabledAiProviders: providers as any });
+
+  it('uses ASR for a text model when the configured provider is enabled', () => {
+    setModels(textModel);
+    setAgent(textModel);
+    setAsr();
+    setEnabledProviders([openaiProvider]);
+
+    expect(canSendVoiceMessage(context)).toBe(true);
+    expect(resolveVoiceSendMode(context)).toBe('transcribe');
+  });
+
+  it('keeps direct audio as the mode when both audio and ASR are available', () => {
+    setModels(audioModel);
+    setAgent(audioModel);
+    setAsr();
+    setEnabledProviders([openaiProvider]);
+
+    expect(resolveVoiceSendMode(context)).toBe('raw-audio');
+  });
+
+  it('keeps the Agent analyzeMedia fallback as the last raw-audio mode', () => {
+    setModels(textModel, fallbackModel);
+    setAgent(textModel, true);
+    setAsr();
+    setEnabledProviders([]);
+    serverConfigStore.setState({ serverConfig: multimodalServerConfig });
+
+    expect(canSendVoiceMessage(context)).toBe(true);
+    expect(resolveVoiceSendMode(context)).toBe('raw-audio');
+  });
+
+  it('hides voice input when neither ASR nor the Agent fallback is available', () => {
+    setModels(textModel);
+    setAgent(textModel);
+    setAsr();
+    setEnabledProviders([]);
+
+    expect(canSendVoiceMessage(context)).toBe(false);
+    expect(resolveVoiceSendMode(context)).toBeUndefined();
+  });
+
+  it('reacts to an enabled ASR provider for a text model', () => {
+    setModels(textModel);
+    setAgent(textModel);
+    setAsr();
+    setEnabledProviders([]);
+
+    const { result } = renderHook(() => useCanSendVoiceMessage(context), {
       wrapper: ServerConfigWrapper,
     });
 

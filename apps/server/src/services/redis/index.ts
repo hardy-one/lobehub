@@ -6,6 +6,7 @@ import { botWake } from './botWake';
 import { deviceSystemInfo } from './deviceSystemInfo';
 import { linear } from './linear';
 import { pageCollab } from './pageCollab';
+import { qqPassive } from './qqPassive';
 import { skillTools } from './skillTools';
 import { steerQueue } from './steerQueue';
 import { taskRunDelivery } from './taskRunDelivery';
@@ -22,6 +23,7 @@ export const redisService = {
   deviceSystemInfo,
   linear,
   pageCollab,
+  qqPassive,
   skillTools,
   steerQueue,
   taskRunDelivery,

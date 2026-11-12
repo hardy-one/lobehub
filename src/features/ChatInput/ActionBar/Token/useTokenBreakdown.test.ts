@@ -107,7 +107,7 @@ beforeEach(() => {
 });
 
 describe('useTokenBreakdown', () => {
-  it('falls back to a marked local estimate when provider input is missing', () => {
+  it('falls back to a local estimate when provider input is missing', () => {
     state.composerInput = 'draft';
     state.messages = [
       {
@@ -121,8 +121,6 @@ describe('useTokenBreakdown', () => {
     const { result } = renderHook(() => useTokenBreakdown());
 
     expect(result.current.usedToken).toBe('draft'.length + 'main column summary'.length);
-    expect(result.current.hasProviderUsage).toBe(false);
-    expect(result.current.usedTokenIsEstimated).toBe(true);
   });
 
   it('uses provider input plus cache read and write as the baseline', () => {
@@ -142,8 +140,6 @@ describe('useTokenBreakdown', () => {
     const { result } = renderHook(() => useTokenBreakdown());
 
     expect(result.current.usedToken).toBe(27_100);
-    expect(result.current.hasProviderUsage).toBe(true);
-    expect(result.current.usedTokenIsEstimated).toBe(false);
   });
 
   it('adds only local input after the provider baseline', () => {
@@ -160,7 +156,6 @@ describe('useTokenBreakdown', () => {
     const { result } = renderHook(() => useTokenBreakdown());
 
     expect(result.current.usedToken).toBe(100 + 'new message'.length);
-    expect(result.current.usedTokenIsEstimated).toBe(true);
   });
 
   it("counts the composer's own topic summary rather than the global active topic's", () => {

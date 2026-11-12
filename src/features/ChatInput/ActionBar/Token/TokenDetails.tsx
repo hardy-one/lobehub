@@ -10,32 +10,14 @@ import TokenProgress from './TokenProgress';
 import { type TokenBreakdown } from './useTokenBreakdown';
 
 interface TokenDetailsProps {
-  breakdown: Pick<
-    TokenBreakdown,
-    | 'chatsToken'
-    | 'hasProviderUsage'
-    | 'historySummaryToken'
-    | 'maxTokens'
-    | 'systemRoleToken'
-    | 'toolsToken'
-    | 'usedToken'
-    | 'usedTokenIsEstimated'
-  >;
+  breakdown: TokenBreakdown;
 }
 
 const TokenDetails = memo<TokenDetailsProps>(({ breakdown }) => {
   const { t } = useTranslation(['chat', 'components']);
 
-  const {
-    chatsToken,
-    hasProviderUsage,
-    historySummaryToken,
-    maxTokens,
-    systemRoleToken,
-    toolsToken,
-    usedToken,
-    usedTokenIsEstimated,
-  } = breakdown;
+  const { chatsToken, historySummaryToken, maxTokens, systemRoleToken, toolsToken, usedToken } =
+    breakdown;
   const isDevMode = useUserStore((s) => userGeneralSettingsSelectors.config(s).isDevMode);
 
   return (
@@ -64,51 +46,30 @@ const TokenDetails = memo<TokenDetailsProps>(({ breakdown }) => {
           </Center>
         </Tooltip>
       </Flexbox>
-      <Flexbox gap={4}>
-        <div style={{ color: cssVar.colorTextDescription, fontSize: 12, lineHeight: 1.4 }}>
-          {t(
-            usedTokenIsEstimated
-              ? hasProviderUsage
-                ? 'tokenDetails.usageEstimated'
-                : 'tokenDetails.usageLocal'
-              : 'tokenDetails.usageProvider',
-          )}
-        </div>
-        <div style={{ color: cssVar.colorTextDescription, fontSize: 12, lineHeight: 1.4 }}>
-          {t('tokenDetails.contextWindowBasis')}
-        </div>
-        <div style={{ color: cssVar.colorTextDescription, fontSize: 12, lineHeight: 1.4 }}>
-          {t('tokenDetails.breakdownBasis')}
-        </div>
-      </Flexbox>
       {isDevMode && (
         <TokenProgress
           showIcon
           data={[
             {
               color: cssVar.magenta,
-              estimated: true,
               id: 'systemRole',
               title: t('tokenDetails.systemRole'),
               value: systemRoleToken,
             },
             {
               color: cssVar.geekblue,
-              estimated: true,
               id: 'tools',
               title: t('tokenDetails.tools'),
               value: toolsToken,
             },
             {
               color: cssVar.orange,
-              estimated: true,
               id: 'historySummary',
               title: t('tokenDetails.historySummary'),
               value: historySummaryToken,
             },
             {
               color: cssVar.gold,
-              estimated: true,
               id: 'chats',
               title: t('tokenDetails.chats'),
               value: chatsToken,
@@ -119,11 +80,9 @@ const TokenDetails = memo<TokenDetailsProps>(({ breakdown }) => {
       <TokenProgress
         showIcon={isDevMode}
         showTotal={t('tokenDetails.total')}
-        totalValue={maxTokens}
         data={[
           {
             color: cssVar.colorSuccess,
-            estimated: usedTokenIsEstimated,
             id: 'used',
             title: t('tokenDetails.used'),
             value: usedToken,
@@ -131,7 +90,6 @@ const TokenDetails = memo<TokenDetailsProps>(({ breakdown }) => {
           {
             color: cssVar.colorFill,
             id: 'rest',
-            estimated: usedTokenIsEstimated,
             title: t('tokenDetails.rest'),
             value: Math.max(maxTokens - usedToken, 0),
           },

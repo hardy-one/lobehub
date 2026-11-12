@@ -3424,16 +3424,6 @@ export default {
   'tokenDetails.tools': 'Skill Settings',
   'tokenDetails.total': 'Total Available',
   'tokenDetails.used': 'Total Used',
-  'tokenDetails.usageProvider':
-    'Used starts with the latest successful provider input (input + cache read + cache write); output tokens are excluded.',
-  'tokenDetails.usageEstimated':
-    'Used starts with the latest provider input; changes after it are estimated locally and marked with ~.',
-  'tokenDetails.usageLocal':
-    'No provider input usage is available yet; Used is estimated locally and marked with ~.',
-  'tokenDetails.contextWindowBasis':
-    "Total is the model context window, not this request's API usage.",
-  'tokenDetails.breakdownBasis':
-    'Breakdown is a rough local estimate (~4 characters per token plus structure). Chinese, images, and tools may differ, so parts may not add up to Used.',
   'tokenTag.overload': 'Exceeded Limit',
   'tokenTag.remained': 'Remaining',
   'tokenTag.used': 'Used',

@@ -16,13 +16,12 @@ const Token = memo(() => {
 
   const {
     chatsToken,
-    hasProviderUsage,
     historySummaryToken,
     maxTokens,
     systemRoleToken,
     toolsToken,
+    totalToken,
     usedToken,
-    usedTokenIsEstimated,
   } = useTokenBreakdown();
   const isDevMode = useUserStore((s) => userGeneralSettingsSelectors.config(s).isDevMode);
   const content = useMemo(
@@ -30,25 +29,23 @@ const Token = memo(() => {
       <TokenDetails
         breakdown={{
           chatsToken,
-          hasProviderUsage,
           historySummaryToken,
           maxTokens,
           systemRoleToken,
           toolsToken,
+          totalToken,
           usedToken,
-          usedTokenIsEstimated,
         }}
       />
     ),
     [
       chatsToken,
-      hasProviderUsage,
       historySummaryToken,
       maxTokens,
       systemRoleToken,
       toolsToken,
+      totalToken,
       usedToken,
-      usedTokenIsEstimated,
     ],
   );
 

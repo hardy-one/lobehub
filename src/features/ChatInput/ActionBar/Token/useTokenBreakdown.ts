@@ -79,14 +79,12 @@ const useComposerSource = (): ComposerSource => {
 
 export interface TokenBreakdown {
   chatsToken: number;
-  hasProviderUsage: boolean;
   historySummaryToken: number;
   maxTokens: number;
   systemRoleToken: number;
   toolsToken: number;
   totalToken: number;
   usedToken: number;
-  usedTokenIsEstimated: boolean;
 }
 
 export const useTokenBreakdown = (): TokenBreakdown => {
@@ -236,17 +234,14 @@ export const useTokenBreakdown = (): TokenBreakdown => {
   const usedToken = latestProviderUsage
     ? latestProviderUsage.inputTokens + localIncrementToken
     : totalToken;
-  const usedTokenIsEstimated = !latestProviderUsage || localIncrementToken > 0;
 
   return {
     chatsToken,
-    hasProviderUsage: Boolean(latestProviderUsage),
     historySummaryToken,
     maxTokens,
     systemRoleToken,
     toolsToken,
     totalToken,
     usedToken,
-    usedTokenIsEstimated,
   };
 };

@@ -33,6 +33,7 @@ import type {
   QQAdapterConfig,
   QQAttachment,
   QQRawMessage,
+  QQSendMessageResponse,
   QQThreadId,
   QQSendMessageResponse,
   QQWebhookEventData,

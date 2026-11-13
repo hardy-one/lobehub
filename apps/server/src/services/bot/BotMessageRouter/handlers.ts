@@ -35,7 +35,7 @@ import {
   type UserAllowlist,
 } from '../platforms';
 import { extractDeviceAllowlist } from '../platforms/deviceAccess';
-import { canUseQqGroupDevices, QQ_GROUP_POLICIES } from '../platforms/qq/accessSettings';
+import { canUseQqGroupDevices, QQ_GROUP_ACCEPTED_POLICIES } from '../platforms/qq/accessSettings';
 import { renderThrownAgentError } from '../renderThrownError';
 import { createReplyOpener } from '../wake/opener';
 import { resolveWakeScheduler } from '../wake/scheduler';
@@ -102,7 +102,7 @@ export function registerHandlers(
   const guestSettings: GuestSettings = extractGuestSettings(info.settings);
   const groupSettings: GroupSettings = extractGroupSettings(
     info.settings,
-    platform === 'qq' ? { acceptedPolicies: QQ_GROUP_POLICIES } : undefined,
+    platform === 'qq' ? { acceptedPolicies: QQ_GROUP_ACCEPTED_POLICIES } : undefined,
   );
   const userAllowlist: UserAllowlist = extractUserAllowlist(info.settings);
   /**

@@ -29,7 +29,10 @@ import {
   resolveBotConcurrency,
   resolveBotProviderConfig,
 } from '../platforms';
-import { normalizeQqAccessSettings, QQ_GROUP_POLICIES } from '../platforms/qq/accessSettings';
+import {
+  normalizeQqAccessSettings,
+  QQ_GROUP_ACCEPTED_POLICIES,
+} from '../platforms/qq/accessSettings';
 import { buildCommands } from './commands';
 import { registerHandlers } from './handlers';
 import type { RegisteredBot } from './types';
@@ -299,7 +302,7 @@ export class BotMessageRouter {
     const guestSettings: GuestSettings = extractGuestSettings(runtimeSettings);
     const groupSettings = extractGroupSettings(
       runtimeSettings,
-      platform === 'qq' ? { acceptedPolicies: QQ_GROUP_POLICIES } : undefined,
+      platform === 'qq' ? { acceptedPolicies: QQ_GROUP_ACCEPTED_POLICIES } : undefined,
     );
     const operatorUserId =
       typeof runtimeSettings.userId === 'string'

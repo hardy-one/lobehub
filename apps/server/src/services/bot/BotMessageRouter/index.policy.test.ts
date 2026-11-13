@@ -388,6 +388,23 @@ describe('BotMessageRouter', () => {
       expect(mockHandleMention).toHaveBeenCalledTimes(1);
       expect(mockHandleMention.mock.calls[0][2].botContext.isDeviceTrusted).toBe(true);
     });
+    it('keeps legacy QQ disabled group policy owner-only', async () => {
+      const { mention } = await loadHandlers(
+        { groupPolicy: 'disabled', userId: 'owner-openid' },
+        'qq',
+      );
+      const thread = makeQqGroupThread('group-openid');
+
+      await mention(thread, makeQqMessage('admin', 'admin-openid'));
+      await mention(thread, makeQqMessage('member', 'member-openid'));
+      expect(mockHandleMention).not.toHaveBeenCalled();
+      expect(thread.post).toHaveBeenCalledTimes(2);
+
+      await mention(thread, makeQqMessage('owner', 'owner-openid'));
+      expect(mockHandleMention).toHaveBeenCalledTimes(1);
+      expect(mockHandleMention.mock.calls[0][2].botContext.isOwner).toBe(true);
+      expect(thread.post).toHaveBeenCalledTimes(2);
+    });
 
     it('explains when QQ omitted member_role under admins policy', async () => {
       const { mention } = await loadHandlers({ groupPolicy: 'admins' }, 'qq');

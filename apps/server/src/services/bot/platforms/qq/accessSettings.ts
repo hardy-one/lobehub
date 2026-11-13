@@ -9,10 +9,19 @@ export const QQ_GROUP_POLICIES = [
   'open',
   'pairing',
   'admins',
+] as const satisfies readonly GroupPolicy[];
+
+/** Runtime also accepts persisted `disabled`; that legacy value is not selectable. */
+export const QQ_GROUP_ACCEPTED_POLICIES = [
+  ...QQ_GROUP_POLICIES,
   'disabled',
 ] as const satisfies readonly GroupPolicy[];
 
-/** Convert QQ's legacy allowlist value to its equivalent pairing policy. */
+/**
+ * Migrate QQ's legacy allowlist policy to pairing without changing stored `disabled`.
+ * `disabled` is intentionally not selectable, but existing settings must remain
+ * readable and saveable with their fail-closed, owner-only runtime behavior.
+ */
 export function normalizeQqAccessSettings(
   settings: Record<string, unknown> | null | undefined,
 ): Record<string, unknown> | null | undefined {

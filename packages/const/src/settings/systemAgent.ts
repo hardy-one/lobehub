@@ -87,6 +87,9 @@ const channelRoutingProvider: unknown = Reflect.get(
 
 export const DEFAULT_SYSTEM_AGENT_CONFIG: UserServiceModelConfig = {
   agentMeta: DEFAULT_SYSTEM_AGENT_ITEM,
+  // Short structured classifications that run on every user message: the Flash tier, not the
+  // model that generates the expertise itself.
+  agentSignalJudge: DEFAULT_MINI_SYSTEM_AGENT_ITEM,
   asr: DEFAULT_ASR_SYSTEM_AGENT_ITEM,
   channelRouting: {
     enabled: true,
@@ -131,6 +134,7 @@ export const SERVICE_MODEL_TIER_SLOTS: Record<ServiceModelTier, UserServiceModel
     'translation',
     'promptRewrite',
     'memoryAnalysisAgentConfig',
+    'agentSignalJudge',
     'userMemoryPersonaWriter',
     'inputCompletion',
     'followUpAction',

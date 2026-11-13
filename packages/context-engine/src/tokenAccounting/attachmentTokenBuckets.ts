@@ -8,9 +8,10 @@ import type {
   UIChatMessage,
   UploadFileItem,
 } from '@lobechat/types';
+import { estimateTokenCount } from 'tokenx';
+
 import { estimateAudioInputTokens } from '../utils/audio';
 import { getMimeType } from '../utils/mimeType';
-import { estimateTokenCount } from 'tokenx';
 
 const ESTIMATE_INPUT_MESSAGE_ID = '__cost_estimate_input__';
 const VISUAL_INPUT_TOKEN_ESTIMATE = 1000;
@@ -108,7 +109,7 @@ export const estimateSentMessageAttachmentTokenBuckets = (
     const fileList = message.fileList ?? [];
     const imageList = message.imageList ?? [];
     const videoList = message.videoList ?? [];
-    const audioList = message.audioList ?? [];
+    const audioList = message.metadata?.voiceMessage?.transcribed ? [] : (message.audioList ?? []);
 
     if (
       fileList.length === 0 &&

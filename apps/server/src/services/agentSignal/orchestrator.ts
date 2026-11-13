@@ -12,7 +12,6 @@ import { createSourceEvent } from '@lobechat/agent-signal/source';
 
 import type { WakeDecision } from '@/server/services/conversationWake/types';
 import { ExpertiseIngestionService } from '@/server/services/expertise/ingestion';
-import { resolveExpertiseModelConfig } from '@/server/services/expertise/modelConfig';
 
 import { acquireAgentSignalDailyBudget } from './budget';
 import type {
@@ -20,6 +19,7 @@ import type {
   AgentSignalExecutionContext,
   AgentSignalSourceEventInput,
 } from './emitter';
+import { resolveAgentSignalJudgeModelConfig } from './judgeModelConfig';
 import { projectAgentSignalObservability } from './observability/projector';
 import { persistAgentSignalObservability } from './observability/store';
 import type { CreateDefaultAgentSignalPoliciesOptions } from './policies';
@@ -113,10 +113,12 @@ const createPolicyOptions = async (
   // serverRuntime primitive; the completion handler only writes the ideas brief.
   const policyOptions = options.policyOptions;
 
-  let expertiseModelConfig: { model: string; provider: string } | undefined;
+  // The intent classifiers fire on every user message and only answer a short schema, so they
+  // read their own slot rather than following the model that generates the expertise itself.
+  let judgeModelConfig: { model: string; provider: string } | undefined;
   if (context.db && context.userId) {
     try {
-      expertiseModelConfig = await resolveExpertiseModelConfig(context.db, context.userId);
+      judgeModelConfig = await resolveAgentSignalJudgeModelConfig(context.db, context.userId);
     } catch {
       // Fallback silently if settings cannot be read
     }
@@ -151,8 +153,8 @@ const createPolicyOptions = async (
     },
     feedbackDomainJudge: {
       db: context.db,
-      model: expertiseModelConfig?.model,
-      provider: expertiseModelConfig?.provider,
+      model: judgeModelConfig?.model,
+      provider: judgeModelConfig?.provider,
       ...policyOptions?.feedbackDomainJudge,
       userId: context.userId,
       workspaceId: context.workspaceId,
@@ -170,8 +172,8 @@ const createPolicyOptions = async (
               }),
           }),
       db: context.db,
-      model: expertiseModelConfig?.model,
-      provider: expertiseModelConfig?.provider,
+      model: judgeModelConfig?.model,
+      provider: judgeModelConfig?.provider,
       ...policyOptions?.feedbackSatisfactionJudge,
       userId: context.userId,
       workspaceId: context.workspaceId,
@@ -196,8 +198,8 @@ const createPolicyOptions = async (
     },
     skillIntentClassifier: {
       db: context.db,
-      model: expertiseModelConfig?.model,
-      provider: expertiseModelConfig?.provider,
+      model: judgeModelConfig?.model,
+      provider: judgeModelConfig?.provider,
       ...policyOptions?.skillIntentClassifier,
       userId: context.userId,
       workspaceId: context.workspaceId,

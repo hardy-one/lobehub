@@ -8,6 +8,7 @@ interface LoadIndexIntegrationModuleOptions {
   mockEmitSourceEvent?: Mock;
   mockInitModelRuntimeFromDB?: Mock;
   mockProjectObservability?: Mock;
+  mockResolveJudgeModelConfig?: Mock;
   mockRuntimeFactory?: Mock;
 }
 
@@ -42,6 +43,7 @@ vi.mock('@/server/services/redis', () => ({
 const loadIndexIntegrationModule = async (options: LoadIndexIntegrationModuleOptions = {}) => {
   vi.resetModules();
   vi.doUnmock('../featureGate');
+  vi.doUnmock('../judgeModelConfig');
   vi.doUnmock('../observability/projector');
   vi.doUnmock('../observability/store');
   vi.doUnmock('../orchestrator');
@@ -57,6 +59,12 @@ const loadIndexIntegrationModule = async (options: LoadIndexIntegrationModuleOpt
   vi.doMock('../featureGate', () => ({
     isAgentSignalEnabledForUser,
   }));
+  if (options.mockResolveJudgeModelConfig) {
+    vi.doMock('../judgeModelConfig', () => ({
+      resolveAgentSignalJudgeModelConfig: options.mockResolveJudgeModelConfig,
+    }));
+  }
+
   vi.doMock('../observability/store', () => ({
     persistAgentSignalObservability,
   }));
@@ -297,6 +305,67 @@ describe('emitAgentSignalSourceEvent integration', () => {
         }),
       }),
     );
+  });
+
+  it('runs the intent classifiers on the agentSignalJudge slot instead of the expertise slot', async () => {
+    const judgeModel = { model: 'judge-model', provider: 'judge-provider' };
+    const emitSourceEvent = vi.fn().mockResolvedValue({
+      deduped: false,
+      source: {
+        chain: { chainId: 'chain:judge', rootSourceId: 'judge-source' },
+        payload: {},
+        scopeKey: 'topic:topic-1',
+        sourceId: 'judge-source',
+        sourceType: 'agent.user.message',
+        timestamp: 1_710_000_000_000,
+      },
+      trigger: {
+        scopeKey: 'topic:topic-1',
+        token: 'trigger:judge-source',
+        windowEventCount: 1,
+      },
+    });
+    const createDefaultAgentSignalPolicies = vi.fn().mockReturnValue([]);
+    const emitNormalized = vi.fn().mockResolvedValue({
+      status: 'completed',
+      trace: {
+        actions: [],
+        results: [],
+        signals: [],
+        source: {
+          chain: { chainId: 'chain:judge', rootSourceId: 'judge-source' },
+          payload: {},
+          scopeKey: 'topic:topic-1',
+          sourceId: 'judge-source',
+          sourceType: 'agent.user.message',
+          timestamp: 1_710_000_000_000,
+        },
+      },
+    });
+
+    const { emitAgentSignalSourceEvent } = await loadIndexIntegrationModule({
+      mockCreateDefaultAgentSignalPolicies: createDefaultAgentSignalPolicies,
+      mockEmitSourceEvent: emitSourceEvent,
+      mockResolveJudgeModelConfig: vi.fn().mockResolvedValue(judgeModel),
+      mockRuntimeFactory: vi.fn().mockReturnValue({ emitNormalized }),
+    });
+
+    await emitAgentSignalSourceEvent(
+      {
+        payload: { message: 'This is not what I asked for.', messageId: 'msg-judge' },
+        scopeKey: 'topic:topic-1',
+        sourceId: 'judge-source',
+        sourceType: 'agent.user.message',
+        timestamp: 1_710_000_000_000,
+      },
+      { agentId: 'agent-1', db: {} as never, userId: 'user-1' },
+    );
+
+    const policyOptions = createDefaultAgentSignalPolicies.mock.calls[0][0];
+
+    expect(policyOptions.feedbackSatisfactionJudge).toEqual(expect.objectContaining(judgeModel));
+    expect(policyOptions.feedbackDomainJudge).toEqual(expect.objectContaining(judgeModel));
+    expect(policyOptions.skillIntentClassifier).toEqual(expect.objectContaining(judgeModel));
   });
 
   it(

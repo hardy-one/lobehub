@@ -9,6 +9,7 @@ import { BaseProcessor } from '../base/BaseProcessor';
 import { createMediaFileRef } from '../const/mediaRef';
 import type { PipelineContext, ProcessorOptions } from '../types';
 import { normalizeAudioDurationMs } from '../utils/audio';
+import { getModelVisibleAudioList } from '../utils/voiceMessage';
 
 declare module '../types' {
   interface PipelineContextMetadataOverrides {
@@ -233,14 +234,12 @@ export class MessageContentProcessor extends BaseProcessor {
     // A transcribed voice turn keeps its recording for playback only: the transcript is
     // already the message text, so sending the audio as well makes a model without native
     // audio call `analyzeMedia` on it for nothing.
-    const audioList: any[] | undefined = message.metadata?.voiceMessage?.transcribed
-      ? []
-      : message.audioList;
+    const audioList = getModelVisibleAudioList(message);
 
     // Check if images, videos or files need processing
     const hasImages = message.imageList && message.imageList.length > 0;
     const hasVideos = message.videoList && message.videoList.length > 0;
-    const hasAudios = audioList && audioList.length > 0;
+    const hasAudios = audioList.length > 0;
     const hasFiles = message.fileList && message.fileList.length > 0;
 
     const canUseVision = !!this.config.isCanUseVision?.(this.config.model, this.config.provider);
@@ -317,7 +316,7 @@ export class MessageContentProcessor extends BaseProcessor {
         // File access URLs are needed by sandbox/code tools that fetch attachments from text.
         // Call sites can still disable them for environments such as desktop local files.
         addUrl: this.config.fileContext.includeFileUrl ?? true,
-        audioList: audioList || [],
+        audioList,
         canReadAttachment: this.config.canReadAttachment,
         fileList: message.fileList,
         imageList: message.imageList || [],
@@ -360,7 +359,7 @@ export class MessageContentProcessor extends BaseProcessor {
 
     // Process audio content
     if (hasAudios && canUseAudio) {
-      const audioContentParts = await this.processAudioList(audioList || []);
+      const audioContentParts = await this.processAudioList(audioList);
       contentParts.push(...audioContentParts);
     }
 

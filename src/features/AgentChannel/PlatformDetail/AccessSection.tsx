@@ -9,19 +9,16 @@ import type { FieldSchema } from '@/server/services/bot/platforms/types';
 
 import {
   type AccessSettings,
-  applyDmStance,
+  applyDmPolicy,
   countListed,
-  deriveDmStance,
-  type DmStance,
+  deriveDmPolicy,
   dropHiddenIncompleteRows,
+  getDeclaredPolicy,
 } from './accessStance';
 import { ChoiceList, type ChoiceOption } from './ChoiceList';
 import type { ChannelFormValues } from './index';
 import { SchemaField } from './SchemaField';
 import type { AccessSectionKey } from './settingsGroups';
-
-type GroupPolicy = 'allowlist' | 'disabled' | 'open';
-type DevicePolicy = 'allowlist' | 'owner';
 
 interface AccessSectionProps {
   disabled?: boolean;
@@ -29,25 +26,104 @@ interface AccessSectionProps {
   fields: FieldSchema[];
   form: FormInstance<ChannelFormValues>;
   onValuesChange?: (values: ChannelFormValues) => void;
-  /** Which block of the access tab to render. */
-  section: AccessSectionKey;
+  platformId: string;
   /** Platform helper rendered right under the owner ID field (e.g. Feishu's lookup). */
+  section: AccessSectionKey;
   userIdExtras?: ReactNode;
 }
 
+const POLICY_COPY_ALIASES: Record<string, { description: string; label: string }> = {
+  'channel.dmPolicyAllowlist': {
+    description: 'channel.access.dm.listedDesc',
+    label: 'channel.access.dm.listed',
+  },
+  'channel.dmPolicyDisabled': {
+    description: 'channel.access.dm.closedDesc',
+    label: 'channel.access.dm.closed',
+  },
+  'channel.dmPolicyOpen': {
+    description: 'channel.access.dm.everyoneDesc',
+    label: 'channel.access.dm.everyone',
+  },
+  'channel.dmPolicyPairing': {
+    description: 'channel.access.dm.approvalDesc',
+    label: 'channel.access.dm.approval',
+  },
+  'channel.groupPolicyAllowlist': {
+    description: 'channel.access.group.allowlistDesc',
+    label: 'channel.access.group.allowlist',
+  },
+  'channel.groupPolicyDisabled': {
+    description: 'channel.access.group.disabledDesc',
+    label: 'channel.access.group.disabled',
+  },
+  'channel.groupPolicyOpen': {
+    description: 'channel.access.group.openDesc',
+    label: 'channel.access.group.open',
+  },
+};
+
+const ACCESS_COPY_PREFIX: Record<string, string> = {
+  devicePolicy: 'channel.access.device',
+  dmPolicy: 'channel.access.dm',
+  groupPolicy: 'channel.access.group',
+};
+
+const ACCESS_POLICY_ORDER = ['open', 'pairing', 'allowlist', 'disabled', 'admins'];
+
+const getAccessPolicyRank = (value: string, schemaIndex: number) => {
+  const orderIndex = ACCESS_POLICY_ORDER.indexOf(value);
+  return orderIndex === -1 ? ACCESS_POLICY_ORDER.length + schemaIndex : orderIndex;
+};
+
+const getPolicyOption = (
+  field: FieldSchema,
+  value: string,
+  index: number,
+  platformId: string,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): ChoiceOption<string> => {
+  const declaredLabel = field.enumLabels?.[index];
+  const alias = declaredLabel ? POLICY_COPY_ALIASES[declaredLabel] : undefined;
+  let labelKey = alias?.label ?? declaredLabel;
+  let descriptionKey = alias?.description ?? field.enumDescriptions?.[index];
+
+  if (platformId === 'qq' && field.key === 'dmPolicy' && value === 'pairing') {
+    labelKey = 'channel.qq.access.dm.pairing';
+  }
+  if (platformId === 'qq' && field.key === 'groupPolicy' && value === 'pairing') {
+    labelKey = 'channel.qq.access.group.pairing';
+  }
+  if (platformId === 'qq' && field.key === 'groupPolicy' && value === 'admins') {
+    labelKey = 'channel.qq.access.group.admins';
+  }
+
+  if (platformId === 'qq' && field.key === 'devicePolicy') {
+    labelKey = `channel.qq.access.device.${value}`;
+    descriptionKey = `channel.qq.access.device.${value}Desc`;
+  }
+
+  const prefix = ACCESS_COPY_PREFIX[field.key];
+  return {
+    desc: descriptionKey ? t(descriptionKey) : prefix ? t(`${prefix}.${value}Desc`) : undefined,
+    label: labelKey ? t(labelKey) : prefix ? t(`${prefix}.${value}`) : value,
+    recommendedLabel:
+      field.enumRecommended === value ||
+      (field.key === 'dmPolicy' && declaredLabel === 'channel.dmPolicyPairing') ||
+      (field.key === 'devicePolicy' && value === field.default)
+        ? t('channel.access.recommended')
+        : undefined,
+    value,
+  };
+};
+
 /**
- * "Who can use it", asked as decisions instead of settings, one block at a time:
- * who the owner is, who may talk to the bot, and who may use the owner's devices.
- *
- * The runtime decides conversation access with `dmPolicy`, a global people list
- * (`allowFrom`), a group policy and a group list. This section lets a person
- * choose one stance per surface and only then shows what that choice needs: the
- * list for "approval" and "listed", the owner's ID for approving. Devices are
- * the owner's alone unless they name people in `deviceAllowFrom`. A list stays
- * mounted when hidden so a saved list is never dropped by a save.
+ * The runtime owns the policy values. This section turns each platform's
+ * declared enum into the corresponding access choices and keeps its lists in
+ * step with the policy selected above them.
  */
 export const AccessSection = memo<AccessSectionProps>(
-  ({ disabled, fields, form, onValuesChange, section, userIdExtras }) => {
+  ({ disabled, fields, form, onValuesChange, platformId, section, userIdExtras }) => {
     const { t: _t } = useTranslation('agent');
     const t = _t as (key: string, options?: Record<string, unknown>) => string;
 
@@ -55,32 +131,33 @@ export const AccessSection = memo<AccessSectionProps>(
     const watched = useWatch(form, (values) => values.settings);
     const settings = useMemo(() => (watched ?? {}) as AccessSettings, [watched]);
 
-    const stance = deriveDmStance(settings);
-    const groupPolicy = (settings.groupPolicy as GroupPolicy | undefined) ?? 'open';
-    const devicePolicy: DevicePolicy =
-      settings.devicePolicy === 'allowlist' ? 'allowlist' : 'owner';
+    const dmField = byKey.get('dmPolicy');
+    const groupField = byKey.get('groupPolicy');
+    const deviceField = byKey.get('devicePolicy');
+    const dmPolicy = deriveDmPolicy(settings, dmField);
+    const groupPolicy = getDeclaredPolicy(groupField, settings.groupPolicy);
+    const devicePolicy = getDeclaredPolicy(deviceField, settings.devicePolicy);
     const hasPeopleList = countListed(settings.allowFrom) > 0;
 
     const write = useCallback(
       (patch: Record<string, unknown>) => {
         const current = (form.getValues().settings ?? {}) as Record<string, unknown>;
         const next = { ...current, ...patch };
-        // A list this choice hides must not keep a half-added row: its hidden
-        // "ID required" error would block every save.
-        Object.assign(next, dropHiddenIncompleteRows(next));
+        // A hidden, unfinished row must not keep its required-ID error active.
+        Object.assign(next, dropHiddenIncompleteRows(next as AccessSettings, fields));
         form.setValues({ settings: next as Record<string, {} | undefined> });
         onValuesChange?.(form.getValues());
       },
-      [form, onValuesChange],
+      [fields, form, onValuesChange],
     );
 
-    const handleStance = useCallback(
-      (next: DmStance) => {
-        if (next === stance) return;
-        const { dropped, patch } = applyDmStance(next, settings);
+    const handleDmPolicy = useCallback(
+      (next: string) => {
+        if (next === dmPolicy) return;
+        const { dropped, patch } = applyDmPolicy(next, settings, dmField);
 
-        // Switching to "everyone" has to empty the list, or the list would keep
-        // restricting everyone. Say so before throwing people off it.
+        // On platforms where the list is a global restriction, opening DMs also
+        // removes its entries. Confirm before dropping approved users.
         if (dropped > 0) {
           confirmModal({
             content: t('channel.access.list.clearContent', { count: dropped }),
@@ -93,76 +170,89 @@ export const AccessSection = memo<AccessSectionProps>(
 
         write(patch);
       },
-      [settings, stance, t, write],
+      [dmField, dmPolicy, settings, t, write],
     );
 
-    // Each option states what it does, so the choice is made by reading the
-    // options rather than by opening one.
-    const dmOptions: ChoiceOption<DmStance>[] = (
-      ['everyone', 'approval', 'listed', 'closed'] as const
-    ).map((value) => ({
-      desc: t(`channel.access.dm.${value}Desc`),
-      label: t(`channel.access.dm.${value}`),
-      recommendedLabel: value === 'approval' ? t('channel.access.recommended') : undefined,
-      value,
-    }));
-    const deviceOptions: ChoiceOption<DevicePolicy>[] = (['owner', 'allowlist'] as const).map(
-      (value) => ({
-        desc: t(`channel.access.device.${value}Desc`),
-        label: t(`channel.access.device.${value}`),
-        recommendedLabel: value === 'owner' ? t('channel.access.recommended') : undefined,
-        value,
-      }),
-    );
-    const groupOptions: ChoiceOption<GroupPolicy>[] = (
-      ['open', 'allowlist', 'disabled'] as const
-    ).map((value) => ({
-      desc: t(`channel.access.group.${value}Desc`),
-      label: t(`channel.access.group.${value}`),
-      value,
-    }));
+    const optionsFor = (field?: FieldSchema): ChoiceOption<string>[] => {
+      const declaredOptions = (field?.enum ?? []).map((value, index) => ({ value, index }));
+      if (field?.key !== 'devicePolicy') {
+        declaredOptions.sort(
+          (left, right) =>
+            getAccessPolicyRank(left.value, left.index) -
+            getAccessPolicyRank(right.value, right.index),
+        );
+      }
+
+      return declaredOptions.map(({ value, index }) =>
+        getPolicyOption(field!, value, index, platformId, t),
+      );
+    };
+    const dmOptions = optionsFor(dmField);
+    const groupOptions = optionsFor(groupField);
+    const deviceOptions = optionsFor(deviceField);
 
     const userId = byKey.get('userId');
     const serverId = byKey.get('serverId');
     const allowFrom = byKey.get('allowFrom');
     const guestPolicy = byKey.get('guestPolicy');
     const groupAllowFrom = byKey.get('groupAllowFrom');
+    const groupListVisible = (() => {
+      if (!groupAllowFrom?.visibleWhen) return true;
+      const conditions = Array.isArray(groupAllowFrom.visibleWhen)
+        ? groupAllowFrom.visibleWhen
+        : [groupAllowFrom.visibleWhen];
+      return conditions.every(({ field: key, value: expected }) => {
+        const actual = key === 'groupPolicy' ? groupPolicy : settings[key as keyof AccessSettings];
+        return Array.isArray(expected) ? expected.includes(actual) : actual === expected;
+      });
+    })();
     const deviceAllowFrom = byKey.get('deviceAllowFrom');
 
     const ownerMissing = !(typeof settings.userId === 'string' && settings.userId.trim());
-    const approverMissing = settings.dmPolicy === 'pairing' && ownerMissing;
-    // A filled list limits everyone in every surface, so it stays visible (and
-    // clearable) whatever the DM stance is.
-    const listVisible = stance === 'approval' || stance === 'listed' || hasPeopleList;
+    const approverMissing = dmPolicy === 'pairing' && ownerMissing;
+    const listVisible =
+      dmPolicy === 'pairing' ||
+      (dmField?.enum?.includes('allowlist') && dmPolicy === 'allowlist') ||
+      hasPeopleList;
+    const legacyDisabledGroup =
+      platformId === 'qq' &&
+      settings.groupPolicy === 'disabled' &&
+      !groupField?.enum?.includes('disabled');
 
     if (section === 'identity')
       return (
         <>
           {userId && (
-            <SchemaField
-              disabled={disabled}
-              field={userId}
-              parentKey="settings"
-              descOverride={
-                <>
-                  {t('channel.access.identity.desc')}
-                  {approverMissing && (
-                    <Text fontSize={12} style={{ display: 'block' }} type={'warning'}>
-                      {t('channel.access.identity.approverMissing')}
-                    </Text>
-                  )}
-                </>
-              }
-              validateOverride={() =>
-                form.getValue('settings.dmPolicy') === 'pairing' &&
-                !String(form.getValue('settings.userId') ?? '').trim()
-                  ? t('channel.access.identity.required')
-                  : undefined
-              }
-            />
+            <>
+              <SchemaField
+                disabled={disabled}
+                field={userId}
+                hidden={userId.managed && !!userIdExtras}
+                parentKey="settings"
+                descOverride={
+                  !userId.managed ? (
+                    <>
+                      {t('channel.access.identity.desc')}
+                      {approverMissing && (
+                        <Text fontSize={12} style={{ display: 'block' }} type="warning">
+                          {platformId === 'qq'
+                            ? t('channel.qq.ownerBinding.approverMissing')
+                            : t('channel.access.identity.approverMissing')}
+                        </Text>
+                      )}
+                    </>
+                  ) : undefined
+                }
+                validateOverride={() =>
+                  getDeclaredPolicy(dmField, form.getValue('settings.dmPolicy')) === 'pairing' &&
+                  !String(form.getValue('settings.userId') ?? '').trim()
+                    ? t('channel.access.identity.required')
+                    : undefined
+                }
+              />
+              {userIdExtras}
+            </>
           )}
-          {userIdExtras}
-          {/* Your server sits with your own ID: both say what is yours, not who may talk. */}
           {serverId && (
             <SchemaField divider disabled={disabled} field={serverId} parentKey="settings" />
           )}
@@ -172,14 +262,16 @@ export const AccessSection = memo<AccessSectionProps>(
     if (section === 'device')
       return (
         <>
-          {byKey.has('devicePolicy') && (
+          {deviceField && (
             <Form.Field
               label={t('channel.access.device.label')}
               layout="vertical"
               desc={
                 ownerMissing ? (
-                  <Text fontSize={12} type={'warning'}>
-                    {t('channel.access.device.ownerMissing')}
+                  <Text fontSize={12} type="warning">
+                    {platformId === 'qq'
+                      ? t('channel.qq.ownerBinding.deviceOwnerMissing')
+                      : t('channel.access.device.ownerMissing')}
                   </Text>
                 ) : undefined
               }
@@ -188,7 +280,7 @@ export const AccessSection = memo<AccessSectionProps>(
                 aria-label={t('channel.access.device.label')}
                 disabled={disabled}
                 options={deviceOptions}
-                value={devicePolicy}
+                value={devicePolicy ?? ''}
                 onChange={(next) => write({ devicePolicy: next })}
               />
             </Form.Field>
@@ -196,13 +288,15 @@ export const AccessSection = memo<AccessSectionProps>(
           {deviceAllowFrom && (
             <SchemaField
               divider
-              descOverride={t('channel.access.device.listHint')}
               disabled={disabled}
               emptyOverride={t('channel.access.device.listEmpty')}
               field={deviceAllowFrom}
               hidden={devicePolicy !== 'allowlist'}
               labelOverride={t('channel.access.device.list')}
               parentKey="settings"
+              descOverride={
+                deviceAllowFrom.managed ? undefined : t('channel.access.device.listHint')
+              }
             />
           )}
         </>
@@ -210,32 +304,36 @@ export const AccessSection = memo<AccessSectionProps>(
 
     return (
       <>
-        {byKey.has('dmPolicy') && (
+        {dmField && (
           <Form.Field label={t('channel.access.dm.label')} layout="vertical">
             <ChoiceList
               aria-label={t('channel.access.dm.label')}
               disabled={disabled}
               options={dmOptions}
-              value={stance}
-              onChange={handleStance}
+              value={dmPolicy ?? ''}
+              onChange={handleDmPolicy}
             />
           </Form.Field>
         )}
         {allowFrom && (
           <SchemaField
             divider
-            descOverride={t('channel.access.list.hint')}
+            descOverride={allowFrom.managed ? undefined : t('channel.access.list.hint')}
             disabled={disabled}
             field={allowFrom}
             hidden={!listVisible}
             parentKey="settings"
             emptyOverride={t(
-              stance === 'approval'
+              dmPolicy === 'pairing'
                 ? 'channel.access.list.emptyApproval'
                 : 'channel.access.list.emptyListed',
             )}
             labelOverride={t(
-              stance === 'approval' ? 'channel.access.list.approved' : 'channel.access.list.listed',
+              platformId === 'qq' && allowFrom.managed
+                ? 'channel.access.list.approved'
+                : dmPolicy === 'pairing'
+                  ? 'channel.access.list.approved'
+                  : 'channel.access.list.listed',
             )}
           />
         )}
@@ -243,29 +341,42 @@ export const AccessSection = memo<AccessSectionProps>(
           <SchemaField divider disabled={disabled} field={guestPolicy} parentKey="settings" />
         )}
 
-        {byKey.has('groupPolicy') && (
+        {groupField && (
           <Form.Field
             divider
-            desc={hasPeopleList ? t('channel.access.group.listNote') : undefined}
             label={t('channel.access.group.label')}
             layout="vertical"
+            desc={
+              hasPeopleList && platformId !== 'qq' ? t('channel.access.group.listNote') : undefined
+            }
           >
             <ChoiceList
               aria-label={t('channel.access.group.label')}
               disabled={disabled}
               options={groupOptions}
-              value={groupPolicy}
+              value={groupPolicy ?? ''}
               onChange={(next) => write({ groupPolicy: next })}
             />
+            {legacyDisabledGroup && (
+              <Text fontSize={12} style={{ display: 'block', marginBlockStart: 8 }} type="warning">
+                {t('channel.qq.access.group.legacyDisabled')}
+              </Text>
+            )}
           </Form.Field>
         )}
         {groupAllowFrom && (
           <SchemaField
             divider
             disabled={disabled}
+            emptyOverride={platformId === 'qq' ? t('channel.qq.access.group.listEmpty') : undefined}
             field={{ ...groupAllowFrom, visibleWhen: undefined }}
-            hidden={groupPolicy !== 'allowlist'}
+            hidden={!groupListVisible}
             parentKey="settings"
+            labelOverride={
+              platformId === 'qq' && groupPolicy === 'pairing'
+                ? t('channel.qq.access.group.list')
+                : undefined
+            }
           />
         )}
       </>

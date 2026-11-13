@@ -34,6 +34,7 @@ vi.mock('@/services/agentBotProvider', () => ({
     delete: vi.fn(),
     exportByAgentId: vi.fn(),
     feishuFetchOwnerId: vi.fn(),
+    createOwnerBindingCode: vi.fn(),
     getByAgentId: vi.fn(),
     lineFetchBotInfo: vi.fn(),
     listPlatforms: vi.fn(),
@@ -279,6 +280,22 @@ describe('bot replicas', () => {
           'bot-2',
         ]),
       );
+    });
+
+    it('creates an owner binding code through the service', async () => {
+      const result = { code: 'AB12', expiresAt: Date.now() + 60_000 };
+      vi.mocked(agentBotProviderService.createOwnerBindingCode).mockResolvedValue(result);
+
+      await expect(
+        useAgentStore.getState().createOwnerBindingCode({
+          applicationId: 'qq-app',
+          platform: 'qq',
+        }),
+      ).resolves.toEqual(result);
+      expect(agentBotProviderService.createOwnerBindingCode).toHaveBeenCalledWith({
+        applicationId: 'qq-app',
+        platform: 'qq',
+      });
     });
 
     it('refreshes the active agent when no agent id is given', async () => {

@@ -14,6 +14,7 @@ export interface BotProviderItem {
   id: string;
   platform: string;
   settings?: Record<string, unknown> | null;
+  updatedAt?: Date | number | string;
 }
 
 export interface BotProvidersParams {

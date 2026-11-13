@@ -17,6 +17,18 @@ const schema: FieldSchema[] = [
   },
 ];
 
+const qqSchema: FieldSchema[] = [
+  ...schema,
+  {
+    key: 'settings',
+    label: 'settings',
+    properties: [
+      { enum: ['open', 'pairing', 'disabled'], key: 'dmPolicy', label: 'policy', type: 'string' },
+    ],
+    type: 'object',
+  },
+];
+
 describe('resolveTabs', () => {
   it('always has connect, then the settings tabs the platform has, in page order', () => {
     expect(resolveTabs(['advanced', 'reply', 'wake', 'access'])).toEqual([
@@ -91,6 +103,19 @@ describe('tabsWithIssues', () => {
     expect(tabsWithIssues(values, schema)).toEqual(['access']);
     expect(
       tabsWithIssues({ ...values, settings: { ...values.settings, userId: '9' } }, schema),
+    ).toEqual([]);
+  });
+
+  it('treats QQ legacy DM allowlist as pairing when deciding which tab needs attention', () => {
+    const values = {
+      applicationId: '1',
+      credentials: { botToken: 't' },
+      settings: { dmPolicy: 'allowlist' },
+    };
+
+    expect(tabsWithIssues(values, qqSchema)).toEqual(['access']);
+    expect(
+      tabsWithIssues({ ...values, settings: { ...values.settings, userId: 'owner-id' } }, qqSchema),
     ).toEqual([]);
   });
 

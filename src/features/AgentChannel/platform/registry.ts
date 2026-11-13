@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
 
+import { OwnerBinding } from '@/features/AgentChannel/platform/qq/OwnerBinding';
 import { FeishuUserIdExtras } from '@/features/AgentSetting/AgentChannel/feishu/UserIdExtras';
 
 import FeishuWakeNotice from './feishu/WakeNotice';
@@ -48,6 +49,7 @@ export const platformSettingsFieldExtrasMap: Record<
   string,
   ComponentType<PlatformSettingsFieldExtrasProps>
 > = {
+  'qq:userId': OwnerBinding,
   'feishu:userId': FeishuUserIdExtras,
   'lark:userId': FeishuUserIdExtras,
 };

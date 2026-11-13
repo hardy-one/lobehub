@@ -1,14 +1,14 @@
-import { createMediaFileRef } from '../const/mediaRef';
 import { filesPrompts } from '@lobechat/prompts';
 import type { ChatAudioItem, MessageContentPart } from '@lobechat/types';
-import { normalizeAudioDurationMs } from '../utils/audio';
 import { imageUrlToBase64 } from '@lobechat/utils/imageToBase64';
 import { parseDataUri } from '@lobechat/utils/uriParser';
 import { isDesktopLocalStaticServerUrl } from '@lobechat/utils/url';
 import debug from 'debug';
 
 import { BaseProcessor } from '../base/BaseProcessor';
+import { createMediaFileRef } from '../const/mediaRef';
 import type { PipelineContext, ProcessorOptions } from '../types';
+import { normalizeAudioDurationMs } from '../utils/audio';
 
 declare module '../types' {
   interface PipelineContextMetadataOverrides {
@@ -230,10 +230,17 @@ export class MessageContentProcessor extends BaseProcessor {
    * Process user message content
    */
   private async processUserMessage(message: any): Promise<any> {
+    // A transcribed voice turn keeps its recording for playback only: the transcript is
+    // already the message text, so sending the audio as well makes a model without native
+    // audio call `analyzeMedia` on it for nothing.
+    const audioList: any[] | undefined = message.metadata?.voiceMessage?.transcribed
+      ? []
+      : message.audioList;
+
     // Check if images, videos or files need processing
     const hasImages = message.imageList && message.imageList.length > 0;
     const hasVideos = message.videoList && message.videoList.length > 0;
-    const hasAudios = message.audioList && message.audioList.length > 0;
+    const hasAudios = audioList && audioList.length > 0;
     const hasFiles = message.fileList && message.fileList.length > 0;
 
     const canUseVision = !!this.config.isCanUseVision?.(this.config.model, this.config.provider);
@@ -310,7 +317,7 @@ export class MessageContentProcessor extends BaseProcessor {
         // File access URLs are needed by sandbox/code tools that fetch attachments from text.
         // Call sites can still disable them for environments such as desktop local files.
         addUrl: this.config.fileContext.includeFileUrl ?? true,
-        audioList: message.audioList || [],
+        audioList: audioList || [],
         canReadAttachment: this.config.canReadAttachment,
         fileList: message.fileList,
         imageList: message.imageList || [],
@@ -353,7 +360,7 @@ export class MessageContentProcessor extends BaseProcessor {
 
     // Process audio content
     if (hasAudios && canUseAudio) {
-      const audioContentParts = await this.processAudioList(message.audioList || []);
+      const audioContentParts = await this.processAudioList(audioList || []);
       contentParts.push(...audioContentParts);
     }
 

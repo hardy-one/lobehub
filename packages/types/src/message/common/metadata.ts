@@ -553,6 +553,14 @@ export interface ModelPerformance {
   ttft?: number;
 }
 
+export interface MessageVoiceMessageMetadata {
+  /**
+   * The recording was transcribed and the transcript is already the message content.
+   * The audio stays in the message for playback, but request building must not send it.
+   */
+  transcribed?: boolean;
+}
+
 export interface MessageMetadata {
   // ───────────────────────────────────────────────────────────────
   // Token usage + performance fields — DEPRECATED flat shape.
@@ -853,6 +861,8 @@ export interface MessageMetadata {
   verifyOperationId?: string;
   /** Display round number for the verify card (1-based; repair rounds are separate). */
   verifyRound?: number;
+  /** Voice message turn; see {@link MessageVoiceMessageMetadata}. */
+  voiceMessage?: MessageVoiceMessageMetadata;
   /**
    * Final assistant message marker for Work artifacts produced during one root
    * operation. Work ownership stays on `work_versions.root_operation_id`; this

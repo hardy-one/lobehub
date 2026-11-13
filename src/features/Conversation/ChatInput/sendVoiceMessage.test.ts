@@ -134,7 +134,12 @@ describe('sendVoiceMessage', () => {
 
     expect(transcribe).toHaveBeenCalledWith(voiceFile, undefined);
     expect(sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ files: [voiceFile], message: 'list the files here' }),
+      expect.objectContaining({
+        files: [voiceFile],
+        message: 'list the files here',
+        // Marks the recording as playback-only so request building drops it.
+        metadata: { voiceMessage: { transcribed: true } },
+      }),
     );
   });
 

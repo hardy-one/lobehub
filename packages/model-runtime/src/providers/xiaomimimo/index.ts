@@ -2,8 +2,16 @@ import { ModelProvider, xiaomimimo as xiaomimimoChatModels } from 'model-bank';
 
 import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatible';
 import { createOpenAICompatibleRuntime } from '../../core/openaiCompatible';
+import type { ASROptions, ASRPayload, ASRResponse } from '../../types/asr';
+import type {
+  TextToSpeechOptions,
+  TextToSpeechPayload,
+  TextToSpeechResponse,
+} from '../../types/tts';
 import { getModelMaxOutputs } from '../../utils/getModelMaxOutputs';
 import { MODEL_LIST_CONFIGS, processModelList } from '../../utils/modelParse';
+import { createXiaomiMiMoSpeech } from './createSpeech';
+import { createXiaomiMiMoTranscription } from './createTranscription';
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -116,4 +124,30 @@ export const params = {
   provider: ModelProvider.XiaomiMiMo,
 } satisfies OpenAICompatibleFactoryOptions;
 
-export const LobeXiaomiMiMoAI = createOpenAICompatibleRuntime(params);
+const BaseXiaomiMiMoAI = createOpenAICompatibleRuntime(params);
+
+const LOG_PREFIX = 'lobe-model-runtime:xiaomimimo';
+
+/**
+ * MiMo serves speech over `/chat/completions` rather than the `/audio/*` endpoints the
+ * compatible runtime calls: synthesis takes a top-level `audio` argument, recognition a
+ * base64 `input_audio` part. Both are handled here on top of the shared implementation.
+ */
+export class LobeXiaomiMiMoAI extends BaseXiaomiMiMoAI {
+  override async textToSpeech(
+    payload: TextToSpeechPayload,
+    options?: TextToSpeechOptions,
+  ): Promise<TextToSpeechResponse> {
+    return createXiaomiMiMoSpeech(this.client, payload, options, {
+      handleError: (error) => this.handleError(error),
+      logPrefix: LOG_PREFIX,
+    });
+  }
+
+  override async transcribe(payload: ASRPayload, options?: ASROptions): Promise<ASRResponse> {
+    return createXiaomiMiMoTranscription(this.client, payload, options, {
+      handleError: (error) => this.handleError(error),
+      logPrefix: LOG_PREFIX,
+    });
+  }
+}

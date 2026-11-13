@@ -13,6 +13,13 @@ export interface PromptRewriteSystemAgent extends Omit<SystemAgentItem, 'enabled
 export interface UserSystemAgentConfig {
   agentMeta: SystemAgentItem;
   /**
+   * Model the Agent Signal intent classifiers run on: feedback satisfaction, feedback domain,
+   * and skill intent. They fire on every user message and only need to answer a short, typed
+   * classification, so they follow the Flash tier rather than `expertise`, whose other calls
+   * generate knowledge from long transcripts.
+   */
+  agentSignalJudge: SystemAgentItem;
+  /**
    * Speech-to-text model that transcribes voice messages for runtimes that only take text
    * (heterogeneous agents). Empty `model`/`provider` means unconfigured: voice input that
    * depends on transcription stays hidden.

@@ -90,6 +90,8 @@ export interface FieldSchema {
   key: string;
   /** Display label */
   label: string;
+  /** The value is managed by another workflow and must be rendered read-only. */
+  managed?: boolean;
   maximum?: number;
   minimum?: number;
   /**
@@ -367,6 +369,9 @@ export interface PlatformClient {
    * this and the bridge fallback will be deleted.
    */
   extractFiles?: (message: Message) => Promise<AttachmentSource[] | ExtractFilesResult | undefined>;
+
+  /** Read a role attached to the inbound group message, when the platform provides one. */
+  extractGroupMemberRole?: (message: unknown) => 'admin' | 'member' | 'owner' | undefined;
 
   /**
    * Surface additional channel IDs the group allowlist (`groupAllowFrom`)
@@ -648,6 +653,10 @@ export abstract class ClientFactory {
 export interface PlatformDefinition {
   /** Optional access metadata resolved for the current user by business slots. */
   access?: PlatformAccessMeta;
+  /** Optional access capabilities that are platform-specific and opt-in. */
+  accessCapabilities?: {
+    ownerBinding?: boolean;
+  };
 
   /** Factory for creating PlatformClient instances and validating credentials/settings. */
   clientFactory: ClientFactory;

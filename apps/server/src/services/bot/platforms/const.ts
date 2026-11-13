@@ -198,13 +198,15 @@ export interface GuestSettings {
   policy: GuestPolicy;
 }
 
-export type GroupPolicy = 'open' | 'allowlist' | 'disabled';
+export type GroupPolicy = 'open' | 'allowlist' | 'pairing' | 'admins' | 'disabled';
 
 export interface GroupSettings {
   /** Parsed channel / group / thread IDs (matched against `thread.channelId`). */
   allowFrom: string[];
   policy: GroupPolicy;
 }
+
+export type GroupMemberRole = 'admin' | 'member' | 'owner';
 
 const DM_POLICIES: ReadonlySet<DmPolicy> = new Set(['open', 'allowlist', 'pairing', 'disabled']);
 const GUEST_POLICIES: ReadonlySet<GuestPolicy> = new Set([
@@ -214,7 +216,6 @@ const GUEST_POLICIES: ReadonlySet<GuestPolicy> = new Set([
   'disabled',
 ]);
 const GROUP_POLICIES: ReadonlySet<GroupPolicy> = new Set(['open', 'allowlist', 'disabled']);
-
 /**
  * DM Policy: gate inbound 1:1 messages.
  *
@@ -226,30 +227,32 @@ const GROUP_POLICIES: ReadonlySet<GroupPolicy> = new Set(['open', 'allowlist', '
  * - `pairing`: same gate as `allowlist`, but a non-listed sender receives a
  *   one-time pairing code instead of a flat rejection. The owner approves
  *   via `/approve <code>`, which appends the applicant to `allowFrom` so
- *   subsequent DMs flow normally. Requires `settings.userId` (the owner's
+ *   subsequent DMs flow normally. On platforms without owner binding, requires `settings.userId` (the owner's
  *   platform user ID, used both as approver identity and as the implicit
  *   "always allowed" sender for an empty allowFrom).
  * - `disabled`: ignore all DMs (the sender gets a one-line system reply
  *   pointing them at @mentioning the bot in a shared channel instead)
  */
-export function makeDmPolicyField(defaults: { policy: DmPolicy }): FieldSchema {
+const DM_POLICY_FIELD_META: Record<DmPolicy, { description: string; label: string }> = {
+  disabled: { description: 'channel.dmPolicyDisabledHint', label: 'channel.dmPolicyDisabled' },
+  open: { description: 'channel.dmPolicyOpenHint', label: 'channel.dmPolicyOpen' },
+  allowlist: { description: 'channel.dmPolicyAllowlistHint', label: 'channel.dmPolicyAllowlist' },
+  pairing: { description: 'channel.dmPolicyPairingHint', label: 'channel.dmPolicyPairing' },
+};
+
+export function makeDmPolicyField(
+  defaults: { policy: DmPolicy },
+  options: { policies?: readonly DmPolicy[] } = {},
+): FieldSchema {
+  const policies = options.policies ?? ['open', 'allowlist', 'pairing', 'disabled'];
+
   return {
     key: 'dmPolicy',
     default: defaults.policy,
     description: 'channel.dmPolicyHint',
-    enum: ['open', 'allowlist', 'pairing', 'disabled'],
-    enumDescriptions: [
-      'channel.dmPolicyOpenHint',
-      'channel.dmPolicyAllowlistHint',
-      'channel.dmPolicyPairingHint',
-      'channel.dmPolicyDisabledHint',
-    ],
-    enumLabels: [
-      'channel.dmPolicyOpen',
-      'channel.dmPolicyAllowlist',
-      'channel.dmPolicyPairing',
-      'channel.dmPolicyDisabled',
-    ],
+    enum: [...policies],
+    enumDescriptions: policies.map((policy) => DM_POLICY_FIELD_META[policy].description),
+    enumLabels: policies.map((policy) => DM_POLICY_FIELD_META[policy].label),
     label: 'channel.dmPolicy',
     type: 'string',
   };
@@ -339,23 +342,34 @@ export const allowFromField: FieldSchema = {
  *   Telegram chat ID, Slack channel ID, etc.
  * - `disabled`: ignore all non-DM traffic
  */
-export function makeGroupPolicyFields(defaults: { policy: GroupPolicy }): FieldSchema[] {
+const GROUP_POLICY_FIELD_META: Record<GroupPolicy, { description: string; label: string }> = {
+  admins: { description: 'channel.groupPolicyAdminsHint', label: 'channel.groupPolicyAdmins' },
+  allowlist: {
+    description: 'channel.groupPolicyAllowlistHint',
+    label: 'channel.groupPolicyAllowlist',
+  },
+  disabled: {
+    description: 'channel.groupPolicyDisabledHint',
+    label: 'channel.groupPolicyDisabled',
+  },
+  open: { description: 'channel.groupPolicyOpenHint', label: 'channel.groupPolicyOpen' },
+  pairing: { description: 'channel.groupPolicyPairingHint', label: 'channel.groupPolicyPairing' },
+};
+
+export function makeGroupPolicyFields(
+  defaults: { policy: GroupPolicy },
+  options: { allowFromVisibleWhen?: string; policies?: readonly GroupPolicy[] } = {},
+): FieldSchema[] {
+  const policies = options.policies ?? ['open', 'allowlist', 'disabled'];
+
   return [
     {
       key: 'groupPolicy',
       default: defaults.policy,
       description: 'channel.groupPolicyHint',
-      enum: ['open', 'allowlist', 'disabled'],
-      enumDescriptions: [
-        'channel.groupPolicyOpenHint',
-        'channel.groupPolicyAllowlistHint',
-        'channel.groupPolicyDisabledHint',
-      ],
-      enumLabels: [
-        'channel.groupPolicyOpen',
-        'channel.groupPolicyAllowlist',
-        'channel.groupPolicyDisabled',
-      ],
+      enum: [...policies],
+      enumDescriptions: policies.map((policy) => GROUP_POLICY_FIELD_META[policy].description),
+      enumLabels: policies.map((policy) => GROUP_POLICY_FIELD_META[policy].label),
       label: 'channel.groupPolicy',
       type: 'string',
     },
@@ -385,7 +399,10 @@ export function makeGroupPolicyFields(defaults: { policy: GroupPolicy }): FieldS
           },
         ],
       },
-      visibleWhen: { field: 'groupPolicy', value: 'allowlist' },
+      visibleWhen: {
+        field: 'groupPolicy',
+        value: options.allowFromVisibleWhen ?? 'allowlist',
+      },
     },
   ];
 }
@@ -729,9 +746,13 @@ export function extractUserAllowlist(
 /** Read `settings.groupPolicy` + `settings.groupAllowFrom`. */
 export function extractGroupSettings(
   settings: Record<string, unknown> | null | undefined,
+  options: { acceptedPolicies?: readonly GroupPolicy[] } = {},
 ): GroupSettings {
   const rawPolicy = settings?.groupPolicy as string | undefined;
-  const policy: GroupPolicy = GROUP_POLICIES.has(rawPolicy as GroupPolicy)
+  const acceptedPolicies = options.acceptedPolicies
+    ? new Set(options.acceptedPolicies)
+    : GROUP_POLICIES;
+  const policy: GroupPolicy = acceptedPolicies.has(rawPolicy as GroupPolicy)
     ? (rawPolicy as GroupPolicy)
     : 'open';
   return { allowFrom: parseIdList(settings?.groupAllowFrom), policy };
@@ -858,19 +879,32 @@ export function shouldHandleGuest(params: {
  *   and we accept any match. An empty/all-falsy candidate set fails
  *   closed.
  */
+export type GroupDecision = 'allow' | 'pair' | 'reject';
+
+/**
+ * Gate inbound group/channel handling. DM threads pass through unconditionally —
+ * those are governed by `shouldHandleDm` instead. `memberRole` is optional and
+ * only supplied by platforms whose inbound event carries a role.
+ */
 export function shouldHandleGroup(params: {
   candidateChannelIds: ReadonlyArray<string | undefined>;
   groupSettings: GroupSettings;
   isDM: boolean;
-}): boolean {
-  const { candidateChannelIds, groupSettings, isDM } = params;
-  if (isDM) return true;
-  if (groupSettings.policy === 'disabled') return false;
-  if (groupSettings.policy === 'open') return true;
-  // allowlist
+  memberRole?: GroupMemberRole;
+}): GroupDecision {
+  const { candidateChannelIds, groupSettings, isDM, memberRole } = params;
+  if (isDM) return 'allow';
+  if (groupSettings.policy === 'disabled') return 'reject';
+  if (groupSettings.policy === 'open') return 'allow';
+  if (groupSettings.policy === 'admins') {
+    return memberRole === 'owner' || memberRole === 'admin' ? 'allow' : 'reject';
+  }
+
   const candidates = candidateChannelIds.filter((id): id is string => Boolean(id));
-  if (candidates.length === 0) return false;
-  return candidates.some((id) => groupSettings.allowFrom.includes(id));
+  if (candidates.length === 0) return 'reject';
+  const isApproved = candidates.some((id) => groupSettings.allowFrom.includes(id));
+  if (isApproved) return 'allow';
+  return groupSettings.policy === 'pairing' ? 'pair' : 'reject';
 }
 
 /**
@@ -879,21 +913,26 @@ export function shouldHandleGroup(params: {
  * Catches misconfigurations that would silently break runtime gating
  * before they hit the DB. Today this enforces one invariant:
  *
- * - Any pairing policy requires `settings.userId` (the owner's platform user
- *   ID). Without it nobody can issue `/approve`, so inbound pairing requests
- *   would land in a permanent limbo.
+ * - DM and Guest pairing require `settings.userId` (the owner's platform user
+ *   ID), unless the platform declares owner binding. Without it, nobody can
+ *   approve pairing requests.
  *
  * Per-platform rules (e.g. Telegram bot tokens, Discord intents) belong
  * in `ClientFactory.validateSettings`; this function only encodes shared
- * invariants that apply regardless of platform.
+ * invariants and accepts the optional owner-binding capability explicitly.
+ *
  */
 export function validateAccessSettings(
   settings: Record<string, unknown> | null | undefined,
+  options: { ownerBinding?: boolean } = {},
 ): ValidationResult {
   const errors: Array<{ field: string; message: string }> = [];
   const dmSettings = extractDmSettings(settings);
   const guestSettings = extractGuestSettings(settings);
-  if (dmSettings.policy === 'pairing' || guestSettings.policy === 'pairing') {
+  if (
+    !options.ownerBinding &&
+    (dmSettings.policy === 'pairing' || guestSettings.policy === 'pairing')
+  ) {
     const operatorId = (settings?.userId as string | undefined)?.trim();
     if (!operatorId) {
       errors.push({

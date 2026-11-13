@@ -11,6 +11,7 @@ callers do not choose a provider, prefix, key, SET options or claim lifetime.
   a day. Atomic append (bounded), drain and restore; the runtime drains it into the next turn.
   Writes return `undefined` without Redis, and the caller tells the client to send directly.
 - `linear`: single-use OAuth state for "Connect Linear" (ten minutes, deleted on first read).
+- `ownerBinding`: one current owner code per bot; replacement invalidates prior codes and consumption is atomic. Codes expire after fifteen minutes and unavailable Redis is reported to the caller.
 - `pageCollab`: a digest of the body each page's last room projection wrote, for a day, so the
   next projection can tell that something wrote the body outside the room. `null` without Redis.
 - `agentSignal`: spend bounds for background self-iteration — classifier calls per user per UTC

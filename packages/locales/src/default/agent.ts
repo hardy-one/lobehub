@@ -422,6 +422,12 @@ export default {
   'channel.groupPolicyHint': 'Where the bot responds in groups, channels, and threads',
   'channel.groupPolicyAllowlist': 'Allowlist',
   'channel.groupPolicyAllowlistHint': 'Only respond in listed channels',
+  'channel.groupPolicyPairing': 'Group approval',
+  'channel.groupPolicyPairingHint':
+    'New groups receive a code that the bot owner approves with /approve',
+  'channel.groupPolicyAdmins': 'Admins only',
+  'channel.groupPolicyAdminsHint':
+    'Only QQ group owners and admins can use the bot; requires member role data',
   'channel.groupPolicyDisabled': 'Disabled',
   'channel.groupPolicyDisabledHint': 'Ignore all group messages',
   'channel.groupPolicyOpen': 'Open',

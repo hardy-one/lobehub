@@ -59,7 +59,8 @@ export const deviceAccessFields: FieldSchema[] = [devicePolicyField, deviceAllow
  */
 export const extractDeviceAllowlist = (
   settings: Record<string, unknown> | null | undefined,
+  options: { useAllowFrom?: boolean } = {},
 ): string[] => {
   if (settings?.devicePolicy !== 'allowlist') return [];
-  return parseIdList(settings.deviceAllowFrom);
+  return parseIdList(options.useAllowFrom ? settings.allowFrom : settings.deviceAllowFrom);
 };

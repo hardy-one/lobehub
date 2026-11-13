@@ -592,7 +592,8 @@ curl 'https://api.sgroup.qq.com/users/@me' \
 ```json
 {
   "author": {
-    "member_openid": "F6A8B9C0D1E2"
+    "member_openid": "F6A8B9C0D1E2",
+    "member_role": "admin"
   },
   "content": "/help 查看帮助",
   "group_openid": "A1B2C3D4E5F6",
@@ -601,13 +602,21 @@ curl 'https://api.sgroup.qq.com/users/@me' \
 }
 ```
 
-| 字段                   | 类型     | 说明                                 |
-| ---------------------- | -------- | ------------------------------------ |
-| `id`                   | `string` | 消息 ID，用于被动回复时回传。        |
-| `author.member_openid` | `string` | 发送者在群内的成员 openid。          |
-| `content`              | `string` | 消息文本内容（@机器人 前缀已去除）。 |
-| `group_openid`         | `string` | 群组 openid。                        |
-| `timestamp`            | `string` | 消息创建时间，RFC 3339 格式。        |
+| 字段                   | 类型      | 说明                                                                                 |
+| ---------------------- | --------- | ------------------------------------------------------------------------------------ |
+| `id`                   | `string`  | 消息 ID，用于被动回复时回传。                                                        |
+| `author.member_openid` | `string`  | 发送者在群内的成员 openid。                                                          |
+| `author.member_role`   | `string?` | 群成员角色：`member`、`admin` 或 `owner`；群内仅管理员策略按此字段判定，缺失时拒绝。 |
+| `content`              | `string`  | 消息文本内容（@机器人 前缀已去除）。                                                 |
+| `group_openid`         | `string`  | 群组 openid。                                                                        |
+| `timestamp`            | `string`  | 消息创建时间，RFC 3339 格式。                                                        |
+
+**LobeHub QQ 访问策略的身份边界**
+
+- C2C 单聊审批使用 `author.user_openid`，会话标识为 `qq:c2c:<user_openid>`。
+- 群审批列表保存 `group_openid`，会话标识为 `qq:group:<group_openid>`；群消息发送者使用 `author.member_openid`。这三类 ID 不能互换或跨范围比较。
+- QQ 单聊的 `allowFrom` 保存已批准的 `user_openid`；群内不应用单聊 `allowFrom` 过滤。群审批通过后保存群的 `group_openid` 到 `groupAllowFrom`。
+- 单聊设备 allowlist 复用 `allowFrom`。群内设备权限跟随群策略；仅管理员策略读取 `author.member_role`，仅 `admin` 和 `owner` 放行。
 
 **`C2C_MESSAGE_CREATE` 事件 `d` 字段：**
 

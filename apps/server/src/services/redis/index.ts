@@ -4,6 +4,7 @@ import { agentSignal } from './agentSignal';
 import { botWake } from './botWake';
 import { deviceSystemInfo } from './deviceSystemInfo';
 import { linear } from './linear';
+import { ownerBinding } from './ownerBinding';
 import { pageCollab } from './pageCollab';
 import { qqPassive } from './qqPassive';
 import { skillTools } from './skillTools';
@@ -22,6 +23,7 @@ export const redisService = {
   linear,
   pageCollab,
   qqPassive,
+  ownerBinding,
   skillTools,
   steerQueue,
   taskRunDelivery,

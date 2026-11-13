@@ -251,6 +251,14 @@ type SystemStrings = {
   cmdStopUnable: string;
   cmdWhoami: (params: WhoamiReplyParams) => string;
   cmdWhoamiUnavailable: string;
+  cmdBindCodeInvalid: string;
+  cmdBindCleanupFailed: string;
+  cmdBindOnlyDm: string;
+  cmdBindSaveFailed: string;
+  cmdBindSenderUnavailable: string;
+  cmdBindSuccess: string;
+  cmdBindUnavailable: string;
+  cmdBindUsage: string;
   dmPairingApplicantApproved: string;
   dmPairingCapacityExceeded: string;
   dmPairingCode: (code: string) => string;
@@ -287,6 +295,12 @@ type SystemStrings = {
   errorWithId: (operationId: string) => string;
   groupRejectedAllowlist: string;
   groupRejectedDisabled: string;
+  groupAdminRejected: string;
+  groupAdminRoleMissing: string;
+  groupPairingApplicantApproved: string;
+  groupPairingCapacityExceeded: string;
+  groupPairingCode: (code: string) => string;
+  groupPairingUnavailable: string;
   /**
    * Telegram Guest Mode strings. Unlike the rest of this dictionary these
    * carry Telegram HTML (not Markdown), because the Guest outbound pipeline
@@ -345,18 +359,33 @@ const SYSTEM_STRINGS: Partial<Record<BotReplyLocale, SystemStrings>> = {
     cmdStopNotActive: 'No active execution to stop.',
     cmdStopRequested: 'Stop requested.',
     cmdStopUnable: 'Unable to stop the current execution.',
-    cmdWhoami: ({ isOperator, userId, userName }) => {
+    cmdWhoami: ({ isOperator, ownerBindingEnabled, userId, userName }) => {
       const lines = [`Your platform user ID: \`${userId}\``];
       if (userName) lines.push(`Display name: ${userName}`);
-      lines.push(
-        isOperator
-          ? 'This ID is already set as the bot operator in Advanced Settings.'
-          : 'Paste it into Advanced Settings → "Your Platform User ID" on the bot channel page so AI tools can reach you and pairing approvals work.',
-      );
+      const guidance = isOperator
+        ? 'This ID is already set as the bot operator in Advanced Settings.'
+        : ownerBindingEnabled
+          ? 'Generate an owner binding code in QQ channel settings, then send `/bind <code>` to the bot in a private chat.'
+          : 'Paste it into Advanced Settings → "Your Platform User ID" on the bot channel page so AI tools can reach you and pairing approvals work.';
+      lines.push(guidance);
       return lines.join('\n');
     },
     cmdWhoamiUnavailable:
       "Couldn't read your user ID from this message — the platform didn't include a sender ID.",
+    cmdBindCodeInvalid:
+      'That binding code is invalid or expired. Ask the bot owner to issue a fresh code in settings.',
+    cmdBindCleanupFailed:
+      'Your QQ account was saved as owner, but the code could not be cleared. Ask the bot owner to reissue a code; the current one expires within 15 minutes.',
+    cmdBindOnlyDm:
+      'Send `/bind <code>` in a private chat with the bot. For security, the code is checked only there.',
+    cmdBindSaveFailed:
+      'The code was accepted, but the owner ID could not be saved. Generate a fresh code in bot settings and try again.',
+    cmdBindSenderUnavailable:
+      "Couldn't read your QQ user ID from this message. Please send `/bind <code>` again in the private chat.",
+    cmdBindSuccess: 'Owner binding is complete. This private account now owns the bot.',
+    cmdBindUnavailable:
+      'Owner binding is temporarily unavailable. Please try again later or ask the bot owner to issue a new code.',
+    cmdBindUsage: 'Usage: `/bind <code>`',
     dmPairingApplicantApproved: "You've been approved. Send your message again.",
     dmPairingCapacityExceeded:
       'This bot is handling too many pairing requests right now. Please try again in a few minutes.',
@@ -427,6 +456,17 @@ const SYSTEM_STRINGS: Partial<Record<BotReplyLocale, SystemStrings>> = {
       "This bot isn't enabled in this channel. Please contact the bot's owner if you need access.",
     groupRejectedDisabled:
       "Sorry, you don't have permission to talk to this bot in groups or channels. Please contact the bot's owner if you need access.",
+    groupAdminRejected:
+      'Only this QQ group’s owner or an administrator can use the bot under the current policy. Ask a group admin for access.',
+    groupAdminRoleMissing:
+      'QQ did not include this sender’s group role, so the bot cannot verify access. Ask a group owner or administrator to mention the bot again.',
+    groupPairingApplicantApproved: 'This group is approved. You can mention the bot again.',
+    groupPairingCapacityExceeded:
+      'Too many groups are waiting for approval right now. Ask the bot owner to retry later.',
+    groupPairingCode: (code) =>
+      `This group is waiting for approval. Ask the bot owner to send /approve ${code} in a private chat with the bot. Code expires in 1 hour.`,
+    groupPairingUnavailable:
+      'Group approval is temporarily unavailable. Ask the bot owner to try again later.',
     guestAttachmentOverflow:
       '<i>Additional attachments could not be listed in this Guest Mode reply.</i>',
     guestLinkButton: 'Open Bot',
@@ -477,17 +517,29 @@ const SYSTEM_STRINGS: Partial<Record<BotReplyLocale, SystemStrings>> = {
     cmdStopNotActive: '当前没有正在执行的任务可以停止。',
     cmdStopRequested: '已发出停止请求。',
     cmdStopUnable: '无法停止当前执行。',
-    cmdWhoami: ({ isOperator, userId, userName }) => {
+    cmdWhoami: ({ isOperator, ownerBindingEnabled, userId, userName }) => {
       const lines = [`你的平台用户 ID：\`${userId}\``];
       if (userName) lines.push(`显示名称：${userName}`);
-      lines.push(
-        isOperator
-          ? '该 ID 已经是这个机器人「高级设置」中配置的管理员 ID。'
-          : '把它填到机器人渠道页「高级设置 → 你的平台用户 ID」，AI 工具就能主动联系你，配对审批也会生效。',
-      );
+      const guidance = isOperator
+        ? '该 ID 已经是这个机器人「高级设置」中配置的管理员 ID。'
+        : ownerBindingEnabled
+          ? 'QQ 无需手动填写此 ID：请在渠道设置中生成绑定码，再在与机器人的私聊中发送 `/bind <code>`。'
+          : '把它填到机器人渠道页「高级设置 → 你的平台用户 ID」，AI 工具就能主动联系你，配对审批也会生效。';
+      lines.push(guidance);
       return lines.join('\n');
     },
     cmdWhoamiUnavailable: '无法从这条消息中读取你的用户 ID —— 平台没有提供发送者 ID。',
+    cmdBindCodeInvalid: '绑定码无效或已过期，请让机器人管理员在设置中重新签发。',
+    cmdBindCleanupFailed:
+      'QQ 账号已保存为机器人所有者，但未能清除绑定码。请让管理员重新签发，当前码会在 15 分钟内过期。',
+    cmdBindOnlyDm: '请在与机器人的私聊中发送 `/bind <code>`。为确保安全，绑定码只会在私聊中校验。',
+    cmdBindSaveFailed:
+      '绑定码已通过校验，但未能保存所有者 ID。请在机器人设置中重新生成绑定码后再试。',
+    cmdBindSenderUnavailable:
+      '无法从这条消息中读取 QQ 用户 ID，请在私聊中重新发送 `/bind <code>`。',
+    cmdBindSuccess: '所有者绑定完成。当前私聊账号已成为该机器人的所有者。',
+    cmdBindUnavailable: '所有者绑定服务暂时不可用，请稍后重试，或让管理员重新签发绑定码。',
+    cmdBindUsage: '用法：`/bind <code>`',
     dmPairingApplicantApproved: '已通过审批，请重新发送你的消息。',
     dmPairingCapacityExceeded: '该机器人当前待审批请求过多，请稍后再试。',
     dmPairingCode: (code) =>
@@ -553,6 +605,14 @@ const SYSTEM_STRINGS: Partial<Record<BotReplyLocale, SystemStrings>> = {
     groupRejectedAllowlist: '该机器人未在此频道启用。如需访问请联系机器人管理员。',
     groupRejectedDisabled:
       '抱歉，您没有在群组或频道中与该机器人对话的权限。如需访问请联系机器人主人。',
+    groupAdminRejected: '当前策略仅允许 QQ 群主或管理员使用机器人，请联系群管理员。',
+    groupAdminRoleMissing:
+      'QQ 未提供发送者的群内身份，机器人无法确认权限。请群主或管理员重新 @ 机器人。',
+    groupPairingApplicantApproved: '该群已通过审批，请再次 @ 机器人。',
+    groupPairingCapacityExceeded: '当前等待审批的群组过多，请让机器人管理员稍后重试。',
+    groupPairingCode: (code) =>
+      `该群尚未获批。请让机器人管理员在与机器人的私聊中发送 /approve ${code} 完成审批。配对码 1 小时后失效。`,
+    groupPairingUnavailable: '群组审批暂时不可用，请让机器人管理员稍后重试。',
     guestAttachmentOverflow: '<i>更多附件无法在这条访客模式回复中列出。</i>',
     guestLinkButton: '打开机器人',
     guestLinkPromptChat: '请在私聊中继续，以完成 LobeHub 账户关联。',
@@ -887,6 +947,7 @@ export function renderGuestTruncated(limit: number, lng?: BotReplyLocale): strin
 export interface WhoamiReplyParams {
   /** True when the caller's ID already matches the bot's configured `settings.userId`. */
   isOperator: boolean;
+  ownerBindingEnabled?: boolean;
   userId: string;
   userName?: string;
 }
@@ -994,6 +1055,57 @@ export function renderGroupRejected(
 ): string {
   const strings = getSystemStrings(lng);
   return reason === 'disabled' ? strings.groupRejectedDisabled : strings.groupRejectedAllowlist;
+}
+
+export type OwnerBindingReplyKind =
+  | 'cleanup-failed'
+  | 'code-invalid'
+  | 'dm-only'
+  | 'save-failed'
+  | 'sender-unavailable'
+  | 'success'
+  | 'unavailable'
+  | 'usage';
+
+export function renderOwnerBindingReply(kind: OwnerBindingReplyKind, lng?: BotReplyLocale): string {
+  const strings = getSystemStrings(lng);
+  const replies: Record<OwnerBindingReplyKind, string> = {
+    'cleanup-failed': strings.cmdBindCleanupFailed,
+    'code-invalid': strings.cmdBindCodeInvalid,
+    'dm-only': strings.cmdBindOnlyDm,
+    'save-failed': strings.cmdBindSaveFailed,
+    'sender-unavailable': strings.cmdBindSenderUnavailable,
+    'success': strings.cmdBindSuccess,
+    'unavailable': strings.cmdBindUnavailable,
+    'usage': strings.cmdBindUsage,
+  };
+  return replies[kind];
+}
+
+export function renderQqGroupAdminRejected(roleMissing: boolean, lng?: BotReplyLocale): string {
+  const strings = getSystemStrings(lng);
+  return roleMissing ? strings.groupAdminRoleMissing : strings.groupAdminRejected;
+}
+
+export function renderGroupPairing(
+  variant: 'capacity-exceeded' | 'code' | 'unavailable',
+  lng?: BotReplyLocale,
+  params?: { code?: string },
+): string {
+  const strings = getSystemStrings(lng);
+  if (variant === 'code' && params?.code) return strings.groupPairingCode(params.code);
+  if (variant === 'capacity-exceeded') return strings.groupPairingCapacityExceeded;
+  return strings.groupPairingUnavailable;
+}
+
+export function renderPairingApplicantApproved(
+  scope: 'dm' | 'guest' | 'group',
+  lng?: BotReplyLocale,
+): string {
+  const strings = getSystemStrings(lng);
+  return scope === 'group'
+    ? strings.groupPairingApplicantApproved
+    : strings.dmPairingApplicantApproved;
 }
 
 export function renderGuestRejected(

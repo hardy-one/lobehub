@@ -9,6 +9,7 @@ import { schema } from './schema';
 export const qq: PlatformDefinition = {
   id: 'qq',
   name: 'QQ',
+  accessCapabilities: { ownerBinding: true },
   connectionMode: DEFAULT_QQ_CONNECTION_MODE,
   description: 'Connect a QQ bot',
   documentation: {

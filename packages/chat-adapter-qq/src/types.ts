@@ -20,6 +20,7 @@ export interface QQThreadId {
 export interface QQAuthor {
   id: string;
   member_openid?: string;
+  member_role?: 'admin' | 'member' | 'owner';
   union_openid?: string;
 }
 

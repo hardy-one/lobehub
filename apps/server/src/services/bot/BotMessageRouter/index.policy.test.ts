@@ -9,6 +9,7 @@ import {
   mockHandleMention,
   mockHandleSubscribedMessage,
   mockOnNewMention,
+  mockOnNewMessage,
   mockOnSubscribedMessage,
   resetBotMessageRouterMocks,
 } from './testUtils';
@@ -233,12 +234,12 @@ describe('BotMessageRouter', () => {
      * group-policy assertions can drive each entry point with the same
      * fixture.
      */
-    async function loadHandlers(settings: Record<string, unknown>) {
+    async function loadHandlers(settings: Record<string, unknown>, platform = 'telegram') {
       mockFindEnabledByPlatform.mockResolvedValue([
         makeProvider({ applicationId: 'app-1', settings }),
       ]);
       const router = new BotMessageRouter();
-      const webhookHandler = router.getWebhookHandler('telegram', 'app-1');
+      const webhookHandler = router.getWebhookHandler(platform, 'app-1');
       const req = new Request('https://example.com/webhook', { body: '{}', method: 'POST' });
       await webhookHandler(req);
 
@@ -249,6 +250,23 @@ describe('BotMessageRouter', () => {
         mention: mention[0] as (thread: any, message: any, ctx?: any) => Promise<void>,
         subscribed: sub[0] as (thread: any, message: any, ctx?: any) => Promise<void>,
       };
+    }
+
+    async function loadQqDmHandler(settings: Record<string, unknown>) {
+      mockFindEnabledByPlatform.mockResolvedValue([
+        makeProvider({ applicationId: 'app-1', settings }),
+      ]);
+      const router = new BotMessageRouter();
+      const webhookHandler = router.getWebhookHandler('qq', 'app-1');
+      await webhookHandler(
+        new Request('https://example.com/webhook', { body: '{}', method: 'POST' }),
+      );
+
+      const call = mockOnNewMessage.mock.calls.find(
+        (candidate) => candidate[0] instanceof RegExp && candidate[0].source === '.',
+      );
+      if (!call) throw new Error('QQ DM handler not registered');
+      return call[1] as (thread: any, message: any) => Promise<void>;
     }
 
     function makeGroupThread(channelId: string) {
@@ -268,6 +286,118 @@ describe('BotMessageRouter', () => {
         text: '@bot hi',
       };
     }
+
+    function makeQqGroupThread(groupId: string) {
+      return {
+        channelId: groupId,
+        id: `qq:group:${groupId}`,
+        isDM: false,
+        post: vi.fn().mockResolvedValue(undefined),
+        setState: vi.fn().mockResolvedValue(undefined),
+      };
+    }
+
+    function makeQqMessage(memberRole?: string, userId = 'member-openid') {
+      return {
+        author: { isBot: false, userId, userName: 'member' },
+        isMention: true,
+        raw: { author: { id: userId, member_openid: userId, member_role: memberRole } },
+        text: '@bot hi',
+      };
+    }
+
+    it('keeps QQ DM open policy open despite an approved-contact list', async () => {
+      const handler = await loadQqDmHandler({
+        allowFrom: [{ id: 'approved-c2c-openid' }],
+        dmPolicy: 'open',
+      });
+      const thread = {
+        id: 'qq:c2c:new-c2c-openid',
+        isDM: true,
+        post: vi.fn().mockResolvedValue(undefined),
+        setState: vi.fn().mockResolvedValue(undefined),
+        state: Promise.resolve(null),
+      };
+
+      await handler(thread, {
+        author: { isBot: false, userId: 'new-c2c-openid', userName: 'new user' },
+        text: 'hello',
+      });
+
+      expect(mockHandleMention).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not apply the QQ user allowlist to group messages', async () => {
+      const { mention } = await loadHandlers(
+        { allowFrom: [{ id: 'some-other-c2c-openid' }], groupPolicy: 'open' },
+        'qq',
+      );
+      const thread = makeQqGroupThread('group-openid');
+
+      await mention(thread, makeQqMessage('member'));
+
+      expect(mockHandleMention).toHaveBeenCalledTimes(1);
+      expect(mockHandleMention.mock.calls[0][2].botContext.isDeviceTrusted).toBe(true);
+    });
+
+    it('issues a group-scoped pairing code and records the target group ID', async () => {
+      mockCreateOrGetPairingRequest.mockResolvedValueOnce({
+        code: 'PAIR123',
+        reused: false,
+        status: 'created',
+      });
+      const { mention } = await loadHandlers(
+        {
+          allowFrom: [{ id: 'someone-else' }],
+          groupAllowFrom: [],
+          groupPolicy: 'pairing',
+        },
+        'qq',
+      );
+      const thread = makeQqGroupThread('group-openid');
+
+      await mention(thread, makeQqMessage('member'));
+
+      expect(mockHandleMention).not.toHaveBeenCalled();
+      expect(mockCreateOrGetPairingRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          applicant: expect.objectContaining({
+            applicantUserId: 'group-openid',
+            scope: 'group',
+            targetChannelId: 'group-openid',
+            threadId: 'qq:group:group-openid',
+          }),
+          platform: 'qq',
+        }),
+      );
+      expect(thread.post.mock.calls[0][0]).toContain('PAIR123');
+    });
+
+    it('restricts QQ admins policy to owner/admin roles and their device access', async () => {
+      const { mention } = await loadHandlers(
+        { groupPolicy: 'admins', userId: 'owner-c2c-openid' },
+        'qq',
+      );
+      const thread = makeQqGroupThread('group-openid');
+
+      await mention(thread, makeQqMessage('member'));
+      expect(mockHandleMention).not.toHaveBeenCalled();
+      expect(thread.post.mock.calls[0][0]).toContain('QQ 群主或管理员');
+
+      await mention(thread, makeQqMessage('admin'));
+      expect(mockHandleMention).toHaveBeenCalledTimes(1);
+      expect(mockHandleMention.mock.calls[0][2].botContext.isDeviceTrusted).toBe(true);
+    });
+
+    it('explains when QQ omitted member_role under admins policy', async () => {
+      const { mention } = await loadHandlers({ groupPolicy: 'admins' }, 'qq');
+      const thread = makeQqGroupThread('group-openid');
+
+      await mention(thread, makeQqMessage());
+
+      expect(mockHandleMention).not.toHaveBeenCalled();
+      expect(thread.post.mock.calls[0][0]).toContain('QQ 未提供发送者的群内身份');
+    });
 
     it('blocks @-mentions in groups when group policy is disabled and notifies the sender', async () => {
       const { subscribed } = await loadHandlers({ groupPolicy: 'disabled' });

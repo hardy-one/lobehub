@@ -151,27 +151,24 @@ export const AccessSection = memo<AccessSectionProps>(
       [fields, form, onValuesChange],
     );
 
-    const handleDmPolicy = useCallback(
-      (next: string) => {
-        if (next === dmPolicy) return;
-        const { dropped, patch } = applyDmPolicy(next, settings, dmField);
+    const handleDmPolicy = (next: string) => {
+      if (next === dmPolicy) return;
+      const { dropped, patch } = applyDmPolicy(next, settings, dmField);
 
-        // On platforms where the list is a global restriction, opening DMs also
-        // removes its entries. Confirm before dropping approved users.
-        if (dropped > 0) {
-          confirmModal({
-            content: t('channel.access.list.clearContent', { count: dropped }),
-            okText: t('channel.access.list.clearOk'),
-            onOk: () => write(patch),
-            title: t('channel.access.list.clearTitle'),
-          });
-          return;
-        }
+      // On platforms where the list is a global restriction, opening DMs also
+      // removes its entries. Confirm before dropping approved users.
+      if (dropped > 0) {
+        confirmModal({
+          content: t('channel.access.list.clearContent', { count: dropped }),
+          okText: t('channel.access.list.clearOk'),
+          onOk: () => write(patch),
+          title: t('channel.access.list.clearTitle'),
+        });
+        return;
+      }
 
-        write(patch);
-      },
-      [dmField, dmPolicy, settings, t, write],
-    );
+      write(patch);
+    };
 
     const optionsFor = (field?: FieldSchema): ChoiceOption<string>[] => {
       const declaredOptions = (field?.enum ?? []).map((value, index) => ({ value, index }));

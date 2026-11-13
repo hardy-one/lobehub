@@ -246,6 +246,31 @@ describe('QQAdapter', () => {
       expect(message?.isMention).toBe(false);
     });
 
+    it('falls back to user_openid and member_openid when author.id is missing', async () => {
+      const cases = [
+        {
+          authorId: 'c2c_user',
+          data: { author: { user_openid: 'c2c_user' }, group_openid: undefined },
+          eventType: QQ_EVENT_TYPES.C2C_MESSAGE_CREATE,
+          threadId: 'qq:c2c:c2c_user',
+        },
+        {
+          authorId: 'group_member',
+          data: { author: { member_openid: 'group_member' } },
+          eventType: QQ_EVENT_TYPES.GROUP_AT_MESSAGE_CREATE,
+          threadId: 'qq:group:group_abc',
+        },
+      ];
+
+      for (const { authorId, data, eventType, threadId } of cases) {
+        const message = await messageOf(makeWebhookPayload(eventType, data));
+
+        expect(message?.author.userId).toBe(authorId);
+        expect(message?.raw.author.id).toBe(authorId);
+        expect(message?.threadId).toBe(threadId);
+      }
+    });
+
     it('keeps the raw content free of the mention marker', async () => {
       const message = await messageOf(
         makeWebhookPayload(QQ_EVENT_TYPES.GROUP_AT_MESSAGE_CREATE, { content: '帮我看看' }),

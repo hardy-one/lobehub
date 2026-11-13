@@ -18,10 +18,11 @@ export interface QQThreadId {
 }
 
 export interface QQAuthor {
-  id: string;
+  id?: string;
   member_openid?: string;
   member_role?: 'admin' | 'member' | 'owner';
   union_openid?: string;
+  user_openid?: string;
 }
 
 export interface QQAttachment {
@@ -39,7 +40,7 @@ export interface QQMessageReference {
 
 export interface QQRawMessage {
   attachments?: QQAttachment[];
-  author: QQAuthor;
+  author: QQAuthor & { id: string };
   channel_id?: string;
   content: string;
   group_openid?: string;

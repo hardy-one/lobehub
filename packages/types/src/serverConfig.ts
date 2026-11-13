@@ -105,11 +105,10 @@ export type IFeatureFlagsState = {
   /** Hover previews of a topic's final answer (`topic_preview`). */
   enableTopicPreview: boolean | undefined;
   /**
-   * @deprecated The `voice_dictation` flag is retired: dictation is on wherever
-   * business features are. Always equals `ENABLE_BUSINESS_FEATURES` (the value
-   * Cloud already served) because released LobeHub Mobile clients still read
-   * it. Web reads `serverConfig.enableBusinessFeatures`. Remove once those
-   * clients are no longer supported.
+   * Realtime dictation in the chat input. On wherever business features are, or
+   * wherever the deployment sets `+voice_dictation`, because the dictation
+   * session endpoint is what actually makes it work. Released LobeHub Mobile
+   * clients read it from `serverFeatureFlags`.
    */
   enableVoiceDictation: boolean;
   /**

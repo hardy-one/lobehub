@@ -9,9 +9,10 @@ import {
   processingMessageField,
   watchKeywordsField,
 } from '../const';
-import { deviceAccessFields } from '../deviceAccess';
+import { deviceAllowFromField } from '../deviceAccess';
 import { replyStyleFields } from '../replyStyle';
 import type { FieldSchema } from '../types';
+import { QQ_DM_POLICIES, QQ_GROUP_POLICIES, qqDevicePolicyField } from './accessSettings';
 import { DEFAULT_QQ_CONNECTION_MODE } from './const';
 
 export const schema: FieldSchema[] = [
@@ -40,8 +41,9 @@ export const schema: FieldSchema[] = [
     key: 'settings',
     label: 'channel.settings',
     properties: [
-      makeUserIdField('qq'),
-      ...deviceAccessFields,
+      { ...makeUserIdField('qq'), managed: true },
+      qqDevicePolicyField,
+      { ...deviceAllowFromField, managed: true },
       {
         key: 'connectionMode',
         default: DEFAULT_QQ_CONNECTION_MODE,
@@ -101,9 +103,12 @@ export const schema: FieldSchema[] = [
       },
       displayToolCallsField,
       processingMessageField,
-      makeDmPolicyField({ policy: 'open' }),
-      ...makeGroupPolicyFields({ policy: 'open' }),
-      allowFromField,
+      makeDmPolicyField({ policy: 'open' }, { policies: QQ_DM_POLICIES }),
+      ...makeGroupPolicyFields(
+        { policy: 'open' },
+        { allowFromVisibleWhen: 'pairing', policies: QQ_GROUP_POLICIES },
+      ).map((field) => (field.key === 'groupAllowFrom' ? { ...field, managed: true } : field)),
+      { ...allowFromField, managed: true },
       watchKeywordsField,
       ...replyStyleFields,
     ],

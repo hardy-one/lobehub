@@ -1,17 +1,4 @@
-/**
- * The page asks people one question — "who can DM it?" — while the runtime
- * answers it with three settings (`dmPolicy`, the global `allowFrom` list and
- * the owner's `userId`). These helpers translate between the two without
- * pretending they are the same thing:
- *
- * - A non-empty `allowFrom` restricts everyone, in DMs and in groups, whatever
- *   `dmPolicy` says. So "everyone" is only true when the list is empty, and a
- *   stored `open` policy with a filled list reads as "listed people only".
- * - `pairing` is the one policy that lets strangers through to a pairing code
- *   first, and it needs the owner's `userId` to approve them.
- */
-
-export type DmStance = 'approval' | 'closed' | 'everyone' | 'listed';
+import type { FieldSchema } from '@/server/services/bot/platforms/types';
 
 export interface StanceSettings {
   allowFrom?: unknown;
@@ -29,51 +16,55 @@ export const countListed = (list: unknown): number =>
       ).length
     : 0;
 
-export const deriveDmStance = ({ allowFrom, dmPolicy }: StanceSettings): DmStance => {
-  switch (dmPolicy) {
-    case 'pairing': {
-      return 'approval';
-    }
-    case 'disabled': {
-      return 'closed';
-    }
-    case 'allowlist': {
-      return 'listed';
-    }
-    default: {
-      return countListed(allowFrom) > 0 ? 'listed' : 'everyone';
-    }
+/** Resolve a stored policy against its platform declaration, preserving unknown legacy values. */
+export const getDeclaredPolicy = (
+  field: FieldSchema | undefined,
+  raw: unknown,
+): string | undefined => {
+  const options = field?.enum ?? [];
+  if (typeof raw !== 'string' || !raw) {
+    return typeof field?.default === 'string' ? field.default : options[0];
   }
+  if (options.includes(raw)) return raw;
+  if (raw === 'allowlist' && options.includes('pairing')) return 'pairing';
+  return raw;
 };
 
-export interface StanceChange {
-  /** People who would fall off the list by applying the stance. */
+/** A populated global list still implies allowlist on platforms that declare that policy. */
+export const deriveDmPolicy = (
+  settings: StanceSettings,
+  field?: FieldSchema,
+): string | undefined => {
+  const policy = getDeclaredPolicy(field, settings.dmPolicy);
+  if (
+    policy === 'open' &&
+    (!field?.enum || field.enum.includes('allowlist')) &&
+    countListed(settings.allowFrom) > 0
+  ) {
+    return 'allowlist';
+  }
+  return policy;
+};
+
+export interface PolicyChange {
+  /** People removed from the list by applying this policy. */
   dropped: number;
-  patch: { allowFrom?: never[]; dmPolicy: 'allowlist' | 'disabled' | 'open' | 'pairing' };
+  patch: Record<string, unknown>;
 }
 
-/**
- * The form changes that make `stance` true. Only "everyone" touches the list,
- * because a filled list would otherwise keep restricting everyone.
- */
-export const applyDmStance = (stance: DmStance, settings: StanceSettings): StanceChange => {
-  switch (stance) {
-    case 'approval': {
-      return { dropped: 0, patch: { dmPolicy: 'pairing' } };
-    }
-    case 'closed': {
-      return { dropped: 0, patch: { dmPolicy: 'disabled' } };
-    }
-    case 'listed': {
-      return { dropped: 0, patch: { dmPolicy: 'allowlist' } };
-    }
-    default: {
-      return {
-        dropped: countListed(settings.allowFrom),
-        patch: { allowFrom: [], dmPolicy: 'open' },
-      };
-    }
-  }
+/** Apply a declared DM policy, clearing the global list only where it restricts the open policy. */
+export const applyDmPolicy = (
+  policy: string,
+  settings: StanceSettings,
+  field?: FieldSchema,
+): PolicyChange => {
+  const clearsGlobalList = policy === 'open' && (!field?.enum || field.enum.includes('allowlist'));
+  if (!clearsGlobalList) return { dropped: 0, patch: { dmPolicy: policy } };
+
+  return {
+    dropped: countListed(settings.allowFrom),
+    patch: { allowFrom: [], dmPolicy: policy },
+  };
 };
 
 export type AccessIssue = 'approverMissing' | 'groupListEmpty' | 'listEmpty';
@@ -87,13 +78,16 @@ export interface AccessSettings extends StanceSettings {
 }
 
 /** Things that leave the current choice not working the way it reads. */
-export const accessIssues = (settings: AccessSettings): AccessIssue[] => {
+export const accessIssues = (
+  settings: AccessSettings,
+  dmPolicyField?: FieldSchema,
+): AccessIssue[] => {
   const issues: AccessIssue[] = [];
   const userId = typeof settings.userId === 'string' ? settings.userId.trim() : '';
+  const dmPolicy = deriveDmPolicy(settings, dmPolicyField);
 
-  if (settings.dmPolicy === 'pairing' && !userId) issues.push('approverMissing');
-  if (settings.dmPolicy === 'allowlist' && countListed(settings.allowFrom) === 0)
-    issues.push('listEmpty');
+  if (dmPolicy === 'pairing' && !userId) issues.push('approverMissing');
+  if (dmPolicy === 'allowlist' && countListed(settings.allowFrom) === 0) issues.push('listEmpty');
   if (settings.groupPolicy === 'allowlist' && countListed(settings.groupAllowFrom) === 0)
     issues.push('groupListEmpty');
 
@@ -107,26 +101,63 @@ const hasId = (entry: unknown) =>
       typeof entry === 'object' &&
       String((entry as { id?: unknown }).id ?? '').trim() !== '';
 
+const isFieldVisible = (
+  field: FieldSchema | undefined,
+  settings: AccessSettings,
+  fields: FieldSchema[],
+) => {
+  if (!field?.visibleWhen) return true;
+  const conditions = Array.isArray(field.visibleWhen) ? field.visibleWhen : [field.visibleWhen];
+  return conditions.every(({ field: key, value: expected }) => {
+    const policyField = fields.find((item) => item.key === key);
+    const actual = policyField
+      ? getDeclaredPolicy(policyField, settings[key as keyof AccessSettings])
+      : settings[key as keyof AccessSettings];
+    return Array.isArray(expected) ? expected.includes(actual) : actual === expected;
+  });
+};
+
 /**
- * Rows without an ID in a list the page has just hidden. A hidden list stays mounted (so a saved
- * list is never dropped), which also keeps its "ID required" check alive: a half-added row would
- * block every save with an error nobody can see. Returns only the lists that changed.
+ * Remove unfinished rows only when their schema-declared list is hidden. Hidden
+ * lists with usable rows stay intact so switching policies never drops data.
  */
 export const dropHiddenIncompleteRows = (
-  settings: AccessSettings & { groupAllowFrom?: unknown; groupPolicy?: string },
+  settings: AccessSettings,
+  fields: FieldSchema[] = [],
 ): Record<string, unknown> => {
   const patch: Record<string, unknown> = {};
+  const byKey = new Map(fields.map((field) => [field.key, field]));
+  const canInspect = (key: string) => fields.length === 0 || byKey.has(key);
   const prune = (key: 'allowFrom' | 'deviceAllowFrom' | 'groupAllowFrom') => {
     const list = settings[key];
     if (Array.isArray(list) && list.some((entry) => !hasId(entry))) patch[key] = list.filter(hasId);
   };
 
-  const stance = deriveDmStance(settings);
-  const peopleListShown =
-    stance === 'approval' || stance === 'listed' || countListed(settings.allowFrom) > 0;
-  if (!peopleListShown) prune('allowFrom');
-  if (settings.groupPolicy !== 'allowlist') prune('groupAllowFrom');
-  if (settings.devicePolicy !== 'allowlist') prune('deviceAllowFrom');
+  if (canInspect('allowFrom')) {
+    const dmField = byKey.get('dmPolicy');
+    const dmPolicy = getDeclaredPolicy(dmField, settings.dmPolicy);
+    const peopleListShown =
+      dmPolicy === 'pairing' ||
+      (dmField?.enum?.includes('allowlist') && dmPolicy === 'allowlist') ||
+      countListed(settings.allowFrom) > 0;
+    if (!peopleListShown) prune('allowFrom');
+  }
+
+  if (canInspect('groupAllowFrom')) {
+    const groupField = byKey.get('groupAllowFrom');
+    const visible = groupField
+      ? isFieldVisible(groupField, settings, fields)
+      : settings.groupPolicy === 'allowlist' || settings.groupPolicy === 'pairing';
+    if (!visible) prune('groupAllowFrom');
+  }
+
+  if (canInspect('deviceAllowFrom')) {
+    const listField = byKey.get('deviceAllowFrom');
+    const visible = listField
+      ? isFieldVisible(listField, settings, fields)
+      : settings.devicePolicy === 'allowlist';
+    if (!visible) prune('deviceAllowFrom');
+  }
 
   return patch;
 };

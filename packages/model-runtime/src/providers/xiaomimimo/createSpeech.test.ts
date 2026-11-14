@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
 
+import { XIAOMIMIMO_MAX_BASE64_BYTES } from './audioLimits';
 import { createXiaomiMiMoSpeech, XIAOMIMIMO_SPEECH_FORMAT } from './createSpeech';
 
 const encode = (text: string) => Buffer.from(text).toString('base64');
@@ -187,5 +188,45 @@ describe('createXiaomiMiMoSpeech', () => {
     ).rejects.toBe(error);
 
     expect(context.handleError).toHaveBeenCalledWith(error);
+  });
+});
+
+describe('createXiaomiMiMoSpeech - voice sample limit', () => {
+  const sampleOf = (base64Length: number) => `data:audio/wav;base64,${'A'.repeat(base64Length)}`;
+
+  it('accepts a sample that fills the documented payload exactly', async () => {
+    const client = createClient(audioResponse());
+
+    await createXiaomiMiMoSpeech(
+      client as any,
+      {
+        input: 'hi',
+        model: 'mimo-v2.5-tts-voiceclone',
+        voice: sampleOf(XIAOMIMIMO_MAX_BASE64_BYTES),
+      },
+      undefined,
+      createContext(),
+    );
+
+    expect(client.chat.completions.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a sample past the limit before calling the API', async () => {
+    const client = createClient(audioResponse());
+
+    await expect(
+      createXiaomiMiMoSpeech(
+        client as any,
+        {
+          input: 'hi',
+          model: 'mimo-v2.5-tts-voiceclone',
+          voice: sampleOf(XIAOMIMIMO_MAX_BASE64_BYTES + 4),
+        },
+        undefined,
+        createContext(),
+      ),
+    ).rejects.toThrow(/at most 10 MB of base64 audio per voice-clone sample/);
+
+    expect(client.chat.completions.create).not.toHaveBeenCalled();
   });
 });

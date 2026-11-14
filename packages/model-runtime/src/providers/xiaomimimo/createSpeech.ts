@@ -8,6 +8,7 @@ import type {
 } from '../../types/tts';
 import { resolveTextToSpeechParams } from '../../types/tts';
 import type { ChatCompletionErrorPayload } from '../../types/type';
+import { assertBase64AudioWithinLimit } from './audioLimits';
 
 /**
  * MiMo answers every non-streaming synthesis with a wav container, so the caller's
@@ -73,9 +74,12 @@ const resolveSpeechVoice = (model: string, voice?: string): string | undefined =
   if (model === XIAOMIMIMO_VOICE_CLONE_MODEL) {
     if (!value || !AUDIO_DATA_URL.test(value)) {
       throw new Error(
-        `${XIAOMIMIMO_VOICE_CLONE_MODEL} needs a wav or mp3 sample as the voice: pass a \`data:audio/wav;base64,...\` or \`data:audio/mpeg;base64,...\` URL, base64 payload at most 10 MB.`,
+        `${XIAOMIMIMO_VOICE_CLONE_MODEL} needs a wav or mp3 sample as the voice: pass a \`data:audio/wav;base64,...\` or \`data:audio/mpeg;base64,...\` URL.`,
       );
     }
+
+    // The documented 10 MB ceiling applies to the encoded sample, which is what travels here.
+    assertBase64AudioWithinLimit(value.length - (value.indexOf(',') + 1), 'voice-clone sample');
 
     return value;
   }

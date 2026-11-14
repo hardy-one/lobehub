@@ -3,6 +3,7 @@ import type OpenAI from 'openai';
 
 import type { ASROptions, ASRPayload, ASRResponse } from '../../types/asr';
 import type { ChatCompletionErrorPayload } from '../../types/type';
+import { assertBase64AudioWithinLimit, estimateBase64Size } from './audioLimits';
 
 /** MiMo accepts only these two containers, identified by their MIME type. */
 const SUPPORTED_AUDIO_TYPES: Record<string, string> = {
@@ -11,23 +12,6 @@ const SUPPORTED_AUDIO_TYPES: Record<string, string> = {
   'audio/wav': 'audio/wav',
   'audio/wave': 'audio/wav',
   'audio/x-wav': 'audio/wav',
-};
-
-/** Upper bound of the base64 payload MiMo accepts, measured on the encoded string. */
-export const XIAOMIMIMO_MAX_BASE64_BYTES = 10 * 1024 * 1024;
-
-/**
- * Reject oversized audio before the file is read into memory and encoded. Base64 inflates
- * by 4/3, so the limit is checked against the encoded length rather than the raw size.
- */
-const assertAudioWithinLimit = (size: number) => {
-  const encodedSize = Math.ceil(size / 3) * 4;
-
-  if (encodedSize > XIAOMIMIMO_MAX_BASE64_BYTES) {
-    throw new Error(
-      `MiMo speech recognition accepts at most 10 MB of base64 audio; this file encodes to ${Math.ceil(encodedSize / 1024 / 1024)} MB. Shorten or compress it before transcribing.`,
-    );
-  }
 };
 
 /** MiMo detects the language itself, and only pins it for Mandarin and English. */
@@ -107,7 +91,7 @@ export const createXiaomiMiMoTranscription = async (
   log('transcribe called with model: %s, audio size: %d bytes', model, file?.size || 0);
 
   const mimeType = resolveXiaomiMiMoAudioType(file, fileName);
-  assertAudioWithinLimit(file.size);
+  assertBase64AudioWithinLimit(estimateBase64Size(file.size), 'recognition input');
 
   const bytes = await file.arrayBuffer();
   const data = `data:${mimeType};base64,${Buffer.from(bytes).toString('base64')}`;

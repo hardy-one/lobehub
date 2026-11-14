@@ -1,11 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
 
+import { XIAOMIMIMO_MAX_BASE64_BYTES } from './audioLimits';
 import {
   createXiaomiMiMoTranscription,
   extractXiaomiMiMoTranscript,
   resolveXiaomiMiMoAudioType,
-  XIAOMIMIMO_MAX_BASE64_BYTES,
 } from './createTranscription';
 
 const createContext = () => ({

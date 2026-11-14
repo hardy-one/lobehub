@@ -259,6 +259,25 @@ describe('mergeBotSettingsPatch', () => {
     // A field neither stored nor sent still gets its schema default.
     expect(merged?.botWakeDutiesThreshold).toBe(0.65);
   });
+  it('migrates legacy QQ allowlist policies on save without dropping either approved list', () => {
+    const merged = mergeBotSettingsPatch(
+      'qq',
+      {
+        allowFrom: [{ id: 'user-openid', name: 'Ada' }],
+        groupAllowFrom: [{ id: 'group-openid', name: 'Team' }],
+        dmPolicy: 'allowlist',
+        groupPolicy: 'allowlist',
+      },
+      { charLimit: 1200 },
+    );
+
+    expect(merged).toMatchObject({
+      allowFrom: [{ id: 'user-openid', name: 'Ada' }],
+      groupAllowFrom: [{ id: 'group-openid', name: 'Team' }],
+      dmPolicy: 'pairing',
+      groupPolicy: 'pairing',
+    });
+  });
 
   it('writes a flat key the runtime reads, even for a bot configured with a nested botWake', () => {
     const merged = mergeBotSettingsPatch(

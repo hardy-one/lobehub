@@ -25,6 +25,7 @@ import {
   maskCredentials,
   resolveMaskedCredentials,
 } from '@/server/services/bot/credentialMasking';
+import { createOwnerBindingCode } from '@/server/services/bot/ownerBindingStore';
 import {
   type BotProviderFieldValues,
   collectFieldFormatViolations,
@@ -37,6 +38,7 @@ import {
   beginFeishuAppRegistration,
   pollFeishuAppRegistration,
 } from '@/server/services/bot/platforms/feishu/registration';
+import { normalizeQqAccessSettings } from '@/server/services/bot/platforms/qq/accessSettings';
 import { flattenBotWakeSettings } from '@/server/services/conversationWake/config';
 import { GatewayService } from '@/server/services/gateway';
 import { getBotRuntimeStatus } from '@/server/services/gateway/runtimeStatus';
@@ -122,9 +124,12 @@ async function describeApplicationIdConflict(
  * `TRPCError(BAD_REQUEST)` — keeps client forms able to highlight the
  * failing field via the existing TRPC error path.
  */
-function assertAccessSettingsForTRPC(settings: Record<string, unknown> | undefined): void {
+function assertAccessSettingsForTRPC(
+  settings: Record<string, unknown> | undefined,
+  platform?: string,
+): void {
   try {
-    assertBotAccessSettings(settings);
+    assertBotAccessSettings(settings, platform);
   } catch (e) {
     throw new TRPCError({
       code: 'BAD_REQUEST',
@@ -166,8 +171,11 @@ function assertFieldFormatsForTRPC(
  * longer offers, or a bot-wake switch stuck at its default while the runtime follows the nested
  * object the form cannot see.
  */
-const withFormSettings = (platform: string, settings?: Record<string, unknown>) =>
-  flattenBotWakeSettings(withResolvedConcurrencySettings(platform, settings));
+const withFormSettings = (platform: string, settings?: Record<string, unknown>) => {
+  const resolved = withResolvedConcurrencySettings(platform, settings);
+  const normalized = platform === 'qq' ? normalizeQqAccessSettings(resolved) : resolved;
+  return flattenBotWakeSettings(normalized);
+};
 
 export const agentBotProviderRouter = router({
   listPlatforms: authedProcedure.query(async ({ ctx }) => {
@@ -224,7 +232,7 @@ export const agentBotProviderRouter = router({
           input.settings,
         ),
       };
-      assertAccessSettingsForTRPC(payload.settings);
+      assertAccessSettingsForTRPC(payload.settings, input.platform);
       await assertWatchKeywordsWritable({
         applicationId: input.applicationId,
         platform: input.platform,
@@ -345,6 +353,36 @@ export const agentBotProviderRouter = router({
         platform: p.platform,
         settings: p.settings,
       }));
+    }),
+
+  createOwnerBindingCode: agentBotProviderProcedureWrite
+    .input(z.object({ applicationId: z.string().min(1), platform: z.string().min(1) }))
+    .mutation(async ({ input, ctx }) => {
+      const definition = platformRegistry.getPlatform(input.platform);
+      if (!definition?.accessCapabilities?.ownerBinding) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Owner binding is not supported for this platform',
+        });
+      }
+
+      const provider = (await ctx.agentBotProviderModel.query({ platform: input.platform })).find(
+        (item) => item.applicationId === input.applicationId,
+      );
+      if (!provider) throw new TRPCError({ code: 'NOT_FOUND', message: BOT_NOT_FOUND_MESSAGE });
+
+      const result = await createOwnerBindingCode({
+        applicationId: input.applicationId,
+        platform: input.platform,
+      });
+      if (result.status === 'redis-unavailable') {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Owner binding is temporarily unavailable. Please retry later.',
+        });
+      }
+
+      return { code: result.code, expiresAt: result.expiresAt };
     }),
 
   getRuntimeStatus: authedProcedure
@@ -671,7 +709,7 @@ export const agentBotProviderRouter = router({
           value.platform ?? existing?.platform,
           value.settings,
         );
-        assertAccessSettingsForTRPC(value.settings);
+        assertAccessSettingsForTRPC(value.settings, targetPlatform);
         if (targetPlatform) {
           await assertWatchKeywordsWritable({
             applicationId: targetApplicationId,

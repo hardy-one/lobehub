@@ -1,3 +1,4 @@
+import type { ChatTopicBotContext } from '@lobechat/types';
 import type { Chat, Message, MessageContext } from 'chat';
 
 import type { LobeChatDatabase } from '@/database/type';
@@ -47,6 +48,8 @@ export interface CommandContext {
    *  Wired to `thread.state` on text dispatch and `channel.state` on native
    *  slash dispatch — the same store `setState` writes to on each path. */
   getState: () => Promise<Record<string, any> | null>;
+  /** Whether the invoking message came from a direct conversation. */
+  isDM?: boolean;
   post: (text: string) => Promise<any>;
   /**
    * Post a reply visible only to the invoker.
@@ -116,6 +119,7 @@ export type BotAccessGate = (
   author: { userId?: string; userName?: string },
   replyLocale: BotReplyLocale,
   caller: string,
+  message?: unknown,
 ) => Promise<boolean>;
 
 /** The owner's reply style for one conversation and the emoji the bot may use there. */
@@ -133,6 +137,11 @@ export interface BotHandlerContext {
   /** The bot has the bot-wake scenario enabled: it listens to unaddressed channel chatter. */
   botWakeEnabled: boolean;
   bridge: AgentBridgeService;
+  /** Builds caller context with the platform's device trust rules. */
+  buildBotContextForMessage: (
+    message: Message,
+    thread: { id: string; isDM?: boolean },
+  ) => ChatTopicBotContext;
   /**
    * Whether the agent may step back from this conversation (`STAND_DOWN`): a group conversation
    * of a bot whose wake rules enforce, while its wake switch is on.
@@ -142,8 +151,6 @@ export interface BotHandlerContext {
   client: PlatformClient;
   commands: BotCommand[];
   detectReplyLocale: (message: { author?: unknown }) => BotReplyLocale;
-  /** User IDs, besides the owner, trusted with the owner's devices. */
-  deviceAllowlist: string[];
   displayToolCalls: boolean;
   dmSettings: DmSettings;
   /** Last check before a follow-up wake (watch keyword) runs: enforced policies, then the scheduler. */

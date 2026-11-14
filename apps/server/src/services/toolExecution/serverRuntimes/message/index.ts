@@ -464,7 +464,7 @@ export const messageRuntime: ServerRuntimeRegistration = {
           params.platform,
           params.settings,
         );
-        assertBotAccessSettings(settings);
+        assertBotAccessSettings(settings, params.platform);
         await assertWatchKeywordsWritable({
           applicationId: params.applicationId,
           platform: params.platform,
@@ -587,7 +587,7 @@ export const messageRuntime: ServerRuntimeRegistration = {
             existing.settings as Record<string, unknown> | null,
             params.settings,
           );
-          assertBotAccessSettings(merged);
+          assertBotAccessSettings(merged, existing.platform);
           await assertWatchKeywordsWritable({
             applicationId: existing.applicationId,
             existingSettings: existing.settings,

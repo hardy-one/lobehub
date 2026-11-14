@@ -35,6 +35,7 @@ import {
   sendQQMessageActive,
   sendQQMessageInSlot,
 } from './passiveReply';
+import { getQqGroupMemberRole } from './role';
 import { sendQQAttachments } from './sendAttachments';
 
 const log = debug('bot-platform:qq:bot');
@@ -322,6 +323,10 @@ class QQGatewayClient implements PlatformClient {
     return extractChatId(platformThreadId);
   }
 
+  extractGroupMemberRole(message: unknown) {
+    return getQqGroupMemberRole(message);
+  }
+
   formatMarkdown(markdown: string): string {
     return stripMarkdown(markdown);
   }
@@ -437,6 +442,9 @@ class QQWebhookClient implements PlatformClient {
     return extractChatId(platformThreadId);
   }
 
+  extractGroupMemberRole(message: unknown) {
+    return getQqGroupMemberRole(message);
+  }
   formatMarkdown(markdown: string): string {
     return stripMarkdown(markdown);
   }

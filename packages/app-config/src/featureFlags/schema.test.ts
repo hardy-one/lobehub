@@ -36,16 +36,15 @@ describe('FeatureFlagsSchema', () => {
   });
 
   /**
-   * The Cloud snapshot still carries the retired `workspace` / `voice_dictation` /
-   * `storage_overage` / `agent_gateway_mux_mobile` keys until they are deleted after deploy;
-   * parsing it must keep every other flag instead of dropping the whole snapshot.
+   * The Cloud snapshot still carries the retired `workspace` / `storage_overage` /
+   * `agent_gateway_mux_mobile` keys until they are deleted after deploy; parsing it must keep
+   * every other flag instead of dropping the whole snapshot.
    */
   it('parses a snapshot that still holds the retired rollout flags', () => {
     const result = FeatureFlagsSchema.safeParse({
       agent_gateway_mux_mobile: true,
       dashboard: ['user-1'],
       storage_overage: true,
-      voice_dictation: true,
       workspace: ['rollout:100', 'user-1'],
     });
 
@@ -253,28 +252,45 @@ describe('mapFeatureFlagsEnvToState', () => {
     // The retired keys are no longer part of IFeatureFlags; feed them like a stale snapshot would.
     const retiredOff = {
       agent_gateway_mux_mobile: false,
-      voice_dictation: false,
       workspace: false,
     } as IFeatureFlags;
     const retiredOn = {
       agent_gateway_mux_mobile: true,
-      voice_dictation: true,
       workspace: true,
     } as IFeatureFlags;
 
     businessConst.enabled = true;
     expect(mapFeatureFlagsEnvToState(retiredOff, 'user-1')).toMatchObject({
       enableGatewayMuxMobile: true,
-      enableVoiceDictation: true,
       enableWorkspace: true,
     });
 
     businessConst.enabled = false;
     expect(mapFeatureFlagsEnvToState(retiredOn, 'user-1')).toMatchObject({
       enableGatewayMuxMobile: false,
-      enableVoiceDictation: false,
       enableWorkspace: false,
     });
+  });
+
+  /**
+   * A business deployment serves the dictation session endpoint, so it keeps dictation on without
+   * configuration; a self-hosted instance that provides the same endpoint opts in with the flag.
+   */
+  it('maps voice_dictation as an opt-in on top of the business-feature gate', () => {
+    businessConst.enabled = false;
+    expect(
+      mapFeatureFlagsEnvToState({ voice_dictation: true }, 'user-1').enableVoiceDictation,
+    ).toBe(true);
+    expect(
+      mapFeatureFlagsEnvToState({ voice_dictation: false }, 'user-1').enableVoiceDictation,
+    ).toBe(false);
+    expect(mapFeatureFlagsEnvToState({}, 'user-1').enableVoiceDictation).toBe(false);
+
+    businessConst.enabled = true;
+    expect(mapFeatureFlagsEnvToState({}, 'user-1').enableVoiceDictation).toBe(true);
+    expect(
+      mapFeatureFlagsEnvToState({ voice_dictation: false }, 'user-1').enableVoiceDictation,
+    ).toBe(true);
   });
 
   it('should map DevDock access only for allowlisted user IDs', () => {

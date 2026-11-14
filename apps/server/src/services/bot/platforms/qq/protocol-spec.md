@@ -616,7 +616,7 @@ curl 'https://api.sgroup.qq.com/users/@me' \
 - C2C 单聊审批使用 `author.user_openid`，会话标识为 `qq:c2c:<user_openid>`。
 - 群审批列表保存 `group_openid`，会话标识为 `qq:group:<group_openid>`；群消息发送者使用 `author.member_openid`。这三类 ID 不能互换或跨范围比较。
 - QQ 单聊的 `allowFrom` 保存已批准的 `user_openid`；群内不应用单聊 `allowFrom` 过滤。群审批通过后保存群的 `group_openid` 到 `groupAllowFrom`。
-- 单聊设备 allowlist 复用 `allowFrom`。群内设备权限跟随群策略；仅管理员策略读取 `author.member_role`，仅 `admin` 和 `owner` 放行。
+- 私聊设备授权由 `devicePolicy` 决定：`owner` 仅允许已绑定的 `user_openid`，`allowlist` 还允许 `allowFrom` 中已批准的私聊联系人。群内只有显式设置 `devicePolicy: group` 才按群策略授权：`open` 放行通过群门禁的成员，`pairing` 仅允许已批准群成员，`admins` 仅允许 `admin` 和 `owner`；`disabled`、`owner`、`allowlist`、缺失或未知设备策略在群内均不授权。群成员身份使用 `member_openid`，不会匹配私聊联系人名单中的 `user_openid`。
 
 **`C2C_MESSAGE_CREATE` 事件 `d` 字段：**
 
@@ -676,20 +676,20 @@ curl 'https://api.sgroup.qq.com/users/@me' \
 }
 ```
 
-| 字段                | 类型     | 说明                                              |
-| ------------------- | -------- | ------------------------------------------------- |
-| `id`                | `string` | 消息 ID。                                         |
-| `channel_id`        | `string` | 子频道 ID。                                       |
-| `guild_id`          | `string` | 频道 ID。                                         |
-| `content`           | `string` | 消息内容，@ 使用 `<@!userid>` 格式。              |
-| `timestamp`         | `string` | 消息创建时间，RFC 3339 格式。                     |
-| `author`            | `object` | 发送者信息（id、username、avatar、bot）。         |
-| `member`            | `object` | 成员信息（joined_at、roles）。                    |
-| `mentions`          | `array`  | 被 @ 的用户数组。                                 |
-| `seq`               | `number` | 消息序列号，用于排序。                            |
-| `seq_in_channel`    | `string` | 频道内序列号。                                    |
-| `attachments`       | `array`  | 附件数组（包含 url、content_type、filename 等）。 |
-| `message_reference` | `object` | 引用消息对象（包含 `message_id`）。               |
+| 字段                | 类型     | 说明                                               |
+| ------------------- | -------- | -------------------------------------------------- |
+| `id`                | `string` | 消息 ID。                                          |
+| `channel_id`        | `string` | 子频道 ID。                                        |
+| `guild_id`          | `string` | 频道 ID。                                          |
+| `content`           | `string` | 消息内容，@ 使用 `<@!userid>` 格式。               |
+| `timestamp`         | `string` | 消息创建时间，RFC 3339 格式。                      |
+| `author`            | `object` | 发送者信息（id、username、avatar、bot）。          |
+| `member`            | `object` | 成员信息（joined\_at、roles）。                    |
+| `mentions`          | `array`  | 被 @ 的用户数组。                                  |
+| `seq`               | `number` | 消息序列号，用于排序。                             |
+| `seq_in_channel`    | `string` | 频道内序列号。                                     |
+| `attachments`       | `array`  | 附件数组（包含 url、content\_type、filename 等）。 |
+| `message_reference` | `object` | 引用消息对象（包含 `message_id`）。                |
 
 ### 6.3 附件结构 `Attachment`
 
@@ -715,7 +715,7 @@ curl 'https://api.sgroup.qq.com/users/@me' \
 
 ## 7. 消息类型详解
 
-### 7.1 TEXT（msg_type = 0）
+### 7.1 TEXT（msg\_type = 0）
 
 最简单的消息类型，直接在 `content` 字段填入文本内容。
 
@@ -735,7 +735,7 @@ curl 'https://api.sgroup.qq.com/users/@me' \
 | `<#channel_id>` | 引用子频道 | `<#123456>`                |
 | `<emoji:id>`    | 表情       | `<emoji:4>`                |
 
-### 7.2 MARKDOWN（msg_type = 2）
+### 7.2 MARKDOWN（msg\_type = 2）
 
 Markdown 消息有两种使用方式：
 
@@ -796,7 +796,7 @@ Markdown 消息有两种使用方式：
 - 开通模板 MD 或原生 MD 后，主动 MD 默认生效，被动 MD 仍需单独申请。
 - Markdown 内的图片资源必须使用公网可访问的 URL。
 
-### 7.3 ARK（msg_type = 3）
+### 7.3 ARK（msg\_type = 3）
 
 Ark 是 QQ 机器人的模板卡片消息。平台默认提供三个模板：
 
@@ -847,7 +847,7 @@ Ark 是 QQ 机器人的模板卡片消息。平台默认提供三个模板：
 - 主动 Ark 消息默认可用，被动 Ark 消息需要达到准入条件并向平台申请。
 - 自定义 Ark 模板需在管理后台申请。
 
-### 7.4 EMBED（msg_type = 4）
+### 7.4 EMBED（msg\_type = 4）
 
 Embed 是一种特殊的 Ark 消息，仅在**频道子频道**和**频道私信**场景下可用。群聊和单聊不支持。
 
@@ -872,7 +872,7 @@ Embed 是一种特殊的 Ark 消息，仅在**频道子频道**和**频道私信
 }
 ```
 
-### 7.5 MEDIA（msg_type = 7）
+### 7.5 MEDIA（msg\_type = 7）
 
 富媒体消息（图片、视频、语音、文件）需要先上传到 QQ 服务器获取 `file_info`，再在发送消息时通过 `media` 字段引用。
 
@@ -1014,11 +1014,11 @@ curl 'https://api.sgroup.qq.com/v2/groups/A1B2C3D4E5F6/messages' \
 
 ### 8.2 操作码 OpCode
 
-| 代码 | 名称              | 方向             | 说明               |
-| ---- | ----------------- | ---------------- | ------------------ |
-| `0`  | DISPATCH          | 服务端 -> 客户端 | 事件推送。         |
-| `12` | HTTP_CALLBACK_ACK | 客户端 -> 服务端 | 确认收到事件回调。 |
-| `13` | CALLBACK_VERIFY   | 服务端 -> 客户端 | 回调地址验证请求。 |
+| 代码 | 名称                | 方向             | 说明               |
+| ---- | ------------------- | ---------------- | ------------------ |
+| `0`  | DISPATCH            | 服务端 -> 客户端 | 事件推送。         |
+| `12` | HTTP\_CALLBACK\_ACK | 客户端 -> 服务端 | 确认收到事件回调。 |
+| `13` | CALLBACK\_VERIFY    | 服务端 -> 客户端 | 回调地址验证请求。 |
 
 ### 8.3 回调地址验证（op = 13）
 
@@ -1228,7 +1228,7 @@ sequenceDiagram
 | -------------- | --------------------------- | ------------------------------ | --------------------------------------------------------- |
 | 收消息方式     | `getUpdates` 或 Webhook     | `getupdates` 长轮询            | WebSocket 或 HTTP Webhook                                 |
 | 发送目标       | `chat_id`                   | `to_user_id` + `context_token` | `group_openid` / `openid` / `channel_id` / DMS `guild_id` |
-| 对话关联主键   | `chat_id` 足够              | `context_token` 是关键         | 路径参数中的 openid/channel_id 即可                       |
+| 对话关联主键   | `chat_id` 足够              | `context_token` 是关键         | 路径参数中的 openid/channel\_id 即可                      |
 | 主动发消息能力 | 只要知道 `chat_id` 通常即可 | 依赖最近入站 `context_token`   | 有严格月度 / 日度配额限制                                 |
 | 被动回复窗口   | 无限制                      | 无明确公开限制                 | 群聊 5 分钟 / 单聊 60 分钟                                |
 | 消息去重       | `message_id` 自动处理       | `client_id` 避免重复           | `msg_id` + `msg_seq` 去重                                 |

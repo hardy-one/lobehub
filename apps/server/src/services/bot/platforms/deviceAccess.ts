@@ -6,11 +6,13 @@ import type { FieldSchema } from './types';
  *
  * - `owner` (default): only the sender whose ID equals `settings.userId`.
  * - `allowlist`: the owner, plus the user IDs in `deviceAllowFrom`.
+ * - `group` (QQ only): members allowed by the selected group policy.
  *
+ * The shared field intentionally omits `group`; only QQ declares that option.
  * Kept apart from `allowFrom`: being allowed to talk to the bot is not being
  * trusted with the owner's machine, so neither list implies the other.
  */
-export type DevicePolicy = 'allowlist' | 'owner';
+export type DevicePolicy = 'allowlist' | 'group' | 'owner';
 
 export const devicePolicyField: FieldSchema = {
   key: 'devicePolicy',

@@ -176,8 +176,11 @@ export function registerHandlers(
   });
   const buildBotContextForMessage = (message: Message, thread: { id: string; isDM?: boolean }) => {
     const deviceAccessAllowed =
-      platform === 'qq' && thread.isDM !== true
-        ? canUseQqGroupDevices(groupSettings.policy, client.extractGroupMemberRole?.(message))
+      platform === 'qq' &&
+      thread.isDM !== true &&
+      info.settings?.devicePolicy === 'group' &&
+      canUseQqGroupDevices(groupSettings.policy, client.extractGroupMemberRole?.(message))
+        ? true
         : undefined;
 
     return buildBotContext({

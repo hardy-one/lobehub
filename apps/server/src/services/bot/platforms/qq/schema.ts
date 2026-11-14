@@ -9,10 +9,10 @@ import {
   processingMessageField,
   watchKeywordsField,
 } from '../const';
-import { deviceAccessFields } from '../deviceAccess';
+import { deviceAllowFromField } from '../deviceAccess';
 import { replyStyleFields } from '../replyStyle';
 import type { FieldSchema } from '../types';
-import { QQ_DM_POLICIES, QQ_GROUP_POLICIES } from './accessSettings';
+import { QQ_DM_POLICIES, QQ_GROUP_POLICIES, qqDevicePolicyField } from './accessSettings';
 import { DEFAULT_QQ_CONNECTION_MODE } from './const';
 
 export const schema: FieldSchema[] = [
@@ -42,9 +42,8 @@ export const schema: FieldSchema[] = [
     label: 'channel.settings',
     properties: [
       { ...makeUserIdField('qq'), managed: true },
-      ...deviceAccessFields.map((field) =>
-        field.key === 'deviceAllowFrom' ? { ...field, managed: true } : field,
-      ),
+      qqDevicePolicyField,
+      { ...deviceAllowFromField, managed: true },
       {
         key: 'connectionMode',
         default: DEFAULT_QQ_CONNECTION_MODE,

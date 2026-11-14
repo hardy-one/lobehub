@@ -147,7 +147,7 @@ describe('groupSettingsFields', () => {
     ]);
     expect(byKey.get('dmPolicy')?.enum).toEqual(['open', 'pairing', 'disabled']);
     expect(byKey.get('groupPolicy')?.enum).toEqual(['open', 'pairing', 'admins']);
-    expect(byKey.get('devicePolicy')?.enum).toEqual(['owner', 'allowlist']);
+    expect(byKey.get('devicePolicy')?.enum).toEqual(['owner', 'allowlist', 'group']);
     expect(byKey.get('userId')?.managed).toBe(true);
     expect(byKey.get('allowFrom')?.managed).toBe(true);
     expect(byKey.get('groupAllowFrom')?.managed).toBe(true);

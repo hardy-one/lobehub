@@ -326,10 +326,52 @@ describe('BotMessageRouter', () => {
 
       expect(mockHandleMention).toHaveBeenCalledTimes(1);
     });
+    it('keeps approved QQ DM contacts trusted under the device allowlist policy', async () => {
+      const handler = await loadQqDmHandler({
+        allowFrom: [{ id: 'approved-c2c-openid' }],
+        devicePolicy: 'allowlist',
+        dmPolicy: 'pairing',
+        userId: 'owner-c2c-openid',
+      });
+      const thread = {
+        id: 'qq:c2c:approved-c2c-openid',
+        isDM: true,
+        post: vi.fn().mockResolvedValue(undefined),
+        setState: vi.fn().mockResolvedValue(undefined),
+        state: Promise.resolve(null),
+      };
 
-    it('does not apply the QQ user allowlist to group messages', async () => {
+      await handler(thread, {
+        author: { isBot: false, userId: 'approved-c2c-openid', userName: 'approved user' },
+        raw: { author: { user_openid: 'approved-c2c-openid' } },
+        text: 'hello',
+      });
+
+      expect(mockHandleMention).toHaveBeenCalledTimes(1);
+      expect(mockHandleMention.mock.calls[0][2].botContext.isDeviceTrusted).toBe(true);
+    });
+
+    it('keeps QQ group device access owner-only by default even when the group is open', async () => {
       const { mention } = await loadHandlers(
-        { allowFrom: [{ id: 'some-other-c2c-openid' }], groupPolicy: 'open' },
+        {
+          allowFrom: [{ id: 'some-other-c2c-openid' }],
+          devicePolicy: 'owner',
+          groupPolicy: 'open',
+          userId: 'qq-owner-openid',
+        },
+        'qq',
+      );
+      const thread = makeQqGroupThread('group-openid');
+
+      await mention(thread, makeQqMessage('member'));
+
+      expect(mockHandleMention).toHaveBeenCalledTimes(1);
+      expect(mockHandleMention.mock.calls[0][2].botContext.isDeviceTrusted).toBeUndefined();
+    });
+
+    it('allows QQ group device access when the group device policy is explicitly selected', async () => {
+      const { mention } = await loadHandlers(
+        { devicePolicy: 'group', groupPolicy: 'open', userId: 'qq-owner-openid' },
         'qq',
       );
       const thread = makeQqGroupThread('group-openid');
@@ -338,6 +380,24 @@ describe('BotMessageRouter', () => {
 
       expect(mockHandleMention).toHaveBeenCalledTimes(1);
       expect(mockHandleMention.mock.calls[0][2].botContext.isDeviceTrusted).toBe(true);
+    });
+
+    it('fails closed for unknown QQ device policies in open groups', async () => {
+      const { mention } = await loadHandlers(
+        {
+          deviceAllowFrom: [{ id: 'member-openid' }],
+          devicePolicy: 'unexpected',
+          groupPolicy: 'open',
+          userId: 'qq-owner-openid',
+        },
+        'qq',
+      );
+      const thread = makeQqGroupThread('group-openid');
+
+      await mention(thread, makeQqMessage('member'));
+
+      expect(mockHandleMention).toHaveBeenCalledTimes(1);
+      expect(mockHandleMention.mock.calls[0][2].botContext.isDeviceTrusted).toBeUndefined();
     });
 
     it('issues a group-scoped pairing code and records the target group ID', async () => {
@@ -372,10 +432,27 @@ describe('BotMessageRouter', () => {
       );
       expect(thread.post.mock.calls[0][0]).toContain('PAIR123');
     });
+    it('allows devices in approved QQ pairing groups when group device access is selected', async () => {
+      const { mention } = await loadHandlers(
+        {
+          devicePolicy: 'group',
+          groupAllowFrom: [{ id: 'group-openid' }],
+          groupPolicy: 'pairing',
+          userId: 'qq-owner-openid',
+        },
+        'qq',
+      );
+      const thread = makeQqGroupThread('group-openid');
+
+      await mention(thread, makeQqMessage('member'));
+
+      expect(mockHandleMention).toHaveBeenCalledTimes(1);
+      expect(mockHandleMention.mock.calls[0][2].botContext.isDeviceTrusted).toBe(true);
+    });
 
     it('restricts QQ admins policy to owner/admin roles and their device access', async () => {
       const { mention } = await loadHandlers(
-        { groupPolicy: 'admins', userId: 'owner-c2c-openid' },
+        { devicePolicy: 'group', groupPolicy: 'admins', userId: 'owner-c2c-openid' },
         'qq',
       );
       const thread = makeQqGroupThread('group-openid');
@@ -387,6 +464,10 @@ describe('BotMessageRouter', () => {
       await mention(thread, makeQqMessage('admin'));
       expect(mockHandleMention).toHaveBeenCalledTimes(1);
       expect(mockHandleMention.mock.calls[0][2].botContext.isDeviceTrusted).toBe(true);
+
+      await mention(thread, makeQqMessage('owner', 'group-owner-member-openid'));
+      expect(mockHandleMention).toHaveBeenCalledTimes(2);
+      expect(mockHandleMention.mock.calls[1][2].botContext.isDeviceTrusted).toBe(true);
     });
     it('keeps legacy QQ disabled group policy owner-only', async () => {
       const { mention } = await loadHandlers(

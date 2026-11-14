@@ -359,6 +359,8 @@
   "channel.publicKeyPlaceholder": "64 位十六进制字符串",
   "channel.qq.access.device.allowlist": "所有者及已批准成员",
   "channel.qq.access.device.allowlistDesc": "已绑定的 QQ 所有者和获批成员可以通过机器人操作设备。",
+  "channel.qq.access.device.group": "按群策略",
+  "channel.qq.access.device.groupDesc": "通过你选择的 QQ 群策略的成员可以使用已连接设备。",
   "channel.qq.access.device.owner": "仅限已绑定的 QQ 所有者",
   "channel.qq.access.device.ownerDesc": "只有已绑定的 QQ 所有者可以通过机器人操作已连接的设备。",
   "channel.qq.access.dm.pairing": "需批准",

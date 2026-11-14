@@ -307,6 +307,9 @@ export default {
   'channel.qq.access.device.allowlist': 'Owner and approved people',
   'channel.qq.access.device.allowlistDesc':
     'The bound owner and approved QQ users can use the bot to operate connected devices.',
+  'channel.qq.access.device.group': 'Follow group policy',
+  'channel.qq.access.device.groupDesc':
+    'Members who pass your QQ group policy can use connected devices.',
   'channel.qq.access.device.owner': 'Only the bound QQ owner',
   'channel.qq.access.device.ownerDesc':
     'Only the bound QQ owner can use the bot to operate connected devices.',

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { extractGroupSettings, validateAccessSettings } from '../const';
+import { devicePolicyField } from '../deviceAccess';
 import { mergeWithDefaults } from '../utils';
 import {
   canUseQqGroupDevices,
   normalizeQqAccessSettings,
+  QQ_DEVICE_POLICIES,
   QQ_DM_POLICIES,
   QQ_GROUP_ACCEPTED_POLICIES,
   QQ_GROUP_POLICIES,
@@ -22,6 +24,20 @@ describe('QQ access settings declaration', () => {
     expect(QQ_GROUP_ACCEPTED_POLICIES).toEqual([...QQ_GROUP_POLICIES, 'disabled']);
     expect(field('dmPolicy')?.enum).toEqual(QQ_DM_POLICIES);
     expect(field('groupPolicy')?.enum).toEqual(QQ_GROUP_POLICIES);
+    expect(devicePolicyField.enum).toEqual(['owner', 'allowlist']);
+    expect(QQ_DEVICE_POLICIES).toEqual(['owner', 'allowlist', 'group']);
+    expect(field('devicePolicy')?.enum).toEqual(QQ_DEVICE_POLICIES);
+    expect(field('devicePolicy')?.default).toBe('owner');
+    expect(field('devicePolicy')?.enumLabels).toEqual([
+      'channel.qq.access.device.owner',
+      'channel.qq.access.device.allowlist',
+      'channel.qq.access.device.group',
+    ]);
+    expect(field('devicePolicy')?.enumDescriptions).toEqual([
+      'channel.qq.access.device.ownerDesc',
+      'channel.qq.access.device.allowlistDesc',
+      'channel.qq.access.device.groupDesc',
+    ]);
     expect(field('groupAllowFrom')?.managed).toBe(true);
     expect(field('allowFrom')?.managed).toBe(true);
     expect(field('deviceAllowFrom')?.managed).toBe(true);
@@ -59,13 +75,14 @@ describe('QQ access settings declaration', () => {
       extractGroupSettings(persisted, { acceptedPolicies: QQ_GROUP_ACCEPTED_POLICIES }),
     ).toEqual({ allowFrom: ['approved-group'], policy: 'disabled' });
   });
-  it('applies group device access from the selected group policy', () => {
+  it('applies group device access only through the selected group policy', () => {
     expect(canUseQqGroupDevices('open')).toBe(true);
     expect(canUseQqGroupDevices('pairing')).toBe(true);
     expect(canUseQqGroupDevices('admins', 'owner')).toBe(true);
     expect(canUseQqGroupDevices('admins', 'admin')).toBe(true);
     expect(canUseQqGroupDevices('admins', 'member')).toBe(false);
     expect(canUseQqGroupDevices('admins')).toBe(false);
+    expect(canUseQqGroupDevices('allowlist')).toBe(false);
     expect(canUseQqGroupDevices('disabled')).toBe(false);
     expect(canUseQqGroupDevices('disabled', 'owner')).toBe(false);
   });

@@ -15,6 +15,11 @@ export const serverConfigSelectors = {
     s.serverConfig.enableArtifactDeployment || false,
   disableEmailPassword: (s: ServerConfigStore) => s.serverConfig.disableEmailPassword || false,
   enableBusinessFeatures: (s: ServerConfigStore) => s.serverConfig.enableBusinessFeatures || false,
+  /**
+   * Runtime flag `voice_dictation`, which business deployments set from the business gate: the
+   * dictation entry only makes sense where the realtime ASR session endpoint exists.
+   */
+  enableVoiceDictation: (s: ServerConfigStore) => s.featureFlags.enableVoiceDictation === true,
   enableEmailVerification: (s: ServerConfigStore) =>
     s.serverConfig.enableEmailVerification || false,
   enableComposio: (s: ServerConfigStore) => s.serverConfig.enableComposio || false,

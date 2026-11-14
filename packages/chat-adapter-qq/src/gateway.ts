@@ -64,6 +64,8 @@ export class QQGatewayConnection {
   private sessionId: string | null = null;
   private seq: number | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private heartbeatJitterTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatSocket: WebSocket | null = null;
   private heartbeatAcked = true;
   private reconnectAttempts = 0;
   private gatewayUrl: string | null = null;
@@ -153,7 +155,7 @@ export class QQGatewayConnection {
           return;
         }
 
-        this.handlePayload(payload, isResume, (err?: Error) => {
+        this.handlePayload(payload, ws, isResume, (err?: Error) => {
           if (resolved) return;
           resolved = true;
           if (err) reject(err);
@@ -163,7 +165,9 @@ export class QQGatewayConnection {
 
       ws.addEventListener('close', (event) => {
         this.log('WebSocket closed: code=%d reason=%s', event.code, event.reason);
-        this.stopHeartbeat();
+        // Drop the reference before reconnect so a stale timer cannot close the next socket.
+        if (this.ws === ws) this.ws = null;
+        this.stopHeartbeat(ws);
         this.abortSignal?.removeEventListener('abort', onAbort);
 
         if (!resolved) {
@@ -214,6 +218,7 @@ export class QQGatewayConnection {
 
   private handlePayload(
     payload: QQGatewayPayload,
+    ws: WebSocket,
     isResume: boolean,
     onReady: (err?: Error) => void,
   ): void {
@@ -224,7 +229,7 @@ export class QQGatewayConnection {
 
     switch (payload.op) {
       case QQ_WS_OP_CODES.HELLO: {
-        this.handleHello(payload.d as QQGatewayHelloData, isResume);
+        this.handleHello(payload.d as QQGatewayHelloData, ws, isResume);
         break;
       }
 
@@ -258,7 +263,7 @@ export class QQGatewayConnection {
 
       case QQ_WS_OP_CODES.HEARTBEAT: {
         // Server may request an immediate heartbeat
-        this.sendHeartbeat();
+        this.sendHeartbeat(ws);
         break;
       }
 
@@ -268,7 +273,7 @@ export class QQGatewayConnection {
     }
   }
 
-  private handleHello(data: QQGatewayHelloData, isResume: boolean): void {
+  private handleHello(data: QQGatewayHelloData, ws: WebSocket, isResume: boolean): void {
     // Clamp gateway-provided interval into a safe range to prevent resource exhaustion
     const rawInterval = data.heartbeat_interval;
     const safeInterval = Number.isFinite(rawInterval)
@@ -276,12 +281,12 @@ export class QQGatewayConnection {
       : HEARTBEAT_DEFAULT_INTERVAL_MS;
 
     this.log('Hello received, heartbeat_interval=%dms (effective=%dms)', rawInterval, safeInterval);
-    this.startHeartbeat(safeInterval);
+    this.startHeartbeat(safeInterval, ws);
 
     if (isResume && this.sessionId) {
-      this.sendResume();
+      this.sendResume(ws);
     } else {
-      this.sendIdentify();
+      this.sendIdentify(ws);
     }
   }
 
@@ -310,7 +315,7 @@ export class QQGatewayConnection {
 
   // ---------- Send Operations ----------
 
-  private sendIdentify(): void {
+  private sendIdentify(ws: WebSocket): void {
     this.api
       .getAccessToken()
       .then((token) => {
@@ -328,18 +333,18 @@ export class QQGatewayConnection {
           op: QQ_WS_OP_CODES.IDENTIFY,
         };
 
-        this.send(identifyPayload);
+        this.send(identifyPayload, ws);
         this.log('Identify sent (intents=%d, shard=%o)', this.intents, this.shard);
       })
       .catch((err) => {
         this.log('Failed to get access token for identify: %O', err);
         this.openConnectionError =
           err instanceof Error ? err : new Error('Failed to get access token for identify');
-        this.ws?.close(4000, 'Identify failed');
+        ws.close(4000, 'Identify failed');
       });
   }
 
-  private sendResume(): void {
+  private sendResume(ws: WebSocket): void {
     this.api
       .getAccessToken()
       .then((token) => {
@@ -352,66 +357,86 @@ export class QQGatewayConnection {
           op: QQ_WS_OP_CODES.RESUME,
         };
 
-        this.send(resumePayload);
+        this.send(resumePayload, ws);
         this.log('Resume sent (session_id=%s, seq=%d)', this.sessionId, this.seq);
       })
       .catch((err) => {
         this.log('Failed to get access token for resume: %O', err);
         this.openConnectionError =
           err instanceof Error ? err : new Error('Failed to get access token for resume');
-        this.ws?.close(4000, 'Resume failed');
+        ws.close(4000, 'Resume failed');
       });
   }
 
-  private sendHeartbeat(): void {
-    const heartbeatPayload: QQGatewayPayload = {
-      d: this.seq,
-      op: QQ_WS_OP_CODES.HEARTBEAT,
-    };
-    this.send(heartbeatPayload);
+  private sendHeartbeat(ws: WebSocket | null): boolean {
+    return this.send({ d: this.seq, op: QQ_WS_OP_CODES.HEARTBEAT }, ws);
   }
 
-  private send(payload: QQGatewayPayload): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(payload));
+  private send(payload: QQGatewayPayload, ws: WebSocket | null = this.ws): boolean {
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(payload));
+      return true;
     }
+    return false;
   }
 
   // ---------- Heartbeat ----------
 
-  private startHeartbeat(intervalMs: number): void {
+  private startHeartbeat(intervalMs: number, ws: WebSocket): void {
     this.stopHeartbeat();
     this.heartbeatAcked = true;
+    this.heartbeatSocket = ws;
 
     // Send first heartbeat after a random jitter (as per spec)
     const jitter = Math.random() * intervalMs;
-    setTimeout(() => {
+    this.heartbeatJitterTimer = setTimeout(() => {
+      this.heartbeatJitterTimer = null;
+
+      // The socket may have gone away while waiting for the jitter.
       if (this.closed || this.abortSignal?.aborted) return;
-      this.sendHeartbeat();
+      if (this.heartbeatSocket !== ws || ws.readyState !== WebSocket.OPEN) return;
+
+      this.heartbeatAcked = false;
+      this.sendHeartbeat(ws);
 
       this.heartbeatTimer = setInterval(() => {
         if (this.closed || this.abortSignal?.aborted) {
-          this.stopHeartbeat();
+          this.stopHeartbeat(ws);
+          return;
+        }
+
+        // Timer outlived its socket — do not touch the current connection.
+        if (this.heartbeatSocket !== ws || ws.readyState !== WebSocket.OPEN) {
+          this.stopHeartbeat(ws);
           return;
         }
 
         if (!this.heartbeatAcked) {
+          this.stopHeartbeat(ws);
           this.log('Heartbeat ACK missed — zombie connection, reconnecting');
-          this.ws?.close(4000, 'Heartbeat timeout');
+          ws.close(4000, 'Heartbeat timeout');
           return;
         }
 
         this.heartbeatAcked = false;
-        this.sendHeartbeat();
+        this.sendHeartbeat(ws);
       }, intervalMs);
     }, jitter);
   }
 
-  private stopHeartbeat(): void {
+  private stopHeartbeat(ws?: WebSocket): void {
+    // A late close event from a previous socket must not stop the current heartbeat.
+    if (ws && this.heartbeatSocket !== ws) return;
+
+    if (this.heartbeatJitterTimer) {
+      clearTimeout(this.heartbeatJitterTimer);
+      this.heartbeatJitterTimer = null;
+    }
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+    this.heartbeatSocket = null;
   }
 
   // ---------- Event Forwarding ----------

@@ -155,7 +155,8 @@ export const MODEL_LIST_CONFIGS = {
     visionKeywords: ['vision', 'grok-4'],
   },
   xiaomimimo: {
-    excludeKeywords: ['tts'],
+    // speech models carry no chat capability tags
+    excludeKeywords: ['tts', 'asr'],
     functionCallKeywords: ['mimo'],
     reasoningKeywords: ['mimo'],
     // mimo-v2.5 (non-pro) is natively omni-modal; match the exact id

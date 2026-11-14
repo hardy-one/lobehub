@@ -45,6 +45,9 @@ export const sendVoiceMessage = async (
     void sendMessage({
       files: [file],
       message,
+      // The transcript already carries the words, so the recording is playback-only: mark it
+      // so request building leaves it out instead of letting the model analyze it again.
+      ...(transcribe ? { metadata: { voiceMessage: { transcribed: true } } } : {}),
       onMessageAccepted: () => {
         accepted = true;
         resolve();

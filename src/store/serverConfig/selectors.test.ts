@@ -41,6 +41,20 @@ describe('serverConfigSelectors', () => {
     });
   });
 
+  describe('enableVoiceDictation', () => {
+    it('is off by default and on once the voice_dictation flag resolves to true', () => {
+      expect(serverConfigSelectors.enableVoiceDictation(initServerConfigStore({}).getState())).toBe(
+        false,
+      );
+      const on = initServerConfigStore({
+        featureFlags: {
+          ...mapFeatureFlagsEnvToState({ ...DEFAULT_FEATURE_FLAGS, voice_dictation: true }),
+        },
+      });
+      expect(serverConfigSelectors.enableVoiceDictation(on.getState())).toBe(true);
+    });
+  });
+
   describe('enableManagedCloudDevice', () => {
     it('is off by default and on only when the flag resolves to true', () => {
       expect(

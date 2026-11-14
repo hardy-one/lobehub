@@ -29,6 +29,12 @@ export const FeatureFlagsSchema = z.object({
 
   ai_image: FeatureFlagValue.optional(),
   speech_to_text: FeatureFlagValue.optional(),
+  /**
+   * Realtime dictation in the chat input. The session endpoint ships with a
+   * business deployment, so this flag is the opt-in for a self-hosted instance
+   * that provides one; business deployments have dictation on regardless.
+   */
+  voice_dictation: FeatureFlagValue.optional(),
   token_counter: FeatureFlagValue.optional(),
 
   welcome_suggest: FeatureFlagValue.optional(),
@@ -255,6 +261,7 @@ export const DEFAULT_FEATURE_FLAGS: IFeatureFlags = {
 
   market: true,
   speech_to_text: true,
+  voice_dictation: false,
   changelog: true,
 
   // the flags below can only be used with commercial license
@@ -341,8 +348,14 @@ export const mapFeatureFlagsEnvToState = (
 
     showMarket: evaluateFeatureFlag(config.market, userId, 'market'),
     enableSTT: evaluateFeatureFlag(config.speech_to_text, userId, 'speech_to_text'),
-    // Deprecated compatibility field for released LobeHub Mobile clients; see IFeatureFlagsState.
-    enableVoiceDictation: ENABLE_BUSINESS_FEATURES,
+    /**
+     * Business deployments serve the dictation session endpoint, so the flag stays on for them
+     * without configuration; a self-hosted instance providing the same endpoint opts in with
+     * `+voice_dictation`. Released LobeHub Mobile clients also read this from `serverFeatureFlags`.
+     */
+    enableVoiceDictation:
+      evaluateFeatureFlag(config.voice_dictation, userId, 'voice_dictation') ||
+      ENABLE_BUSINESS_FEATURES,
 
     hideGitHub: evaluateFeatureFlag(
       config.commercial_hide_github,

@@ -1,13 +1,16 @@
 export interface PlatformSettingsFieldExtrasProps {
   disabled?: boolean;
+  hasConfig?: boolean;
   /**
    * Report that the helper wrote into the form. `form.setFieldValue` does not
    * fire the Form's `onValuesChange`, so without this the page never learns it
    * has unsaved changes and the Discard button stays hidden.
    */
+  onBindingPendingChange?: (pending: boolean) => void;
   onFilled?: () => void;
   /** Platform the field belongs to — the shared Feishu/Lark schema needs it to pick a domain. */
   platformId: string;
+  savedCredentials?: Record<string, string>;
   /**
    * The field's value as currently persisted, which is what a helper should
    * test before acting on its own: antd hydrates the form after mount, so a

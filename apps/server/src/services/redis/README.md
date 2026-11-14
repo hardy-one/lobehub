@@ -34,6 +34,9 @@ callers do not choose a provider, prefix, key, SET options or claim lifetime.
 - `skillIndex`: the skill-index snapshot and change notes one conversation
   (topic/thread/agent) renders `<available_skills>` from, for a day. `undefined` without Redis;
   the runtime then takes a fresh snapshot every run.
+- `ownerBinding`: one current owner code per bot; replacement invalidates prior codes and
+  consumption is atomic. Codes expire after fifteen minutes and unavailable Redis is reported to
+  the caller.
 - `pageCollab`: a digest of the body each page's last room projection wrote, for a day, so the
   next projection can tell that something wrote the body outside the room. `null` without Redis.
 - `agentSignal`: spend bounds for background self-iteration — classifier calls per user per UTC

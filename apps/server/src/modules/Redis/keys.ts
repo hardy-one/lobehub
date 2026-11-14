@@ -40,6 +40,8 @@ export const RedisKeyNamespace = {
    * silent-wake budget and the per-channel wake scheduler.
    */
   BOT_WAKE: 'bot-wake',
+  /** Short-lived one-time codes that bind a bot's QQ owner identity. */
+  BOT_OWNER_BINDING: 'bot',
   /**
    * Short-lived reply routes an IM platform hands out with an inbound message
    * (DingTalk's `sessionWebhook`), kept so the process that posts the reply
@@ -180,6 +182,11 @@ export const RedisKeys = {
      * Full key: bot-wake:scheduler_lock:v1:{key}
      */
     schedulerLock: (key: string): string => `scheduler_lock:v1:${key}`,
+  },
+  /** Owner binding codes — one current code per platform/application pair. */
+  ownerBinding: {
+    code: (platform: string, applicationId: string): string =>
+      `owner-binding:${platform}:${applicationId}`,
   },
   /**
    * Run lease scope — see {@link RedisKeyNamespace.AGENT_RUN}.
@@ -371,6 +378,7 @@ export const RedisKeyScopeNamespace = {
   botReply: RedisKeyNamespace.BOT_REPLY,
   botWake: RedisKeyNamespace.BOT_WAKE,
   integrations: RedisKeyNamespace.INTEGRATIONS,
+  ownerBinding: RedisKeyNamespace.BOT_OWNER_BINDING,
   lobechat: RedisKeyNamespace.LOBEHUB,
   qqPassive: RedisKeyNamespace.QQ_PASSIVE,
   sendPathCache: RedisKeyNamespace.SEND_PATH_CACHE,

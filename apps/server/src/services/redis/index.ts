@@ -9,6 +9,7 @@ import { deviceSystemInfo } from './deviceSystemInfo';
 import { heteroControl } from './heteroControl';
 import { inboundWebhook } from './inboundWebhook';
 import { linear } from './linear';
+import { ownerBinding } from './ownerBinding';
 import { pageCollab } from './pageCollab';
 import { qqPassive } from './qqPassive';
 import { skillTools } from './skillTools';
@@ -32,6 +33,7 @@ export const redisService = {
   linear,
   pageCollab,
   qqPassive,
+  ownerBinding,
   skillTools,
   steerQueue,
   taskRunDelivery,

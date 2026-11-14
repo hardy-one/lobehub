@@ -28,6 +28,7 @@ export interface GatewayManagerConfig {
 export class GatewayManager {
   private clients = new Map<string, PlatformClient>();
   private running = false;
+  private startPromise: Promise<void> | null = null;
   private config: GatewayManagerConfig;
 
   private definitionByPlatform: Map<string, PlatformDefinition>;
@@ -51,6 +52,24 @@ export class GatewayManager {
       return;
     }
 
+    // Two startup paths reach this method: the Next.js instrumentation hook and
+    // the server launcher's HTTP call. They arrive within seconds of each other,
+    // and both used to pass the `running` check while `sync()` was still awaiting
+    // — every bot was connected twice as a result. Share one in-flight promise so
+    // whichever path arrives first owns the startup and the other waits for it.
+    if (this.startPromise) {
+      log('GatewayManager start already in progress, joining');
+      return this.startPromise;
+    }
+
+    this.startPromise = this.doStart().finally(() => {
+      this.startPromise = null;
+    });
+
+    return this.startPromise;
+  }
+
+  private async doStart(): Promise<void> {
     log('Starting GatewayManager');
 
     await this.sync().catch((err) => {
@@ -62,6 +81,13 @@ export class GatewayManager {
   }
 
   async stop(): Promise<void> {
+    // A stop issued mid-startup must not interleave with the sync that is
+    // still creating clients — wait for it to settle first.
+    if (this.startPromise) {
+      log('Waiting for in-flight start before stopping');
+      await this.startPromise.catch(() => {});
+    }
+
     if (!this.running) return;
 
     log('Stopping GatewayManager');
@@ -81,6 +107,13 @@ export class GatewayManager {
   // ------------------------------------------------------------------
 
   async startClient(platform: string, applicationId: string): Promise<void> {
+    // Starting a single client while the bulk sync is still connecting bots
+    // could create a second client for the same key. Let the sync win.
+    if (this.startPromise) {
+      log('Waiting for in-flight start before starting client %s', platform);
+      await this.startPromise.catch(() => {});
+    }
+
     const key = buildRuntimeKey(platform, applicationId);
 
     // Stop existing if any

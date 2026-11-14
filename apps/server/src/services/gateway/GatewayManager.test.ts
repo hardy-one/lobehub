@@ -130,10 +130,33 @@ describe('GatewayManager', () => {
     it('should continue starting even if initial sync fails', async () => {
       vi.mocked(getServerDB).mockRejectedValueOnce(new Error('DB connection failed'));
 
-      const manager = new GatewayManager({ definitions: [] });
+      // One definition so the failing DB call is actually reached and consumed.
+      const manager = new GatewayManager({ definitions: [createFakeDefinition('slack')] });
 
       // Should not throw
       await expect(manager.start()).resolves.toBeUndefined();
+      expect(manager.isRunning).toBe(true);
+    });
+
+    it('should connect each bot once when start is called concurrently', async () => {
+      const startFn = vi.fn().mockResolvedValue(undefined);
+      const definition = createFakeDefinition('slack', () => ({
+        ...createMockBot(),
+        start: startFn,
+      }));
+
+      mockFindEnabledByPlatform.mockResolvedValue([
+        { applicationId: 'app-1', credentials: { token: 'tok' }, userId: 'user-1' },
+      ]);
+
+      const manager = new GatewayManager({ definitions: [definition] });
+
+      // The instrumentation hook and the server launcher both call start()
+      // within seconds of each other on boot.
+      await Promise.all([manager.start(), manager.start(), manager.start()]);
+
+      expect(startFn).toHaveBeenCalledTimes(1);
+      expect(mockFindEnabledByPlatform).toHaveBeenCalledTimes(1);
       expect(manager.isRunning).toBe(true);
     });
   });

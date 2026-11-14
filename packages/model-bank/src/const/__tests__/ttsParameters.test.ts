@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import elevenlabsModels from '../../aiModels/elevenlabs';
 import minimaxModels from '../../aiModels/minimax';
 import { openaiTTSModels } from '../../aiModels/openai/nonChat';
+import xiaomimimoModels from '../../aiModels/xiaomimimo';
 import {
   extractTTSDefaultValues,
   TTSVoiceSchema,
@@ -211,5 +212,65 @@ describe('ElevenLabs TTS model cards', () => {
     // Other legacy Default voice ids (Sarah, George, Rachel) must not be offered.
     for (const legacyId of ['EXAVITQu4vr4xnSDxMaL', 'JBFqnCBsd6RMkjVDRZzb', '21m00Tcm4TlvDq8ikWAM'])
       expect(ids).not.toContain(legacyId);
+  });
+});
+
+describe('Xiaomi MiMo TTS model cards', () => {
+  const xiaomimimoTTSModels = xiaomimimoModels.filter(
+    (card): card is AITTSModelCard => card.type === 'tts',
+  );
+  const cardOf = (id: string) => xiaomimimoTTSModels.find((card) => card.id === id)!;
+
+  it('lists the preset, voice-design and voice-clone models', () => {
+    expect(xiaomimimoTTSModels.map((card) => card.id)).toEqual([
+      'mimo-v2.5-tts',
+      'mimo-v2.5-tts-voicedesign',
+      'mimo-v2.5-tts-voiceclone',
+    ]);
+
+    for (const card of xiaomimimoTTSModels) {
+      expect(() => validateTTSModelParamsSchema(card.parameters)).not.toThrow();
+      // MiMo always answers with wav, so no model offers an output format to choose.
+      expect(card.parameters).not.toHaveProperty('format');
+    }
+  });
+
+  it('offers the nine preset voices and defaults to the cluster default', () => {
+    const card = cardOf('mimo-v2.5-tts');
+    const ids = card.voices!.map((voice) => voice.id);
+
+    expect(ids).toHaveLength(9);
+    for (const voice of card.voices!) expect(() => TTSVoiceSchema.parse(voice)).not.toThrow();
+    expect(ids).toEqual(expect.arrayContaining(['mimo_default', '冰糖', 'Mia']));
+    expect(card.parameters!.voice!.default).toBe('mimo_default');
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('derives the voice from a description instead of a preset voice', () => {
+    const card = cardOf('mimo-v2.5-tts-voicedesign');
+
+    expect(card.voices).toBeUndefined();
+    expect(card.parameters).not.toHaveProperty('voice');
+    expect(
+      validateTTSParams(card.parameters!, { instructions: '年轻女声，语速偏快' }),
+    ).toHaveLength(0);
+  });
+
+  it('requires a sample data URL as the voice for cloning', () => {
+    const card = cardOf('mimo-v2.5-tts-voiceclone');
+
+    expect(card.voices).toBeUndefined();
+    expect(card.parameters).toHaveProperty('voice');
+    expect(card.parameters!.voice!.description).toMatch(/base64/);
+    expect(extractTTSDefaultValues(card.parameters!)).toEqual({ instructions: '' });
+  });
+
+  it('leaves speed out because MiMo takes pacing from the instruction only', () => {
+    for (const card of xiaomimimoTTSModels) {
+      expect(card.parameters).not.toHaveProperty('speed');
+      expect(validateTTSParams(card.parameters!, { speed: 1.2 })).toEqual([
+        { key: 'speed', reason: 'not supported by this model' },
+      ]);
+    }
   });
 });

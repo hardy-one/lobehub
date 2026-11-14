@@ -363,3 +363,73 @@ export const elevenlabsExpressiveTTSSchema: TTSModelParamsSchema = {
   format: { default: 'mp3', enum: ELEVENLABS_TTS_FORMATS },
   voice: { default: ELEVENLABS_DEFAULT_VOICE },
 };
+
+/**
+ * MiMo-V2.5-TTS preset voices. `mimo_default` lands on 冰糖 in the China cluster and Mia
+ * elsewhere, so it declares no fixed gender.
+ * @see https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5
+ */
+export const xiaomimimoTTSVoices: TTSVoice[] = [
+  {
+    description: 'Cluster default: 冰糖 on the China cluster, Mia elsewhere',
+    displayName: 'MiMo Default',
+    gender: 'neutral',
+    id: 'mimo_default',
+    language: 'multilingual',
+  },
+  { displayName: '冰糖', gender: 'female', id: '冰糖', language: 'zh-CN' },
+  { displayName: '茉莉', gender: 'female', id: '茉莉', language: 'zh-CN' },
+  { displayName: '苏打', gender: 'male', id: '苏打', language: 'zh-CN' },
+  { displayName: '白桦', gender: 'male', id: '白桦', language: 'zh-CN' },
+  { displayName: 'Mia', gender: 'female', id: 'Mia', language: 'en-US' },
+  { displayName: 'Chloe', gender: 'female', id: 'Chloe', language: 'en-US' },
+  { displayName: 'Milo', gender: 'male', id: 'Milo', language: 'en-US' },
+  { displayName: 'Dean', gender: 'male', id: 'Dean', language: 'en-US' },
+];
+
+const MIMO_STYLE_INSTRUCTION_DESCRIPTION =
+  'Style instruction carried as the user message, e.g. "语速稍快，语调明亮，带一点兴奋". Inline tags such as (粤语) or [轻笑] also work.';
+
+/**
+ * The API returns a wav container in every non-streaming answer, so `format` stays
+ * undeclared: the runtime always asks for wav and reports that back.
+ */
+export const xiaomimimoTTSSchema: TTSModelParamsSchema = {
+  instructions: {
+    default: '',
+    description: MIMO_STYLE_INSTRUCTION_DESCRIPTION,
+    maxLength: 2000,
+  },
+  voice: { default: 'mimo_default' },
+};
+
+/**
+ * Voice design derives the timbre from `instructions`, so there is no preset voice to pick.
+ * The default keeps an unconfigured caller working instead of failing on a blank prompt.
+ */
+export const xiaomimimoVoiceDesignSchema: TTSModelParamsSchema = {
+  instructions: {
+    default:
+      'A warm, natural voice with clear pronunciation, reading text aloud at a relaxed pace.',
+    description:
+      'Timbre description carried as the user message, e.g. "二十多岁的年轻女性，声音清亮，语速偏快". One to four sentences.',
+    maxLength: 2000,
+  },
+};
+
+/**
+ * Voice cloning takes the sample itself as the voice: a data URL holding up to 10 MB of
+ * base64-encoded wav or mp3 audio.
+ */
+export const xiaomimimoVoiceCloneSchema: TTSModelParamsSchema = {
+  instructions: {
+    default: '',
+    description: MIMO_STYLE_INSTRUCTION_DESCRIPTION,
+    maxLength: 2000,
+  },
+  voice: {
+    default: '',
+    description:
+      'Required: a `data:audio/wav;base64,...` or `data:audio/mpeg;base64,...` sample, base64 payload at most 10 MB.',
+  },
+};

@@ -1,4 +1,10 @@
-import type { AIChatModelCard } from '../types/aiModel';
+import {
+  xiaomimimoTTSSchema,
+  xiaomimimoTTSVoices,
+  xiaomimimoVoiceCloneSchema,
+  xiaomimimoVoiceDesignSchema,
+} from '../const/ttsParameters';
+import type { AIASRModelCard, AIChatModelCard, AITTSModelCard } from '../types/aiModel';
 
 // Overseas (USD) price: https://mimo.mi.com/docs/en-US/pricing
 const xiaomimimoChatModels: AIChatModelCard[] = [
@@ -173,6 +179,65 @@ const xiaomimimoChatModels: AIChatModelCard[] = [
   },
 ];
 
-export const allModels = [...xiaomimimoChatModels];
+/**
+ * Speech synthesis. All three models run through `/chat/completions` with a top-level
+ * `audio` argument rather than an `/audio/speech` endpoint, and return a wav container.
+ * @see https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5
+ */
+const xiaomimimoTTSModels: AITTSModelCard[] = [
+  {
+    description:
+      'MiMo-V2.5-TTS synthesizes speech with the nine preset voices and follows natural-language style instructions or inline style tags. Currently free of charge.',
+    displayName: 'MiMo-V2.5 TTS',
+    enabled: true,
+    id: 'mimo-v2.5-tts',
+    parameters: xiaomimimoTTSSchema,
+    type: 'tts',
+    voices: xiaomimimoTTSVoices,
+  },
+  {
+    description:
+      'MiMo-V2.5 TTS Voice Design derives a timbre from a text description instead of a preset voice: the instruction becomes the voice, and no audio sample is needed. Currently free of charge.',
+    displayName: 'MiMo-V2.5 TTS Voice Design',
+    enabled: true,
+    id: 'mimo-v2.5-tts-voicedesign',
+    parameters: xiaomimimoVoiceDesignSchema,
+    type: 'tts',
+  },
+  {
+    description:
+      'MiMo-V2.5 TTS Voice Clone clones a timbre from a wav or mp3 sample supplied as a base64 data URL in the voice field. Currently free of charge.',
+    displayName: 'MiMo-V2.5 TTS Voice Clone',
+    enabled: true,
+    id: 'mimo-v2.5-tts-voiceclone',
+    parameters: xiaomimimoVoiceCloneSchema,
+    type: 'tts',
+  },
+];
+
+/**
+ * Speech recognition. Audio arrives as a base64 data URL inside a user message and the
+ * transcript comes back in the assistant message.
+ * @see https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/Speech-Recognition
+ */
+const xiaomimimoASRModels: AIASRModelCard[] = [
+  {
+    description:
+      'MiMo-V2.5-ASR transcribes wav and mp3 audio (up to 10 MB base64) in Mandarin, English, and Chinese dialects such as Cantonese, Wu, Minnan, and Sichuanese, with automatic punctuation.',
+    displayName: 'MiMo-V2.5 ASR',
+    enabled: true,
+    id: 'mimo-v2.5-asr',
+    pricing: {
+      currency: 'USD',
+      units: [
+        // $0.074 per audio hour, billed per second
+        { name: 'audioInput', rate: 0.074 / 3600, strategy: 'fixed', unit: 'second' },
+      ],
+    },
+    type: 'asr',
+  },
+];
+
+export const allModels = [...xiaomimimoChatModels, ...xiaomimimoTTSModels, ...xiaomimimoASRModels];
 
 export default allModels;

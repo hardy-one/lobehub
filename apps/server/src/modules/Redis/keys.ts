@@ -45,6 +45,8 @@ export const RedisKeyNamespace = {
    * silent-wake budget and the per-channel wake scheduler.
    */
   BOT_WAKE: 'bot-wake',
+  /** Short-lived one-time codes that bind a bot's QQ owner identity. */
+  BOT_OWNER_BINDING: 'bot',
   /**
    * Replay bookkeeping for bot messages parked while their topic was busy: how many times each
    * parked message reached a run, so one that keeps coming back stops looping.
@@ -219,6 +221,11 @@ export const RedisKeys = {
      * Full key: bot-wake:scheduler_lock:v1:{key}
      */
     schedulerLock: (key: string): string => `scheduler_lock:v1:${key}`,
+  },
+  /** Owner binding codes — one current code per platform/application pair. */
+  ownerBinding: {
+    code: (platform: string, applicationId: string): string =>
+      `owner-binding:${platform}:${applicationId}`,
   },
   /**
    * Run lease scope — see {@link RedisKeyNamespace.AGENT_RUN}.
@@ -445,6 +452,7 @@ export const RedisKeyScopeNamespace = {
   botReply: RedisKeyNamespace.BOT_REPLY,
   botWake: RedisKeyNamespace.BOT_WAKE,
   integrations: RedisKeyNamespace.INTEGRATIONS,
+  ownerBinding: RedisKeyNamespace.BOT_OWNER_BINDING,
   lobechat: RedisKeyNamespace.LOBEHUB,
   openapi: RedisKeyNamespace.OPENAPI,
   qqPassive: RedisKeyNamespace.QQ_PASSIVE,

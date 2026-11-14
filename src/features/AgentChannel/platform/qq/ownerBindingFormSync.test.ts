@@ -3,48 +3,73 @@ import { describe, expect, it, vi } from 'vitest';
 import { isOwnerBindingComplete, syncOwnerBindingUserId } from './ownerBindingFormSync';
 
 describe('isOwnerBindingComplete', () => {
-  const issuedAt = Date.parse('2026-11-13T10:00:01.000Z');
+  // LOBE-166 regression: `provider.updatedAt` moves on ANY settings save. The
+  // old implementation inferred "bind complete" from it and reported success
+  // immediately after clicking 重新绑定, before the new code could be used.
+  // `updatedAt` / `issuedAt` are no longer inputs to the decision at all.
+  it('does not treat an unrelated settings save (updatedAt change) as a completed bind', () => {
+    const previous = {
+      boundAt: '2026-11-13T09:00:00.000Z',
+      ownerId: 'owner-qq-id',
+      updatedAt: '2026-11-13T09:00:00.000Z',
+    };
+    const current = {
+      boundAt: '2026-11-13T09:00:00.000Z',
+      ownerId: 'owner-qq-id',
+      // A settings save bumped the row, but no /bind happened.
+      updatedAt: '2026-11-14T10:30:00.000Z',
+    };
 
-  it('detects a new owner even when the provider has no version metadata', () => {
-    expect(isOwnerBindingComplete(undefined, undefined, 'owner-qq-id', undefined, issuedAt)).toBe(
-      true,
-    );
+    expect(isOwnerBindingComplete(previous, current)).toBe(false);
   });
 
-  it('detects a same-owner bind from the provider update after code issuance', () => {
+  it('completes when a different owner is bound', () => {
     expect(
       isOwnerBindingComplete(
-        'owner-qq-id',
-        undefined,
-        'owner-qq-id',
-        new Date('2026-11-13T10:00:02.000Z'),
-        issuedAt,
+        { boundAt: '2026-11-13T09:00:00.000Z', ownerId: 'owner-qq-id' },
+        { boundAt: '2026-11-14T11:00:00.000Z', ownerId: 'another-qq-id' },
       ),
     ).toBe(true);
   });
 
-  it('keeps same-owner binding pending when the provider update predates the code', () => {
+  it('completes a same-owner rebind when /bind writes a new ownerBoundAt', () => {
     expect(
       isOwnerBindingComplete(
-        'owner-qq-id',
-        undefined,
-        'owner-qq-id',
-        new Date('2026-11-13T10:00:00.000Z'),
-        issuedAt,
+        { boundAt: '2026-11-13T09:00:00.000Z', ownerId: 'owner-qq-id' },
+        { boundAt: '2026-11-14T11:00:00.000Z', ownerId: 'owner-qq-id' },
+      ),
+    ).toBe(true);
+  });
+
+  it('detects the first bind on a legacy row that has no ownerBoundAt yet', () => {
+    expect(
+      isOwnerBindingComplete(
+        { ownerId: 'owner-qq-id' },
+        { boundAt: '2026-11-14T11:00:00.000Z', ownerId: 'owner-qq-id' },
+      ),
+    ).toBe(true);
+  });
+
+  it('fails closed when ownerBoundAt is missing and the owner is unchanged', () => {
+    expect(isOwnerBindingComplete({ ownerId: 'owner-qq-id' }, { ownerId: 'owner-qq-id' })).toBe(
+      false,
+    );
+    // A stale cached marker must not be "cleared" into a completion either.
+    expect(
+      isOwnerBindingComplete(
+        { boundAt: '2026-11-13T09:00:00.000Z', ownerId: 'owner-qq-id' },
+        { ownerId: 'owner-qq-id' },
       ),
     ).toBe(false);
   });
 
-  it('detects a changed provider version even if its clock is behind code issuance', () => {
+  it('does not complete when no owner id is present', () => {
     expect(
       isOwnerBindingComplete(
-        'owner-qq-id',
-        '2026-11-13T10:00:00.000Z',
-        'owner-qq-id',
-        new Date('2026-11-13T09:59:59.000Z'),
-        issuedAt,
+        { boundAt: '2026-11-13T09:00:00.000Z' },
+        { boundAt: '2026-11-14T11:00:00.000Z' },
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 });
 

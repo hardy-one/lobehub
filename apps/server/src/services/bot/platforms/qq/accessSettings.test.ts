@@ -62,6 +62,30 @@ describe('QQ access settings declaration', () => {
     expect(normalizeQqAccessSettings({ dmPolicy: 'open' })).toEqual({ dmPolicy: 'open' });
   });
 
+  it('keeps the /bind ownerBoundAt marker through QQ normalization and defaults', () => {
+    const settings = {
+      dmPolicy: 'allowlist',
+      ownerBoundAt: '2026-11-14T10:00:00.000Z',
+      userId: '4052DFFF',
+    };
+
+    // The legacy-policy migration spreads the whole settings object, so the
+    // marker written by /bind must survive both the read projection and the
+    // schema-default merge used when the form saves.
+    expect(normalizeQqAccessSettings(settings)).toMatchObject({
+      dmPolicy: 'pairing',
+      ownerBoundAt: settings.ownerBoundAt,
+      userId: '4052DFFF',
+    });
+    expect(normalizeQqAccessSettings({ ownerBoundAt: settings.ownerBoundAt })).toEqual({
+      ownerBoundAt: settings.ownerBoundAt,
+    });
+    expect(mergeWithDefaults(qq.schema, settings)).toMatchObject({
+      ownerBoundAt: settings.ownerBoundAt,
+      userId: '4052DFFF',
+    });
+  });
+
   it('preserves legacy disabled group policy through persistence and QQ runtime extraction', () => {
     const settings = { groupAllowFrom: ['approved-group'], groupPolicy: 'disabled' };
     const persisted = normalizeQqAccessSettings(mergeWithDefaults(qq.schema, settings));

@@ -131,6 +131,20 @@ function makeSlashEvent(text: string, withUser = true) {
   return { channel, event: { channel, text, user }, user };
 }
 
+/** The `settings` payload of the last provider update performed by a command. */
+function lastUpdatedSettings(): Record<string, unknown> {
+  const call = mockProviderUpdate.mock.calls.at(-1);
+  if (!call) throw new Error('provider was not updated');
+  return (call[1] as { settings: Record<string, unknown> }).settings;
+}
+
+/** A UTC ISO timestamp written by the server clock, within a minute of now. */
+function expectRecentIso(value: unknown) {
+  expect(typeof value).toBe('string');
+  expect(value as string).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  expect(Math.abs(Date.parse(value as string) - Date.now())).toBeLessThan(60_000);
+}
+
 describe('BotMessageRouter command handlers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -373,6 +387,7 @@ describe('BotMessageRouter command handlers', () => {
           settings: expect.objectContaining({
             allowFrom: [{ id: 'approved-c2c', name: 'Friend' }],
             groupAllowFrom: [{ id: 'approved-group', name: 'Team' }],
+            ownerBoundAt: expect.any(String),
             userId: 'qq-user-openid',
           }),
         }),
@@ -383,6 +398,49 @@ describe('BotMessageRouter command handlers', () => {
         platform: 'qq',
       });
       expect(thread.post).toHaveBeenCalledWith(renderOwnerBindingReply('success', 'zh-CN'));
+    });
+
+    it('writes userId and ownerBoundAt together in one /bind update', async () => {
+      mockClaimOwnerBindingCode.mockResolvedValueOnce('claimed');
+      mockProviderFindById.mockResolvedValue({
+        applicationId: 'app-1',
+        platform: 'qq',
+        settings: { dmPolicy: 'pairing' },
+      });
+      const { text } = await loadCommandHandlers({ dmPolicy: 'pairing' }, 'qq');
+      const thread = makeThread();
+
+      await text(thread, {
+        ...makeMessage('/bind ABCD2345'),
+        author: { isBot: false, userId: 'qq-user-openid', userName: 'owner' },
+      });
+
+      const settings = lastUpdatedSettings();
+      expect(settings.userId).toBe('qq-user-openid');
+      // The marker must be written by the server clock, not inferred from the row.
+      expectRecentIso(settings.ownerBoundAt);
+    });
+
+    it('overwrites userId and ownerBoundAt when rebinding to a different owner', async () => {
+      const previousBoundAt = '2026-11-13T09:00:00.000Z';
+      mockClaimOwnerBindingCode.mockResolvedValueOnce('claimed');
+      mockProviderFindById.mockResolvedValue({
+        applicationId: 'app-1',
+        platform: 'qq',
+        settings: { dmPolicy: 'pairing', ownerBoundAt: previousBoundAt, userId: 'previous-owner' },
+      });
+      const { text } = await loadCommandHandlers({ dmPolicy: 'pairing' }, 'qq');
+      const thread = makeThread();
+
+      await text(thread, {
+        ...makeMessage('/bind ABCD2345'),
+        author: { isBot: false, userId: 'qq-user-openid-2', userName: 'new owner' },
+      });
+
+      const settings = lastUpdatedSettings();
+      expect(settings.userId).toBe('qq-user-openid-2');
+      expect(settings.ownerBoundAt).not.toBe(previousBoundAt);
+      expectRecentIso(settings.ownerBoundAt);
     });
 
     it('rejects /bind in a group before checking whether the code is valid', async () => {

@@ -10,7 +10,6 @@ import { useTranslation } from 'react-i18next';
 import { useAgentStore } from '@/store/agent';
 
 import type { PlatformSettingsFieldExtrasProps } from '../types';
-import type { OwnerBindingVersion } from './ownerBindingFormSync';
 import { isOwnerBindingComplete, syncOwnerBindingUserId } from './ownerBindingFormSync';
 
 const styles = createStaticStyles(({ css, cssVar }) => ({
@@ -30,9 +29,8 @@ interface ActiveBinding {
   applicationId: string;
   code: string;
   expiresAt: number;
-  issuedAt: number;
+  previousBoundAt?: string;
   previousOwnerId?: string;
-  previousUpdatedAt?: OwnerBindingVersion;
 }
 
 const nonEmptyString = (value: unknown) =>
@@ -79,13 +77,13 @@ export const OwnerBinding = ({
     return provider?.settings?.userId;
   });
 
-  const ownerUpdatedAtFromStore = useAgentStore((state) => {
+  const ownerBoundAtFromStore = useAgentStore((state) => {
     const providers = state.activeAgentId ? state.botProvidersMap[state.activeAgentId] : undefined;
     const targetApplicationId = activeBinding?.applicationId ?? appId;
     const provider = providers?.find(
       (item) => item.platform === platformId && item.applicationId === targetApplicationId,
     );
-    return provider?.updatedAt;
+    return provider?.settings?.ownerBoundAt;
   });
   const storeOwnerId = nonEmptyString(ownerIdFromStore);
   const ownerId = storeOwnerId ?? nonEmptyString(watchedUserId) ?? nonEmptyString(savedValue);
@@ -109,9 +107,8 @@ export const OwnerBinding = ({
         applicationId: appId,
         code: result.code,
         expiresAt: result.expiresAt,
+        previousBoundAt: nonEmptyString(ownerBoundAtFromStore),
         previousOwnerId: ownerId,
-        previousUpdatedAt: ownerUpdatedAtFromStore,
-        issuedAt: Date.now(),
       });
     } catch {
       onBindingPendingChange?.(false);
@@ -128,7 +125,7 @@ export const OwnerBinding = ({
     loading,
     onBindingPendingChange,
     ownerId,
-    ownerUpdatedAtFromStore,
+    ownerBoundAtFromStore,
     platformId,
   ]);
 
@@ -179,15 +176,12 @@ export const OwnerBinding = ({
               item.platform === platformId && item.applicationId === activeBinding.applicationId,
           );
         const currentOwnerId = nonEmptyString(provider?.settings?.userId);
+        const currentBoundAt = nonEmptyString(provider?.settings?.ownerBoundAt);
         if (
-          provider &&
           currentOwnerId &&
           isOwnerBindingComplete(
-            activeBinding.previousOwnerId,
-            activeBinding.previousUpdatedAt,
-            currentOwnerId,
-            provider.updatedAt,
-            activeBinding.issuedAt,
+            { boundAt: activeBinding.previousBoundAt, ownerId: activeBinding.previousOwnerId },
+            { boundAt: currentBoundAt, ownerId: currentOwnerId },
           )
         ) {
           completeBinding(currentOwnerId);

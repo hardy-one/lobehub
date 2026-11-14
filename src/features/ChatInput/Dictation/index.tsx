@@ -81,8 +81,9 @@ const styles = stylex.create({
 
 const Dictation = memo(() => {
   const { t } = useTranslation('chat');
-  // The realtime ASR session endpoint only exists on business deployments.
-  const enabled = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
+  // `voice_dictation` opens the entry on deployments that serve the realtime ASR session endpoint;
+  // business deployments set it from the business gate instead.
+  const enabled = useServerConfigStore(serverConfigSelectors.enableVoiceDictation);
   const storeApi = useStoreApi();
   const [activeAudioInputMode, editor, mobile, generating, setActiveAudioInputMode] =
     useChatInputStore((s) => [

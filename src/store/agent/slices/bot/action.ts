@@ -121,6 +121,10 @@ export class BotSliceActionImpl {
     return agentBotProviderService.feishuFetchOwnerId(params);
   };
 
+  createOwnerBindingCode = async (params: { applicationId: string; platform: string }) => {
+    return agentBotProviderService.createOwnerBindingCode(params);
+  };
+
   /**
    * Channel configs with their credentials in the clear, for an export file the
    * user can import elsewhere. The cached provider list is masked, so this has

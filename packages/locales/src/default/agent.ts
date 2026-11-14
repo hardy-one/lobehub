@@ -304,6 +304,48 @@ export default {
     "Public Key must be a 64-character hex string. Copy it from the Discord app's General Information page — not the OAuth URL, and not an API key.",
   'channel.publicKeyPlaceholder': '64-character hex string',
   'channel.qq.appIdHint': 'Your QQ Bot App ID from QQ Open Platform',
+  'channel.qq.access.device.allowlist': 'Owner and approved people',
+  'channel.qq.access.device.allowlistDesc':
+    'The bound owner and approved QQ users can use the bot to operate connected devices.',
+  'channel.qq.access.device.group': 'Follow group policy',
+  'channel.qq.access.device.groupDesc':
+    'Members who pass your QQ group policy can use connected devices.',
+  'channel.qq.access.device.owner': 'Only the bound QQ owner',
+  'channel.qq.access.device.ownerDesc':
+    'Only the bound QQ owner can use the bot to operate connected devices.',
+  'channel.qq.access.dm.pairing': 'Approval required',
+  'channel.qq.access.group.admins': 'Only group owners and admins',
+  'channel.qq.access.group.legacyDisabled':
+    'This bot still uses the legacy “Only me in groups” setting. Choose a group policy to replace it.',
+  'channel.qq.access.group.list': 'Approved groups',
+  'channel.qq.access.group.listEmpty':
+    'No groups are approved yet. Approved groups will appear here.',
+  'channel.qq.access.group.pairing': 'Require group approval',
+  'channel.qq.managedListHint': 'QQ adds entries through approval and owner binding.',
+  'channel.qq.ownerBinding.approverMissing': 'Bind the QQ owner account before using DM approval.',
+  'channel.qq.ownerBinding.boundId': 'Bound QQ ID',
+  'channel.qq.ownerBinding.boundSuccess': 'QQ owner bound.',
+  'channel.qq.ownerBinding.copyCode': 'Copy binding code',
+  'channel.qq.ownerBinding.credentialsRequired':
+    'Enter the QQ App ID and App Secret before generating a binding code.',
+  'channel.qq.ownerBinding.deviceOwnerMissing':
+    'Bind the QQ owner account above before authorizing device access.',
+  'channel.qq.ownerBinding.error':
+    'Could not generate a binding code. Check the connection and try again.',
+  'channel.qq.ownerBinding.expired': 'The binding code expired. Generate a new one to try again.',
+  'channel.qq.ownerBinding.expiresAt': 'Expires at {{time}}.',
+  'channel.qq.ownerBinding.generate': 'Generate binding code',
+  'channel.qq.ownerBinding.instruction':
+    'In QQ, open a direct chat with the bot and send /bind {{code}}.',
+  'channel.qq.ownerBinding.label': 'QQ owner account',
+  'channel.qq.ownerBinding.notBound': 'No QQ owner is bound.',
+  'channel.qq.ownerBinding.rebind': 'Rebind owner',
+  'channel.qq.ownerBinding.regenerate': 'Generate a new binding code',
+  'channel.qq.ownerBinding.refreshError':
+    'Could not check whether the owner is bound. The page will keep checking.',
+  'channel.qq.ownerBinding.pendingNote':
+    'Settings stay read-only until the owner binds or the code expires.',
+  'channel.qq.ownerBinding.saveFirst': 'Save the QQ bot before generating a binding code.',
   'channel.qq.description': 'Connect this agent to QQ for group chats and direct messages.',
   'channel.qq.webhookMigrationTitle': 'Consider migrating to WebSocket mode',
   'channel.qq.webhookMigrationDesc':
@@ -422,6 +464,12 @@ export default {
   'channel.groupPolicyHint': 'Where the bot responds in groups, channels, and threads',
   'channel.groupPolicyAllowlist': 'Allowlist',
   'channel.groupPolicyAllowlistHint': 'Only respond in listed channels',
+  'channel.groupPolicyPairing': 'Group approval',
+  'channel.groupPolicyPairingHint':
+    'New groups receive a code that the bot owner approves with /approve',
+  'channel.groupPolicyAdmins': 'Admins only',
+  'channel.groupPolicyAdminsHint':
+    'Only QQ group owners and admins can use the bot; requires member role data',
   'channel.groupPolicyDisabled': 'Disabled',
   'channel.groupPolicyDisabledHint': 'Ignore all group messages',
   'channel.groupPolicyOpen': 'Open',

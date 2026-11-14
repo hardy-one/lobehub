@@ -23,4 +23,16 @@ describe('extractDeviceAllowlist', () => {
     expect(extractDeviceAllowlist({ deviceAllowFrom: [{ id: 'u1' }] })).toEqual([]);
     expect(extractDeviceAllowlist({ deviceAllowFrom: 'u1', devicePolicy: 'everyone' })).toEqual([]);
   });
+  it('can reuse QQ approved DM contacts as the device allowlist', () => {
+    expect(
+      extractDeviceAllowlist(
+        {
+          allowFrom: [{ id: 'qq-user-openid' }],
+          deviceAllowFrom: [{ id: 'legacy-device-id' }],
+          devicePolicy: 'allowlist',
+        },
+        { useAllowFrom: true },
+      ),
+    ).toEqual(['qq-user-openid']);
+  });
 });

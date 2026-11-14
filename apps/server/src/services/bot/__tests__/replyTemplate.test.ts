@@ -1021,6 +1021,15 @@ describe('replyTemplate', () => {
       expect(text).toContain('高级设置');
       expect(renderCommandReply('cmdWhoamiUnavailable', 'zh-CN')).toContain('无法');
     });
+    it('directs QQ owners to the private bind flow instead of editing userId', () => {
+      const text = renderWhoami(
+        { isOperator: false, ownerBindingEnabled: true, userId: 'qq-user-openid' },
+        'zh-CN',
+      );
+      expect(text).toContain('/bind <code>');
+      expect(text).toContain('私聊');
+      expect(text).not.toContain('把它填到');
+    });
   });
 
   // ==================== renderGuestCopy ====================

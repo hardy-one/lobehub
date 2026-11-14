@@ -3,21 +3,37 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiAgentService } from '@/server/services/aiAgent';
 
 import { AgentBridgeService } from '../AgentBridgeService';
-import { renderCommandReply, renderFeedbackSubmitted } from '../replyTemplate';
+import {
+  renderCommandReply,
+  renderFeedbackSubmitted,
+  renderOwnerBindingReply,
+} from '../replyTemplate';
 import { BotMessageRouter } from './index';
 import {
   FAKE_DB,
   makeProvider,
+  mockDeletePairingRequest,
   mockFindEnabledByPlatform,
+  mockGetMessenger,
   mockGetPlatform,
   mockOnNewMessage,
   mockOnSlashCommand,
+  mockPeekPairingRequest,
+  mockProviderFindById,
+  mockProviderUpdate,
   resetBotMessageRouterMocks,
 } from './testUtils';
 
 const mockSubmitBotFeedback = vi.hoisted(() => vi.fn());
-
+const mockClaimOwnerBindingCode = vi.hoisted(() => vi.fn());
+const mockCompleteOwnerBindingCode = vi.hoisted(() => vi.fn());
+const mockReleaseOwnerBindingCode = vi.hoisted(() => vi.fn());
 vi.mock('../feedbackSubmit', () => ({ submitBotFeedback: mockSubmitBotFeedback }));
+vi.mock('../ownerBindingStore', () => ({
+  claimOwnerBindingCode: mockClaimOwnerBindingCode,
+  completeOwnerBindingCode: mockCompleteOwnerBindingCode,
+  releaseOwnerBindingCode: mockReleaseOwnerBindingCode,
+}));
 vi.mock('@/database/core/db-adaptor', async () => (await import('./testUtils')).dbAdaptorModule());
 vi.mock('@/database/models/agentBotProvider', async () =>
   (await import('./testUtils')).agentBotProviderModule(),
@@ -64,11 +80,13 @@ const bridgeStatics = {
   requestStop: vi.fn(),
 };
 
-async function loadCommandHandlers(settings: Record<string, unknown> = {}) {
-  mockFindEnabledByPlatform.mockResolvedValue([makeProvider({ applicationId: 'app-1', settings })]);
+async function loadCommandHandlers(settings: Record<string, unknown> = {}, platform = 'telegram') {
+  mockFindEnabledByPlatform.mockResolvedValue([
+    makeProvider({ id: 'provider-1', applicationId: 'app-1', platform, settings }),
+  ]);
   const router = new BotMessageRouter();
   await router.getWebhookHandler(
-    'telegram',
+    platform,
     'app-1',
   )(new Request('https://example.com/webhook', { body: '{}', method: 'POST' }));
   const textCall = mockOnNewMessage.mock.calls.find(
@@ -117,6 +135,9 @@ describe('BotMessageRouter command handlers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetBotMessageRouterMocks();
+    mockClaimOwnerBindingCode.mockResolvedValue('invalid');
+    mockCompleteOwnerBindingCode.mockResolvedValue('consumed');
+    mockReleaseOwnerBindingCode.mockResolvedValue(undefined);
     Object.assign(AgentBridgeService, bridgeStatics);
     bridgeStatics.isThreadActive.mockReturnValue(true);
     bridgeStatics.getActiveOperationId.mockReturnValue(undefined);
@@ -317,6 +338,167 @@ describe('BotMessageRouter command handlers', () => {
         restore();
       }
       expect(registerBotCommands).toHaveBeenCalledTimes(1);
+    });
+  });
+  describe('QQ owner binding and group approval', () => {
+    it('persists /bind owner identity and consumes the private code', async () => {
+      mockClaimOwnerBindingCode.mockResolvedValueOnce('claimed');
+      mockCompleteOwnerBindingCode.mockResolvedValueOnce('consumed');
+      mockProviderFindById.mockResolvedValue({
+        applicationId: 'app-1',
+        platform: 'qq',
+        settings: {
+          allowFrom: [{ id: 'approved-c2c', name: 'Friend' }],
+          dmPolicy: 'pairing',
+          groupAllowFrom: [{ id: 'approved-group', name: 'Team' }],
+        },
+      });
+      const { text } = await loadCommandHandlers({ dmPolicy: 'pairing' }, 'qq');
+      const thread = makeThread();
+      const message = {
+        ...makeMessage('/bind ABCD2345'),
+        author: { isBot: false, userId: 'qq-user-openid', userName: 'owner' },
+      };
+
+      await text(thread, message);
+
+      expect(mockClaimOwnerBindingCode).toHaveBeenCalledWith({
+        applicationId: 'app-1',
+        code: 'ABCD2345',
+        platform: 'qq',
+      });
+      expect(mockProviderUpdate).toHaveBeenCalledWith(
+        'provider-1',
+        expect.objectContaining({
+          settings: expect.objectContaining({
+            allowFrom: [{ id: 'approved-c2c', name: 'Friend' }],
+            groupAllowFrom: [{ id: 'approved-group', name: 'Team' }],
+            userId: 'qq-user-openid',
+          }),
+        }),
+      );
+      expect(mockCompleteOwnerBindingCode).toHaveBeenCalledWith({
+        applicationId: 'app-1',
+        code: 'ABCD2345',
+        platform: 'qq',
+      });
+      expect(thread.post).toHaveBeenCalledWith(renderOwnerBindingReply('success', 'zh-CN'));
+    });
+
+    it('rejects /bind in a group before checking whether the code is valid', async () => {
+      const { text } = await loadCommandHandlers({ dmPolicy: 'open' }, 'qq');
+      const thread = { ...makeThread(), isDM: false };
+
+      await text(thread, makeMessage('/bind wrong-code'));
+
+      expect(mockClaimOwnerBindingCode).not.toHaveBeenCalled();
+      expect(thread.post).toHaveBeenCalledWith(renderOwnerBindingReply('dm-only', 'zh-CN'));
+    });
+    it('shows a fresh-code action for an invalid QQ binding code', async () => {
+      mockClaimOwnerBindingCode.mockResolvedValueOnce('invalid');
+      const { text } = await loadCommandHandlers({ dmPolicy: 'open' }, 'qq');
+      const thread = makeThread();
+
+      await text(thread, makeMessage('/bind BADCODE'));
+
+      expect(thread.post).toHaveBeenCalledWith(renderOwnerBindingReply('code-invalid', 'zh-CN'));
+      expect(mockProviderUpdate).not.toHaveBeenCalled();
+    });
+
+    it('explains Redis unavailability for QQ owner binding', async () => {
+      mockClaimOwnerBindingCode.mockResolvedValueOnce('redis-unavailable');
+      const { text } = await loadCommandHandlers({ dmPolicy: 'open' }, 'qq');
+      const thread = makeThread();
+
+      await text(thread, makeMessage('/bind ABCD2345'));
+
+      expect(thread.post).toHaveBeenCalledWith(renderOwnerBindingReply('unavailable', 'zh-CN'));
+      expect(mockProviderUpdate).not.toHaveBeenCalled();
+    });
+
+    it('keeps the binding code available when provider persistence fails', async () => {
+      mockClaimOwnerBindingCode.mockResolvedValueOnce('claimed');
+      mockProviderFindById.mockResolvedValueOnce(undefined);
+      const { text } = await loadCommandHandlers({ dmPolicy: 'open' }, 'qq');
+      const thread = makeThread();
+
+      await text(thread, makeMessage('/bind ABCD2345'));
+
+      expect(mockReleaseOwnerBindingCode).toHaveBeenCalledWith({
+        applicationId: 'app-1',
+        code: 'ABCD2345',
+        platform: 'qq',
+      });
+      expect(mockCompleteOwnerBindingCode).not.toHaveBeenCalled();
+      expect(thread.post).toHaveBeenCalledWith(renderOwnerBindingReply('save-failed', 'zh-CN'));
+    });
+
+    it('reports when the saved binding code could not be cleared', async () => {
+      mockClaimOwnerBindingCode.mockResolvedValueOnce('claimed');
+      mockCompleteOwnerBindingCode.mockResolvedValueOnce('redis-unavailable');
+      mockProviderFindById.mockResolvedValueOnce({
+        applicationId: 'app-1',
+        platform: 'qq',
+        settings: {},
+      });
+      const { text } = await loadCommandHandlers({ dmPolicy: 'open' }, 'qq');
+      const thread = makeThread();
+
+      await text(thread, makeMessage('/bind ABCD2345'));
+
+      expect(thread.post).toHaveBeenCalledWith(renderOwnerBindingReply('cleanup-failed', 'zh-CN'));
+    });
+
+    it('approves a group code into groupAllowFrom and notifies its original thread', async () => {
+      const entry = {
+        applicantUserId: 'group-openid',
+        applicantUserName: 'Team Group',
+        applicationId: 'app-1',
+        code: 'GROUP123',
+        createdAt: 1_700_000_000_000,
+        platform: 'qq',
+        replyLocale: 'en-US',
+        scope: 'group' as const,
+        targetChannelId: 'group-openid',
+        threadId: 'qq:group:group-openid',
+      };
+      mockPeekPairingRequest.mockResolvedValueOnce(entry);
+      mockProviderFindById.mockResolvedValueOnce({
+        applicationId: 'app-1',
+        platform: 'qq',
+        settings: {
+          allowFrom: [{ id: 'existing-user', name: 'Friend' }],
+          groupAllowFrom: [{ id: 'existing-group', name: 'Existing group' }],
+        },
+      });
+      const { text } = await loadCommandHandlers(
+        { groupPolicy: 'pairing', userId: 'qq-owner-openid' },
+        'qq',
+      );
+      const thread = makeThread();
+      const message = {
+        ...makeMessage('/approve GROUP123'),
+        author: { isBot: false, userId: 'qq-owner-openid', userName: 'owner' },
+      };
+
+      await text(thread, message);
+
+      expect(mockProviderUpdate).toHaveBeenCalledWith(
+        'provider-1',
+        expect.objectContaining({
+          settings: expect.objectContaining({
+            allowFrom: [{ id: 'existing-user', name: 'Friend' }],
+            groupAllowFrom: [
+              { id: 'existing-group', name: 'Existing group' },
+              { id: 'group-openid', name: 'Team Group' },
+            ],
+          }),
+        }),
+      );
+      expect(mockDeletePairingRequest).toHaveBeenCalledWith(
+        expect.objectContaining({ applicantUserId: 'group-openid', scope: 'group' }),
+      );
+      expect(mockGetMessenger).toHaveBeenCalledWith('qq:group:group-openid');
     });
   });
 });

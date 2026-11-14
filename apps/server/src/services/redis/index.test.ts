@@ -2,14 +2,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { redisService } from './index';
 
-const { del, get, set } = vi.hoisted(() => ({ del: vi.fn(), get: vi.fn(), set: vi.fn() }));
-vi.mock('./client', () => ({ getRedisServiceClient: async () => ({ del, get, set }) }));
+const { del, evalScript, get, getRedisServiceClient, set } = vi.hoisted(() => {
+  const client = {
+    del: vi.fn(),
+    eval: vi.fn(),
+    get: vi.fn(),
+    set: vi.fn(),
+  };
+  return {
+    ...client,
+    evalScript: client.eval,
+    getRedisServiceClient: vi.fn(async () => client),
+  };
+});
+vi.mock('./client', () => ({ getRedisServiceClient }));
 
 describe('Redis domain service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     get.mockResolvedValue(null);
     set.mockResolvedValue('OK');
+    evalScript.mockResolvedValue(1);
   });
 
   it('isolates device answers by principal pool and preserves the requested freshness', async () => {
@@ -58,6 +71,52 @@ describe('Redis domain service', () => {
     );
   });
 
+  it('stores owner binding codes under the bot namespace with a fifteen-minute expiry', async () => {
+    const expiresAt = await redisService.ownerBinding.issue('qq', 'app-1', 'ABCD2345');
+
+    expect(expiresAt).toBeGreaterThan(Date.now());
+    expect(set).toHaveBeenCalledWith(
+      'owner-binding:qq:app-1',
+      JSON.stringify({ claimed: false, code: 'ABCD2345' }),
+      { ex: 900 },
+    );
+    expect(getRedisServiceClient).toHaveBeenCalledWith('ownerBinding');
+  });
+
+  it('claims a matching owner code atomically and rejects a mismatch', async () => {
+    await expect(redisService.ownerBinding.claim('qq', 'app-1', 'ABCD2345')).resolves.toBe(
+      'claimed',
+    );
+    expect(evalScript).toHaveBeenCalledWith(
+      expect.stringContaining('state.claimed = true'),
+      1,
+      'owner-binding:qq:app-1',
+      'ABCD2345',
+    );
+
+    evalScript.mockResolvedValueOnce(0);
+    await expect(redisService.ownerBinding.claim('qq', 'app-1', 'WRONG')).resolves.toBe('invalid');
+  });
+
+  it('consumes a claimed code after persistence and releases claims on failure', async () => {
+    await expect(redisService.ownerBinding.complete('qq', 'app-1', 'ABCD2345')).resolves.toBe(
+      'consumed',
+    );
+    expect(evalScript).toHaveBeenCalledWith(
+      expect.stringContaining('not state.claimed'),
+      1,
+      'owner-binding:qq:app-1',
+      'ABCD2345',
+    );
+
+    await redisService.ownerBinding.release('qq', 'app-1', 'ABCD2345');
+    expect(evalScript).toHaveBeenLastCalledWith(
+      expect.stringContaining('state.claimed = false'),
+      1,
+      'owner-binding:qq:app-1',
+      'ABCD2345',
+    );
+  });
   it('grants a rescan only to the winner of the atomic directory claim', async () => {
     const scope = { cwd: '/project', deviceId: 'd', userId: 'u' };
     expect(await redisService.workspaceRescan.claim(scope)).toBe(true);

@@ -3,7 +3,6 @@ import debug from 'debug';
 
 import { emitAgentSignalSourceEvent } from '@/server/services/agentSignal';
 
-import { buildBotContext } from '../buildBotContext';
 import { renderInlineError } from '../replyTemplate';
 import type { BotHandlerContext } from './types';
 import {
@@ -30,7 +29,7 @@ export const registerCatchAllHandler = (bot: Chat<any>, ctx: BotHandlerContext):
     client,
     commands,
     detectReplyLocale,
-    deviceAllowlist,
+    buildBotContextForMessage,
     displayToolCalls,
     dmSettings,
     gateFollowup,
@@ -39,7 +38,6 @@ export const registerCatchAllHandler = (bot: Chat<any>, ctx: BotHandlerContext):
     nameKeywords,
     observe,
     observeBurst,
-    operatorUserId,
     replyVoiceFor,
     passGatesOrNotify,
     platform,
@@ -152,6 +150,7 @@ export const registerCatchAllHandler = (bot: Chat<any>, ctx: BotHandlerContext):
           message.author,
           replyLocale,
           `onNewMessage (${platform} catch-all)`,
+          message,
         ))
       ) {
         observe('catchAll', message, thread, 'skip', 'access-gate-rejected');
@@ -276,14 +275,7 @@ export const registerCatchAllHandler = (bot: Chat<any>, ctx: BotHandlerContext):
       try {
         await bridge.handleMention(thread, merged, {
           agentId,
-          botContext: buildBotContext({
-            applicationId,
-            authorUserId: merged.author?.userId,
-            deviceAllowlist,
-            operatorUserId,
-            platform,
-            platformThreadId: thread.id,
-          }),
+          botContext: buildBotContextForMessage(message, thread),
           botSettings,
           charLimit,
           client,

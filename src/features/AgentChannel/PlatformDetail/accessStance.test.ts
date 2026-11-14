@@ -1,13 +1,40 @@
 import { describe, expect, it } from 'vitest';
 
+import type { FieldSchema } from '@/server/services/bot/platforms/types';
+
 import {
   accessIssues,
-  applyDmStance,
+  applyDmPolicy,
   countListed,
-  deriveDmStance,
+  deriveDmPolicy,
   dropHiddenIncompleteRows,
+  getDeclaredPolicy,
 } from './accessStance';
 
+const telegramDmPolicy: FieldSchema = {
+  enum: ['open', 'allowlist', 'pairing', 'disabled'],
+  key: 'dmPolicy',
+  label: 'channel.dmPolicy',
+  type: 'string',
+};
+const qqDmPolicy: FieldSchema = {
+  enum: ['open', 'pairing', 'disabled'],
+  key: 'dmPolicy',
+  label: 'channel.dmPolicy',
+  type: 'string',
+};
+const qqGroupPolicy: FieldSchema = {
+  enum: ['open', 'pairing', 'admins'],
+  key: 'groupPolicy',
+  label: 'channel.groupPolicy',
+  type: 'string',
+};
+const qqGroupAllowFrom: FieldSchema = {
+  key: 'groupAllowFrom',
+  label: 'channel.groupAllowFrom',
+  type: 'array',
+  visibleWhen: { field: 'groupPolicy', value: 'pairing' },
+};
 const listed = [{ id: '1' }, { id: ' ' }, { id: '2', name: 'Ada' }];
 
 describe('countListed', () => {
@@ -18,74 +45,71 @@ describe('countListed', () => {
   });
 });
 
-describe('deriveDmStance', () => {
-  it.each([
-    [{ dmPolicy: 'pairing' }, 'approval'],
-    [{ dmPolicy: 'disabled' }, 'closed'],
-    [{ dmPolicy: 'allowlist' }, 'listed'],
-    [{ dmPolicy: 'open', allowFrom: [] }, 'everyone'],
-    [{}, 'everyone'],
-  ])('reads %j as %s', (settings, stance) => {
-    expect(deriveDmStance(settings)).toBe(stance);
+describe('getDeclaredPolicy', () => {
+  it('maps a QQ legacy allowlist value to the declared pairing policy', () => {
+    expect(getDeclaredPolicy(qqDmPolicy, 'allowlist')).toBe('pairing');
+    expect(getDeclaredPolicy(qqGroupPolicy, 'allowlist')).toBe('pairing');
   });
 
-  it('reads an open policy with a filled list as listed people only, because the list gates everyone', () => {
-    expect(deriveDmStance({ allowFrom: listed, dmPolicy: 'open' })).toBe('listed');
-  });
-
-  it('keeps pairing and closed even when a list exists', () => {
-    expect(deriveDmStance({ allowFrom: listed, dmPolicy: 'pairing' })).toBe('approval');
-    expect(deriveDmStance({ allowFrom: listed, dmPolicy: 'disabled' })).toBe('closed');
+  it('preserves a legacy value that the field no longer declares', () => {
+    expect(getDeclaredPolicy(qqGroupPolicy, 'disabled')).toBe('disabled');
   });
 });
 
-describe('applyDmStance', () => {
-  it('sets only the policy for approval, listed and closed, and keeps the list', () => {
-    expect(applyDmStance('approval', { allowFrom: listed })).toEqual({
-      dropped: 0,
-      patch: { dmPolicy: 'pairing' },
-    });
-    expect(applyDmStance('listed', {}).patch).toEqual({ dmPolicy: 'allowlist' });
-    expect(applyDmStance('closed', {}).patch).toEqual({ dmPolicy: 'disabled' });
+describe('deriveDmPolicy', () => {
+  it('keeps the existing global-list behavior when the field declares allowlist', () => {
+    expect(deriveDmPolicy({ allowFrom: listed, dmPolicy: 'open' }, telegramDmPolicy)).toBe(
+      'allowlist',
+    );
+    expect(deriveDmPolicy({ dmPolicy: 'allowlist' }, telegramDmPolicy)).toBe('allowlist');
   });
 
-  it('clears the list for everyone and says how many people that drops', () => {
-    expect(applyDmStance('everyone', { allowFrom: listed })).toEqual({
+  it('shows QQ open as open even when approved users are stored', () => {
+    expect(deriveDmPolicy({ allowFrom: listed, dmPolicy: 'open' }, qqDmPolicy)).toBe('open');
+  });
+
+  it('shows QQ legacy allowlist as pairing and keeps declared Telegram policies unchanged', () => {
+    expect(deriveDmPolicy({ dmPolicy: 'allowlist' }, qqDmPolicy)).toBe('pairing');
+    expect(deriveDmPolicy({ dmPolicy: 'disabled' }, telegramDmPolicy)).toBe('disabled');
+  });
+});
+
+describe('applyDmPolicy', () => {
+  it('clears a global list when opening a platform that declares allowlist', () => {
+    expect(applyDmPolicy('open', { allowFrom: listed }, telegramDmPolicy)).toEqual({
       dropped: 2,
       patch: { allowFrom: [], dmPolicy: 'open' },
     });
-    expect(applyDmStance('everyone', {}).dropped).toBe(0);
   });
 
-  it('round-trips: the stance applied is the stance read back', () => {
-    for (const stance of ['approval', 'closed', 'everyone', 'listed'] as const) {
-      const { patch } = applyDmStance(stance, { allowFrom: listed });
-      const next = { allowFrom: patch.allowFrom ?? listed, dmPolicy: patch.dmPolicy };
-      expect(deriveDmStance(next)).toBe(stance);
-    }
+  it('preserves QQ approval records when opening DMs', () => {
+    expect(applyDmPolicy('open', { allowFrom: listed }, qqDmPolicy)).toEqual({
+      dropped: 0,
+      patch: { dmPolicy: 'open' },
+    });
   });
 });
 
 describe('accessIssues', () => {
-  it('flags pairing without an owner ID, which the server refuses to save', () => {
-    expect(accessIssues({ dmPolicy: 'pairing' })).toEqual(['approverMissing']);
-    expect(accessIssues({ dmPolicy: 'pairing', userId: ' 88 ' })).toEqual([]);
+  it('treats QQ legacy allowlist as pairing and requires a bound owner', () => {
+    expect(accessIssues({ dmPolicy: 'allowlist' }, qqDmPolicy)).toEqual(['approverMissing']);
+    expect(accessIssues({ dmPolicy: 'allowlist', userId: 'owner-1' }, qqDmPolicy)).toEqual([]);
   });
 
-  it('flags empty lists that fail closed', () => {
-    expect(accessIssues({ dmPolicy: 'allowlist', userId: '1' })).toEqual(['listEmpty']);
+  it('flags empty lists for platforms that declare list-based access', () => {
+    expect(accessIssues({ dmPolicy: 'allowlist' }, telegramDmPolicy)).toEqual(['listEmpty']);
     expect(accessIssues({ groupAllowFrom: [], groupPolicy: 'allowlist' })).toEqual([
       'groupListEmpty',
     ]);
   });
 
-  it('is quiet for the default setup', () => {
-    expect(accessIssues({ dmPolicy: 'open', groupPolicy: 'open' })).toEqual([]);
+  it('is quiet for the default open setup', () => {
+    expect(accessIssues({ dmPolicy: 'open', groupPolicy: 'open' }, telegramDmPolicy)).toEqual([]);
   });
 });
 
 describe('dropHiddenIncompleteRows', () => {
-  it('drops a half-added device row once devices are back to the owner only', () => {
+  it('drops an unfinished device row when devices return to owner only', () => {
     expect(
       dropHiddenIncompleteRows({
         deviceAllowFrom: [{ id: '7' }, { id: '' }],
@@ -94,37 +118,44 @@ describe('dropHiddenIncompleteRows', () => {
     ).toEqual({ deviceAllowFrom: [{ id: '7' }] });
   });
 
-  it('keeps an incomplete device row while the device list is shown', () => {
+  it('keeps an unfinished device row while the device list is shown', () => {
     expect(
       dropHiddenIncompleteRows({ deviceAllowFrom: [{ id: '' }], devicePolicy: 'allowlist' }),
     ).toEqual({});
   });
 
-  it('drops a half-added group row once groups are no longer limited to a list', () => {
+  it('keeps QQ group approval rows visible for the migrated pairing value', () => {
     expect(
-      dropHiddenIncompleteRows({
-        groupAllowFrom: [{ id: '42' }, { id: '' }],
-        groupPolicy: 'open',
-      }),
-    ).toEqual({ groupAllowFrom: [{ id: '42' }] });
-  });
-
-  it('keeps an incomplete group row while the group list is still shown', () => {
-    expect(
-      dropHiddenIncompleteRows({ groupAllowFrom: [{ id: '' }], groupPolicy: 'allowlist' }),
+      dropHiddenIncompleteRows(
+        {
+          groupAllowFrom: [{ id: '' }],
+          groupPolicy: 'allowlist',
+        },
+        [qqGroupPolicy, qqGroupAllowFrom],
+      ),
     ).toEqual({});
   });
 
-  it('drops a half-added person row when the people list is hidden', () => {
+  it('preserves QQ legacy disabled while pruning a hidden unfinished row', () => {
+    const patch = dropHiddenIncompleteRows(
+      {
+        groupAllowFrom: [{ id: '' }],
+        groupPolicy: 'disabled',
+      },
+      [qqGroupPolicy, qqGroupAllowFrom],
+    );
+
+    expect({ groupPolicy: 'disabled', ...patch }).toEqual({
+      groupAllowFrom: [],
+      groupPolicy: 'disabled',
+    });
+    expect(getDeclaredPolicy(qqGroupPolicy, 'disabled')).toBe('disabled');
+  });
+
+  it('removes an unfinished people row only when its list is hidden', () => {
     expect(dropHiddenIncompleteRows({ allowFrom: [{ id: '  ' }], dmPolicy: 'disabled' })).toEqual({
       allowFrom: [],
     });
-  });
-
-  it('leaves the people list alone while it is shown', () => {
     expect(dropHiddenIncompleteRows({ allowFrom: [{ id: '' }], dmPolicy: 'pairing' })).toEqual({});
-    expect(
-      dropHiddenIncompleteRows({ allowFrom: [{ id: '7' }, { id: '' }], dmPolicy: 'disabled' }),
-    ).toEqual({});
   });
 });

@@ -35,6 +35,8 @@ export {
   findMatchingWatchKeywordEntries,
   getBotReplyLocale,
   getStepReactionEmoji,
+  type GroupDecision,
+  type GroupMemberRole,
   type GroupPolicy,
   type GroupSettings,
   type GuestDecision,

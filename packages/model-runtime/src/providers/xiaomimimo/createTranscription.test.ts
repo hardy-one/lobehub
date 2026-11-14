@@ -5,6 +5,7 @@ import {
   createXiaomiMiMoTranscription,
   extractXiaomiMiMoTranscript,
   resolveXiaomiMiMoAudioType,
+  XIAOMIMIMO_MAX_BASE64_BYTES,
 } from './createTranscription';
 
 const createContext = () => ({
@@ -151,5 +152,45 @@ describe('createXiaomiMiMoTranscription', () => {
     ).rejects.toBe(error);
 
     expect(context.handleError).toHaveBeenCalledWith(error);
+  });
+});
+
+describe('createXiaomiMiMoTranscription - audio size limit', () => {
+  /** A stub whose size is declared, so the limit is exercised without allocating bytes. */
+  const createSizedBlob = (size: number) => {
+    const arrayBuffer = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
+    return { arrayBuffer, size, type: 'audio/wav' } as unknown as Blob;
+  };
+  // The documented limit applies to the base64 string, so 3/4 of it is the raw ceiling.
+  const maxRawBytes = (XIAOMIMIMO_MAX_BASE64_BYTES / 4) * 3;
+
+  it('accepts a file that encodes to exactly the limit', async () => {
+    const client = createClient(transcriptResponse('hello'));
+
+    const result = await createXiaomiMiMoTranscription(
+      client as any,
+      { file: createSizedBlob(maxRawBytes), model: 'mimo-v2.5-asr' },
+      undefined,
+      createContext(),
+    );
+
+    expect(result).toEqual({ text: 'hello' });
+  });
+
+  it('rejects a file one byte over the limit without reading it', async () => {
+    const client = createClient(transcriptResponse('unused'));
+    const file = createSizedBlob(maxRawBytes + 1);
+
+    await expect(
+      createXiaomiMiMoTranscription(
+        client as any,
+        { file, model: 'mimo-v2.5-asr' },
+        undefined,
+        createContext(),
+      ),
+    ).rejects.toThrow(/at most 10 MB of base64 audio/);
+
+    expect(file.arrayBuffer).not.toHaveBeenCalled();
+    expect(client.chat.completions.create).not.toHaveBeenCalled();
   });
 });

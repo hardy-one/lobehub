@@ -308,6 +308,25 @@ describe('agentBotProviderRouter · credentials never leave through a list', () 
     expect(entry.credentials).toEqual({ appId: 'cli_app', appSecret: CREDENTIAL_MASK });
   });
 
+  it('returns the /bind ownerBoundAt marker through getByAgentId for QQ', async () => {
+    const ownerBoundAt = '2026-11-14T10:00:00.000Z';
+    mockFindByAgentId.mockResolvedValue([
+      {
+        ...row,
+        platform: 'qq',
+        settings: { dmPolicy: 'pairing', ownerBoundAt, userId: '4052DFFF' },
+      },
+    ]);
+    const caller = agentBotProviderRouter.createCaller(ctx);
+
+    const [entry] = await caller.getByAgentId({ agentId: 'agt_1' });
+
+    // withFormSettings (normalizeQqAccessSettings + the concurrency/bot-wake
+    // projections) must not strip the marker: the client compares it against
+    // the snapshot captured before issuing a rebind code.
+    expect(entry.settings).toMatchObject({ ownerBoundAt, userId: '4052DFFF' });
+  });
+
   it('restores the stored secret when an edit hands the mask back', async () => {
     mockFindById.mockResolvedValue(row);
     const caller = agentBotProviderRouter.createCaller(ctx);

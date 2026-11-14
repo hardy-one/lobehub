@@ -16,6 +16,7 @@ import { inboundWebhook } from './inboundWebhook';
 import { linear } from './linear';
 import { mcpDeviceRelay } from './mcpDeviceRelay';
 import { openapi } from './openapi';
+import { ownerBinding } from './ownerBinding';
 import { pageCollab } from './pageCollab';
 import { qqPassive } from './qqPassive';
 import { skillIndex } from './skillIndex';
@@ -45,6 +46,7 @@ export const redisService = {
   linear,
   mcpDeviceRelay,
   openapi,
+  ownerBinding,
   pageCollab,
   qqPassive,
   skillIndex,

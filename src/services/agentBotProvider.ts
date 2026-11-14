@@ -116,6 +116,9 @@ class AgentBotProviderService {
     return lambdaClient.agentBotProvider.feishuFetchOwnerId.mutate(params);
   };
 
+  createOwnerBindingCode = async (params: { applicationId: string; platform: string }) => {
+    return lambdaClient.agentBotProvider.createOwnerBindingCode.mutate(params);
+  };
   wechatGetQrCode = async () => {
     return lambdaClient.agentBotProvider.wechatGetQrCode.mutate();
   };

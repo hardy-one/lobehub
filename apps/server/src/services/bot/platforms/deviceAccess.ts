@@ -8,11 +8,13 @@ import type { FieldSchema } from './types';
  * - `allowlist`: the owner, plus the user IDs in `deviceAllowFrom`.
  * - `channel`: the owner anywhere, plus everyone in the channels listed in
  *   `deviceChannelAllowFrom`. Only platforms with group chat offer it.
+ * - `group` (QQ only): members allowed by the selected group policy.
  *
+ * The shared field intentionally omits `group`; only QQ declares that option.
  * Kept apart from `allowFrom`: being allowed to talk to the bot is not being
  * trusted with the owner's machine, so neither list implies the other.
  */
-export type DevicePolicy = 'allowlist' | 'channel' | 'owner';
+export type DevicePolicy = 'allowlist' | 'channel' | 'group' | 'owner';
 
 export const devicePolicyField: FieldSchema = {
   key: 'devicePolicy',
@@ -117,9 +119,10 @@ export const deviceChannelFields: FieldSchema[] = [
  */
 export const extractDeviceAllowlist = (
   settings: Record<string, unknown> | null | undefined,
+  options: { useAllowFrom?: boolean } = {},
 ): string[] => {
   if (settings?.devicePolicy !== 'allowlist') return [];
-  return parseIdList(settings.deviceAllowFrom);
+  return parseIdList(options.useAllowFrom ? settings.allowFrom : settings.deviceAllowFrom);
 };
 
 /**

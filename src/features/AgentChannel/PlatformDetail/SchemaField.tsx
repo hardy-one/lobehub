@@ -146,7 +146,7 @@ export const SchemaField = memo<SchemaFieldProps>(
       JSON.stringify(conditions.map((c) => values[parentKey]?.[c.field] ?? null)),
     );
     const selectedValue = useWatch(form, (values) =>
-      field.enum ? values[parentKey]?.[field.key] : undefined,
+      field.enum || field.managed ? values[parentKey]?.[field.key] : undefined,
     );
     if (conditions.length > 0) {
       const watched = JSON.parse(watchedValues) as unknown[];
@@ -168,7 +168,34 @@ export const SchemaField = memo<SchemaFieldProps>(
     // A choice list shows every option's sentence already; its help line stays the field's own.
     const selectedHint = field.choices ? undefined : field.enumDescriptions?.[selectedIndex];
     const descKey = selectedHint || field.description;
-    const desc = descOverride ?? (descKey ? t(descKey) : undefined);
+    const desc =
+      descOverride ??
+      (field.managed && field.type === 'array'
+        ? t('channel.qq.managedListHint')
+        : descKey
+          ? t(descKey)
+          : undefined);
+
+    if (field.managed && field.type !== 'array') {
+      return (
+        <div hidden={hidden}>
+          <Form.Field
+            desc={desc}
+            divider={divider}
+            label={label}
+            layout="vertical"
+            name={`${parentKey}.${field.key}`}
+            validate={validateOverride ?? buildValidate(field, t)}
+          >
+            <Text code={field.type === 'string'}>
+              {typeof selectedValue === 'string' && selectedValue
+                ? selectedValue
+                : t('channel.qq.ownerBinding.notBound')}
+            </Text>
+          </Form.Field>
+        </div>
+      );
+    }
 
     // Array of objects (e.g. user / channel allowlist) — needs Form.List, can't
     // be expressed as a single control inside a name-bound Form.Field.
@@ -388,6 +415,8 @@ const ObjectListField = memo<ObjectListFieldProps>(
   ({ desc, emptyOverride, field, parentKey, divider, label, disabled, featureLocked }) => {
     const { t: _t } = useTranslation('agent');
     const t = _t as (key: string) => string;
+    const form = useFormInstance();
+    const managedValue = useWatch(form, (values) => values[parentKey]?.[field.key]);
 
     // A locked feature blocks new rows and edits, but existing rows must stay
     // removable — the server-side write gate always allows clearing keywords,
@@ -416,6 +445,45 @@ const ObjectListField = memo<ObjectListFieldProps>(
     const limitMessage = limit
       ? (t('channel.channelListLimit') as string).replace('{{max}}', String(limit))
       : undefined;
+
+    if (field.managed) {
+      const rows = Array.isArray(managedValue) ? managedValue : [];
+
+      return (
+        <Form.Field desc={desc} divider={divider} label={label} layout="vertical">
+          <Flexbox gap={8} style={{ width: '100%' }}>
+            {rows.length === 0 ? (
+              <Text fontSize={12} type="secondary">
+                {emptyLabel}
+              </Text>
+            ) : (
+              rows.map((row, index) => {
+                const item = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
+                const rowKey = String(item.id ?? index);
+
+                return (
+                  <Flexbox gap={4} key={`${rowKey}-${index}`}>
+                    {itemProps.map((property) => {
+                      const value = item[property.key];
+                      if (value === undefined || value === null || value === '') return null;
+
+                      return (
+                        <Flexbox horizontal align="center" gap={8} key={property.key}>
+                          <Text fontSize={12} type="secondary">
+                            {t(property.label)}
+                          </Text>
+                          <Text code={property.key === 'id'}>{String(value)}</Text>
+                        </Flexbox>
+                      );
+                    })}
+                  </Flexbox>
+                );
+              })
+            )}
+          </Flexbox>
+        </Form.Field>
+      );
+    }
 
     return (
       <Form.Field desc={desc} divider={divider} label={label} layout="vertical">

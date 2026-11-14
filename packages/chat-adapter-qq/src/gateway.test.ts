@@ -208,6 +208,69 @@ describe('QQGatewayConnection', () => {
       ws.simulateMessage({ op: QQ_WS_OP_CODES.HEARTBEAT_ACK });
       // Should not crash — just marks ACK as received
     });
+
+    it('should not let a timer from a dropped socket close the reconnected one', async () => {
+      // Long jitter so the socket can drop before the first heartbeat is scheduled.
+      vi.spyOn(Math, 'random').mockReturnValue(0.9);
+      const log = vi.fn();
+      const api = createMockApi();
+      const conn = new QQGatewayConnection(api, {
+        log,
+        webhookUrl: 'http://localhost:3000/api/agent/webhooks/qq/test_app',
+      });
+
+      const connectPromise = conn.connect();
+      await vi.advanceTimersByTimeAsync(10);
+
+      const ws1 = MockWebSocket.instances[0];
+      ws1.simulateMessage({ op: QQ_WS_OP_CODES.HELLO, d: { heartbeat_interval: 45000 } });
+      ws1.simulateMessage(createReadyPayload());
+      await connectPromise;
+
+      // Server drops the session before the jittered heartbeat fires.
+      ws1.emit('close', { code: 4009, reason: 'Session timed out' });
+
+      await vi.advanceTimersByTimeAsync(1500);
+      const ws2 = MockWebSocket.instances.at(-1)!;
+      expect(ws2).not.toBe(ws1);
+      ws2.simulateMessage({ op: QQ_WS_OP_CODES.HELLO, d: { heartbeat_interval: 45000 } });
+      ws2.simulateMessage(createReadyPayload());
+
+      for (let i = 0; i < 3; i++) {
+        await vi.advanceTimersByTimeAsync(45000);
+        ws2.simulateMessage({ op: QQ_WS_OP_CODES.HEARTBEAT_ACK });
+      }
+
+      expect(MockWebSocket.instances).toHaveLength(2);
+      expect(ws2.readyState).toBe(MockWebSocket.OPEN);
+      expect(log.mock.calls.filter((call) => String(call[0]).includes('ACK missed'))).toHaveLength(
+        0,
+      );
+    });
+
+    it('should log a missing ACK once and stop the heartbeat instead of looping', async () => {
+      const log = vi.fn();
+      const api = createMockApi();
+      const conn = new QQGatewayConnection(api, {
+        log,
+        webhookUrl: 'http://localhost:3000/api/agent/webhooks/qq/test_app',
+      });
+
+      const connectPromise = conn.connect();
+      await vi.advanceTimersByTimeAsync(10);
+
+      const ws = MockWebSocket.instances[0];
+      ws.simulateMessage({ op: QQ_WS_OP_CODES.HELLO, d: { heartbeat_interval: 45000 } });
+      ws.simulateMessage(createReadyPayload());
+      await connectPromise;
+
+      // Never answer with HEARTBEAT_ACK.
+      await vi.advanceTimersByTimeAsync(300_000);
+
+      expect(log.mock.calls.filter((call) => String(call[0]).includes('ACK missed'))).toHaveLength(
+        1,
+      );
+    });
   });
 
   describe('dispatch event forwarding', () => {

@@ -450,7 +450,15 @@ export function buildCommands(
           const provider = await model.findById(providerId);
           if (provider?.platform === platform && provider.applicationId === applicationId) {
             const settings = (provider.settings ?? {}) as Record<string, unknown>;
-            await model.update(providerId, { settings: { ...settings, userId: callerId } });
+            // `settings.ownerBoundAt` is the only proof that a /bind actually
+            // happened. The row's `updatedAt` moves on ANY settings save and
+            // must never be used as the completion signal (LOBE-166). Write
+            // both in this one update, and overwrite both on every rebind —
+            // including a rebind to the same person — so the client can compare
+            // against the snapshot it captured before issuing the code.
+            await model.update(providerId, {
+              settings: { ...settings, ownerBoundAt: new Date().toISOString(), userId: callerId },
+            });
             persisted = true;
             await info.invalidateBot(platform, applicationId);
           }

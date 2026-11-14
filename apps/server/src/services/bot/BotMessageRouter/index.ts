@@ -20,6 +20,7 @@ import {
   buildRuntimeKey,
   type DmSettings,
   extractDmSettings,
+  extractGroupSettings,
   extractGuestSettings,
   type GuestSettings,
   type PlatformClient,
@@ -28,6 +29,10 @@ import {
   resolveBotConcurrency,
   resolveBotProviderConfig,
 } from '../platforms';
+import {
+  normalizeQqAccessSettings,
+  QQ_GROUP_ACCEPTED_POLICIES,
+} from '../platforms/qq/accessSettings';
 import { buildCommands } from './commands';
 import { registerHandlers } from './handlers';
 import type { RegisteredBot } from './types';
@@ -269,6 +274,8 @@ export class BotMessageRouter {
     const key = buildRuntimeKey(platform, applicationId);
 
     const { config: providerConfig, settings } = resolveBotProviderConfig(entry, provider);
+    const runtimeSettings =
+      platform === 'qq' ? (normalizeQqAccessSettings(settings) ?? settings) : settings;
 
     // Decrypted provider settings can carry platform credentials: log key names only.
     log(
@@ -291,11 +298,15 @@ export class BotMessageRouter {
     // the owner-only gate and to know whether pairing is enabled), and by
     // registerHandlers. Extract once, share with commands; registerHandlers
     // re-derives from `settings` to keep its closure self-contained.
-    const dmSettings: DmSettings = extractDmSettings(settings);
-    const guestSettings: GuestSettings = extractGuestSettings(settings);
+    const dmSettings: DmSettings = extractDmSettings(runtimeSettings);
+    const guestSettings: GuestSettings = extractGuestSettings(runtimeSettings);
+    const groupSettings = extractGroupSettings(
+      runtimeSettings,
+      platform === 'qq' ? { acceptedPolicies: QQ_GROUP_ACCEPTED_POLICIES } : undefined,
+    );
     const operatorUserId =
-      typeof settings.userId === 'string'
-        ? (settings.userId as string).trim() || undefined
+      typeof runtimeSettings.userId === 'string'
+        ? (runtimeSettings.userId as string).trim() || undefined
         : undefined;
 
     const commands = buildCommands(serverDB, {
@@ -303,6 +314,8 @@ export class BotMessageRouter {
       applicationId,
       client,
       dmSettings,
+      groupSettings,
+      ownerBindingEnabled: entry.accessCapabilities?.ownerBinding === true,
       getRedisClient: () => getAgentRuntimeRedisClient(),
       guestSettings,
       invalidateBot: (platform, appId) => this.invalidateBot(platform, appId),
@@ -339,7 +352,7 @@ export class BotMessageRouter {
         agentId,
         applicationId,
         platform,
-        settings,
+        settings: runtimeSettings,
         userId,
         workspaceId: workspaceId ?? undefined,
       },

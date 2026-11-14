@@ -41,19 +41,21 @@ const CROCKFORD_ALPHABET = 'ABCDEFGHJKMNPQRSTVWXYZ23456789';
 const CODE_LENGTH = 8;
 
 /** Public applicant info captured at request time. */
+export type PairingScope = 'dm' | 'guest' | 'group';
+
+/** Public applicant info captured at request time. */
 export interface PairingApplicant {
-  /** The applicant's platform user ID — what gets appended to allowFrom. */
+  /** The platform ID appended to the approved list for this scope. */
   applicantUserId: string;
-  /** Optional operator-facing label (the platform user's display name). */
+  /** Optional operator-facing label (the applicant's display name or group ID). */
   applicantUserName?: string;
-  /**
-   * Locale to use when notifying the applicant after approval. Captured at
-   * request time because the owner runs `/approve` in their own context,
-   * which may not match the applicant's language.
-   */
+  /** Locale used when notifying the applicant after approval. */
   replyLocale: BotReplyLocale;
-  /** Composite platformThreadId for the applicant's DM — where the
-   *  approval notification gets posted. */
+  /** Scope whose approved list receives this request. Missing means legacy DM. */
+  scope?: PairingScope;
+  /** Channel/group ID used for group approval entries. */
+  targetChannelId?: string;
+  /** Original composite thread to notify after approval. */
   threadId: string;
 }
 
@@ -73,7 +75,7 @@ export type CreatePairingResult =
 /**
  * Generate a fresh pairing code. Uses `crypto.randomInt` (CSPRNG with
  * rejection sampling) rather than `Math.random` because the code gates
- * write access to allowFrom — predictable codes would let a stranger
+ * write access to approved bot access lists — predictable codes would let a stranger
  * preempt the owner's approval. `randomInt` is preferred over
  * `randomBytes() % N` because the alphabet length (30) doesn't divide 256
  * evenly, so a naive modulo would bias toward earlier characters.
@@ -89,8 +91,13 @@ export function generatePairingCode(): string {
 const codeKey = (platform: string, applicationId: string, code: string): string =>
   `bot:dm-pairing:code:${platform}:${applicationId}:${code}`;
 
-const applicantKey = (platform: string, applicationId: string, applicantUserId: string): string =>
-  `bot:dm-pairing:applicant:${platform}:${applicationId}:${applicantUserId}`;
+const applicantKey = (
+  platform: string,
+  applicationId: string,
+  applicantUserId: string,
+  scope: PairingScope = 'dm',
+): string =>
+  `bot:dm-pairing:applicant:${platform}:${applicationId}:${scope === 'dm' ? '' : `${scope}:`}${applicantUserId}`;
 
 const activeSetKey = (platform: string, applicationId: string): string =>
   `bot:dm-pairing:active:${platform}:${applicationId}`;
@@ -125,7 +132,8 @@ export async function createOrGetPairingRequest(params: {
     return { status: 'redis-unavailable' };
   }
 
-  const aKey = applicantKey(platform, applicationId, applicant.applicantUserId);
+  const scope = applicant.scope ?? 'dm';
+  const aKey = applicantKey(platform, applicationId, applicant.applicantUserId, scope);
   const sKey = activeSetKey(platform, applicationId);
 
   // Same applicant within the TTL window → reuse their code (don't make
@@ -176,6 +184,8 @@ export async function createOrGetPairingRequest(params: {
   const entry: PairingEntry = {
     applicantUserId: applicant.applicantUserId,
     applicantUserName: applicant.applicantUserName,
+    scope,
+    targetChannelId: applicant.targetChannelId,
     applicationId,
     code,
     createdAt,
@@ -300,8 +310,9 @@ export async function deletePairingRequest(params: {
   code: string;
   platform: string;
   redis: Redis | null;
+  scope?: PairingScope;
 }): Promise<void> {
-  const { applicationId, applicantUserId, code, platform, redis } = params;
+  const { applicationId, applicantUserId, code, platform, redis, scope = 'dm' } = params;
   if (!redis) return;
 
   const normalized = code.trim().toUpperCase();
@@ -310,7 +321,7 @@ export async function deletePairingRequest(params: {
   await redis
     .multi()
     .del(codeKey(platform, applicationId, normalized))
-    .del(applicantKey(platform, applicationId, applicantUserId))
+    .del(applicantKey(platform, applicationId, applicantUserId, scope))
     .del(claimKey(platform, applicationId, normalized))
     .zrem(activeSetKey(platform, applicationId), normalized)
     .exec();
@@ -349,6 +360,7 @@ export async function consumePairingRequest(params: {
   await deletePairingRequest({
     applicationId: params.applicationId,
     applicantUserId: entry.applicantUserId,
+    scope: entry.scope ?? 'dm',
     code: params.code,
     platform: params.platform,
     redis: params.redis,

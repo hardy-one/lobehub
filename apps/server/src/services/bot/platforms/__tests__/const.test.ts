@@ -135,6 +135,18 @@ describe('makeDmPolicyField', () => {
     const field = makeDmPolicyField({ policy: 'disabled' });
     expect(field.default).toBe('disabled');
   });
+  it('allows a platform to trim the selectable DM policies', () => {
+    const field = makeDmPolicyField(
+      { policy: 'open' },
+      { policies: ['open', 'pairing', 'disabled'] },
+    );
+    expect(field.enum).toEqual(['open', 'pairing', 'disabled']);
+    expect(field.enumLabels).toEqual([
+      'channel.dmPolicyOpen',
+      'channel.dmPolicyPairing',
+      'channel.dmPolicyDisabled',
+    ]);
+  });
 });
 
 describe('makeGuestPolicyField', () => {
@@ -188,6 +200,17 @@ describe('makeGroupPolicyFields', () => {
     expect(allowFrom.items?.type).toBe('object');
     expect((allowFrom.items?.properties ?? []).map((p) => p.key)).toEqual(['id', 'name']);
     expect(allowFrom.visibleWhen).toEqual({ field: 'groupPolicy', value: 'allowlist' });
+  });
+  it('supports QQ pairing and admin policies without changing the default list', () => {
+    const [policy, allowFrom] = makeGroupPolicyFields(
+      { policy: 'open' },
+      {
+        allowFromVisibleWhen: 'pairing',
+        policies: ['open', 'pairing', 'admins', 'disabled'],
+      },
+    );
+    expect(policy.enum).toEqual(['open', 'pairing', 'admins', 'disabled']);
+    expect(allowFrom.visibleWhen).toEqual({ field: 'groupPolicy', value: 'pairing' });
   });
 });
 
@@ -318,6 +341,16 @@ describe('extractGroupSettings', () => {
       allowFrom: [],
       policy: 'open',
     });
+  });
+
+  it('only accepts QQ policies when the caller opts into them', () => {
+    const stored = { groupPolicy: 'pairing', groupAllowFrom: ['group-1'] };
+    expect(extractGroupSettings(stored)).toEqual({ allowFrom: ['group-1'], policy: 'open' });
+    expect(
+      extractGroupSettings(stored, {
+        acceptedPolicies: ['open', 'pairing', 'admins', 'disabled'],
+      }),
+    ).toEqual({ allowFrom: ['group-1'], policy: 'pairing' });
   });
 
   it('reads the new object-list shape, returning ids only', () => {
@@ -625,7 +658,7 @@ describe('shouldHandleGroup', () => {
   it('lets DM threads pass unconditionally', () => {
     expect(
       shouldHandleGroup({ candidateChannelIds: [], groupSettings: disabled, isDM: true }),
-    ).toBe(true);
+    ).toBe('allow');
   });
 
   it('blocks group traffic when disabled', () => {
@@ -635,7 +668,7 @@ describe('shouldHandleGroup', () => {
         groupSettings: disabled,
         isDM: false,
       }),
-    ).toBe(false);
+    ).toBe('reject');
   });
 
   it('allows group traffic under the open policy', () => {
@@ -645,7 +678,7 @@ describe('shouldHandleGroup', () => {
         groupSettings: open,
         isDM: false,
       }),
-    ).toBe(true);
+    ).toBe('allow');
   });
 
   it('allows group traffic from channels in the allowlist', () => {
@@ -655,7 +688,7 @@ describe('shouldHandleGroup', () => {
         groupSettings: allowlist,
         isDM: false,
       }),
-    ).toBe(true);
+    ).toBe('allow');
   });
 
   it('rejects group traffic from channels outside the allowlist', () => {
@@ -665,20 +698,20 @@ describe('shouldHandleGroup', () => {
         groupSettings: allowlist,
         isDM: false,
       }),
-    ).toBe(false);
+    ).toBe('reject');
   });
 
   it('fails closed when the allowlisted policy sees no channel ids', () => {
     expect(
       shouldHandleGroup({ candidateChannelIds: [], groupSettings: allowlist, isDM: false }),
-    ).toBe(false);
+    ).toBe('reject');
     expect(
       shouldHandleGroup({
         candidateChannelIds: [undefined, undefined],
         groupSettings: allowlist,
         isDM: false,
       }),
-    ).toBe(false);
+    ).toBe('reject');
   });
 
   it('passes when ANY candidate is in the allowlist (Discord auto-thread + parent)', () => {
@@ -693,7 +726,7 @@ describe('shouldHandleGroup', () => {
         groupSettings: allowlist,
         isDM: false,
       }),
-    ).toBe(true);
+    ).toBe('allow');
   });
 
   it('rejects when none of the candidates is in the allowlist', () => {
@@ -703,7 +736,63 @@ describe('shouldHandleGroup', () => {
         groupSettings: allowlist,
         isDM: false,
       }),
-    ).toBe(false);
+    ).toBe('reject');
+  });
+  it('returns pair for an unapproved group under pairing policy', () => {
+    expect(
+      shouldHandleGroup({
+        candidateChannelIds: ['group-new'],
+        groupSettings: { allowFrom: ['group-approved'], policy: 'pairing' },
+        isDM: false,
+      }),
+    ).toBe('pair');
+    expect(
+      shouldHandleGroup({
+        candidateChannelIds: ['group-approved'],
+        groupSettings: { allowFrom: ['group-approved'], policy: 'pairing' },
+        isDM: false,
+      }),
+    ).toBe('allow');
+    expect(
+      shouldHandleGroup({
+        candidateChannelIds: [],
+        groupSettings: { allowFrom: [], policy: 'pairing' },
+        isDM: false,
+      }),
+    ).toBe('reject');
+  });
+
+  it('allows QQ group owners and admins but fails closed for member or missing role', () => {
+    const groupSettings = { allowFrom: [], policy: 'admins' as const };
+    const candidates = ['group-1'];
+
+    expect(
+      shouldHandleGroup({
+        candidateChannelIds: candidates,
+        groupSettings,
+        isDM: false,
+        memberRole: 'owner',
+      }),
+    ).toBe('allow');
+    expect(
+      shouldHandleGroup({
+        candidateChannelIds: candidates,
+        groupSettings,
+        isDM: false,
+        memberRole: 'admin',
+      }),
+    ).toBe('allow');
+    expect(
+      shouldHandleGroup({
+        candidateChannelIds: candidates,
+        groupSettings,
+        isDM: false,
+        memberRole: 'member',
+      }),
+    ).toBe('reject');
+    expect(shouldHandleGroup({ candidateChannelIds: candidates, groupSettings, isDM: false })).toBe(
+      'reject',
+    );
   });
 });
 
@@ -785,6 +874,12 @@ describe('validateAccessSettings', () => {
   it('does not require userId for allowlist or disabled — they have no approval flow', () => {
     expect(validateAccessSettings({ dmPolicy: 'allowlist' }).valid).toBe(true);
     expect(validateAccessSettings({ dmPolicy: 'disabled' }).valid).toBe(true);
+  });
+  it('allows an unbound owner only when the platform has owner binding enabled', () => {
+    expect(validateAccessSettings({ dmPolicy: 'pairing' }).valid).toBe(false);
+    expect(validateAccessSettings({ dmPolicy: 'pairing' }, { ownerBinding: true }).valid).toBe(
+      true,
+    );
   });
 });
 

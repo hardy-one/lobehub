@@ -32,10 +32,10 @@ import {
 import type {
   QQAdapterConfig,
   QQAttachment,
+  QQAuthor,
   QQRawMessage,
   QQSendMessageResponse,
   QQThreadId,
-  QQSendMessageResponse,
   QQWebhookEventData,
   QQWebhookPayload,
 } from './types';
@@ -54,6 +54,9 @@ const BOT_MENTION_EVENT_TYPES = new Set<string>([
   QQ_EVENT_TYPES.AT_MESSAGE_CREATE,
   QQ_EVENT_TYPES.GROUP_AT_MESSAGE_CREATE,
 ]);
+
+const getQQAuthorId = (author?: QQAuthor) =>
+  author?.id ?? author?.user_openid ?? author?.member_openid;
 
 export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
   readonly name = 'qq';
@@ -202,8 +205,9 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
         return this.encodeThreadId({ id: data.group_openid, type: 'group' });
       }
       case QQ_EVENT_TYPES.C2C_MESSAGE_CREATE: {
-        if (!data.author?.id) return null;
-        return this.encodeThreadId({ id: data.author.id, type: 'c2c' });
+        const authorId = getQQAuthorId(data.author);
+        if (!authorId) return null;
+        return this.encodeThreadId({ id: authorId, type: 'c2c' });
       }
       case QQ_EVENT_TYPES.AT_MESSAGE_CREATE: {
         if (!data.channel_id) return null;
@@ -558,7 +562,7 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
     const cleanText = this.formatConverter.cleanMentions(content);
     const formatted = parseMarkdown(cleanText);
 
-    const authorId = data.author?.id || 'unknown';
+    const authorId = getQQAuthorId(data.author) ?? 'unknown';
     const isBot = false; // Webhook events are from users
 
     const author: Author = {
@@ -571,7 +575,7 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
 
     const raw: QQRawMessage = {
       attachments: data.attachments,
-      author: data.author || { id: 'unknown' },
+      author: { ...data.author, id: authorId },
       channel_id: data.channel_id,
       content,
       group_openid: data.group_openid,

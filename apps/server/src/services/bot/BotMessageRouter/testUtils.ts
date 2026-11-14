@@ -21,6 +21,7 @@ export const mockPeekPairingRequest = vi.fn();
 export const mockDeletePairingRequest = vi.fn();
 export const mockReleasePairingClaim = vi.fn();
 export const mockCreateOrGetPairingRequest = vi.fn();
+export const mockGetMessenger = vi.fn();
 export const mockGetAgentRuntimeRedisClient = vi.fn().mockReturnValue(null);
 export const mockGetBotFeatureAccessState = vi.fn();
 
@@ -221,6 +222,9 @@ export const mockGetPlatform = vi.fn().mockImplementation(function (platform: st
         createAdapter: mockCreateAdapter,
         reconcileWebhook: mockReconcileWebhook,
         extractAuthorLocale: (msg: any) => msg?.raw?.from?.language_code,
+        ...(platform === 'qq' && {
+          extractGroupMemberRole: (msg: any) => msg?.raw?.author?.member_role,
+        }),
         // Match the per-platform contract: return the most-specific raw
         // ID (last segment of the composite). Telegram `telegram:chat-1`
         // → `chat-1`; Discord `discord:guild:channel:thread` → `thread`.
@@ -251,12 +255,15 @@ export const mockGetPlatform = vi.fn().mockImplementation(function (platform: st
             };
           },
         }),
-        getMessenger: () => ({
-          createMessage: vi.fn(),
-          editMessage: vi.fn(),
-          removeReaction: vi.fn(),
-          triggerTyping: vi.fn(),
-        }),
+        getMessenger: (threadId: string) => {
+          mockGetMessenger(threadId);
+          return {
+            createMessage: vi.fn(),
+            editMessage: vi.fn(),
+            removeReaction: vi.fn(),
+            triggerTyping: vi.fn(),
+          };
+        },
         id: platform,
         parseMessageId: (id: string) => id,
         start: vi.fn(),
@@ -266,6 +273,7 @@ export const mockGetPlatform = vi.fn().mockImplementation(function (platform: st
     credentials: [],
     id: platform,
     name: platform,
+    accessCapabilities: platform === 'qq' ? { ownerBinding: true } : undefined,
   };
 });
 
@@ -383,13 +391,14 @@ export const platformsModule = async () => ({
     }
     return [];
   },
-  extractGroupSettings: (settings: Record<string, unknown> | null | undefined) => {
+  extractGroupSettings: (
+    settings: Record<string, unknown> | null | undefined,
+    options?: { acceptedPolicies?: readonly string[] },
+  ) => {
     const allowFrom = parseAllowlistMock(settings?.groupAllowFrom);
     const rawPolicy = settings?.groupPolicy as string | undefined;
-    const policy =
-      rawPolicy === 'allowlist' || rawPolicy === 'open' || rawPolicy === 'disabled'
-        ? rawPolicy
-        : 'open';
+    const acceptedPolicies = options?.acceptedPolicies ?? ['allowlist', 'disabled', 'open'];
+    const policy = rawPolicy && acceptedPolicies.includes(rawPolicy) ? rawPolicy : 'open';
     return { allowFrom, policy };
   },
   extractUserAllowlist: (settings: Record<string, unknown> | null | undefined) => {
@@ -536,15 +545,24 @@ export const platformsModule = async () => ({
   },
   shouldHandleGroup: (params: {
     candidateChannelIds: ReadonlyArray<string | undefined>;
-    groupSettings: { allowFrom: string[]; policy: 'allowlist' | 'disabled' | 'open' };
+    groupSettings: {
+      allowFrom: string[];
+      policy: 'admins' | 'allowlist' | 'disabled' | 'open' | 'pairing';
+    };
     isDM: boolean;
-  }) => {
-    if (params.isDM) return true;
-    if (params.groupSettings.policy === 'disabled') return false;
-    if (params.groupSettings.policy === 'open') return true;
+    memberRole?: 'admin' | 'member' | 'owner';
+  }): 'allow' | 'pair' | 'reject' => {
+    if (params.isDM) return 'allow';
+    if (params.groupSettings.policy === 'disabled') return 'reject';
+    if (params.groupSettings.policy === 'open') return 'allow';
+    if (params.groupSettings.policy === 'admins') {
+      return params.memberRole === 'admin' || params.memberRole === 'owner' ? 'allow' : 'reject';
+    }
     const ids = params.candidateChannelIds.filter((id): id is string => Boolean(id));
-    if (ids.length === 0) return false;
-    return ids.some((id) => params.groupSettings.allowFrom.includes(id));
+    if (ids.length === 0) return 'reject';
+    const approved = ids.some((id) => params.groupSettings.allowFrom.includes(id));
+    if (approved) return 'allow';
+    return params.groupSettings.policy === 'pairing' ? 'pair' : 'reject';
   },
 });
 

@@ -41,6 +41,7 @@ import {
   isDeviceChannelGranted,
   isDeviceChannelRestricted,
 } from '../platforms/deviceAccess';
+import { canUseQqGroupDevices, QQ_GROUP_ACCEPTED_POLICIES } from '../platforms/qq/accessSettings';
 import { renderThrownAgentError } from '../renderThrownError';
 import { createReplyOpener } from '../wake/opener';
 import { resolveWakeScheduler } from '../wake/scheduler';
@@ -105,7 +106,10 @@ export function registerHandlers(
   const reactionMode = normalizeBotReactionMode(info.settings?.reactionMode);
   const dmSettings: DmSettings = extractDmSettings(info.settings);
   const guestSettings: GuestSettings = extractGuestSettings(info.settings);
-  const groupSettings: GroupSettings = extractGroupSettings(info.settings);
+  const groupSettings: GroupSettings = extractGroupSettings(
+    info.settings,
+    platform === 'qq' ? { acceptedPolicies: QQ_GROUP_ACCEPTED_POLICIES } : undefined,
+  );
   const userAllowlist: UserAllowlist = extractUserAllowlist(info.settings);
   /**
    * Operator-configured keywords (). When non-empty, a non-@mention
@@ -173,7 +177,9 @@ export function registerHandlers(
       ? (info.settings.userId as string).trim() || undefined
       : undefined;
   /** Who besides the owner may use the owner's devices; read once per bot. */
-  const deviceAllowlist = extractDeviceAllowlist(info.settings);
+  const deviceAllowlist = extractDeviceAllowlist(info.settings, {
+    useAllowFrom: platform === 'qq',
+  });
   /** Channels the owner limited device use to; `undefined` when unrestricted. */
   const deviceChannelAllowlist = extractDeviceChannelAllowlist(info.settings);
   /**
@@ -201,6 +207,32 @@ export function registerHandlers(
       channelGrantlist: deviceChannelGrantlist,
       isDM: thread.isDM === true,
     });
+  /**
+   * Build the caller context for one inbound message. Single place: people
+   * (`deviceAllowlist`, plus QQ's group policy), channel scope and channel
+   * grants all meet here, so no call site re-derives device trust.
+   */
+  const buildBotContextForMessage = (message: Message, thread: { id: string; isDM?: boolean }) => {
+    const deviceAccessAllowed =
+      platform === 'qq' &&
+      thread.isDM !== true &&
+      info.settings?.devicePolicy === 'group' &&
+      canUseQqGroupDevices(groupSettings.policy, client.extractGroupMemberRole?.(message))
+        ? true
+        : undefined;
+
+    return buildBotContext({
+      applicationId,
+      authorUserId: message.author?.userId,
+      deviceAllowlist,
+      ...(deviceAccessAllowed === undefined ? {} : { deviceAccessAllowed }),
+      deviceChannelGranted: isDeviceChannelGrantedFor(thread),
+      deviceChannelRestricted: isDeviceChannelRestrictedFor(thread),
+      operatorUserId,
+      platform,
+      platformThreadId: thread.id,
+    });
+  };
   const fallbackReplyLocale: BotReplyLocale = getBotReplyLocale(platform);
 
   /**
@@ -240,6 +272,7 @@ export function registerHandlers(
   const tryDispatch = async (
     thread: {
       id: string;
+      isDM?: boolean;
       post: (t: string) => Promise<any>;
       setState: (s: Record<string, any>, o?: { replace?: boolean }) => Promise<any>;
       state: Promise<Record<string, any> | null>;
@@ -266,6 +299,7 @@ export function registerHandlers(
       post: (t) => thread.post(t),
       replyLocale,
       setState: (s, o) => thread.setState(s, o),
+      isDM: thread.isDM === true,
       threadId: thread.id,
     });
     return true;
@@ -514,7 +548,7 @@ export function registerHandlers(
 
     // Gate first — must run before tryDispatch so a /command from a
     // non-allowlisted sender can't slip through and side-effect.
-    if (!(await passGatesOrNotify(thread, message.author, replyLocale, 'onNewMention'))) {
+    if (!(await passGatesOrNotify(thread, message.author, replyLocale, 'onNewMention', message))) {
       observe('onNewMention', message, thread, 'skip', 'access-gate-rejected');
       return;
     }
@@ -586,16 +620,7 @@ export function registerHandlers(
     try {
       await bridge.handleMention(thread, merged, {
         agentId,
-        botContext: buildBotContext({
-          applicationId,
-          authorUserId: merged.author?.userId,
-          deviceAllowlist,
-          deviceChannelGranted: isDeviceChannelGrantedFor(thread),
-          deviceChannelRestricted: isDeviceChannelRestrictedFor(thread),
-          operatorUserId,
-          platform,
-          platformThreadId: thread.id,
-        }),
+        botContext: buildBotContextForMessage(message, thread),
         botSettings: info.settings,
         charLimit,
         client,
@@ -745,7 +770,13 @@ export function registerHandlers(
       ? { id: thread.id, isDM: thread.isDM, post: async () => undefined }
       : thread;
     if (
-      !(await passGatesOrNotify(gateThread, message.author, replyLocale, 'onSubscribedMessage'))
+      !(await passGatesOrNotify(
+        gateThread,
+        message.author,
+        replyLocale,
+        'onSubscribedMessage',
+        message,
+      ))
     ) {
       observe('onSubscribedMessage', message, thread, 'skip', 'access-gate-rejected', true);
       return;
@@ -871,16 +902,7 @@ export function registerHandlers(
     try {
       await bridge.handleSubscribedMessage(thread, merged, {
         agentId,
-        botContext: buildBotContext({
-          applicationId,
-          authorUserId: merged.author?.userId,
-          deviceAllowlist,
-          deviceChannelGranted: isDeviceChannelGrantedFor(thread),
-          deviceChannelRestricted: isDeviceChannelRestrictedFor(thread),
-          operatorUserId,
-          platform,
-          platformThreadId: thread.id,
-        }),
+        botContext: buildBotContextForMessage(message, thread),
         botSettings: info.settings,
         charLimit,
         client,
@@ -931,8 +953,7 @@ export function registerHandlers(
   );
 
   registerCatchAllHandler(bot, {
-    deviceAllowlist,
-    isDeviceChannelGrantedFor,
+    buildBotContextForMessage,
     isDeviceChannelRestrictedFor,
     agentId,
     applicationId,

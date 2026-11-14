@@ -154,6 +154,9 @@ const Body = memo<BodyProps>(
     // The records tab is a history read, not settings: it mounts the first time it is opened and
     // then stays, so switching tabs keeps its filters and loaded pages.
     const [recordsOpened, setRecordsOpened] = useState(false);
+    // Block form writes until the server-bound owner is visible locally, so saves cannot overwrite it.
+    const [ownerBindingPending, setOwnerBindingPending] = useState(false);
+    const formDisabled = disabled || ownerBindingPending;
     if (activeTab === 'records' && !recordsOpened) setRecordsOpened(true);
 
     const CustomCredentialBody = platformCredentialBodyMap[platformDef.id];
@@ -186,12 +189,14 @@ const Body = memo<BodyProps>(
     const renderStepField = (key: string) => {
       if (key === 'applicationId') {
         const field = platformDef.schema.find((section) => section.key === 'applicationId');
-        return field && <ApplicationIdField disabled={disabled} field={field} />;
+        return field && <ApplicationIdField disabled={formDisabled} field={field} />;
       }
-      if (key === 'extras') return CredentialExtras && <CredentialExtras disabled={disabled} />;
+      if (key === 'extras') return CredentialExtras && <CredentialExtras disabled={formDisabled} />;
       const field = credentialFields.find((item) => item.key === key);
       return (
-        field && <SchemaField fullWidth disabled={disabled} field={field} parentKey="credentials" />
+        field && (
+          <SchemaField fullWidth disabled={formDisabled} field={field} parentKey="credentials" />
+        )
       );
     };
 
@@ -235,9 +240,14 @@ const Body = memo<BodyProps>(
       return (
         <FieldExtras
           disabled={disabled || featureLocked}
+          hasConfig={hasConfig}
           platformId={platformDef.id}
+          savedCredentials={currentConfig?.credentials}
           savedValue={currentConfig?.settings?.[field.key]}
           onFilled={handleFieldExtrasFilled}
+          onBindingPendingChange={
+            platformDef.id === 'qq' && field.key === 'userId' ? setOwnerBindingPending : undefined
+          }
         />
       );
     };
@@ -247,7 +257,7 @@ const Body = memo<BodyProps>(
       moduleControls?.ids.includes(id) ? (
         <ModuleSaveBar
           dirty={moduleControls.dirty.includes(id)}
-          disabled={disabled}
+          disabled={formDisabled}
           saving={moduleControls.saving === id}
           onDiscard={() => moduleControls.onDiscard(id)}
           onSave={() => moduleControls.onSave(id)}
@@ -273,7 +283,7 @@ const Body = memo<BodyProps>(
         return (
           <Fragment key={field.key}>
             <SchemaField
-              disabled={disabled}
+              disabled={formDisabled}
               divider={index !== 0}
               featureLocked={featureLocked}
               field={field}
@@ -297,7 +307,7 @@ const Body = memo<BodyProps>(
             <Form.Group title={t('channel.credentials')} variant={'filled'}>
               <CustomCredentialBody
                 currentConfig={currentConfig}
-                disabled={disabled}
+                disabled={formDisabled}
                 hasConfig={hasConfig}
                 onAuthenticated={onAuthenticated}
               />
@@ -306,7 +316,7 @@ const Body = memo<BodyProps>(
             <>
               <QuickSetupSection
                 appName={quickSetupAppName || 'LobeHub'}
-                disabled={disabled}
+                disabled={formDisabled}
                 form={form}
                 hasConfig={hasConfig}
                 platformId={platformDef.id}
@@ -351,7 +361,7 @@ const Body = memo<BodyProps>(
                       if (section.key === 'applicationId') {
                         return (
                           <ApplicationIdField
-                            disabled={disabled}
+                            disabled={formDisabled}
                             divider={needsDivider}
                             field={section}
                             key="applicationId"
@@ -363,7 +373,7 @@ const Body = memo<BodyProps>(
                           {groupCredentialFields.map((field, i) => (
                             <SchemaField
                               fullWidth
-                              disabled={disabled}
+                              disabled={formDisabled}
                               divider={needsDivider || i !== 0}
                               field={field}
                               key={field.key}
@@ -376,7 +386,7 @@ const Body = memo<BodyProps>(
                   {/* Platform-specific helpers (e.g. LINE's "Fetch from LINE" button)
               render after the credential + applicationId block so the button
               sits next to the field it acts on. */}
-                  {showExtras && <CredentialExtras disabled={disabled} />}
+                  {showExtras && <CredentialExtras disabled={formDisabled} />}
                 </Form.Group>
               )}
             </>
@@ -392,7 +402,7 @@ const Body = memo<BodyProps>(
             >
               {connectGroup.fields.map((field, index) => (
                 <SchemaField
-                  disabled={disabled}
+                  disabled={formDisabled}
                   divider={index !== 0}
                   field={field}
                   key={field.key}
@@ -433,9 +443,10 @@ const Body = memo<BodyProps>(
                     }
                   >
                     <AccessSection
-                      disabled={disabled}
+                      disabled={formDisabled}
                       fields={section.fields}
                       form={form}
+                      platformId={platformDef.id}
                       section={section.key}
                       userIdExtras={renderExtras(section.fields.find((f) => f.key === 'userId'))}
                       onValuesChange={onValuesChange}
@@ -507,7 +518,7 @@ const Body = memo<BodyProps>(
                   {group.key === 'advanced' && (
                     <Flexbox horizontal justify={'flex-end'} style={{ paddingBlock: 8 }}>
                       <Button
-                        disabled={disabled}
+                        disabled={formDisabled}
                         icon={<RotateCcw size={14} />}
                         size="small"
                         type="text"
@@ -533,7 +544,7 @@ const Body = memo<BodyProps>(
             <WakeRecords
               active={activeTab === 'records'}
               botId={currentConfig.id}
-              disabled={disabled}
+              disabled={formDisabled}
             />
           </Panel>
         )}

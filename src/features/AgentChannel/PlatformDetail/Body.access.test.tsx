@@ -229,10 +229,11 @@ describe('channel settings form: access tab', () => {
     expect(within(dm).getByText(en['channel.access.dm.everyone'])).toBeVisible();
     expect(within(dm).getByText(en['channel.access.dm.closed'])).toBeVisible();
     const devices = screen.getByRole('radiogroup', { name: en['channel.access.device.label'] });
-    expect(within(devices).getAllByRole('radio')).toHaveLength(2);
+    expect(within(devices).getAllByRole('radio')).toHaveLength(3);
     const deviceOptions = within(devices).getAllByRole('radio');
     expect(deviceOptions[0]).toHaveTextContent(en['channel.qq.access.device.owner']);
     expect(deviceOptions[1]).toHaveTextContent(en['channel.qq.access.device.allowlist']);
+    expect(deviceOptions[2]).toHaveTextContent(en['channel.qq.access.device.group']);
     expect(within(devices).getByRole('radio', { name: /Only the bound QQ owner/ })).toBeVisible();
     expect(within(devices).getByRole('radio', { name: /Owner and approved people/ })).toBeVisible();
     expect(screen.getByText('approved-user')).toBeVisible();

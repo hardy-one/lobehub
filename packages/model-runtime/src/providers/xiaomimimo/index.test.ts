@@ -365,3 +365,48 @@ describe('LobeXiaomiMiMoAI - custom features', () => {
     });
   });
 });
+
+describe('LobeXiaomiMiMoAI - speech', () => {
+  const audioBase64 = Buffer.from('wav-bytes').toString('base64');
+
+  const createRuntime = () => {
+    const runtime = new LobeXiaomiMiMoAI({ apiKey: 'test-key' });
+    const create = vi.fn().mockResolvedValue({
+      choices: [{ message: { audio: { data: audioBase64 }, content: 'transcript' } }],
+    });
+    (runtime as any).client = { chat: { completions: { create } } };
+
+    return { create, runtime };
+  };
+
+  it('routes textToSpeech through chat completions with a wav audio argument', async () => {
+    const { create, runtime } = createRuntime();
+
+    const result = await runtime.textToSpeech({
+      input: 'hello',
+      model: 'mimo-v2.5-tts',
+      voice: 'Mia',
+    });
+
+    const body = create.mock.calls[0][0];
+    expect(body.audio).toEqual({ format: 'wav', voice: 'Mia' });
+    expect(body.messages).toEqual([{ content: 'hello', role: 'assistant' }]);
+    expect(result.format).toBe('wav');
+    expect(Buffer.from(result.audio).toString()).toBe('wav-bytes');
+  });
+
+  it('routes transcribe through chat completions with base64 input audio', async () => {
+    const { create, runtime } = createRuntime();
+
+    const result = await runtime.transcribe({
+      file: new Blob(['audio-bytes'], { type: 'audio/wav' }),
+      language: 'zh',
+      model: 'mimo-v2.5-asr',
+    });
+
+    const body = create.mock.calls[0][0];
+    expect(body.model).toBe('mimo-v2.5-asr');
+    expect(body.asr_options).toEqual({ language: 'zh' });
+    expect(result).toEqual({ text: 'transcript' });
+  });
+});

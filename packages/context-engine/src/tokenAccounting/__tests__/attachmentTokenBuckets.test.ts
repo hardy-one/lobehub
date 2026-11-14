@@ -63,6 +63,22 @@ describe('attachment token buckets', () => {
     expect(result.audioTokens).toBe(1000);
   });
 
+  it('excludes transcribed voice recordings from sent attachment token estimates', () => {
+    const result = estimateSentMessageAttachmentTokenBuckets(
+      [
+        mkMsg({
+          audioList: [{ alt: 'audio.mp3', id: 'audio-id', url: 'https://example.com/audio.mp3' }],
+          metadata: { voiceMessage: { transcribed: true } },
+          role: 'user',
+        }),
+      ],
+      { canUseAudio: true, canUseVideo: false, canUseVision: false },
+    );
+
+    expect(result.audioTokens).toBe(0);
+    expect(result.textTokens).toBe(0);
+  });
+
   it('keeps file context but skips visual buckets when the model cannot consume them', () => {
     const result = estimateSentMessageAttachmentTokenBuckets(
       [

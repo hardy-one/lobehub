@@ -491,6 +491,26 @@ describe('countContextTokens', () => {
       expect(r.bySource.fileContext).toBe(0);
       expect(r.messages[0].bySource.fileContext).toBeUndefined();
     });
+
+    // A transcribed voice turn ships as text only, so budgeting its recording would
+    // push the conversation over the compression threshold before it is actually large.
+    it('skips a transcribed voice recording', () => {
+      const audioList = [
+        { alt: 'voice.webm', id: 'audio-1', url: 'https://example.com/voice.webm' },
+      ];
+      const transcribed = mkMsg({
+        audioList,
+        content: 'hello',
+        metadata: { voiceMessage: { transcribed: true } },
+        role: 'user',
+      });
+      const untranscribed = mkMsg({ audioList, content: 'hello', role: 'user' });
+
+      expect(countContextTokens({ messages: [transcribed] }).bySource.fileContext).toBe(0);
+      expect(
+        countContextTokens({ messages: [untranscribed] }).bySource.fileContext,
+      ).toBeGreaterThan(0);
+    });
   });
 
   describe('assistantGroup children (conversation-flow flattened lists)', () => {

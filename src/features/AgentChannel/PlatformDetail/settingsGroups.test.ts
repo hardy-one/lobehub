@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { botWakeFields } from '@/server/services/bot/platforms/botWakeFields';
+import { schema as qqSchema } from '@/server/services/bot/platforms/qq/schema';
 import type { FieldSchema } from '@/server/services/bot/platforms/types';
 import { BOT_WAKE_SETTING_KEYS } from '@/server/services/conversationWake/config';
 
@@ -129,6 +130,28 @@ describe('groupSettingsFields', () => {
 
   it('returns nothing for a platform without settings', () => {
     expect(groupSettingsFields([])).toEqual([]);
+  });
+  it('keeps QQ access declarations, managed lists and policy enums in the access group', () => {
+    const settings = getSchemaFields(qqSchema, 'settings');
+    const access = groupSettingsFields(settings).find((group) => group.key === 'access');
+    const byKey = new Map(access?.fields.map((item) => [item.key, item]));
+
+    expect(access?.fields.map((item) => item.key)).toEqual([
+      'userId',
+      'dmPolicy',
+      'allowFrom',
+      'groupPolicy',
+      'groupAllowFrom',
+      'devicePolicy',
+      'deviceAllowFrom',
+    ]);
+    expect(byKey.get('dmPolicy')?.enum).toEqual(['open', 'pairing', 'disabled']);
+    expect(byKey.get('groupPolicy')?.enum).toEqual(['open', 'pairing', 'admins']);
+    expect(byKey.get('devicePolicy')?.enum).toEqual(['owner', 'allowlist', 'group']);
+    expect(byKey.get('userId')?.managed).toBe(true);
+    expect(byKey.get('allowFrom')?.managed).toBe(true);
+    expect(byKey.get('groupAllowFrom')?.managed).toBe(true);
+    expect(byKey.get('deviceAllowFrom')?.managed).toBe(true);
   });
 });
 

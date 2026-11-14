@@ -21,6 +21,7 @@ import {
   resolveConnectionMode,
   validateAccessSettings,
 } from './platforms';
+import { normalizeQqAccessSettings } from './platforms/qq/accessSettings';
 
 const log = debug('lobe-server:bot:provider-settings');
 
@@ -39,7 +40,8 @@ export function mergeBotSettingsForPersist(
   if (!platform) return settings;
   const definition = platformRegistry.getPlatform(platform);
   if (!definition) return settings;
-  return mergeWithDefaults(definition.schema, settings);
+  const merged = mergeWithDefaults(definition.schema, settings);
+  return platform === 'qq' ? (normalizeQqAccessSettings(merged) ?? merged) : merged;
 }
 
 const REACTION_MODE_KEY = 'reactionMode';
@@ -124,9 +126,14 @@ export function mergeBotSettingsPatch(
  * can re-wrap it (TRPC -> `TRPCError`, AI runtime -> tool error result).
  * Skipped when `settings` is undefined (update payload didn't touch them).
  */
-export function assertBotAccessSettings(settings: Record<string, unknown> | undefined): void {
+export function assertBotAccessSettings(
+  settings: Record<string, unknown> | undefined,
+  platform?: string,
+): void {
   if (settings === undefined) return;
-  const result = validateAccessSettings(settings);
+  const ownerBinding = platformRegistry.getPlatform(platform ?? '')?.accessCapabilities
+    ?.ownerBinding;
+  const result = validateAccessSettings(settings, { ownerBinding });
   if (result.valid) return;
   const message =
     result.errors?.map((e) => `${e.field}: ${e.message}`).join('; ') ||

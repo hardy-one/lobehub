@@ -12,8 +12,14 @@ import { AgentBridgeService } from '../AgentBridgeService';
 import { deletePairingRequest, peekPairingRequest, releasePairingClaim } from '../dmPairingStore';
 import { submitBotFeedback } from '../feedbackSubmit';
 import {
+  claimOwnerBindingCode,
+  completeOwnerBindingCode,
+  releaseOwnerBindingCode,
+} from '../ownerBindingStore';
+import {
   type BotReplyLocale,
   type DmSettings,
+  type GroupSettings,
   type GuestSettings,
   normalizeAllowFromEntries,
   type PlatformClient,
@@ -23,6 +29,8 @@ import {
   renderCommandReply,
   renderFeedbackSubmitted,
   renderModeStatus,
+  renderOwnerBindingReply,
+  renderPairingApplicantApproved,
   renderWhoami,
 } from '../replyTemplate';
 import type { BotCommand } from './types';
@@ -51,6 +59,8 @@ export function buildCommands(
     /** Reads the shared Redis client lazily, when `/approve` runs. */
     getRedisClient: () => any;
     guestSettings: GuestSettings;
+    groupSettings: GroupSettings;
+    ownerBindingEnabled: boolean;
     /** Drop the router's cached bot so the next inbound rebuilds it. */
     invalidateBot: (platform: string, appId: string) => Promise<void>;
     operatorUserId?: string;
@@ -68,13 +78,15 @@ export function buildCommands(
     client,
     dmSettings,
     guestSettings,
+    groupSettings,
+    ownerBindingEnabled,
     operatorUserId,
     platform,
     providerId,
     userId,
   } = info;
 
-  return [
+  const commands: BotCommand[] = [
     {
       description: 'Start a new conversation',
       handler: async (ctx) => {
@@ -210,7 +222,11 @@ export function buildCommands(
           ctx.authorUserName ?? ctx.authorUserId,
         );
 
-        if (dmSettings.policy !== 'pairing' && guestSettings.policy !== 'pairing') {
+        if (
+          dmSettings.policy !== 'pairing' &&
+          guestSettings.policy !== 'pairing' &&
+          groupSettings.policy !== 'pairing'
+        ) {
           await ctx.post(renderCommandReply('cmdApproveDisabled', ctx.replyLocale));
           return;
         }
@@ -242,14 +258,13 @@ export function buildCommands(
           return;
         }
 
-        // Persist the applicant to allowFrom BEFORE deleting the Redis
-        // entry. If persistence fails (transient DB error, missing
-        // provider row), the code stays valid so the owner can retry
-        // — otherwise the applicant is locked out and we'd need a
-        // fresh code from them. Read-modify-write so we preserve every
-        // other settings field; `model.update` would otherwise
-        // lodash-merge over only the fields we pass.
-        const approvedLabel = entry.applicantUserName ?? entry.applicantUserId;
+        const scope = entry.scope ?? 'dm';
+        const approvedId =
+          scope === 'group'
+            ? (entry.targetChannelId ?? entry.applicantUserId)
+            : entry.applicantUserId;
+        const listKey = scope === 'group' ? 'groupAllowFrom' : 'allowFrom';
+        const approvedLabel = entry.applicantUserName ?? approvedId;
         let persisted = false;
         try {
           const gateKeeper = await KeyVaultsGateKeeper.initWithEnvKey();
@@ -257,23 +272,18 @@ export function buildCommands(
           const provider = await model.findById(providerId);
           if (provider) {
             const settings = (provider.settings ?? {}) as Record<string, unknown>;
-            const entries = normalizeAllowFromEntries(settings.allowFrom);
-            if (!entries.some((e) => e.id === entry.applicantUserId)) {
+            const entries = normalizeAllowFromEntries(settings[listKey]);
+            if (!entries.some((candidate) => candidate.id === approvedId)) {
               entries.push(
                 entry.applicantUserName
-                  ? { id: entry.applicantUserId, name: entry.applicantUserName }
-                  : { id: entry.applicantUserId },
+                  ? { id: approvedId, name: entry.applicantUserName }
+                  : { id: approvedId },
               );
               await model.update(providerId, {
-                settings: { ...settings, allowFrom: entries },
+                settings: { ...settings, [listKey]: entries },
               });
-              // The router caches RegisteredBot by key; drop it so the
-              // next inbound DM rebuilds with fresh allowFrom rather
-              // than re-pairing the user we just approved.
               await info.invalidateBot(platform, applicationId);
             }
-            // Already on the list counts as a successful approval —
-            // the durable state matches what the owner asked for.
             persisted = true;
           } else {
             log(
@@ -283,9 +293,8 @@ export function buildCommands(
             );
           }
         } catch (error) {
-          log('command /approve: failed to persist allowFrom for code=%s: %O', code, error);
+          log('command /approve: failed to persist %s for code=%s: %O', listKey, code, error);
         }
-
         if (!persisted) {
           // Leave the Redis entry intact: the owner can retry the same
           // /approve once the underlying issue clears, without forcing
@@ -299,6 +308,7 @@ export function buildCommands(
         await deletePairingRequest({
           applicationId,
           applicantUserId: entry.applicantUserId,
+          scope,
           code,
           platform,
           redis,
@@ -309,9 +319,7 @@ export function buildCommands(
         // one-shot inline response through the Guest messenger.
         try {
           const messenger = client.getMessenger(entry.threadId);
-          await messenger.createMessage(
-            renderCommandReply('dmPairingApplicantApproved', entry.replyLocale),
-          );
+          await messenger.createMessage(renderPairingApplicantApproved(scope, entry.replyLocale));
         } catch (error) {
           log('command /approve: failed to notify applicant for code=%s: %O', code, error);
         }
@@ -384,6 +392,7 @@ export function buildCommands(
           renderWhoami(
             {
               isOperator: !!operatorUserId && callerId === operatorUserId,
+              ownerBindingEnabled,
               userId: callerId,
               userName: ctx.authorUserName,
             },
@@ -394,6 +403,84 @@ export function buildCommands(
       name: 'whoami',
     },
   ];
+
+  if (ownerBindingEnabled) {
+    commands.push({
+      bypassGate: true,
+      description: 'Bind the current private account as the bot owner: /bind <code>',
+      options: [
+        {
+          description: 'The 15-minute owner binding code from bot settings',
+          name: 'code',
+          required: true,
+        },
+      ],
+      handler: async (ctx) => {
+        if (ctx.isDM !== true) {
+          await ctx.post(renderOwnerBindingReply('dm-only', ctx.replyLocale));
+          return;
+        }
+
+        const code = ctx.args.trim();
+        if (!code) {
+          await ctx.post(renderOwnerBindingReply('usage', ctx.replyLocale));
+          return;
+        }
+
+        const callerId = ctx.authorUserId?.trim();
+        if (!callerId) {
+          await ctx.post(renderOwnerBindingReply('sender-unavailable', ctx.replyLocale));
+          return;
+        }
+
+        const claim = await claimOwnerBindingCode({ applicationId, code, platform });
+        if (claim === 'redis-unavailable') {
+          await ctx.post(renderOwnerBindingReply('unavailable', ctx.replyLocale));
+          return;
+        }
+        if (claim === 'invalid') {
+          await ctx.post(renderOwnerBindingReply('code-invalid', ctx.replyLocale));
+          return;
+        }
+
+        let persisted = false;
+        try {
+          const gateKeeper = await KeyVaultsGateKeeper.initWithEnvKey();
+          const model = new AgentBotProviderModel(serverDB, userId, gateKeeper, info.workspaceId);
+          const provider = await model.findById(providerId);
+          if (provider?.platform === platform && provider.applicationId === applicationId) {
+            const settings = (provider.settings ?? {}) as Record<string, unknown>;
+            await model.update(providerId, { settings: { ...settings, userId: callerId } });
+            persisted = true;
+            await info.invalidateBot(platform, applicationId);
+          }
+        } catch (error) {
+          log(
+            'command /bind: failed to persist owner identity for platform=%s: %O',
+            platform,
+            error,
+          );
+        }
+
+        if (!persisted) {
+          await releaseOwnerBindingCode({ applicationId, code, platform });
+          await ctx.post(renderOwnerBindingReply('save-failed', ctx.replyLocale));
+          return;
+        }
+
+        const completion = await completeOwnerBindingCode({ applicationId, code, platform });
+        await ctx.post(
+          renderOwnerBindingReply(
+            completion === 'redis-unavailable' ? 'cleanup-failed' : 'success',
+            ctx.replyLocale,
+          ),
+        );
+      },
+      name: 'bind',
+    });
+  }
+
+  return commands;
 }
 
 /**
@@ -422,6 +509,7 @@ export function registerCommands(
     author: { userId?: string; userName?: string },
     replyLocale: BotReplyLocale,
     caller: string,
+    message?: unknown,
   ) => Promise<boolean>,
 ): void {
   // --- Native slash commands (Slack, Discord) ---
@@ -442,7 +530,7 @@ export function registerCommands(
       const replyLocale = locale.fallback;
       if (
         !cmd.bypassGate &&
-        !(await gate(threadLike, authorLike, replyLocale, `onSlashCommand /${cmd.name}`))
+        !(await gate(threadLike, authorLike, replyLocale, `onSlashCommand /${cmd.name}`, event))
       ) {
         return;
       }
@@ -467,6 +555,7 @@ export function registerCommands(
         // below, which DOES have per-message locale.
         replyLocale,
         setState: (state, opts) => event.channel.setState(state, opts),
+        isDM: event.channel.isDM,
         threadId: event.channel.id,
       });
     });
@@ -488,7 +577,13 @@ export function registerCommands(
     const replyLocale = locale.detectFromMessage(message);
     if (
       !result.command.bypassGate &&
-      !(await gate(thread, message.author, replyLocale, `onNewMessage /${result.command.name}`))
+      !(await gate(
+        thread,
+        message.author,
+        replyLocale,
+        `onNewMessage /${result.command.name}`,
+        message,
+      ))
     ) {
       return;
     }
@@ -500,6 +595,7 @@ export function registerCommands(
       post: (text) => thread.post(text),
       replyLocale,
       setState: (state, opts) => thread.setState(state, opts),
+      isDM: thread.isDM === true,
       threadId: thread.id,
     });
   });

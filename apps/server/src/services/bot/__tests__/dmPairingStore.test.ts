@@ -136,6 +136,40 @@ describe('createOrGetPairingRequest', () => {
     expect(typeof persisted.createdAt).toBe('number');
   });
 
+  it('stores group approvals in a separately scoped pairing entry', async () => {
+    mockRedis.get.mockResolvedValue(null);
+    mockRedis.zcard.mockResolvedValue(0);
+    mockRedis.exists.mockResolvedValue(0);
+
+    const result = await createOrGetPairingRequest({
+      ...baseParams,
+      applicationId: 'qq-app',
+      platform: 'qq',
+      applicant: {
+        ...baseParams.applicant,
+        applicantUserId: 'group-openid',
+        scope: 'group',
+        targetChannelId: 'group-openid',
+        threadId: 'qq:group:group-openid',
+      },
+      redis: mockRedis,
+    });
+
+    expect(result.status).toBe('created');
+    expect(multiBuilder.set).toHaveBeenCalledWith(
+      'bot:dm-pairing:applicant:qq:qq-app:group:group-openid',
+      expect.any(String),
+      'EX',
+      PAIRING_TTL_SECONDS,
+    );
+    const persisted = JSON.parse(multiBuilder.set.mock.calls[0][1] as string);
+    expect(persisted).toMatchObject({
+      applicantUserId: 'group-openid',
+      scope: 'group',
+      targetChannelId: 'group-openid',
+      threadId: 'qq:group:group-openid',
+    });
+  });
   it('reuses an existing code when the same applicant DMs again within TTL', async () => {
     // applicant index exists → recycle path
     mockRedis.get

@@ -15,6 +15,7 @@ import type {
 } from '@lobechat/types';
 
 import { getMimeType } from '../utils/mimeType';
+import { getModelVisibleAudioList } from '../utils/voiceMessage';
 
 const ESTIMATE_INPUT_MESSAGE_ID = '__cost_estimate_input__';
 const BYTES_PER_TEXT_TOKEN_ESTIMATE = 4;
@@ -107,7 +108,7 @@ export const estimateSentMessageAttachmentTokenBuckets = (
     const fileList = message.fileList ?? [];
     const imageList = message.imageList ?? [];
     const videoList = message.videoList ?? [];
-    const audioList = message.audioList ?? [];
+    const audioList = getModelVisibleAudioList(message);
 
     if (
       fileList.length === 0 &&

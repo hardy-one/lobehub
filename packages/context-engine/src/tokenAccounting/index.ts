@@ -4,6 +4,7 @@ import { estimateSerializableTokens } from '@lobechat/token-estimator';
 import type { AssistantContentBlock, UIChatMessage } from '@lobechat/types';
 
 import { DEFAULT_TEMPLATE, formatTaskMessage } from '../processors/TaskMessage';
+import { getModelVisibleAudioList } from '../utils/voiceMessage';
 import type {
   ContextTokenAccounting,
   CountContextTokensParams,
@@ -54,7 +55,7 @@ const countFileContext = (msg: UIChatMessage, previewFileIds?: ReadonlySet<strin
   const fileList = msg.fileList ?? [];
   const imageList = msg.imageList ?? [];
   const videoList = msg.videoList ?? [];
-  const audioList = msg.audioList ?? [];
+  const audioList = getModelVisibleAudioList(msg);
 
   if (
     fileList.length === 0 &&

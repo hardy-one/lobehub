@@ -68,7 +68,10 @@ export const tabsWithIssues = (values: ChannelValues, schema: FieldSchema[]): Ch
   if ((applicationId?.required && !isFilled(values.applicationId)) || missingCredential)
     issues.add('connect');
 
-  if (accessIssues(values.settings ?? {}).includes('approverMissing')) issues.add('access');
+  const settingsFields = getSchemaFields(schema, 'settings');
+  const dmPolicyField = settingsFields.find((field) => field.key === 'dmPolicy');
+  if (accessIssues(values.settings ?? {}, dmPolicyField).includes('approverMissing'))
+    issues.add('access');
 
   return TAB_ORDER.filter((tab) => issues.has(tab));
 };

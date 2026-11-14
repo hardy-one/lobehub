@@ -4,40 +4,42 @@ export interface OwnerBindingForm {
   validate: (names: string[]) => Promise<unknown>;
 }
 
-export type OwnerBindingVersion = Date | number | string | null | undefined;
+export interface OwnerBindingSnapshot {
+  /** `settings.ownerBoundAt`, written by `/bind` as a UTC ISO timestamp. */
+  boundAt?: unknown;
+  /** `settings.userId`, the bound owner's platform id. */
+  ownerId?: unknown;
+}
 
-const getVersionTimestamp = (version: OwnerBindingVersion): number | undefined => {
-  if (version instanceof Date) {
-    const timestamp = version.getTime();
-    return Number.isFinite(timestamp) ? timestamp : undefined;
-  }
-  if (typeof version === 'number') return Number.isFinite(version) ? version : undefined;
-  if (typeof version !== 'string') return undefined;
+const asTrimmedString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() ? value.trim() : undefined;
 
-  const timestamp = Date.parse(version);
-  return Number.isFinite(timestamp) ? timestamp : undefined;
-};
-
-/** A bind may keep the same owner ID; the provider update timestamp proves that it completed. */
+/**
+ * A bind is proven only by the bind event itself: either the stored owner id
+ * changed, or `/bind` wrote a new `settings.ownerBoundAt`.
+ *
+ * A provider row's `updatedAt` is deliberately NOT an input here — it moves on
+ * every settings save, so inferring completion from it made "重新绑定" report
+ * success immediately, before the freshly generated code could ever be used
+ * (LOBE-166). A missing `ownerBoundAt` is fail-closed.
+ */
 export const isOwnerBindingComplete = (
-  previousOwnerId: string | undefined,
-  previousUpdatedAt: OwnerBindingVersion,
-  currentOwnerId: unknown,
-  currentUpdatedAt: OwnerBindingVersion,
-  issuedAt: number,
+  previous: OwnerBindingSnapshot,
+  current: OwnerBindingSnapshot,
 ): boolean => {
-  const ownerId = typeof currentOwnerId === 'string' ? currentOwnerId.trim() : '';
+  const ownerId = asTrimmedString(current?.ownerId);
   if (!ownerId) return false;
-  if (ownerId !== previousOwnerId?.trim()) return true;
 
-  const previousVersion = getVersionTimestamp(previousUpdatedAt);
-  const currentVersion = getVersionTimestamp(currentUpdatedAt);
-  return (
-    (previousVersion !== undefined &&
-      currentVersion !== undefined &&
-      previousVersion !== currentVersion) ||
-    (currentVersion !== undefined && currentVersion > issuedAt)
-  );
+  // A different owner is proof on its own, with or without a bind marker.
+  if (ownerId !== asTrimmedString(previous?.ownerId)) return true;
+
+  // Same owner: only a *present* marker that differs proves a fresh /bind.
+  // `undefined -> timestamp` covers the first bind on a legacy row that has no
+  // marker yet; a missing current marker never completes (fail-closed).
+  const boundAt = asTrimmedString(current?.boundAt);
+  if (!boundAt) return false;
+
+  return boundAt !== asTrimmedString(previous?.boundAt);
 };
 
 /** Merge the server-bound owner ID into the live settings without losing unsaved edits. */

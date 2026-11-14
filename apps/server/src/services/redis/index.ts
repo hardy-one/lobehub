@@ -11,6 +11,7 @@ import { heteroControl } from './heteroControl';
 import { inboundWebhook } from './inboundWebhook';
 import { linear } from './linear';
 import { openapi } from './openapi';
+import { ownerBinding } from './ownerBinding';
 import { pageCollab } from './pageCollab';
 import { qqPassive } from './qqPassive';
 import { skillTools } from './skillTools';
@@ -34,6 +35,7 @@ export const redisService = {
   inboundWebhook,
   linear,
   openapi,
+  ownerBinding,
   pageCollab,
   qqPassive,
   skillTools,

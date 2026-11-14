@@ -129,4 +129,23 @@ describe('buildBotContext', () => {
       expect(ctx.isDeviceTrusted).toBeUndefined();
     });
   });
+  it('honors an explicit group-policy device decision over the DM allowlist', () => {
+    const trusted = buildBotContext({
+      ...baseParams,
+      authorUserId: 'qq-member-openid',
+      deviceAccessAllowed: true,
+      deviceAllowlist: [],
+      operatorUserId: 'qq-owner-openid',
+    });
+    const rejected = buildBotContext({
+      ...baseParams,
+      authorUserId: 'qq-member-openid',
+      deviceAccessAllowed: false,
+      deviceAllowlist: ['qq-member-openid'],
+      operatorUserId: 'qq-owner-openid',
+    });
+
+    expect(trusted.isDeviceTrusted).toBe(true);
+    expect(rejected.isDeviceTrusted).toBeUndefined();
+  });
 });

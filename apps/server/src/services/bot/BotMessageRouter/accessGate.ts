@@ -22,9 +22,11 @@ import { isGuestTelegramThreadId } from '../platforms/telegram/threadId';
 import {
   renderDmPairing,
   renderDmRejected,
+  renderGroupPairing,
   renderGroupRejected,
   renderGuestPairing,
   renderGuestRejected,
+  renderQqGroupAdminRejected,
   renderSenderRejected,
 } from '../replyTemplate';
 import type { BotAccessGate } from './types';
@@ -72,9 +74,8 @@ export const createAccessGate = ({
   workspaceId,
 }: AccessGateParams): BotAccessGate => {
   /**
-   * Global user-level gate. Applied **before** any per-scope policy so a
-   * populated `allowFrom` restricts every inbound surface (DMs, group
-   * @mentions, threads) to listed users. Empty list = no filter.
+   * Global user-level gate on platforms that use `allowFrom` across scopes.
+   * QQ applies its approved-user list through DM policy only and skips this gate.
    */
   const passesGlobalAllowlist = (message: { author?: { userId?: string } }): boolean =>
     shouldAllowSender({
@@ -131,10 +132,13 @@ export const createAccessGate = ({
    * not the parent operators pasted. `extraGroupAllowlistChannels`
    * surfaces the parent so either ID lets the message through.
    */
-  const passesGroupPolicy = (thread: { id: string; isDM?: boolean }): boolean => {
-    // Guest Mode has its own user-scoped policy. It remains separate from
-    // Group Policy because the bot has not joined the source chat.
-    if (platform === 'telegram' && isGuestTelegramThreadId(thread.id)) return true;
+  const passesGroupPolicy = (
+    thread: { id: string; isDM?: boolean },
+    memberRole?: 'admin' | 'member' | 'owner',
+  ) => {
+    // Guest Mode has its own user-scoped policy because the bot has not joined that chat.
+    if (platform === 'telegram' && isGuestTelegramThreadId(thread.id)) return 'allow' as const;
+
     return shouldHandleGroup({
       candidateChannelIds: [
         client.extractChatId(thread.id),
@@ -142,6 +146,7 @@ export const createAccessGate = ({
       ],
       groupSettings,
       isDM: thread.isDM === true,
+      ...(client.extractGroupMemberRole ? { memberRole } : {}),
     });
   };
 
@@ -205,7 +210,7 @@ export const createAccessGate = ({
     thread: { post: (text: string) => Promise<unknown> },
     replyLocale: BotReplyLocale,
   ): Promise<void> => {
-    if (groupSettings.policy === 'open') return;
+    if (groupSettings.policy !== 'allowlist' && groupSettings.policy !== 'disabled') return;
     try {
       await thread.post(renderGroupRejected(groupSettings.policy, replyLocale));
     } catch (error) {
@@ -241,44 +246,50 @@ export const createAccessGate = ({
     thread: { id: string; post: (text: string) => Promise<unknown> },
     author: { userId?: string; userName?: string },
     replyLocale: BotReplyLocale,
-    scope: 'dm' | 'guest',
+    scope: 'dm' | 'guest' | 'group',
+    targetChannelId?: string,
   ): Promise<void> => {
-    if (!author.userId) {
+    const applicantUserId = scope === 'group' ? targetChannelId : author.userId;
+    if (!applicantUserId) {
       log(
-        'triggerPairing: missing author userId, cannot pair (agent=%s, platform=%s, scope=%s)',
+        'triggerPairing: missing applicant ID (agent=%s, platform=%s, scope=%s)',
         agentId,
         platform,
         scope,
       );
       return;
     }
+
     const result = await createOrGetPairingRequest({
       applicant: {
-        applicantUserId: author.userId,
-        applicantUserName: author.userName,
+        applicantUserId,
+        applicantUserName: scope === 'group' ? targetChannelId : author.userName,
         replyLocale,
+        scope,
+        targetChannelId,
         threadId: thread.id,
       },
       applicationId,
       platform,
       redis: getRedisClient(),
     });
+    const renderPairing = (
+      variant: 'capacity-exceeded' | 'code' | 'unavailable',
+      code?: string,
+    ): string => {
+      const params = code ? { code } : undefined;
+      if (scope === 'group') return renderGroupPairing(variant, replyLocale, params);
+      if (scope === 'guest') return renderGuestPairing(variant, replyLocale, params);
+      return renderDmPairing(variant, replyLocale, params);
+    };
+
     let text: string;
     if (result.status === 'created' || result.status === 'reused') {
-      text =
-        scope === 'guest'
-          ? renderGuestPairing('code', replyLocale, { code: result.code })
-          : renderDmPairing('code', replyLocale, { code: result.code });
+      text = renderPairing('code', result.code);
     } else if (result.status === 'capacity-exceeded') {
-      text =
-        scope === 'guest'
-          ? renderGuestPairing('capacity-exceeded', replyLocale)
-          : renderDmPairing('capacity-exceeded', replyLocale);
+      text = renderPairing('capacity-exceeded');
     } else {
-      text =
-        scope === 'guest'
-          ? renderGuestPairing('unavailable', replyLocale)
-          : renderDmPairing('unavailable', replyLocale);
+      text = renderPairing('unavailable');
     }
     try {
       await thread.post(text);
@@ -334,6 +345,7 @@ export const createAccessGate = ({
     author: { userId?: string; userName?: string },
     replyLocale: BotReplyLocale,
     caller: string,
+    message?: unknown,
   ): Promise<boolean> => {
     /**
      * Group-scope rejection notices land in the platform's reply thread
@@ -404,7 +416,8 @@ export const createAccessGate = ({
     const isGuest = platform === 'telegram' && isGuestTelegramThreadId(thread.id);
     const isPairingDm = thread.isDM === true && dmSettings.policy === 'pairing';
     const isPairingGuest = isGuest && guestSettings.policy === 'pairing';
-    if (!isPairingDm && !isPairingGuest && !passesGlobalAllowlist({ author })) {
+    const skipGlobalAllowlist = platform === 'qq' || isPairingDm || isPairingGuest;
+    if (!skipGlobalAllowlist && !passesGlobalAllowlist({ author })) {
       log(
         '%s: sender blocked by allowFrom, agent=%s, platform=%s, thread=%s, author=%s',
         caller,
@@ -437,17 +450,30 @@ export const createAccessGate = ({
       }
       return false;
     }
-    if (!passesGroupPolicy(thread)) {
+    const groupMemberRole = client.extractGroupMemberRole?.(message);
+    const groupDecision = passesGroupPolicy(thread, groupMemberRole);
+    if (groupDecision !== 'allow') {
       log(
-        '%s: group blocked by policy, agent=%s, platform=%s, thread=%s, policy=%s',
+        '%s: group gate=%s, agent=%s, platform=%s, thread=%s, policy=%s',
         caller,
+        groupDecision,
         agentId,
         platform,
         thread.id,
         groupSettings.policy,
       );
       await ensureRejectionVisible();
-      await notifyGroupRejected(thread, replyLocale);
+      if (groupDecision === 'pair') {
+        await triggerPairing(thread, author, replyLocale, 'group', client.extractChatId(thread.id));
+      } else if (groupSettings.policy === 'admins' && client.extractGroupMemberRole) {
+        try {
+          await thread.post(renderQqGroupAdminRejected(groupMemberRole === undefined, replyLocale));
+        } catch (error) {
+          log('%s: failed to post QQ group-role rejection: %O', caller, error);
+        }
+      } else {
+        await notifyGroupRejected(thread, replyLocale);
+      }
       return false;
     }
     const dmDecision = passesDmPolicy(thread, { author });

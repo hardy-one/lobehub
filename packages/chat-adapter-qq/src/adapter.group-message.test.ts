@@ -205,7 +205,12 @@ describe('QQ mention markers', () => {
 
   it('strips the address markers QQ produces', () => {
     expect(converter.cleanMentions('<@123> 你好 <@!456>')).toBe('你好');
+    // 12 hex characters as `protocol-spec.md` §6.1 shows, 32 as live payloads carry.
+    expect(converter.cleanMentions('<@F6A8B9C0D1E2> 你好')).toBe('你好');
+    expect(converter.cleanMentions('<@!F6A8B9C0D1E2> 你好')).toBe('你好');
     expect(converter.cleanMentions('<@B2C3D4E5F6A1B2C3D4E5F60718293A4B> 你好')).toBe('你好');
+    // A numeric account id, as the guild spec's `<@!11586990140073229091>` example shows.
+    expect(converter.cleanMentions('<@!11586990140073229091> 你好')).toBe('你好');
     expect(converter.cleanMentions('<@all> 你好')).toBe('你好');
   });
 

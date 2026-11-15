@@ -2,11 +2,15 @@ import type { Root } from 'chat';
 import { BaseFormatConverter, parseMarkdown, stringifyMarkdown } from 'chat';
 
 /**
- * The `@` markers QQ rewrites an @-mention into: a numeric id (`<@123>`, `<@!123>`), an
- * `member_openid` (`<@B2C3D4E5F6…>`, not always numeric), or the group broadcast (`<@all>`).
- * Anything else that happens to look like a marker — `<@foo>` in ordinary text — is left alone.
+ * The `@` markers QQ rewrites an @-mention into: a numeric account id (`<@!11586990140073229091>`
+ * in `protocol-spec.md` §7.1), a `member_openid` of hex characters (`F6A8B9C0D1E2` in §6.1, 32 in
+ * live payloads), either optionally prefixed with `!`, or the group broadcast `<@all>`.
+ *
+ * The lower bound of 10 keeps ordinary text such as `<@foo>` out of the rewrite. Text that spells
+ * out a long hex id inside `<>` is indistinguishable from a marker without the payload's
+ * `mentions` list, which callers strip from separately.
  */
-const MENTION_MARKER = /<@(?:!?\d+|[0-9A-Fa-f]{16,}|all)>/g;
+const MENTION_MARKER = /<@!?(?:all|\d+|[0-9A-Fa-f]{10,})>/g;
 const CHANNEL_MARKER = /<#\d+>/g;
 
 export class QQFormatConverter extends BaseFormatConverter {

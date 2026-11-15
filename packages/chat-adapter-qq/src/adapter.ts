@@ -533,8 +533,10 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
       },
       formatted,
       id: raw.id,
-      // A group message can only reach the bot through GROUP_AT_MESSAGE_CREATE, so it is always a
-      // mention; a guild message keeps the `<@!id>` marker in its raw content.
+      // A group message reaches the bot through GROUP_AT_MESSAGE_CREATE when it @-mentions the
+      // bot, and through GROUP_MESSAGE_CREATE once the owner turns on full access. This path has
+      // no event type to consult, so it falls back to `group_openid` and the content marker; a
+      // guild message keeps the `<@!id>` marker in its raw content.
       isMention: !!raw.group_openid || this.contentMentionsBot(raw.content),
       metadata: {
         dateSent: new Date(raw.timestamp),

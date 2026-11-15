@@ -103,8 +103,38 @@ export class BotMessageRouter {
     const existing = this.bots.get(key);
     if (!existing) return;
 
-    log('invalidateBot: removing cached bot %s', key);
+    // Detach synchronously first: a webhook arriving while the shutdown is in
+    // flight must not bind to an instance that is being torn down. Then close
+    // the old instance gracefully. Shutdown is best-effort (see shutdownBot),
+    // so invalidation always completes even when the old instance refuses to
+    // close.
+    log('invalidateBot: removing + shutting down cached bot %s', key);
     this.bots.delete(key);
+    await this.shutdownBot(key, existing);
+  }
+
+  /**
+   * Gracefully tear down a Chat instance that is no longer reachable from the
+   * router cache.
+   *
+   * The chat SDK's `Chat#shutdown()` walks every adapter in its registry and
+   * awaits `adapter.disconnect()` when the adapter implements it (collected
+   * with `Promise.allSettled`, so one failing adapter cannot block the rest),
+   * then disconnects the state adapter and marks the instance uninitialized.
+   * That is the single teardown hook we need: platform connections such as a
+   * QQ WebSocket gateway are closed by the adapter's `disconnect`, and the
+   * same path applies uniformly to every platform. See chat's
+   * `Chat.prototype.shutdown` and the optional `Adapter.disconnect` hook.
+   *
+   * Teardown is best-effort: a rejection is logged and swallowed so an
+   * invalidation / reload is never blocked by a stuck old connection.
+   */
+  private async shutdownBot(key: string, bot: RegisteredBot): Promise<void> {
+    try {
+      await bot.chatBot.shutdown();
+    } catch (error) {
+      log('shutdownBot: failed to shut down bot %s: %O', key, error);
+    }
   }
 
   // ------------------------------------------------------------------
@@ -217,6 +247,8 @@ export class BotMessageRouter {
 
     // Deduplicate concurrent loads for the same key
     const inflight = this.loadingPromises.get(key);
+    // Every concurrent caller shares this one in-flight promise, so exactly one
+    // Chat instance is created for the key and none is dropped by the dedup.
     if (inflight) return inflight;
 
     const promise = this.loadBot(platform, appId);
@@ -380,7 +412,16 @@ export class BotMessageRouter {
       client,
     };
 
+    // `getOrCreateBot` dedupes concurrent loads, but a load that raced with an
+    // invalidation (or any direct re-registration) can still find an older
+    // instance under this key. Never overwrite a live Chat instance silently:
+    // close the displaced one so its adapters, handlers and state connection
+    // do not leak alongside the new instance.
+    const previous = this.bots.get(key);
     this.bots.set(key, registered);
+    if (previous && previous !== registered) {
+      await this.shutdownBot(key, previous);
+    }
 
     return registered;
   }

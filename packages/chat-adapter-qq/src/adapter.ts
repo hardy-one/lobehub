@@ -190,6 +190,7 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
     if (!eventType) return false;
     return (
       eventType === QQ_EVENT_TYPES.GROUP_AT_MESSAGE_CREATE ||
+      eventType === QQ_EVENT_TYPES.GROUP_MESSAGE_CREATE ||
       eventType === QQ_EVENT_TYPES.C2C_MESSAGE_CREATE ||
       eventType === QQ_EVENT_TYPES.AT_MESSAGE_CREATE ||
       eventType === QQ_EVENT_TYPES.DIRECT_MESSAGE_CREATE
@@ -200,7 +201,8 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
     if (!eventType) return null;
 
     switch (eventType) {
-      case QQ_EVENT_TYPES.GROUP_AT_MESSAGE_CREATE: {
+      case QQ_EVENT_TYPES.GROUP_AT_MESSAGE_CREATE:
+      case QQ_EVENT_TYPES.GROUP_MESSAGE_CREATE: {
         if (!data.group_openid) return null;
         return this.encodeThreadId({ id: data.group_openid, type: 'group' });
       }
@@ -553,6 +555,19 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
     return new RegExp(`<@!?${escapedId}>`).test(content);
   }
 
+  /**
+   * Whether this event @-mentions the bot. Group messages that arrive only because the bot
+   * mentions it carry no marker to read — QQ strips the prefix — so the mention has to come from
+   * the payload's `mentions` list instead.
+   */
+  private eventMentionsBot(data: QQWebhookEventData, content: string): boolean {
+    const mentionedById = (data.mentions ?? []).some((user) =>
+      [user.id, user.member_openid, user.user_openid].some((id) => !!id && id === this._botUserId),
+    );
+
+    return mentionedById || this.contentMentionsBot(content);
+  }
+
   private async parseRawEvent(
     data: QQWebhookEventData,
     threadId: string,
@@ -591,9 +606,11 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
       author,
       formatted,
       id: data.id || '',
-      // Both AT_MESSAGE_CREATE (guild) and GROUP_AT_MESSAGE_CREATE only reach the bot when it was
-      // @-mentioned — see BOT_MENTION_EVENT_TYPES. c2c / dms are DMs, which chat-sdk marks itself.
-      isMention: BOT_MENTION_EVENT_TYPES.has(eventType),
+      // AT_MESSAGE_CREATE (guild) and GROUP_AT_MESSAGE_CREATE only reach the bot when it was
+      // @-mentioned — see BOT_MENTION_EVENT_TYPES. GROUP_MESSAGE_CREATE delivers every group
+      // message, so there the mention has to be read from the payload. c2c / dms are DMs, which
+      // chat-sdk marks itself.
+      isMention: BOT_MENTION_EVENT_TYPES.has(eventType) || this.eventMentionsBot(data, content),
       metadata: {
         dateSent: new Date(data.timestamp || Date.now()),
         edited: false,

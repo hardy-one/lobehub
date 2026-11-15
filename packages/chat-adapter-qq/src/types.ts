@@ -78,6 +78,8 @@ export interface QQWebhookEventData {
     joined_at: string;
     roles?: string[];
   };
+  /** Users @-mentioned by the message. Present on group message events. */
+  mentions?: QQAuthor[];
   plain_token?: string;
   timestamp?: string;
 }
@@ -132,6 +134,12 @@ export const QQ_EVENT_TYPES = {
   C2C_MESSAGE_CREATE: 'C2C_MESSAGE_CREATE',
   DIRECT_MESSAGE_CREATE: 'DIRECT_MESSAGE_CREATE',
   GROUP_AT_MESSAGE_CREATE: 'GROUP_AT_MESSAGE_CREATE',
+  /**
+   * Every group message, not just the ones that @ the bot. Only delivered once the owner turns on
+   * 「接收所有消息」 for the bot; same `GROUP_AND_C2C_EVENT` intent as `GROUP_AT_MESSAGE_CREATE` and
+   * the same payload shape.
+   */
+  GROUP_MESSAGE_CREATE: 'GROUP_MESSAGE_CREATE',
 } as const;
 
 export const QQ_OP_CODES = {

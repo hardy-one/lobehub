@@ -29,10 +29,13 @@ export class QQFormatConverter extends BaseFormatConverter {
    * Clean @mention markers from text
    */
   cleanMentions(text: string): string {
-    return text
-      .replaceAll(/<@!?\d+>/g, '')
-      .replaceAll('<@everyone>', '')
-      .replaceAll(/<#\d+>/g, '')
-      .trim();
+    return (
+      text
+        // Group messages rewrite an @-mention to `<@member_openid>`, which is not always numeric.
+        .replaceAll(/<@!?[\w-]+>/g, '')
+        .replaceAll('<@everyone>', '')
+        .replaceAll(/<#\d+>/g, '')
+        .trim()
+    );
   }
 }

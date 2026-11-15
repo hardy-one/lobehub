@@ -214,8 +214,17 @@ describe('QQ mention markers', () => {
     expect(converter.cleanMentions('<@all> 你好')).toBe('你好');
   });
 
+  it('strips a marker by the id the event reported, whatever its shape', () => {
+    expect(converter.cleanMentions('<@B2C3D4E5F6> 你好', ['B2C3D4E5F6'])).toBe('你好');
+    expect(converter.cleanMentions('<@!B2C3D4E5F6> 你好', ['B2C3D4E5F6'])).toBe('你好');
+  });
+
   it('leaves text that only looks like a marker untouched', () => {
     expect(converter.cleanMentions('Use <@foo> in the config')).toBe('Use <@foo> in the config');
+    // Hex lengths the specs and live payloads do not use stay in the text.
+    expect(converter.cleanMentions('Use <@abcdef0123456789> here')).toBe(
+      'Use <@abcdef0123456789> here',
+    );
   });
 
   it('cleans the same way on the markdown path', () => {

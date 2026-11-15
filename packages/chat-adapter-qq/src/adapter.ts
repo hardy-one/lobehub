@@ -581,7 +581,11 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
     eventType: string,
   ): Promise<Message<QQRawMessage>> {
     const content = data.content || '';
-    const cleanText = this.formatConverter.cleanMentions(content);
+    // Drop the markers this event names by id first, then the ones the pattern recognises.
+    const mentionedIds = (data.mentions ?? [])
+      .flatMap((user) => [user.id, user.member_openid, user.user_openid])
+      .filter((id): id is string => !!id);
+    const cleanText = this.formatConverter.cleanMentions(content, mentionedIds);
     const formatted = parseMarkdown(cleanText);
 
     const authorId = getQQAuthorId(data.author) ?? 'unknown';

@@ -2,16 +2,19 @@ import type { Root } from 'chat';
 import { BaseFormatConverter, parseMarkdown, stringifyMarkdown } from 'chat';
 
 /**
- * The `@` markers QQ rewrites an @-mention into: a numeric account id (`<@!11586990140073229091>`
- * in `protocol-spec.md` §7.1), a `member_openid` of hex characters (`F6A8B9C0D1E2` in §6.1, 32 in
- * live payloads), either optionally prefixed with `!`, or the group broadcast `<@all>`.
+ * The `@` markers QQ rewrites an @-mention into, for the ids the payload does not name: a numeric
+ * account id (`<@!11586990140073229091>` in `protocol-spec.md` §7.1), a `member_openid` of 12 hex
+ * characters (§6.1) or 32 as live payloads carry, either optionally prefixed with `!`, or the
+ * group broadcast `<@all>`.
  *
- * The lower bound of 10 keeps ordinary text such as `<@foo>` out of the rewrite. Text that spells
- * out a long hex id inside `<>` is indistinguishable from a marker without the payload's
- * `mentions` list, which callers strip from separately.
+ * Only the lengths the specs and live payloads use are matched, so text such as `<@foo>` or
+ * `<@abcdef0123456789>` is left alone. Markers whose id the payload does name are removed by id
+ * instead — see `cleanMentions`.
  */
-const MENTION_MARKER = /<@!?(?:all|\d+|[0-9A-Fa-f]{10,})>/g;
+const MENTION_MARKER = /<@!?(?:all|\d+|[0-9A-Fa-f]{12}|[0-9A-Fa-f]{32})>/g;
 const CHANNEL_MARKER = /<#\d+>/g;
+
+const escapeRegExp = (value: string) => value.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export class QQFormatConverter extends BaseFormatConverter {
   /**
@@ -33,9 +36,17 @@ export class QQFormatConverter extends BaseFormatConverter {
 
   /**
    * Clean @mention markers from text.
+   *
+   * `mentionedIds` are the ids the event itself reported; dropping by id first keeps any id shape
+   * out of the text, then the remaining markers are removed by their known forms.
    */
-  cleanMentions(text: string): string {
-    return text
+  cleanMentions(text: string, mentionedIds: readonly string[] = []): string {
+    const withoutNamed = mentionedIds.reduce(
+      (cleaned, id) => cleaned.replaceAll(new RegExp(`<@!?${escapeRegExp(id)}>`, 'g'), ''),
+      text,
+    );
+
+    return withoutNamed
       .replaceAll(MENTION_MARKER, '')
       .replaceAll('<@everyone>', '')
       .replaceAll(CHANNEL_MARKER, '')

@@ -1,6 +1,14 @@
 import type { Root } from 'chat';
 import { BaseFormatConverter, parseMarkdown, stringifyMarkdown } from 'chat';
 
+/**
+ * The `@` markers QQ rewrites an @-mention into: a numeric id (`<@123>`, `<@!123>`), an
+ * `member_openid` (`<@B2C3D4E5F6…>`, not always numeric), or the group broadcast (`<@all>`).
+ * Anything else that happens to look like a marker — `<@foo>` in ordinary text — is left alone.
+ */
+const MENTION_MARKER = /<@(?:!?\d+|[0-9A-Fa-f]{16,}|all)>/g;
+const CHANNEL_MARKER = /<#\d+>/g;
+
 export class QQFormatConverter extends BaseFormatConverter {
   /**
    * Convert mdast AST to QQ-compatible text.
@@ -12,30 +20,21 @@ export class QQFormatConverter extends BaseFormatConverter {
 
   /**
    * Convert QQ message text to mdast AST.
-   * Clean up QQ @mention markers before parsing.
+   *
+   * Strips markers through `cleanMentions`, so the two paths agree on what an @-mention is.
    */
   toAst(text: string): Root {
-    // Clean QQ @mention markers (e.g., <@!user_id>, <@user_id>)
-    const cleaned = text
-      .replaceAll(/<@!?\d+>/g, '')
-      .replaceAll('<@everyone>', '')
-      .replaceAll(/<#\d+>/g, '')
-      .trim();
-
-    return parseMarkdown(cleaned);
+    return parseMarkdown(this.cleanMentions(text));
   }
 
   /**
-   * Clean @mention markers from text
+   * Clean @mention markers from text.
    */
   cleanMentions(text: string): string {
-    return (
-      text
-        // Group messages rewrite an @-mention to `<@member_openid>`, which is not always numeric.
-        .replaceAll(/<@!?[\w-]+>/g, '')
-        .replaceAll('<@everyone>', '')
-        .replaceAll(/<#\d+>/g, '')
-        .trim()
-    );
+    return text
+      .replaceAll(MENTION_MARKER, '')
+      .replaceAll('<@everyone>', '')
+      .replaceAll(CHANNEL_MARKER, '')
+      .trim();
   }
 }

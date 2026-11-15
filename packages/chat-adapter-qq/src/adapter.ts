@@ -558,14 +558,19 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
   /**
    * Whether this event @-mentions the bot. Group messages that arrive only because the bot
    * mentions it carry no marker to read — QQ strips the prefix — so the mention has to come from
-   * the payload's `mentions` list instead.
+   * the payload's `mentions` list instead. Which field identifies the bot varies: an explicit
+   * `is_you` flag, or an id that matches `/users/@me`.
    */
   private eventMentionsBot(data: QQWebhookEventData, content: string): boolean {
-    const mentionedById = (data.mentions ?? []).some((user) =>
-      [user.id, user.member_openid, user.user_openid].some((id) => !!id && id === this._botUserId),
+    const mentioned = (data.mentions ?? []).some(
+      (user) =>
+        user.is_you === true ||
+        [user.id, user.member_openid, user.user_openid].some(
+          (id) => !!id && id === this._botUserId,
+        ),
     );
 
-    return mentionedById || this.contentMentionsBot(content);
+    return mentioned || this.contentMentionsBot(content);
   }
 
   private async parseRawEvent(
@@ -596,6 +601,8 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
       group_openid: data.group_openid,
       guild_id: data.guild_id,
       id: data.id || '',
+      // Carried through so a consumer can re-derive who a full group message mentioned.
+      mentions: data.mentions,
       timestamp: data.timestamp || new Date().toISOString(),
     };
 

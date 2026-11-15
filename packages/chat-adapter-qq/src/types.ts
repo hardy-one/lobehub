@@ -19,8 +19,12 @@ export interface QQThreadId {
 
 export interface QQAuthor {
   id?: string;
+  /** Set on a `mentions` entry when that mention is the bot itself, on payloads that report it. */
+  is_you?: boolean;
   member_openid?: string;
   member_role?: 'admin' | 'member' | 'owner';
+  /** Scope a `mentions` entry applies to, as reported by some payloads. */
+  scope?: string;
   union_openid?: string;
   user_openid?: string;
 }

@@ -1,8 +1,9 @@
 import type { StateAdapter } from 'chat';
-import { Chat } from 'chat';
+import { Chat, stringifyMarkdown } from 'chat';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createQQAdapter } from './adapter';
+import { QQFormatConverter } from './format-converter';
 import { QQ_EVENT_TYPES, QQ_OP_CODES } from './types';
 
 /** Minimal in-memory `StateAdapter`; production wires ioredis. */
@@ -150,11 +151,13 @@ describe('QQ full group messages (GROUP_MESSAGE_CREATE)', () => {
 
     const mentioned: string[] = [];
     let chatter = 0;
+    let rawMentions: unknown;
     chat.onNewMessage(/.*/, async () => {
       chatter += 1;
     });
     chat.onNewMention(async (_thread, message) => {
       mentioned.push(message.text);
+      rawMentions = (message.raw as { mentions?: unknown })?.mentions;
     });
 
     // QQ rewrites an @-mention to `<@member_openid>`, which the bot id cannot be matched against,
@@ -162,7 +165,7 @@ describe('QQ full group messages (GROUP_MESSAGE_CREATE)', () => {
     await adapter.handleWebhook(
       makeRequest(
         dispatch(QQ_EVENT_TYPES.GROUP_MESSAGE_CREATE, {
-          content: '<@B2C3D4E5F6> 帮我看下',
+          content: '<@B2C3D4E5F6A1B2C3D4E5F60718293A4B> 帮我看下',
           mentions: [{ id: 'BOT_USER_ID' }],
         }),
       ),
@@ -171,5 +174,49 @@ describe('QQ full group messages (GROUP_MESSAGE_CREATE)', () => {
 
     expect(mentioned[0]).toBe('帮我看下');
     expect(chatter).toBe(0);
+    // Carried through so a consumer can re-derive the mention without the raw event.
+    expect(rawMentions).toEqual([{ id: 'BOT_USER_ID' }]);
+  });
+
+  it('treats a mentions entry flagged is_you as the bot', async () => {
+    const { adapter, chat } = await createChat();
+
+    const mentioned: string[] = [];
+    chat.onNewMention(async (_thread, message) => {
+      mentioned.push(message.text);
+    });
+
+    await adapter.handleWebhook(
+      makeRequest(
+        dispatch(QQ_EVENT_TYPES.GROUP_MESSAGE_CREATE, {
+          content: '帮我看下',
+          mentions: [{ is_you: true, scope: 'group' }],
+        }),
+      ),
+    );
+    await waitFor(() => mentioned.length === 1);
+
+    expect(mentioned[0]).toBe('帮我看下');
+  });
+});
+
+describe('QQ mention markers', () => {
+  const converter = new QQFormatConverter();
+
+  it('strips the address markers QQ produces', () => {
+    expect(converter.cleanMentions('<@123> 你好 <@!456>')).toBe('你好');
+    expect(converter.cleanMentions('<@B2C3D4E5F6A1B2C3D4E5F60718293A4B> 你好')).toBe('你好');
+    expect(converter.cleanMentions('<@all> 你好')).toBe('你好');
+  });
+
+  it('leaves text that only looks like a marker untouched', () => {
+    expect(converter.cleanMentions('Use <@foo> in the config')).toBe('Use <@foo> in the config');
+  });
+
+  it('cleans the same way on the markdown path', () => {
+    expect(stringifyMarkdown(converter.toAst('Use <@foo> here')).trim()).toBe('Use <@foo> here');
+    expect(
+      stringifyMarkdown(converter.toAst('<@B2C3D4E5F6A1B2C3D4E5F60718293A4B> 你好')).trim(),
+    ).toBe('你好');
   });
 });

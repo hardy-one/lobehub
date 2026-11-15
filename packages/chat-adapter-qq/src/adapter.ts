@@ -192,6 +192,7 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
     if (!eventType) return false;
     return (
       eventType === QQ_EVENT_TYPES.GROUP_AT_MESSAGE_CREATE ||
+      eventType === QQ_EVENT_TYPES.GROUP_MESSAGE_CREATE ||
       eventType === QQ_EVENT_TYPES.C2C_MESSAGE_CREATE ||
       eventType === QQ_EVENT_TYPES.AT_MESSAGE_CREATE ||
       eventType === QQ_EVENT_TYPES.DIRECT_MESSAGE_CREATE
@@ -202,7 +203,8 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
     if (!eventType) return null;
 
     switch (eventType) {
-      case QQ_EVENT_TYPES.GROUP_AT_MESSAGE_CREATE: {
+      case QQ_EVENT_TYPES.GROUP_AT_MESSAGE_CREATE:
+      case QQ_EVENT_TYPES.GROUP_MESSAGE_CREATE: {
         if (!data.group_openid) return null;
         return this.encodeThreadId({ id: data.group_openid, type: 'group' });
       }
@@ -559,8 +561,10 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
       },
       formatted,
       id: raw.id,
-      // A group message can only reach the bot through GROUP_AT_MESSAGE_CREATE, so it is always a
-      // mention; a guild message keeps the `<@!id>` marker in its raw content.
+      // A group message reaches the bot through GROUP_AT_MESSAGE_CREATE when it @-mentions the
+      // bot, and through GROUP_MESSAGE_CREATE once the owner turns on full access. This path has
+      // no event type to consult, so it falls back to `group_openid` and the content marker; a
+      // guild message keeps the `<@!id>` marker in its raw content.
       isMention: !!raw.group_openid || this.contentMentionsBot(raw.content),
       metadata: {
         dateSent: new Date(raw.timestamp),
@@ -581,13 +585,35 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
     return new RegExp(`<@!?${escapedId}>`).test(content);
   }
 
+  /**
+   * Whether this event @-mentions the bot. Group messages that arrive only because the bot
+   * mentions it carry no marker to read — QQ strips the prefix — so the mention has to come from
+   * the payload's `mentions` list instead. Which field identifies the bot varies: an explicit
+   * `is_you` flag, or an id that matches `/users/@me`.
+   */
+  private eventMentionsBot(data: QQWebhookEventData, content: string): boolean {
+    const mentioned = (data.mentions ?? []).some(
+      (user) =>
+        user.is_you === true ||
+        [user.id, user.member_openid, user.user_openid].some(
+          (id) => !!id && id === this._botUserId,
+        ),
+    );
+
+    return mentioned || this.contentMentionsBot(content);
+  }
+
   private async parseRawEvent(
     data: QQWebhookEventData,
     threadId: string,
     eventType: string,
   ): Promise<Message<QQRawMessage>> {
     const content = data.content || '';
-    const cleanText = this.formatConverter.cleanMentions(content);
+    // Drop the markers this event names by id first, then the ones the pattern recognises.
+    const mentionedIds = (data.mentions ?? [])
+      .flatMap((user) => [user.id, user.member_openid, user.user_openid])
+      .filter((id): id is string => !!id);
+    const cleanText = this.formatConverter.cleanMentions(content, mentionedIds);
     const formatted = parseMarkdown(cleanText);
 
     const authorId = getQQAuthorId(data.author) ?? 'unknown';
@@ -609,6 +635,8 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
       group_openid: data.group_openid,
       guild_id: data.guild_id,
       id: data.id || '',
+      // Carried through so a consumer can re-derive who a full group message mentioned.
+      mentions: data.mentions,
       timestamp: data.timestamp || new Date().toISOString(),
     };
 
@@ -619,9 +647,11 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
       author,
       formatted,
       id: data.id || '',
-      // Both AT_MESSAGE_CREATE (guild) and GROUP_AT_MESSAGE_CREATE only reach the bot when it was
-      // @-mentioned — see BOT_MENTION_EVENT_TYPES. c2c / dms are DMs, which chat-sdk marks itself.
-      isMention: BOT_MENTION_EVENT_TYPES.has(eventType),
+      // AT_MESSAGE_CREATE (guild) and GROUP_AT_MESSAGE_CREATE only reach the bot when it was
+      // @-mentioned — see BOT_MENTION_EVENT_TYPES. GROUP_MESSAGE_CREATE delivers every group
+      // message, so there the mention has to be read from the payload. c2c / dms are DMs, which
+      // chat-sdk marks itself.
+      isMention: BOT_MENTION_EVENT_TYPES.has(eventType) || this.eventMentionsBot(data, content),
       metadata: {
         dateSent: new Date(data.timestamp || Date.now()),
         edited: false,

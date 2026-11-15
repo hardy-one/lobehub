@@ -70,6 +70,8 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
   private _botUserId?: string;
   private chat!: ChatInstance;
   private logger!: Logger;
+  /** The live WebSocket gateway created by `startGatewayListener`, if any. */
+  private gateway: QQGatewayConnection | null = null;
 
   get userName(): string {
     return this._userName;
@@ -249,9 +251,35 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
       webhookUrl,
     });
 
+    // Keep the instance so `disconnect()` (invoked by Chat#shutdown on bot
+    // invalidation) can close the socket. Without this reference the gateway
+    // keeps running with the settings snapshot it was created with, so a
+    // freshly approved group is still judged by the stale connection.
+    this.gateway = gateway;
+
     const gatewayTask = gateway.connect();
     options.waitUntil(gatewayTask);
     await gatewayTask;
+  }
+
+  /**
+   * Close the QQ WebSocket gateway when the owning Chat instance is shut down.
+   *
+   * `Chat#shutdown()` awaits `disconnect()` on every adapter that implements it
+   * (collected with `Promise.allSettled`), so this is the hook that actually
+   * tears down the socket on bot invalidation / instance replacement. Clearing
+   * the reference first makes repeated calls a no-op and drops the only handle
+   * to the connection, so the reconnect loop can no longer revive it.
+   */
+  disconnect(): Promise<void> {
+    const gateway = this.gateway;
+    if (!gateway) return Promise.resolve();
+
+    this.gateway = null;
+    this.logger?.info('QQ adapter disconnect: closing gateway socket');
+    gateway.close();
+
+    return Promise.resolve();
   }
 
   // ------------------------------------------------------------------

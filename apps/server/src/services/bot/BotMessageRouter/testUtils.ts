@@ -89,6 +89,7 @@ export const stateIoredisModule = () => ({
 
 // Mock Chat SDK
 export const mockInitialize = vi.fn().mockResolvedValue(undefined);
+export const mockShutdown = vi.fn().mockResolvedValue(undefined);
 export const mockOnNewMention = vi.fn();
 export const mockOnSubscribedMessage = vi.fn();
 export const mockOnNewMessage = vi.fn();
@@ -122,6 +123,7 @@ export const chatModule = () => ({
       onSlashCommand: mockOnSlashCommand,
       onSubscribedMessage: mockOnSubscribedMessage,
       processMessage: mockProcessMessage,
+      shutdown: mockShutdown,
       webhooks: mockChatWebhooks,
     };
   }),
@@ -614,4 +616,5 @@ export function resetBotMessageRouterMocks() {
   mockGetAgentRuntimeRedisClient.mockReturnValue(null);
   mockGetBotFeatureAccessState.mockResolvedValue({ allowed: true });
   mockChatWebhooks.telegram = mockWebhookHandler;
+  mockShutdown.mockResolvedValue(undefined);
 }

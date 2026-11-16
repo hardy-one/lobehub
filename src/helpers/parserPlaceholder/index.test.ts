@@ -639,6 +639,11 @@ describe('VARIABLE_GENERATORS', () => {
       const result = VARIABLE_GENERATORS.workingDirectory();
       expect(result).toBe('');
     });
+
+    it('should describe an unknown device instead of leaking the placeholder', () => {
+      expect(VARIABLE_GENERATORS.hostname()).toBe('unknown');
+      expect(VARIABLE_GENERATORS.hardware()).toBe('(not reported)');
+    });
   });
 
   describe('platform variables', () => {

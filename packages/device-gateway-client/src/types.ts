@@ -29,15 +29,28 @@ export interface GatewayDevice {
 export interface DeviceSystemInfo {
   arch: string;
   /**
+   * Static hardware capacity, used to describe the machine in the
+   * local-system prompt. Absent on older clients and on hosts that report
+   * nothing. Current load, free memory and free disk are metrics samples and
+   * deliberately stay out of here — the rendered prompt must not change
+   * between sends, or the cached prefix breaks.
+   */
+  cpuCount?: number;
+  cpuModel?: string;
+  /**
    * Human-readable name of the shell that runCommand uses on this device
    * (e.g. "PowerShell 7+ (pwsh)"). Optional for protocol compatibility with
    * older devices that do not report it.
    */
   defaultShell?: string;
   desktopPath: string;
+  /** Size of the volume holding the home directory; capacity, never free space. */
+  diskTotalBytes?: number;
   documentsPath: string;
   downloadsPath?: string;
   homePath: string;
+  /** Installed memory; capacity, never current availability. */
+  memoryTotalBytes?: number;
   musicPath?: string;
   picturesPath?: string;
   /** Native agent protocol versions supported by this live connection; absent on older clients.

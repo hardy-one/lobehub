@@ -12,6 +12,7 @@ import {
   ChannelRoutingRepository,
 } from '@/database/repositories/channel';
 import type { LobeChatDatabase } from '@/database/type';
+import { appEnv } from '@/envs/app';
 import { resolveProviderRelay } from '@/server/modules/AgentRuntime/llmRelay/resolveLlmExecutionSite';
 import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
 import { createWakeClassify } from '@/server/services/conversationWake/classify';
@@ -433,6 +434,9 @@ export class ChannelRoutingService {
   private async judgeMembers(channelId: string, input: RoutingInput) {
     const options = {
       db: this.db,
+      engine: appEnv.BOT_WAKE_ENGINE,
+      model: appEnv.BOT_WAKE_MODEL,
+      provider: appEnv.BOT_WAKE_PROVIDER,
       userId: input.userId,
       workspaceId: input.workspaceId ?? undefined,
     };

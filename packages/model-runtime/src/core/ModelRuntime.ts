@@ -54,6 +54,7 @@ import { createTimingHelpers, getDurationMs } from '../utils/timing';
 import { createVideoWithCompletionMode } from '../utils/videoCompletionMode';
 import type { LobeRuntimeAI } from './BaseAI';
 import { emulateDecision } from './decision/emulate';
+import { isCancelled, shouldRetryDecisionAsEmulated } from './decision/retry';
 
 const { logger: timing } = createTimingHelpers('lobe-server:chat:lobehub:timing');
 
@@ -262,39 +263,6 @@ export interface ModelRuntimeHooks {
     context: { options?: ASROptions; payload: ASRPayload },
   ) => void | Promise<void>;
 }
-
-/**
- * Provider errors that are the caller's own conditions rather than a missing endpoint. Retrying
- * them would either resurrect a cancelled call, hide a bad key, or turn a rejected request into
- * an empty success.
- *
- * These arrive normalized: an adapter maps a 401 to `InvalidProviderAPIKey` and a cancellation to
- * `AbortError`, so `errorType` is read before the bare `name`.
- */
-const NON_RETRYABLE_DECISION_ERRORS = new Set<string>([
-  'AbortError',
-  'ContentModeration',
-  'ExceededContextWindow',
-  'ExceededImageLimit',
-  'InsufficientQuota',
-  'InvalidProviderAPIKey',
-  'InvalidRequestFormat',
-  'PermissionDenied',
-  'QuotaLimitReached',
-  'RateLimitExceeded',
-  'RequestBodyTooLarge',
-  'UserConfigError',
-]);
-
-const shouldRetryDecisionAsEmulated = (error: unknown): boolean => {
-  const err = error as { errorType?: string; name?: string } | undefined;
-  if (!err) return false;
-
-  const identifier = err.errorType ?? err.name;
-  if (!identifier) return true;
-
-  return !NON_RETRYABLE_DECISION_ERRORS.has(identifier);
-};
 
 export class ModelRuntime {
   private _hooks?: ModelRuntimeHooks;
@@ -839,7 +807,11 @@ export class ModelRuntime {
       try {
         raw = await decide(decideOptions);
       } catch (error) {
-        if (!isDecisionModel || !runtime.generateObject || !shouldRetryDecisionAsEmulated(error)) {
+        if (
+          !isDecisionModel ||
+          !runtime.generateObject ||
+          !shouldRetryDecisionAsEmulated(error, decideOptions.signal)
+        ) {
           throw error;
         }
 
@@ -861,6 +833,11 @@ export class ModelRuntime {
             },
           );
         } catch (emulationError) {
+          // A cancellation belongs to the caller, even mid-fallback: reporting the native failure
+          // instead would look like a provider problem and invite a retry the caller already
+          // abandoned.
+          if (isCancelled(emulationError, decideOptions.signal)) throw emulationError;
+
           // The native failure is the root cause; a structured-output failure on top of it would
           // only mask why the call could not be served at all.
           console.warn('[ModelRuntime] emulated decision fallback also failed:', emulationError);

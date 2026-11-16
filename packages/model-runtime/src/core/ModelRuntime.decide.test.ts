@@ -284,4 +284,50 @@ describe('ModelRuntime decide emulation fallback', () => {
 
     await expect(runtime.decide(decidePayload)).rejects.toBe(native);
   });
+
+  it('does not retry when the abort marker is nested inside a wrapped error', async () => {
+    const { runtime, mockRuntimeAI } = createMockRuntime();
+    const wrapped = Object.assign(new Error('upstream failed'), {
+      error: { name: 'AbortError' },
+      errorType: 'ProviderBizError',
+    });
+    mockRuntimeAI.decide = vi.fn().mockRejectedValue(wrapped);
+    mockRuntimeAI.generateObject = vi.fn();
+
+    await expect(runtime.decide(decidePayload)).rejects.toBe(wrapped);
+    expect(mockRuntimeAI.generateObject).not.toHaveBeenCalled();
+  });
+
+  it('does not retry once the caller has aborted', async () => {
+    const { runtime, mockRuntimeAI } = createMockRuntime();
+    const controller = new AbortController();
+    controller.abort();
+    mockRuntimeAI.decide = vi.fn().mockRejectedValue(new Error('boom'));
+    mockRuntimeAI.generateObject = vi.fn();
+
+    await expect(runtime.decide(decidePayload, { signal: controller.signal })).rejects.toThrow(
+      'boom',
+    );
+    expect(mockRuntimeAI.generateObject).not.toHaveBeenCalled();
+  });
+
+  it('does not retry after the caller deadline passed', async () => {
+    const { runtime, mockRuntimeAI } = createMockRuntime();
+    const timeout = Object.assign(new Error('timed out'), { name: 'TimeoutError' });
+    mockRuntimeAI.decide = vi.fn().mockRejectedValue(timeout);
+    mockRuntimeAI.generateObject = vi.fn();
+
+    await expect(runtime.decide(decidePayload)).rejects.toBe(timeout);
+    expect(mockRuntimeAI.generateObject).not.toHaveBeenCalled();
+  });
+
+  it('keeps a cancellation that lands during the fallback', async () => {
+    const { runtime, mockRuntimeAI } = createMockRuntime();
+    const native = new Error('400 Codex has no OpenAI-style API for /decisions');
+    const aborted = Object.assign(new Error('aborted'), { name: 'AbortError' });
+    mockRuntimeAI.decide = vi.fn().mockRejectedValue(native);
+    mockRuntimeAI.generateObject = vi.fn().mockRejectedValue(aborted);
+
+    await expect(runtime.decide(decidePayload)).rejects.toBe(aborted);
+  });
 });

@@ -1,7 +1,7 @@
 import type { AgentRuntimeContext } from '@lobechat/agent-runtime';
 import { extractActivatedToolIdsFromMessages } from '@lobechat/agent-runtime';
 import { ChannelIdentifier } from '@lobechat/builtin-tool-channel';
-import { getShellSyntaxGuidance } from '@lobechat/builtin-tool-local-system';
+import { formatDeviceHardware, getShellSyntaxGuidance } from '@lobechat/builtin-tool-local-system';
 import { TaskIdentifier } from '@lobechat/builtin-tool-task';
 import type { OperationSkillSet, ProjectInstructionFile } from '@lobechat/context-engine';
 import { buildExpertiseContextSnapshot } from '@lobechat/context-engine';
@@ -503,6 +503,14 @@ export const prepareOperation = async (
         desktopPath: systemInfo.desktopPath,
         documentsPath: systemInfo.documentsPath,
         downloadsPath: systemInfo.downloadsPath,
+        // Capacity, not usage: the same rendered text must survive the
+        // prompt cache between sends.
+        hardware: formatDeviceHardware({
+          cpuCount: systemInfo.cpuCount,
+          cpuModel: systemInfo.cpuModel,
+          diskTotalBytes: systemInfo.diskTotalBytes,
+          memoryTotalBytes: systemInfo.memoryTotalBytes,
+        }),
         homePath: systemInfo.homePath,
         hostname: device?.hostname ?? 'unknown',
         musicPath: systemInfo.musicPath,

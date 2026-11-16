@@ -1,3 +1,4 @@
+export { type DeviceHardwareSpecs, formatDeviceHardware } from './deviceSpecs';
 export { createPathScopeAudit, pathScopeAudit } from './interventionAudit';
 export { LocalSystemManifest } from './manifest';
 export { getShellSyntaxGuidance } from './shellSyntaxGuidance';

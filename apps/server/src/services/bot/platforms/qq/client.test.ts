@@ -73,6 +73,21 @@ describe.each(['webhook', 'websocket'])('QQ bot names in %s mode', (connectionMo
     mockGetBotInfo.mockReset().mockRejectedValue(new Error('unavailable'));
     await expect(createClient().getBotNames!()).resolves.toEqual([]);
   });
+
+  it('stops waiting when the profile request never settles', async () => {
+    vi.useFakeTimers();
+    try {
+      mockGetBotInfo.mockReset().mockReturnValue(new Promise(() => {}));
+      const client = createClient();
+      const names = client.getBotNames!();
+
+      await vi.advanceTimersByTimeAsync(3000);
+
+      await expect(names).resolves.toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('QQGatewayClient.start', () => {

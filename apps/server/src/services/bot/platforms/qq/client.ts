@@ -44,6 +44,25 @@ const CONNECTED_STATUS_TTL_BUFFER_MS = 60 * 1000;
 const DEFAULT_DURATION_MS = 8 * 60 * 60 * 1000; // 8 hours
 const BOT_NAMES_TTL_MS = 60 * 60 * 1000;
 const BOT_NAMES_RETRY_MS = 60 * 1000;
+const BOT_NAMES_TIMEOUT_MS = 3000;
+
+/**
+ * Resolve `promise`, or `undefined` once `ms` passes. Wake classification waits on this lookup,
+ * so a profile request that never settles must not hold up every message that follows it.
+ */
+const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<T | undefined> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => resolve(undefined), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
 
 function createBotNamesLoader(config: BotProviderConfig): () => Promise<string[]> {
   const api = new QQApiClient(config.applicationId, config.credentials.appSecret);
@@ -56,7 +75,7 @@ function createBotNamesLoader(config: BotProviderConfig): () => Promise<string[]
 
     pending = (async () => {
       try {
-        const info = await api.getBotInfo();
+        const info = await withTimeout(api.getBotInfo(), BOT_NAMES_TIMEOUT_MS);
         const name = typeof info?.username === 'string' ? info.username.trim() : '';
         const names = name ? [name] : (cached?.names ?? []);
         cached = { expiresAt: Date.now() + (name ? BOT_NAMES_TTL_MS : BOT_NAMES_RETRY_MS), names };

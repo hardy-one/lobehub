@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
+const mockGetBotInfo = vi.hoisted(() => vi.fn());
+
 vi.mock('@lobechat/chat-adapter-qq', () => ({
   createQQAdapter: vi.fn(),
-  QQApiClient: vi.fn().mockImplementation(() => ({})),
+  QQApiClient: class {
+    getBotInfo = mockGetBotInfo;
+  },
 }));
 
 vi.mock('@/server/services/gateway/runtimeStatus', () => ({
@@ -39,6 +43,37 @@ vi.mock('chat', () => ({
 
 const { QQClientFactory } = await import('./client');
 const { updateBotRuntimeStatus } = await import('@/server/services/gateway/runtimeStatus');
+
+describe.each(['webhook', 'websocket'])('QQ bot names in %s mode', (connectionMode) => {
+  const createClient = () =>
+    new QQClientFactory().createClient(
+      {
+        applicationId: 'qq-app',
+        credentials: { appSecret: 'sec' },
+        platform: 'qq',
+        settings: { connectionMode },
+      },
+      { appUrl: 'https://example.com' },
+    );
+
+  it('reads and caches the QQ username', async () => {
+    mockGetBotInfo.mockReset().mockResolvedValue({ username: ' QQ Bot ' });
+    const client = createClient();
+
+    await expect(client.getBotNames!('qq:group:one')).resolves.toEqual(['QQ Bot']);
+    await expect(client.getBotNames!('qq:group:two')).resolves.toEqual(['QQ Bot']);
+    expect(mockGetBotInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns an empty list when QQ does not return a usable name', async () => {
+    mockGetBotInfo.mockReset().mockResolvedValue(null);
+    await expect(createClient().getBotNames!()).resolves.toEqual([]);
+    mockGetBotInfo.mockReset().mockResolvedValue({ username: '  ' });
+    await expect(createClient().getBotNames!()).resolves.toEqual([]);
+    mockGetBotInfo.mockReset().mockRejectedValue(new Error('unavailable'));
+    await expect(createClient().getBotNames!()).resolves.toEqual([]);
+  });
+});
 
 describe('QQGatewayClient.start', () => {
   it('keeps a stop that lands while the gateway listener is starting', async () => {

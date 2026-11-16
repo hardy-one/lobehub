@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BotMessageRouter } from './index';
 import {
   makeProvider,
+  mockChatWebhooks,
   mockFindEnabledByPlatform,
   mockGetBotFeatureAccessState,
   mockGetBotNames,
@@ -100,6 +101,7 @@ const CHANNEL = 'discord:guild-1:chan-1';
 const boot = async (
   botWake: Record<string, unknown> | undefined,
   extraSettings: Record<string, unknown> = {},
+  platform = 'discord',
 ) => {
   mockFindEnabledByPlatform.mockResolvedValue([
     makeProvider({
@@ -107,8 +109,9 @@ const boot = async (
       settings: { botWake, dmPolicy: 'open', userId: OWNER, ...extraSettings },
     }),
   ]);
+  mockChatWebhooks[platform] = vi.fn().mockResolvedValue(new Response('OK'));
   await new BotMessageRouter().getWebhookHandler(
-    'discord',
+    platform,
     'app-1',
   )(new Request('https://example.com/webhook', { body: '{}', method: 'POST' }));
 };
@@ -201,6 +204,65 @@ describe('BotMessageRouter: a message that only names the bot', () => {
 
     expect(mockHandleMention).not.toHaveBeenCalled();
     expect(mocks.duty).not.toHaveBeenCalled();
+  });
+
+  describe('QQ bot names', () => {
+    const scheduled = { ...enforcing, scheduler: { mode: 'enforce' } };
+    const qqThread = 'qq:group:group-1';
+
+    it('uses the platform name for an immediate named wake while the owner is present', async () => {
+      mocks.channel.current = { ownerLastSpokeAt: Date.now() };
+      await boot(scheduled, { groupPolicy: 'open' }, 'qq');
+
+      await catchAll()(
+        thread(qqThread),
+        message({ author: { isBot: false, userId: 'bob-id', userName: 'bob' } }),
+      );
+      await flush();
+
+      expect(mockHandleMention).toHaveBeenCalledTimes(1);
+      expect(mocks.submit).not.toHaveBeenCalled();
+      expect(decisions().map((d) => [d.outcome, d.finalReason])).toEqual([
+        ['wake', 'named-in-text'],
+      ]);
+    });
+
+    it('does not use the Agent name when the platform provides a name', async () => {
+      await boot(scheduled, { groupPolicy: 'open' }, 'qq');
+
+      await catchAll()(thread(qqThread), message({ text: 'Arvin Agent 听得到吗' }));
+      await flush();
+
+      expect(mockHandleMention).not.toHaveBeenCalled();
+      expect(decisions().map((d) => d.outcome)).toEqual(['skip']);
+    });
+
+    it('falls back to the Agent name when the platform returns no name', async () => {
+      mockGetBotNames.mockResolvedValue([]);
+      await boot(scheduled, { groupPolicy: 'open' }, 'qq');
+
+      await catchAll()(thread(qqThread), message({ text: 'Arvin Agent 听得到吗' }));
+      await flush();
+
+      expect(mockHandleMention).toHaveBeenCalledTimes(1);
+      expect(mocks.submit).not.toHaveBeenCalled();
+      expect(decisions().map((d) => [d.outcome, d.finalReason])).toEqual([
+        ['wake', 'named-in-text'],
+      ]);
+    });
+
+    it('falls back when the platform lookup rejects', async () => {
+      mockGetBotNames.mockRejectedValue(new Error('unavailable'));
+      await boot(scheduled, { groupPolicy: 'open' }, 'qq');
+
+      await catchAll()(thread(qqThread), message({ text: 'Arvin Agent 听得到吗' }));
+      await flush();
+
+      expect(mockHandleMention).toHaveBeenCalledTimes(1);
+      expect(decisions().map((d) => [d.outcome, d.finalReason])).toEqual([
+        ['wake', 'named-in-text'],
+      ]);
+    });
   });
 
   describe('with the scheduler enforcing', () => {

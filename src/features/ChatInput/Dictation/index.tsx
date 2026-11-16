@@ -14,9 +14,9 @@ import { ChatInputAction } from '../ActionBar/components/ChatInputAction';
 import { useChatInputStore, useStoreApi } from '../store';
 import { isOtherAudioInputModeActive } from './mutualExclusion';
 import { getDictationControlMode } from './presentation';
+import { useDictation } from './useDictation';
 import { useDictationControlFocus } from './useDictationControlFocus';
 import { useDictationPrefetch } from './useDictationPrefetch';
-import { useRealtimeDictation } from './useRealtimeDictation';
 
 const styles = stylex.create({
   cancel: { color: cssVar.colorTextSecondary },
@@ -93,7 +93,7 @@ const Dictation = memo(() => {
       Boolean(s.sendButtonProps?.generating),
       s.setActiveAudioInputMode,
     ]);
-  const { client, errorCode, retryable, status } = useRealtimeDictation(editor);
+  const { client, errorCode, retryable, status } = useDictation(editor);
   const prefetch = useDictationPrefetch(client, enabled && !mobile);
   const active = status !== 'idle' || activeAudioInputMode === 'dictation';
   const controlMode = getDictationControlMode(status);

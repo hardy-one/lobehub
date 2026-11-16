@@ -240,7 +240,34 @@ describe('the model list magpie serves', () => {
     expect(cards[0].reasoning).toBe(false);
   });
 
-  it('reads tool calls from model-bank, which is the only one that says', async () => {
+  it('reads tool calls from magpie, which answers for every model it serves', async () => {
+    const cards = await load([
+      // A group of the user's own: model-bank never saw the name, so nothing
+      // else on the id would say the model takes tool calls.
+      model({ id: 'group/my-fastest', tool_call: true }),
+    ]);
+
+    expect(cards[0].functionCall).toBe(true);
+  });
+
+  it('reads the params magpie accepts when it gives no flag', async () => {
+    const cards = await load([
+      model({ id: 'group/my-fastest', supported_parameters: ['tools', 'tool_choice'] }),
+    ]);
+
+    expect(cards[0].functionCall).toBe(true);
+  });
+
+  it('keeps a model magpie reports without tool calls off, model-bank notwithstanding', async () => {
+    const cards = await load([
+      // model-bank says kimi-k3 takes tool calls; magpie says this one does not.
+      model({ id: 'moonshot/kimi-k3', tool_call: false }),
+    ]);
+
+    expect(cards[0].functionCall).toBe(false);
+  });
+
+  it('reads tool calls from model-bank when magpie says nothing', async () => {
     const cards = await load([model({ context_length: 1_000_000, id: 'moonshot/kimi-k3' })]);
 
     expect(cards[0].functionCall).toBe(true);

@@ -3,6 +3,7 @@ import debug from 'debug';
 
 import { getBotFeatureAccessState } from '@/business/server/bot/featureAccess';
 import type { LobeChatDatabase } from '@/database/type';
+import { appEnv } from '@/envs/app';
 import { emitAgentSignalSourceEvent } from '@/server/services/agentSignal';
 import { resolveChannelKeys } from '@/server/services/bot/wake/platformFacts';
 import { createWakeClassify } from '@/server/services/conversationWake/classify';
@@ -300,6 +301,11 @@ export function registerHandlers(
     classify: createWakeClassify({
       agentId,
       db: serverDB,
+      // A deployment whose provider has no working decision endpoint can point wake at a chat
+      // model instead; unset keeps the built-in decision model.
+      engine: appEnv.BOT_WAKE_ENGINE,
+      model: appEnv.BOT_WAKE_MODEL,
+      provider: appEnv.BOT_WAKE_PROVIDER,
       userId,
       workspaceId: workspaceId ?? undefined,
     }),
@@ -308,6 +314,9 @@ export function registerHandlers(
     dutyJudge: createWakeDutyJudge({
       agentId,
       db: serverDB,
+      engine: appEnv.BOT_WAKE_ENGINE,
+      model: appEnv.BOT_WAKE_MODEL,
+      provider: appEnv.BOT_WAKE_PROVIDER,
       userId,
       workspaceId: workspaceId ?? undefined,
     }),

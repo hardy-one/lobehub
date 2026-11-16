@@ -219,4 +219,38 @@ describe('ModelRuntime decide emulation fallback', () => {
 
     await expect(runtime.decide(decidePayload)).rejects.toThrow('400 unsupported');
   });
+
+  it('strips the decision suffix before retrying as a chat call', async () => {
+    const { runtime, mockRuntimeAI } = createMockRuntime();
+    mockRuntimeAI.decide = vi
+      .fn()
+      .mockRejectedValue(new Error('400 Codex has no OpenAI-style API for /decisions'));
+    mockRuntimeAI.generateObject = vi.fn().mockResolvedValue(emulatedOutput);
+
+    await runtime.decide({ ...decidePayload, model: 'gpt-6-luna:decision' });
+
+    expect(mockRuntimeAI.generateObject.mock.calls[0][0].model).toBe('gpt-6-luna');
+  });
+
+  it('does not retry a cancelled decision call', async () => {
+    const { runtime, mockRuntimeAI } = createMockRuntime();
+    const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
+    mockRuntimeAI.decide = vi.fn().mockRejectedValue(abort);
+    mockRuntimeAI.generateObject = vi.fn();
+
+    await expect(runtime.decide(decidePayload)).rejects.toBe(abort);
+    expect(mockRuntimeAI.generateObject).not.toHaveBeenCalled();
+  });
+
+  it('does not retry a rejected request format', async () => {
+    const { runtime, mockRuntimeAI } = createMockRuntime();
+    const invalid = Object.assign(new Error('empty questions'), {
+      errorType: 'InvalidRequestFormat',
+    });
+    mockRuntimeAI.decide = vi.fn().mockRejectedValue(invalid);
+    mockRuntimeAI.generateObject = vi.fn();
+
+    await expect(runtime.decide(decidePayload)).rejects.toBe(invalid);
+    expect(mockRuntimeAI.generateObject).not.toHaveBeenCalled();
+  });
 });

@@ -51,7 +51,10 @@ interface MagpieModelCard {
   /** A model thinks when it has levels, or says so. */
   reasoning?: boolean;
   reasoning_levels?: string[];
+  /** Whether the model takes tool calls, which magpie reports for every model it serves. */
+  supported_parameters?: string[];
   supported_reasoning_levels?: { effort: string }[];
+  tool_call?: boolean;
 }
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:3425';
@@ -116,11 +119,26 @@ const findKnownModel = (
 ): any | undefined => byId.get(id) ?? index.get(magpieModelKey(id));
 
 /**
+ * magpie's own answer on tool calls for one model, when it gave one: its
+ * `tool_call` flag, else the `tools` it names among the params it accepts.
+ *
+ * A gateway that says nothing is no answer, not `false`, since the model-bank
+ * entry then decides the same way it does for the specs magpie leaves unsaid.
+ */
+const takesToolCalls = (model: MagpieModelCard): boolean | undefined => {
+  if (typeof model.tool_call === 'boolean') return model.tool_call;
+  if (model.supported_parameters) return model.supported_parameters.includes('tools');
+
+  return undefined;
+};
+
+/**
  * magpie's own fields for one model, laid over model-bank's.
  *
  * Only what magpie can rewrite is written here, since a field this card hands
- * over wins over model-bank's. Tool calls are left to model-bank alone: magpie's
- * list says nothing of them, and `false` would turn a model's tool calls off.
+ * over wins over model-bank's. Tool calls are among them, and the one that used
+ * to be missing: a routing group or an alias whose name model-bank never saw has
+ * nothing else to say it takes them, so it was listed with tool calls off.
  */
 const fromMagpie = (model: MagpieModelCard): Partial<ChatModelCard> => {
   const contextWindow = model.context_length ?? model.max_input_tokens;
@@ -144,12 +162,14 @@ const fromMagpie = (model: MagpieModelCard): Partial<ChatModelCard> => {
   const video = takes('video');
   const imageOutput = gives('image');
   const pricing = pricingOf(model.pricing);
+  const toolCalls = takesToolCalls(model);
 
   return {
     displayName: plainName(model),
     ...(contextWindow ? { contextWindowTokens: contextWindow } : {}),
     ...(model.max_output_tokens ? { maxOutput: model.max_output_tokens } : {}),
     ...(audio === undefined ? {} : { audio }),
+    ...(toolCalls === undefined ? {} : { functionCall: toolCalls }),
     ...(imageOutput === undefined ? {} : { imageOutput }),
     ...(pricing ? { pricing } : {}),
     ...(thinks === undefined ? {} : { reasoning: thinks }),
@@ -282,14 +302,14 @@ const fetchMagpieModels = async (client: OpenAI): Promise<ChatModelCard[]> => {
   const prepared = rows.map((row) => {
     const known = findKnownModel(row.id, index, byId);
     const card = fromMagpie(row);
+    // magpie answers this one for every model it serves, so model-bank only
+    // fills in a gateway that left it out.
+    const functionCall = card.functionCall ?? known?.abilities?.functionCall;
 
     return {
       id: row.id,
       ...card,
-      // What magpie never says anything about, and only model-bank knows.
-      ...(known?.abilities?.functionCall === undefined
-        ? {}
-        : { functionCall: known.abilities.functionCall }),
+      ...(functionCall === undefined ? {} : { functionCall }),
       // `card.reasoning` is magpie's own answer, so a model it reports as not
       // thinking offers no strength to choose.
       ...knownSettings(known, card.reasoning),

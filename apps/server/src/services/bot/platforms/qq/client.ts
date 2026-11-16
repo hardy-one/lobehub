@@ -42,6 +42,58 @@ const log = debug('bot-platform:qq:bot');
 
 const CONNECTED_STATUS_TTL_BUFFER_MS = 60 * 1000;
 const DEFAULT_DURATION_MS = 8 * 60 * 60 * 1000; // 8 hours
+const BOT_NAMES_TTL_MS = 60 * 60 * 1000;
+const BOT_NAMES_RETRY_MS = 60 * 1000;
+const BOT_NAMES_TIMEOUT_MS = 3000;
+
+/**
+ * Resolve `promise`, or `undefined` once `ms` passes. Wake classification waits on this lookup,
+ * so a profile request that never settles must not hold up every message that follows it.
+ */
+const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<T | undefined> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => resolve(undefined), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
+
+function createBotNamesLoader(config: BotProviderConfig): () => Promise<string[]> {
+  const api = new QQApiClient(config.applicationId, config.credentials.appSecret);
+  let cached: { expiresAt: number; names: string[] } | undefined;
+  let pending: Promise<string[]> | undefined;
+
+  return async () => {
+    if (cached && cached.expiresAt > Date.now()) return cached.names;
+    if (pending) return pending;
+
+    pending = (async () => {
+      try {
+        const info = await withTimeout(api.getBotInfo(), BOT_NAMES_TIMEOUT_MS);
+        const name = typeof info?.username === 'string' ? info.username.trim() : '';
+        const names = name ? [name] : (cached?.names ?? []);
+        cached = { expiresAt: Date.now() + (name ? BOT_NAMES_TTL_MS : BOT_NAMES_RETRY_MS), names };
+        return names;
+      } catch (error) {
+        log('getBotNames failed: %O', error);
+        const names = cached?.names ?? [];
+        cached = { expiresAt: Date.now() + BOT_NAMES_RETRY_MS, names };
+        return names;
+      }
+    })();
+    try {
+      return await pending;
+    } finally {
+      pending = undefined;
+    }
+  };
+}
 
 export interface GatewayListenerOptions {
   durationMs?: number;
@@ -137,6 +189,7 @@ function qqExtractFiles(message: Message): AttachmentSource[] | undefined {
 class QQGatewayClient implements PlatformClient {
   readonly id = 'qq';
   readonly applicationId: string;
+  readonly getBotNames: () => Promise<string[]>;
 
   private abort = new AbortController();
   private bot: ChatBot<any> | null = null;
@@ -149,6 +202,7 @@ class QQGatewayClient implements PlatformClient {
     this.config = config;
     this.context = context;
     this.applicationId = config.applicationId;
+    this.getBotNames = createBotNamesLoader(config);
   }
 
   // --- Lifecycle ---
@@ -348,12 +402,14 @@ class QQGatewayClient implements PlatformClient {
 class QQWebhookClient implements PlatformClient {
   readonly id = 'qq';
   readonly applicationId: string;
+  readonly getBotNames: () => Promise<string[]>;
 
   private config: BotProviderConfig;
 
   constructor(config: BotProviderConfig, _context: BotPlatformRuntimeContext) {
     this.config = config;
     this.applicationId = config.applicationId;
+    this.getBotNames = createBotNamesLoader(config);
   }
 
   // --- Lifecycle ---

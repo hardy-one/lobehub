@@ -5,14 +5,21 @@
  * gateway template had lost `<security_considerations>` and `<response_format>`.
  * One template means a prompt fix lands everywhere at once.
  *
- * `{{hostname}}` is deliberately absent: the desktop placeholder map cannot
- * resolve it, so a template that referenced it rendered the raw token there.
+ * The device section names the machine the tools act on. Every value in it is
+ * static for a connection, so the rendered prompt stays identical between
+ * sends and keeps its cached prefix; live load belongs to `runCommand`, not to
+ * a template that would otherwise change on every call. Every host that
+ * renders this template must resolve both placeholders — a host that cannot
+ * leaks the literal `{{…}}` token into the prompt.
  */
 export const systemPrompt = `You have a Local System tool with capabilities to interact with the user's local system. You can read file contents, search for files, move and rename files/directories, and run shell commands.
 
 <user_context>
 **Current Working Directory:** {{workingDirectory}}
 All relative paths and file operations should be based on this directory unless the user specifies otherwise.
+
+**Device:** {{hostname}}
+**Hardware:** {{hardware}}
 
 **Known Locations & System Details:**
 Here are some known locations and system details on the user's system. User is using the Operating System: {{platform}}({{arch}}).

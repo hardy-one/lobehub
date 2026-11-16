@@ -27,6 +27,12 @@ export interface QQAuthor {
   scope?: string;
   union_openid?: string;
   user_openid?: string;
+  /**
+   * The sender's nickname. QQ sets it on group events and may leave it blank elsewhere; inside a
+   * group it can also be the member's group card. Treat it as a display name only - the openid
+   * stays the identity used for matching and replies.
+   */
+  username?: string;
 }
 
 export interface QQAttachment {

@@ -53,6 +53,8 @@ interface CallToRecord {
   error?: { code?: string; message?: string; stack?: string };
   input: unknown;
   latencyMs?: number;
+  /** Facts about this call the caller knows and the tracing bag does not, e.g. the decision mode. */
+  metadata?: Record<string, unknown>;
   model?: string;
   /** The loose `options.tracing` bag plus `options.metadata`, as the caller passed them. */
   options?: { metadata?: Record<string, unknown>; tracing?: Record<string, unknown> };
@@ -111,6 +113,12 @@ export const createLLMGenerationTracingHook = (
         ? (rawTracing.onPersisted as (tracingId: string | null) => void | Promise<void>)
         : undefined;
 
+    // Caller-supplied jsonb context only. `provider` is already a first-class column on the row,
+    // so it is not duplicated here. An empty merge stays absent rather than becoming `{}`, which
+    // the column treats as no context at all.
+    const extraMetadata = { ...tracing.metadata, ...call.metadata };
+    const metadata = Object.keys(extraMetadata).length > 0 ? extraMetadata : undefined;
+
     after(async () => {
       let persistedTracingId: string | null = null;
       try {
@@ -122,9 +130,7 @@ export const createLLMGenerationTracingHook = (
           inputHint: tracing.inputHint,
           inputTokens: call.usage?.totalInputTokens ?? (call.usage?.inputTextTokens as number),
           latencyMs: call.latencyMs,
-          // Caller-supplied jsonb context only. `provider` is already a
-          // first-class column on the row — no need to duplicate it here.
-          metadata: tracing.metadata,
+          metadata,
           model: call.model,
           outputTokens: call.usage?.totalOutputTokens ?? (call.usage?.outputTextTokens as number),
           parentTracingId: tracing.parentTracingId,
@@ -185,6 +191,9 @@ export const createLLMGenerationTracingHook = (
         costUsd: data.providerReportedCost,
         input: { state: context.payload.state },
         latencyMs: data.latencyMs,
+        // A native call that failed over to structured output must stay identifiable in the
+        // trace, otherwise two very different paths look alike.
+        metadata: { decisionMode: data.response.providerMetadata?.lobehub?.decisionMode },
         model: context.payload.model,
         options: context.options,
         output: data.response.answers,

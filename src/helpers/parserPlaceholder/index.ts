@@ -183,9 +183,18 @@ export const HOST_VARIABLE_GENERATORS = {
    * | `{{defaultShell}}` | PowerShell 7+ (pwsh) |
    * | `{{shellSyntaxGuidance}}` | Write PowerShell syntax; ... |
    * | `{{arch}}` | arm64 |
+   * | `{{hostname}}` | unknown |
+   * | `{{hardware}}` | (not reported) |
    *
+   * `hostname` and `hardware` have no renderer-side source, so the desktop
+   * always renders the fallback shown above. Only the server pipeline, which
+   * owns the device system info, renders real values.
    */
   arch: () => globalAgentContextManager.getContext().arch ?? '',
+  // The renderer has no source for the machine's name or capacity yet, so both
+  // describe the unknown instead of leaking the raw `{{…}}` token.
+  hardware: () => '(not reported)',
+  hostname: () => 'unknown',
   homePath: () => globalAgentContextManager.getContext().homePath ?? '',
   // Fallback keeps the surrounding prompt sentence readable when the desktop
   // context has not (yet) provided the detected shell.

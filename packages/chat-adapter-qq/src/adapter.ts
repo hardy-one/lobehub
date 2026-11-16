@@ -550,15 +550,16 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
     }
 
     const attachments = this.mapQQAttachments(raw.attachments);
+    const authorName = raw.author.username?.trim() || raw.author.id;
 
     return new Message({
       attachments,
       author: {
-        fullName: 'Unknown',
+        fullName: authorName,
         isBot: false,
         isMe: false,
         userId: raw.author.id,
-        userName: 'unknown',
+        userName: authorName,
       },
       formatted,
       id: raw.id,
@@ -618,14 +619,17 @@ export class QQAdapter implements Adapter<QQThreadId, QQRawMessage> {
     const formatted = parseMarkdown(cleanText);
 
     const authorId = getQQAuthorId(data.author) ?? 'unknown';
+    // QQ reports the sender's nickname on group events, and leaves it blank on some payloads.
+    // Fall back to the openid so a nameless event still identifies its sender.
+    const authorName = data.author?.username?.trim() || authorId;
     const isBot = false; // Webhook events are from users
 
     const author: Author = {
-      fullName: authorId,
+      fullName: authorName,
       isBot,
       isMe: isBot && authorId === this._botUserId,
       userId: authorId,
-      userName: authorId,
+      userName: authorName,
     };
 
     const raw: QQRawMessage = {

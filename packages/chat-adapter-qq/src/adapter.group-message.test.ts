@@ -200,6 +200,60 @@ describe('QQ full group messages (GROUP_MESSAGE_CREATE)', () => {
   });
 });
 
+describe('QQ sender identity', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const captureAuthor = async (eventType: string, payload: Record<string, any>) => {
+    const { adapter, chat } = await createChat();
+
+    const authors: Array<{ fullName: string; userId: string; userName: string }> = [];
+    const collect = async (_thread: unknown, message: { author: any }) => {
+      authors.push(message.author);
+    };
+    chat.onNewMessage(/.*/, collect);
+    // A c2c message reaches the DM handler instead of the channel one.
+    chat.onDirectMessage(collect);
+
+    await adapter.handleWebhook(makeRequest(dispatch(eventType, payload)));
+    await waitFor(() => authors.length === 1);
+
+    return authors[0];
+  };
+
+  it('shows the sender nickname in a group instead of the openid', async () => {
+    const author = await captureAuthor(QQ_EVENT_TYPES.GROUP_MESSAGE_CREATE, {
+      author: { member_openid: 'F6A8B9C0D1E2', username: '小明' },
+    });
+
+    expect(author.fullName).toBe('小明');
+    expect(author.userName).toBe('小明');
+    // The openid stays the identity used for matching and replies.
+    expect(author.userId).toBe('F6A8B9C0D1E2');
+  });
+
+  it('shows the sender nickname in a direct message too', async () => {
+    const author = await captureAuthor(QQ_EVENT_TYPES.C2C_MESSAGE_CREATE, {
+      author: { user_openid: 'A1B2C3D4E5F6', username: '小红' },
+      group_openid: undefined,
+    });
+
+    expect(author.fullName).toBe('小红');
+    expect(author.userName).toBe('小红');
+    expect(author.userId).toBe('A1B2C3D4E5F6');
+  });
+
+  it('falls back to the openid when the payload carries no nickname', async () => {
+    const author = await captureAuthor(QQ_EVENT_TYPES.GROUP_MESSAGE_CREATE, {
+      author: { member_openid: 'F6A8B9C0D1E2', username: '' },
+    });
+
+    expect(author.fullName).toBe('F6A8B9C0D1E2');
+    expect(author.userName).toBe('F6A8B9C0D1E2');
+  });
+});
+
 describe('QQ mention markers', () => {
   const converter = new QQFormatConverter();
 

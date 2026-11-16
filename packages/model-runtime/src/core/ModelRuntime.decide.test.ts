@@ -253,4 +253,35 @@ describe('ModelRuntime decide emulation fallback', () => {
     await expect(runtime.decide(decidePayload)).rejects.toBe(invalid);
     expect(mockRuntimeAI.generateObject).not.toHaveBeenCalled();
   });
+
+  it('does not retry a normalized auth failure', async () => {
+    const { runtime, mockRuntimeAI } = createMockRuntime();
+    const unauthorized = Object.assign(new Error('401 Unauthorized'), {
+      errorType: 'InvalidProviderAPIKey',
+    });
+    mockRuntimeAI.decide = vi.fn().mockRejectedValue(unauthorized);
+    mockRuntimeAI.generateObject = vi.fn();
+
+    await expect(runtime.decide(decidePayload)).rejects.toBe(unauthorized);
+    expect(mockRuntimeAI.generateObject).not.toHaveBeenCalled();
+  });
+
+  it('does not retry a cancellation the adapter wrapped', async () => {
+    const { runtime, mockRuntimeAI } = createMockRuntime();
+    const aborted = Object.assign(new Error('aborted'), { errorType: 'AbortError' });
+    mockRuntimeAI.decide = vi.fn().mockRejectedValue(aborted);
+    mockRuntimeAI.generateObject = vi.fn();
+
+    await expect(runtime.decide(decidePayload)).rejects.toBe(aborted);
+    expect(mockRuntimeAI.generateObject).not.toHaveBeenCalled();
+  });
+
+  it('surfaces the native error when the emulated path also fails', async () => {
+    const { runtime, mockRuntimeAI } = createMockRuntime();
+    const native = new Error('400 Codex has no OpenAI-style API for /decisions');
+    mockRuntimeAI.decide = vi.fn().mockRejectedValue(native);
+    mockRuntimeAI.generateObject = vi.fn().mockRejectedValue(new Error('schema rejected'));
+
+    await expect(runtime.decide(decidePayload)).rejects.toBe(native);
+  });
 });

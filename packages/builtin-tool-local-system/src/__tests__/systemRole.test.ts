@@ -15,10 +15,12 @@ describe('systemRole template', () => {
   });
 
   /**
-   * `{{hostname}}` has no generator in the desktop placeholder map, so a
-   * template that references it renders the raw token on the desktop client.
+   * Both placeholders need a generator on every host that renders this
+   * template (server pipeline, mecha defaults, desktop placeholder map);
+   * a host without one leaks the literal `{{…}}` token into the prompt.
    */
-  it('only references placeholders every host can render', () => {
-    expect(systemPrompt).not.toContain('{{hostname}}');
+  it('names the device and its static capacity', () => {
+    expect(systemPrompt).toContain('**Device:** {{hostname}}');
+    expect(systemPrompt).toContain('**Hardware:** {{hardware}}');
   });
 });

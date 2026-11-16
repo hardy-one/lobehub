@@ -90,6 +90,7 @@ export const createVariableGenerators = ({
     documentsPath: () => '(not reported)',
     downloadsPath: () => '(not reported)',
     homePath: () => '(not reported)',
+    hardware: () => '(not reported)',
     hostname: () => 'unknown',
     musicPath: () => '(not reported)',
     picturesPath: () => '(not reported)',

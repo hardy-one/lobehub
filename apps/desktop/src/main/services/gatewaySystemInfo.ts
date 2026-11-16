@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 
 import { BROWSER_IDENTIFIER } from '@lobechat/device-control/agent-browser';
 import { COMPUTER_USE_IDENTIFIER } from '@lobechat/device-control/computer-use';
+import { readDiskUsage } from '@lobechat/device-control/metrics';
 import type { DeviceSystemInfo } from '@lobechat/device-gateway-client';
 import type { RuntimeProbeCache } from '@lobechat/heterogeneous-agents/runtimeProbeCache';
 import { CODEX_COLLABORATION_MODE_RUNTIME } from '@lobechat/types';
@@ -61,10 +62,19 @@ export const collectGatewaySystemInfo = async (
   agentRuntimes: RuntimeProbeCache,
 ): Promise<DeviceSystemInfo> => {
   const { getShellInfo } = await import('@lobechat/local-file-shell/shell');
+  const cpus = os.cpus();
+  const cpuModel = cpus[0]?.model?.trim();
+  // Specs only: the metrics sampler owns usage, and a prompt that quoted it
+  // would change on every send.
+  const disk = await readDiskUsage(app.getPath('home'));
   return {
     supportedTools: [COMPUTER_USE_IDENTIFIER, BROWSER_IDENTIFIER],
     supportedAgentRuntimes: await agentRuntimes.get(),
     arch: os.arch(),
+    cpuCount: Math.max(1, cpus.length),
+    ...(cpuModel && { cpuModel }),
+    ...(disk && { diskTotalBytes: disk.totalBytes }),
+    memoryTotalBytes: os.totalmem(),
     // Tell the server-side prompt builder which shell runCommand spawns here.
     defaultShell: (await getShellInfo()).displayName,
     desktopPath: app.getPath('desktop'),

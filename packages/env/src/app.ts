@@ -45,6 +45,11 @@ export const getAppConfig = () => {
       DEFAULT_AGENT_CONFIG: z.string(),
       SYSTEM_AGENT: z.string().optional(),
 
+      /** How bot wake asks "is this message for the bot": `decision` (native) or `chat` (emulated). */
+      BOT_WAKE_ENGINE: z.enum(['chat', 'decision']).optional(),
+      BOT_WAKE_MODEL: z.string().optional(),
+      BOT_WAKE_PROVIDER: z.string().optional(),
+
       PLUGINS_INDEX_URL: z.string().url(),
       PLUGIN_SETTINGS: z.string().optional(),
 
@@ -143,6 +148,10 @@ export const getAppConfig = () => {
 
       DEFAULT_AGENT_CONFIG: process.env.DEFAULT_AGENT_CONFIG || '',
       SYSTEM_AGENT: process.env.SYSTEM_AGENT,
+
+      BOT_WAKE_ENGINE: process.env.BOT_WAKE_ENGINE as 'chat' | 'decision' | undefined,
+      BOT_WAKE_MODEL: process.env.BOT_WAKE_MODEL,
+      BOT_WAKE_PROVIDER: process.env.BOT_WAKE_PROVIDER,
 
       PLUGINS_INDEX_URL: !!process.env.PLUGINS_INDEX_URL
         ? process.env.PLUGINS_INDEX_URL

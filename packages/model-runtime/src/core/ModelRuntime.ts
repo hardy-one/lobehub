@@ -784,7 +784,7 @@ export class ModelRuntime {
       const startTime = Date.now();
       let usage: ModelUsage | undefined;
       let providerReportedCost: number | undefined;
-      const raw = await decide({
+      const decideOptions = {
         ...hookOptions,
         onProviderReportedCost: async (cost: number) => {
           providerReportedCost = cost;
@@ -794,14 +794,37 @@ export class ModelRuntime {
           usage = reported;
           await hookOptions?.onUsage?.(reported);
         },
-      });
+      };
+
+      // A provider can advertise a native decision endpoint and still fail on it — the base URL
+      // may proxy another API, or the route may have been retired. Where the runtime can generate
+      // a structured object, the emulated path answers the same questions, so retry once instead
+      // of failing every call.
+      let decisionMode: 'native' | 'emulated' = isDecisionModel ? 'native' : 'emulated';
+      let raw: DecisionResponse<Q>;
+      try {
+        raw = await decide(decideOptions);
+      } catch (error) {
+        if (!isDecisionModel || !runtime.generateObject) throw error;
+
+        console.warn(
+          '[ModelRuntime] native decision call failed, retrying through structured output:',
+          error,
+        );
+        decisionMode = 'emulated';
+        raw = await emulateDecision(payload, decideOptions, {
+          generateObject: (objectPayload, objectOptions) =>
+            runtime.generateObject!(objectPayload, objectOptions),
+          provider,
+        });
+      }
       const response = {
         ...raw,
         providerMetadata: {
           ...raw.providerMetadata,
           lobehub: {
             ...raw.providerMetadata?.lobehub,
-            decisionMode: isDecisionModel ? 'native' : 'emulated',
+            decisionMode,
           },
         },
         ...((raw.usage ?? usage) && { usage: raw.usage ?? usage }),

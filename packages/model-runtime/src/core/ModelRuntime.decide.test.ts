@@ -198,4 +198,25 @@ describe('ModelRuntime decide emulation fallback', () => {
     });
     expect(mockRuntimeAI.decide).not.toHaveBeenCalled();
   });
+
+  it('falls back to the emulated path when the native endpoint fails', async () => {
+    const { runtime, mockRuntimeAI } = createMockRuntime();
+    mockRuntimeAI.decide = vi
+      .fn()
+      .mockRejectedValue(new Error('400 Codex has no OpenAI-style API for /decisions'));
+    mockRuntimeAI.generateObject = vi.fn().mockResolvedValue(emulatedOutput);
+
+    const result = await runtime.decide(decidePayload);
+
+    expect(result.providerMetadata?.lobehub?.decisionMode).toBe('emulated');
+    expect(mockRuntimeAI.decide).toHaveBeenCalledTimes(1);
+    expect(mockRuntimeAI.generateObject).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry when the provider cannot generate a structured object', async () => {
+    const { runtime, mockRuntimeAI } = createMockRuntime();
+    mockRuntimeAI.decide = vi.fn().mockRejectedValue(new Error('400 unsupported'));
+
+    await expect(runtime.decide(decidePayload)).rejects.toThrow('400 unsupported');
+  });
 });

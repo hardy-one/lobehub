@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { BROWSER_IDENTIFIER } from '@lobechat/device-control/agent-browser';
 import { COMPUTER_USE_IDENTIFIER } from '@lobechat/device-control/computer-use';
+import { readDiskUsage } from '@lobechat/device-control/metrics';
 import type { DeviceSystemInfo } from '@lobechat/device-gateway-client';
 import { resolveHeteroSpawnCommand } from '@lobechat/heterogeneous-agents/resolveCliCommand';
 import type { RuntimeProbeCache } from '@lobechat/heterogeneous-agents/runtimeProbeCache';
@@ -102,9 +103,18 @@ export async function collectSystemInfo(
   const home = os.homedir();
   const platform = process.platform;
   const videosDir = platform === 'linux' ? 'Videos' : 'Movies';
+  const cpus = os.cpus();
+  const cpuModel = cpus[0]?.model?.trim();
+  // The volume holding the home directory — where agent working directories usually live.
+  const disk = await readDiskUsage(home);
 
   return {
     arch: os.arch(),
+    // Static capacity for the prompt; usage over time is a metrics sample.
+    cpuCount: Math.max(1, cpus.length),
+    ...(cpuModel && { cpuModel }),
+    ...(disk && { diskTotalBytes: disk.totalBytes }),
+    memoryTotalBytes: os.totalmem(),
     // Tell the server-side prompt builder which shell runCommand spawns here.
     defaultShell: (await getShellInfo()).displayName,
     desktopPath: path.join(home, 'Desktop'),

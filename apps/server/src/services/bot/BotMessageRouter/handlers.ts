@@ -275,6 +275,24 @@ export function registerHandlers(
 
   const trackThreadParticipants = createParticipantTracker(bot);
 
+  const loadWakeIdentity = createWakeIdentityLoader({ agentId, db: serverDB, userId });
+  const botNames =
+    platform === 'qq'
+      ? async (platformThreadId: string): Promise<string[]> => {
+          const names = (await client.getBotNames?.(platformThreadId).catch(() => [])) ?? [];
+          if (names.some((name) => name.trim())) return names;
+
+          try {
+            const name = (await loadWakeIdentity()).agentName?.trim();
+            return name ? [name] : [];
+          } catch (error) {
+            log('agent name lookup failed: %O', error);
+            return [];
+          }
+        }
+      : client.getBotNames &&
+        (async (platformThreadId: string) => (await client.getBotNames!(platformThreadId)) ?? []);
+
   // Observation only: records the decision each branch below already makes (see ./wakeDecision).
   const wakeRecorder = createBotWakeRecorder({
     agentId,
@@ -286,16 +304,14 @@ export function registerHandlers(
       workspaceId: workspaceId ?? undefined,
     }),
     db: serverDB,
-    botNames:
-      client.getBotNames &&
-      (async (platformThreadId) => (await client.getBotNames!(platformThreadId)) ?? []),
+    botNames,
     dutyJudge: createWakeDutyJudge({
       agentId,
       db: serverDB,
       userId,
       workspaceId: workspaceId ?? undefined,
     }),
-    identity: createWakeIdentityLoader({ agentId, db: serverDB, userId }),
+    identity: loadWakeIdentity,
     nameKeywords,
     operatorUserId,
     platform,

@@ -33,10 +33,16 @@ export interface DictationClient {
   subscribe: (listener: () => void) => () => void;
 }
 
+// Codes that mean the realtime transport itself is unusable, while one-shot transcription —
+// which goes through the tRPC `asr.transcribe` endpoint instead — can still work. `AUTH_FAILED`,
+// `PROVIDER_BILLING_BLOCKED` and `SESSION_LIMIT_EXCEEDED` are deliberately absent: they reflect
+// account-level conditions that would fail one-shot just as well.
 const FALLBACK_CODES = new Set([
+  'NETWORK_DISCONNECTED',
+  'PROTOCOL_ERROR',
   'PROVIDER_NOT_CONFIGURED',
   'PROVIDER_UNAVAILABLE',
-  'NETWORK_DISCONNECTED',
+  'SESSION_CREATE_FAILED',
 ]);
 
 export const shouldFallbackToOneshot = (error: unknown): boolean =>

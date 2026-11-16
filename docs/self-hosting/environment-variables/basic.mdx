@@ -127,7 +127,9 @@ For specific content, please refer to the [Feature Flags](/docs/self-hosting/adv
 
 Recording stops at 60 seconds: dictation reuses the realtime session limit (`maxSessionMs`), and a 60-second 16 kHz mono PCM WAV is about 1.9 MB, so it stays under the 3 MB inline-audio cap that both the client and the server enforce.
 
-`VOICE_DICTATION_MODE` does not open the microphone entry on its own. The entry is still controlled by the `voice_dictation` feature flag, so a self-hosted deployment also adds `+voice_dictation` to `FEATURE_FLAGS`.
+Pinning `realtime` or `oneshot` opens the microphone entry on its own. The `voice_dictation` feature flag only gates the entry in `auto` mode, because `oneshot` needs no realtime session endpoint.
+
+`realtime` assumes asr-gateway is deployed. Without it the entry still appears and reports an error on every attempt — the pin is treated as a declaration that the gateway exists.
 
 ### `ENABLE_AGENT_GATEWAY`
 

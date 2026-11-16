@@ -81,9 +81,11 @@ const styles = stylex.create({
 
 const Dictation = memo(() => {
   const { t } = useTranslation('chat');
-  // `voice_dictation` opens the entry on deployments that serve the realtime ASR session endpoint;
-  // business deployments set it from the business gate instead.
-  const enabled = useServerConfigStore(serverConfigSelectors.enableVoiceDictation);
+  // `voice_dictation` opens the entry on deployments that serve the realtime ASR session
+  // endpoint; business deployments set it from the business gate instead. Pinning
+  // `VOICE_DICTATION_MODE` declares the capability directly, so `oneshot` opens the entry
+  // on a deployment that has no gateway at all.
+  const enabled = useServerConfigStore(serverConfigSelectors.enableVoiceDictationEntry);
   const storeApi = useStoreApi();
   const [activeAudioInputMode, editor, mobile, generating, setActiveAudioInputMode] =
     useChatInputStore((s) => [

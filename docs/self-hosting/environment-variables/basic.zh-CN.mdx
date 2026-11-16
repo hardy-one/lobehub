@@ -123,7 +123,9 @@ LobeHub 在部署时提供了一些额外的配置项，你可以使用环境变
 
 录音在 60 秒时停止：听写复用实时会话的时长上限（`maxSessionMs`），而 60 秒 16 kHz 单声道 PCM WAV 约 1.9 MB，仍在客户端与服务端各自 3 MB 的内联音频上限之内。
 
-`VOICE_DICTATION_MODE` 本身不开放麦克风入口。入口仍由 `voice_dictation` 特性标志控制，自托管部署还需要在 `FEATURE_FLAGS` 里加上 `+voice_dictation`。
+显式指定 `realtime` 或 `oneshot` 会直接开放麦克风入口。`voice_dictation` 特性标志只在 `auto` 模式下控制入口，因为 `oneshot` 不依赖实时会话接口。
+
+`realtime` 假定已部署 asr-gateway。没有网关时入口依然出现，每次使用都会报错，这个固定值被视为「网关已就绪」的声明。
 
 ### `ENABLE_AGENT_GATEWAY`
 

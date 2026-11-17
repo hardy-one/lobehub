@@ -1,6 +1,5 @@
+import { resolveAsrModel } from '@/features/ChatInput/Dictation/resolveAsrModel';
 import { asrService } from '@/services/asr';
-import { getUserStoreState } from '@/store/user';
-import { systemAgentSelectors } from '@/store/user/selectors';
 
 /**
  * Turn an uploaded voice recording into the text of its turn.
@@ -10,8 +9,16 @@ import { systemAgentSelectors } from '@/store/user/selectors';
  * persisted as the user message content and what the external CLI receives.
  */
 export const transcribeVoiceMessage = async (fileId: string, signal?: AbortSignal) => {
-  const { model, provider } = systemAgentSelectors.asr(getUserStoreState());
-  if (!model || !provider) throw new Error('No speech-to-text model is configured');
+  let model: string;
+  let provider: string;
+
+  try {
+    ({ model, provider } = resolveAsrModel());
+  } catch {
+    // The transcript is chat content, not a dictation error card: keep the message the chat
+    // send path has always surfaced instead of leaking the dictation error code.
+    throw new Error('No speech-to-text model is configured');
+  }
 
   const { text } = await asrService.transcribeFile({ fileId, model, provider }, signal);
 

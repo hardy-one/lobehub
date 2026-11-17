@@ -412,4 +412,64 @@ describe('the model list magpie serves', () => {
 
     expect(listModels).toHaveBeenCalledTimes(1);
   });
+
+  it('asks the list for the models an agent’s list never carries', async () => {
+    await load([model({ id: 'openai/gpt-5.6-sol' })]);
+
+    const headers = listModels.mock.calls[0][0].headers;
+
+    expect(headers).toMatchObject({
+      'X-Magpie-Deciders': '1',
+      'X-Magpie-Drawers': '1',
+      'X-Magpie-Videomakers': '1',
+    });
+  });
+
+  it('files a drawer model as an image model, with a prompt to draw from', async () => {
+    const cards = await load([
+      model({
+        id: 'qwen-token-plan/qwen-image-3.0-pro',
+        kind: 'image',
+        modalities: { input: ['text'], output: ['image'] },
+      }),
+    ]);
+
+    expect(cards[0].type).toBe('image');
+    expect(cards[0].parameters).toBeDefined();
+  });
+
+  it('files a video and a decision row by the kind magpie names', async () => {
+    const cards = await load([
+      model({
+        id: 'grok/grok-imagine-video',
+        kind: 'video',
+        modalities: { input: ['text'], output: ['video'] },
+      }),
+      model({ id: 'opencode-zen/jev-1.13-free', kind: 'decision' }),
+    ]);
+
+    expect(cards.map((c) => [c.id, c.type])).toEqual([
+      ['grok/grok-imagine-video', 'video'],
+      ['opencode-zen/jev-1.13-free', 'decision'],
+    ]);
+  });
+
+  it('keeps one card for a model listed as chat and as a drawer, the drawer winning', async () => {
+    const cards = await load([
+      model({
+        display_name: 'GPT Image 2',
+        id: 'sapi-2/gpt-image-2',
+        modalities: { input: ['text', 'image'], output: ['text'] },
+      }),
+      model({
+        display_name: 'gpt-image-2',
+        id: 'sapi-2/gpt-image-2',
+        kind: 'image',
+        modalities: { input: ['text'], output: ['image'] },
+      }),
+    ]);
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0].type).toBe('image');
+  });
 });

@@ -1,6 +1,13 @@
 import { CURRENT_VERSION } from '@lobechat/const';
 import type { ChatModelCard } from '@lobechat/types';
-import { loadModels, ModelProvider, type Pricing, type PricingUnitName } from 'model-bank';
+import {
+  type AiModelType,
+  CHAT_MODEL_IMAGE_GENERATION_PARAMS,
+  loadModels,
+  ModelProvider,
+  type Pricing,
+  type PricingUnitName,
+} from 'model-bank';
 import OpenAI from 'openai';
 
 import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatible';
@@ -27,6 +34,12 @@ interface MagpieModelCard {
   /** The user's name for the model, else the vendor's. */
   display_name?: string;
   id: string;
+  /**
+   * Set only on the rows magpie adds for the kind headers it was asked with:
+   * `image` for its drawing models, `video` for its video models, `decision`
+   * for those it answers at `/v1/systemone`. A chat row never carries one.
+   */
+  kind?: string;
   /** The model's name as magpie's own lists label it, `· provider` and all. */
   magpie_label?: string;
   max_input_tokens?: number;
@@ -273,6 +286,30 @@ const knownSettings = (
 };
 
 /**
+ * The headers that ask magpie's list for the models an agent's list never
+ * carries: its drawing models, its video models, and its decision models,
+ * each row marked `kind` (see `provider.DrawersHeader` and its siblings in
+ * magpie's `internal/provider/remote_magpie.go`). Without them the gateway
+ * lists only models to chat with, and LobeHub's image and video pickers have
+ * nothing to offer for this provider.
+ */
+const MEDIA_LIST_HEADERS = {
+  'X-Magpie-Deciders': '1',
+  'X-Magpie-Drawers': '1',
+  'X-Magpie-Videomakers': '1',
+};
+
+/**
+ * What magpie's `kind` says a row is, as the model type LobeHub files it
+ * under. A chat row names no kind and keeps the default.
+ */
+const KIND_TO_TYPE: Record<string, AiModelType | undefined> = {
+  decision: 'decision',
+  image: 'image',
+  video: 'video',
+};
+
+/**
  * What magpie serves, as model cards.
  *
  * The gateway's list is the only source: the models come and go with the
@@ -282,7 +319,7 @@ const knownSettings = (
  * calls as its vendor's entry says.
  */
 const fetchMagpieModels = async (client: OpenAI): Promise<ChatModelCard[]> => {
-  const response = await client.models.list();
+  const response = await client.models.list({ headers: MEDIA_LIST_HEADERS });
   const rows = (response.data as unknown as MagpieModelCard[]).filter((row) => !!row?.id);
 
   const models = await loadModels();
@@ -295,38 +332,53 @@ const fetchMagpieModels = async (client: OpenAI): Promise<ChatModelCard[]> => {
     // magpie answers this one for every model it serves, so model-bank only
     // fills in a gateway that left it out.
     const functionCall = card.functionCall ?? known?.abilities?.functionCall;
+    const kind = row.kind ? KIND_TO_TYPE[row.kind] : undefined;
 
     return {
       id: row.id,
       ...card,
       ...(functionCall === undefined ? {} : { functionCall }),
+      // The kind rows name generation models, not ones to chat with, so they
+      // are filed under their type. The shared pipeline drops an image card
+      // without parameters, so the gateway's plain prompt schema is given when
+      // model-bank has none; magpie's `/v1/images/generations` takes it for
+      // any drawer. A video card takes no parameters of its own.
+      ...(kind === 'image'
+        ? { parameters: known?.parameters ?? CHAT_MODEL_IMAGE_GENERATION_PARAMS }
+        : {}),
+      ...(kind ? { type: kind } : {}),
       // `card.reasoning` is magpie's own answer, so a model it reports as not
       // thinking offers no strength to choose.
       ...knownSettings(known, card.reasoning),
     };
   });
 
-  // magpie lists a model by its bare id too when the user asks for it, next to
-  // its `provider/model` row. The bare row names the same model, so the
-  // prefixed one is kept and the alias dropped. Two providers serving one model
-  // stay apart: their ids both carry a prefix.
-  const byName = new Set<string>();
+  // A model that both chats and draws comes back twice under one id: its chat
+  // row first, then the row the kind header added. The kind row names the role
+  // the user turned the gateway on for, so it wins and the chat row of that id
+  // is dropped. Two providers serving one model stay apart: their ids differ.
+  const unique: typeof prepared = [];
+  const positionById = new Map<string, number>();
   for (const card of prepared) {
-    if (card.id.includes('/')) byName.add(card.id.slice(card.id.lastIndexOf('/') + 1));
+    const seen = positionById.get(card.id);
+    if (seen === undefined) {
+      positionById.set(card.id, unique.length);
+      unique.push(card);
+    } else if (card.type) {
+      unique[seen] = card;
+    }
   }
 
-  const seen = new Set<string>();
-  const unique = prepared.filter((card) => {
-    if (seen.has(card.id)) return false;
+  // A gateway listing bare ids beside the prefixed ones names the same model
+  // twice; the prefixed row is kept and the alias dropped.
+  const names = new Set(
+    unique
+      .filter((card) => card.id.includes('/'))
+      .map((card) => card.id.slice(card.id.lastIndexOf('/') + 1)),
+  );
+  const kept = unique.filter((card) => card.id.includes('/') || !names.has(card.id));
 
-    // A bare id, when a prefixed row already names that model.
-    if (!card.id.includes('/') && byName.has(card.id)) return false;
-
-    seen.add(card.id);
-    return true;
-  });
-
-  return processMultiProviderModelList(unique, ModelProvider.Magpie, { preferCardValues: true });
+  return processMultiProviderModelList(kept, ModelProvider.Magpie, { preferCardValues: true });
 };
 
 export const params = {

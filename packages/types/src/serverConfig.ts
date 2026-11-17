@@ -269,6 +269,11 @@ export interface GlobalServerConfig {
    * Undefined means "not configured": the default (64) applies.
    */
   toolNameMaxLength?: number;
+  /**
+   * Voice dictation transport (`VOICE_DICTATION_MODE`). Defaults to `auto`, which
+   * probes the realtime ASR gateway and falls back to one-shot transcription.
+   */
+  voiceDictationMode?: 'auto' | 'oneshot' | 'realtime';
 }
 
 export interface GlobalBillboardItemLocaleFields {

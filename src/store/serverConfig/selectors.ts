@@ -20,6 +20,23 @@ export const serverConfigSelectors = {
    * dictation entry only makes sense where the realtime ASR session endpoint exists.
    */
   enableVoiceDictation: (s: ServerConfigStore) => s.featureFlags.enableVoiceDictation === true,
+  /**
+   * Whether the dictation entry renders. A deployment that pins a transport through
+   * `VOICE_DICTATION_MODE` has declared dictation available, so the runtime flag is not
+   * required — `oneshot` in particular needs no realtime ASR session endpoint.
+   *
+   * Pinning `realtime` is a deliberate statement that the gateway is deployed. That mode
+   * surfaces a persistent error instead of hiding the control when the endpoint is missing,
+   * which is the accepted trade-off for letting the pin itself open the entry.
+   */
+  enableVoiceDictationEntry: (s: ServerConfigStore) =>
+    (s.serverConfig.voiceDictationMode ?? 'auto') !== 'auto' ||
+    s.featureFlags.enableVoiceDictation === true,
+  /**
+   * Transport the deployment pinned. `auto` probes the realtime gateway and falls back to
+   * one-shot transcription; the other two values skip the probe entirely.
+   */
+  voiceDictationMode: (s: ServerConfigStore) => s.serverConfig.voiceDictationMode ?? 'auto',
   enableEmailVerification: (s: ServerConfigStore) =>
     s.serverConfig.enableEmailVerification || false,
   enableComposio: (s: ServerConfigStore) => s.serverConfig.enableComposio || false,

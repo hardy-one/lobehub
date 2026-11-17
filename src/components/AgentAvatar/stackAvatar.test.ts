@@ -28,6 +28,17 @@ describe('toStackAvatar', () => {
     expect(props).toMatchObject({ color: 'green', seed: 'agent-1', shape: 'cat' });
   });
 
+  it('draws the character a member picked through the earlier `generated:` form', () => {
+    const item = toStackAvatar(
+      { avatar: 'generated:character-1', background: '#fff', seed: 'agent-1' },
+      0,
+    );
+
+    expect(isValidElement(item.avatar)).toBe(true);
+    expect((item.avatar as ReactElement<{ seed: string }>).props.seed).toBe('character-1');
+    expect(item.background).toBeUndefined();
+  });
+
   it('keeps members without a seed apart by their position', () => {
     const seedAt = (index: number) =>
       (toStackAvatar({}, index).avatar as ReactElement<{ seed: string }>).props.seed;

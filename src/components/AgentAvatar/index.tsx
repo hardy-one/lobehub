@@ -18,8 +18,9 @@ export interface AgentAvatarProps extends Omit<AvatarProps, 'avatar' | 'brokenFa
   /** Play the `state` animation of the generated character. */
   animated?: boolean;
   /**
-   * Emoji, image URL or a picked character (`agent-avatar:<shape>:<color>`). Empty (or the
-   * legacy default image) draws the character generated from the id.
+   * Emoji, image URL or a picked character (`agent-avatar:<shape>:<color>`, or the earlier
+   * `generated:<seed>` form). Empty (or the legacy default image) draws the character generated
+   * from the id.
    */
   avatar?: string | null;
   /**

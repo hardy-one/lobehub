@@ -5,6 +5,7 @@ import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import AgentAvatar from '@/components/AgentAvatar';
+import { useAgentCharacterTab } from '@/components/AgentAvatar/CharacterTab';
 import { createAgentCharacterTab } from '@/components/AgentAvatar/pickerTab';
 import EmojiPicker from '@/components/EmojiPicker';
 import CreateVisibilityField, { useCreateVisibility } from '@/features/CreateVisibilityField';
@@ -41,6 +42,7 @@ const CreateAgentIdentityContent = memo<CreateAgentIdentityContentProps>(
       },
       visibility: visibilityState.value,
     });
+    const characterTab = useAgentCharacterTab(form.avatar);
 
     return (
       <Flexbox gap={20} padding={20}>
@@ -48,7 +50,7 @@ const CreateAgentIdentityContent = memo<CreateAgentIdentityContentProps>(
           <EmojiPicker
             allowUpload
             allowDelete={!!form.avatar}
-            customTabs={[createAgentCharacterTab()]}
+            customTabs={[createAgentCharacterTab(), characterTab]}
             loading={form.uploading}
             locale={locale}
             popupProps={{ placement: 'bottom' }}

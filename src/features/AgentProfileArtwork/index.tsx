@@ -25,6 +25,7 @@ import { memo, useCallback, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import AgentAvatar from '@/components/AgentAvatar';
+import { useAgentCharacterTab } from '@/components/AgentAvatar/CharacterTab';
 import { createAgentCharacterTab } from '@/components/AgentAvatar/pickerTab';
 import EmojiPicker from '@/components/EmojiPicker';
 import {
@@ -238,6 +239,7 @@ export const AgentProfileArtwork = memo<AgentProfileArtworkProps>(
     const generationError = generation?.status === 'error' ? generation.kind : null;
     const backgroundGenerationActive = generation?.kind === 'background';
     const backgroundUrl = resolveAgentBackground(background);
+    const characterTab = useAgentCharacterTab(avatar);
 
     const openBackgroundFilePicker = useCallback(() => {
       const input = backgroundInputRef.current;
@@ -480,8 +482,8 @@ export const AgentProfileArtwork = memo<AgentProfileArtworkProps>(
         </div>
         <div className={`${styles.avatar} agent-avatar-entry`}>
           {/* Uploading an image lives in the studio, so the picker keeps the
-              character tab (first, and where it opens), emoji and the studio
-              launcher tab. */}
+              character tab (first, and where it opens), the generated
+              characters, emoji and the studio launcher tab. */}
           {/* Not keyed by the avatar: a remount would close the popup on every
               character pick. The trigger's AgentAvatar resets a broken image
               itself when the url changes. */}
@@ -508,6 +510,7 @@ export const AgentProfileArtwork = memo<AgentProfileArtworkProps>(
             )}
             customTabs={[
               createAgentCharacterTab(agentId),
+              characterTab,
               {
                 label: (
                   <Tooltip title={t('settingAgent.artwork.avatar.image')}>

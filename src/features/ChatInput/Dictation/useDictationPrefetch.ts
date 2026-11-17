@@ -2,15 +2,15 @@
 
 import { useCallback, useEffect } from 'react';
 
-import type { RealtimeDictationClient } from './client';
-
 const REFRESH_INTERVAL_MS = 30_000;
 const RECENT_ACTIVITY_MS = 120_000;
 
-export const useDictationPrefetch = (
-  client: RealtimeDictationClient | undefined,
-  enabled: boolean,
-) => {
+/** Only the warm-up call is used here, so both dictation transports satisfy it. */
+interface PrefetchableClient {
+  prefetch: () => Promise<void>;
+}
+
+export const useDictationPrefetch = (client: PrefetchableClient | undefined, enabled: boolean) => {
   const prefetch = useCallback(() => {
     if (!enabled || !client) return;
     if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;

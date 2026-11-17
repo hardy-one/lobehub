@@ -1,16 +1,7 @@
 'use client';
 
 import { EDITOR_DEBOUNCE_TIME } from '@lobechat/const';
-import {
-  Block,
-  Flexbox,
-  Icon,
-  Input,
-  parseAgentAvatar,
-  Skeleton,
-  toast,
-  Tooltip,
-} from '@lobehub/ui';
+import { Block, Flexbox, Icon, Input, Skeleton, toast, Tooltip } from '@lobehub/ui';
 import { debounce } from 'es-toolkit/compat';
 import isEqual from 'fast-deep-equal';
 import { PaletteIcon } from 'lucide-react';
@@ -18,7 +9,11 @@ import { memo, Suspense, useCallback, useEffect, useMemo, useState } from 'react
 import { useTranslation } from 'react-i18next';
 
 import AgentAvatar from '@/components/AgentAvatar';
-import { isDefaultAgentAvatar } from '@/components/AgentAvatar/resolve';
+import { useAgentCharacterTab } from '@/components/AgentAvatar/CharacterTab';
+import {
+  isDefaultAgentAvatar,
+  isGeneratedAgentAvatar,
+} from '@/components/AgentAvatar/resolve';
 import EmojiPicker from '@/components/EmojiPicker';
 import BackgroundSwatches from '@/features/AgentSetting/AgentMeta/BackgroundSwatches';
 import { usePermission } from '@/hooks/usePermission';
@@ -56,6 +51,7 @@ const AgentHeader = memo<AgentHeaderProps>(({ readOnly, disabled: disabledProp }
   // File upload
   const uploadWithProgress = useFileStore((s) => s.uploadWithProgress);
   const [uploading, setUploading] = useState(false);
+  const characterTab = useAgentCharacterTab(agentMeta.avatar);
 
   // Local state for inputs (to avoid stuttering during typing)
   const [localTitle, setLocalTitle] = useState(agentMeta.title || '');
@@ -186,6 +182,8 @@ const AgentHeader = memo<AgentHeaderProps>(({ readOnly, disabled: disabledProp }
             ? agentMeta.backgroundColor
             : undefined
         }
+        // A member without an emoji or image draws its generated character —
+        // the picked one, else its own — as every other agent avatar does.
         customRender={
           isDefaultAgentAvatar(agentMeta.avatar)
             ? () => (
@@ -194,7 +192,7 @@ const AgentHeader = memo<AgentHeaderProps>(({ readOnly, disabled: disabledProp }
                 </Block>
               )
             : // A character picked in Lobot is no emoji or image; the picker would print its text.
-              parseAgentAvatar(agentMeta.avatar)
+              isGeneratedAgentAvatar(agentMeta.avatar)
               ? () => (
                   <Block clickable height={72} width={72}>
                     <AgentAvatar agentId={agentId} avatar={agentMeta.avatar} size={72} />
@@ -203,6 +201,7 @@ const AgentHeader = memo<AgentHeaderProps>(({ readOnly, disabled: disabledProp }
               : undefined
         }
         customTabs={[
+          characterTab,
           {
             label: (
               <Tooltip title={t('settingAgent.backgroundColor.title', { ns: 'setting' })}>

@@ -55,6 +55,61 @@ describe('serverConfigSelectors', () => {
     });
   });
 
+  describe('voiceDictationMode', () => {
+    it('defaults to auto when the deployment pins nothing', () => {
+      expect(serverConfigSelectors.voiceDictationMode(initServerConfigStore({}).getState())).toBe(
+        'auto',
+      );
+    });
+
+    it('reports the pinned transport', () => {
+      const store = initServerConfigStore({
+        serverConfig: { aiProvider: {}, telemetry: {}, voiceDictationMode: 'oneshot' },
+      });
+      expect(serverConfigSelectors.voiceDictationMode(store.getState())).toBe('oneshot');
+    });
+  });
+
+  describe('enableVoiceDictationEntry', () => {
+    // `auto` must keep behaving exactly like the runtime flag alone: nothing pinned, no entry
+    // unless the deployment opted in through `voice_dictation`.
+    it('stays off under auto when the runtime flag is off', () => {
+      const store = initServerConfigStore({
+        featureFlags: mapFeatureFlagsEnvToState(DEFAULT_FEATURE_FLAGS),
+        serverConfig: { aiProvider: {}, telemetry: {}, voiceDictationMode: 'auto' },
+      });
+      expect(serverConfigSelectors.enableVoiceDictationEntry(store.getState())).toBe(false);
+    });
+
+    it('keeps honouring the runtime flag under auto', () => {
+      const store = initServerConfigStore({
+        featureFlags: {
+          ...mapFeatureFlagsEnvToState({ ...DEFAULT_FEATURE_FLAGS, voice_dictation: true }),
+        },
+        serverConfig: { aiProvider: {}, telemetry: {}, voiceDictationMode: 'auto' },
+      });
+      expect(serverConfigSelectors.enableVoiceDictationEntry(store.getState())).toBe(true);
+    });
+
+    // A pinned transport declares the capability itself: `oneshot` needs no realtime
+    // session endpoint, so requiring the flag would hide a working entry.
+    it('opens for oneshot without the runtime flag', () => {
+      const store = initServerConfigStore({
+        featureFlags: mapFeatureFlagsEnvToState(DEFAULT_FEATURE_FLAGS),
+        serverConfig: { aiProvider: {}, telemetry: {}, voiceDictationMode: 'oneshot' },
+      });
+      expect(serverConfigSelectors.enableVoiceDictationEntry(store.getState())).toBe(true);
+    });
+
+    it('opens for realtime without the runtime flag', () => {
+      const store = initServerConfigStore({
+        featureFlags: mapFeatureFlagsEnvToState(DEFAULT_FEATURE_FLAGS),
+        serverConfig: { aiProvider: {}, telemetry: {}, voiceDictationMode: 'realtime' },
+      });
+      expect(serverConfigSelectors.enableVoiceDictationEntry(store.getState())).toBe(true);
+    });
+  });
+
   describe('enableManagedCloudDevice', () => {
     it('is off by default and on only when the flag resolves to true', () => {
       expect(

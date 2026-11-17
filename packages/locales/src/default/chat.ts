@@ -3847,6 +3847,8 @@ export default {
   'voiceDictation.error.SESSION_EXPIRED': 'The dictation session expired. Start a new session.',
   'voiceDictation.error.SESSION_LIMIT_EXCEEDED': 'The dictation session limit was reached.',
   'voiceDictation.error.WORKER_RESTART': 'The dictation service restarted. Try again.',
+  'voiceDictation.fallbackToOneshot':
+    'Realtime dictation is unavailable. Switched to record-then-transcribe.',
   'voiceDictation.finalizing': 'Finishing dictation…',
   'voiceDictation.listening': 'Listening…',
   'voiceDictation.otherAudioModeActive': 'Finish the voice message recording first.',

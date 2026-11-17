@@ -33,6 +33,16 @@ const ASSISTANT_INDEX_URL = 'https://registry.npmmirror.com/@lobehub/agents-inde
 
 const PLUGINS_INDEX_URL = 'https://registry.npmmirror.com/@lobehub/plugins-index/v1/files/public';
 
+const VOICE_DICTATION_MODES = ['auto', 'oneshot', 'realtime'] as const;
+
+type VoiceDictationMode = (typeof VOICE_DICTATION_MODES)[number];
+
+/** Unset and unrecognized values both mean `auto`; a typo must not fail config parsing. */
+const parseVoiceDictationMode = (value?: string): VoiceDictationMode | undefined =>
+  VOICE_DICTATION_MODES.includes(value as VoiceDictationMode)
+    ? (value as VoiceDictationMode)
+    : undefined;
+
 export const getAppConfig = () => {
   return createEnv({
     clientPrefix: 'NEXT_PUBLIC_',
@@ -101,6 +111,12 @@ export const getAppConfig = () => {
        */
       ENABLE_PAGE_COLLAB: z.boolean().optional(),
       ENABLE_WORKSPACE_PAGE_COLLAB: z.boolean().optional(),
+      /**
+       * Voice dictation transport. `auto` probes the realtime ASR gateway and
+       * falls back to one-shot transcription when it is unavailable; pinning
+       * `realtime` or `oneshot` skips the probe entirely.
+       */
+      VOICE_DICTATION_MODE: z.enum(['auto', 'oneshot', 'realtime']).optional(),
       /**
        * Self-hosted switch for Artifact deployment: publishing a chat Artifact
        * to a URL this deployment hosts. Off by default, because it exposes
@@ -183,6 +199,7 @@ export const getAppConfig = () => {
       ENABLE_AGENT_GATEWAY: process.env.ENABLE_AGENT_GATEWAY === '1',
       ENABLE_PAGE_COLLAB: process.env.ENABLE_PAGE_COLLAB === '1',
       ENABLE_WORKSPACE_PAGE_COLLAB: process.env.ENABLE_WORKSPACE_PAGE_COLLAB === '1',
+      VOICE_DICTATION_MODE: parseVoiceDictationMode(process.env.VOICE_DICTATION_MODE),
       OSS_ENABLE_ARTIFACT_DEPLOYMENT: process.env.OSS_ENABLE_ARTIFACT_DEPLOYMENT === '1',
       AGENT_GATEWAY_URL: process.env.AGENT_GATEWAY_URL,
       AGENT_GATEWAY_PROTOCOL: process.env.AGENT_GATEWAY_PROTOCOL || undefined,

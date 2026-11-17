@@ -112,6 +112,25 @@ Available system agents and their functions:
 
 For specific content, please refer to the [Feature Flags](/docs/self-hosting/advanced/feature-flags) documentation.
 
+### `VOICE_DICTATION_MODE`
+
+- Type: Optional
+- Description: Selects how voice dictation transcribes speech in the chat input. Enter one of `auto`, `realtime`, or `oneshot`; an unset or unrecognized value behaves as `auto`.
+- Default: `auto`
+- Example: `oneshot`
+
+| Value      | Transport behavior                                                                                                                                                                                                                         | When to use                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `auto`     | Default. Probes the realtime ASR session endpoint before the first press. When the endpoint is missing, the ASR provider is unavailable, or the network drops, dictation falls back to one-shot transcription and shows a one-time notice. | Deployments that may or may not run asr-gateway and want realtime whenever it is reachable.  |
+| `realtime` | Forces realtime streaming through asr-gateway and skips the probe. A failed session or connection reports an error directly; it does not fall back to one-shot transcription.                                                              | Deployments with a reliable asr-gateway that need partial transcripts while the user speaks. |
+| `oneshot`  | Never opens a realtime session and needs no asr-gateway. Records the whole utterance, then transcribes it once after release with the speech-to-text model configured in user settings.                                                    | Deployments without asr-gateway that accept waiting until the recording ends.                |
+
+Recording stops at 60 seconds: dictation reuses the realtime session limit (`maxSessionMs`), and a 60-second 16 kHz mono PCM WAV is about 1.9 MB, so it stays under the 3 MB inline-audio cap that both the client and the server enforce.
+
+Pinning `realtime` or `oneshot` opens the microphone entry on its own. The `voice_dictation` feature flag only gates the entry in `auto` mode, because `oneshot` needs no realtime session endpoint.
+
+`realtime` assumes asr-gateway is deployed. Without it the entry still appears and reports an error on every attempt — the pin is treated as a declaration that the gateway exists.
+
 ### `ENABLE_AGENT_GATEWAY`
 
 - Type: Optional

@@ -204,6 +204,7 @@ export const getServerGlobalConfig = async () => {
     enablePageCollab: enableGatewayMode && isLegacyPageCollabEnabled(),
     enableUploadFileToServer: !!fileEnv.S3_SECRET_ACCESS_KEY,
     enableWorkspacePageCollab: enableGatewayMode && isWorkspacePageCollabEnabled(),
+    voiceDictationMode: appEnv.VOICE_DICTATION_MODE ?? 'auto',
     enableMultimodalUnderstanding: !!(
       toolsEnv.MULTIMODAL_UNDERSTANDING_PROVIDER && toolsEnv.MULTIMODAL_UNDERSTANDING_MODEL
     ),

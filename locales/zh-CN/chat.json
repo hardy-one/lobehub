@@ -3370,6 +3370,7 @@
   "voiceDictation.error.SESSION_EXPIRED": "听写会话已过期，请重新开始",
   "voiceDictation.error.SESSION_LIMIT_EXCEEDED": "已达到听写会话限制",
   "voiceDictation.error.WORKER_RESTART": "听写服务已重启，请重试",
+  "voiceDictation.fallbackToOneshot": "实时听写不可用，已切换为录音后转写。",
   "voiceDictation.finalizing": "正在完成听写…",
   "voiceDictation.listening": "正在聆听…",
   "voiceDictation.otherAudioModeActive": "请先结束语音消息录音",

@@ -14,9 +14,9 @@ import { ChatInputAction } from '../ActionBar/components/ChatInputAction';
 import { useChatInputStore, useStoreApi } from '../store';
 import { isOtherAudioInputModeActive } from './mutualExclusion';
 import { getDictationControlMode } from './presentation';
+import { useDictation } from './useDictation';
 import { useDictationControlFocus } from './useDictationControlFocus';
 import { useDictationPrefetch } from './useDictationPrefetch';
-import { useRealtimeDictation } from './useRealtimeDictation';
 
 const styles = stylex.create({
   cancel: { color: cssVar.colorTextSecondary },
@@ -81,9 +81,11 @@ const styles = stylex.create({
 
 const Dictation = memo(() => {
   const { t } = useTranslation('chat');
-  // `voice_dictation` opens the entry on deployments that serve the realtime ASR session endpoint;
-  // business deployments set it from the business gate instead.
-  const enabled = useServerConfigStore(serverConfigSelectors.enableVoiceDictation);
+  // `voice_dictation` opens the entry on deployments that serve the realtime ASR session
+  // endpoint; business deployments set it from the business gate instead. Pinning
+  // `VOICE_DICTATION_MODE` declares the capability directly, so `oneshot` opens the entry
+  // on a deployment that has no gateway at all.
+  const enabled = useServerConfigStore(serverConfigSelectors.enableVoiceDictationEntry);
   const storeApi = useStoreApi();
   const [activeAudioInputMode, editor, mobile, generating, setActiveAudioInputMode] =
     useChatInputStore((s) => [
@@ -93,7 +95,7 @@ const Dictation = memo(() => {
       Boolean(s.sendButtonProps?.generating),
       s.setActiveAudioInputMode,
     ]);
-  const { client, errorCode, retryable, status } = useRealtimeDictation(editor);
+  const { client, errorCode, retryable, status } = useDictation(editor);
   const prefetch = useDictationPrefetch(client, enabled && !mobile);
   const active = status !== 'idle' || activeAudioInputMode === 'dictation';
   const controlMode = getDictationControlMode(status);

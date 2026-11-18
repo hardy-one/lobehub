@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 
 import {
   expertiseBindings,
@@ -12,13 +12,18 @@ import type { ExpertiseContext } from './context';
 import { domainScopeWhere } from './context';
 
 export interface RetireStaleLessonsOptions {
+  /**
+   * Report the candidates without retiring them. Used to inspect a night's
+   * decision before it is allowed to change the rule base.
+   */
+  dryRun?: boolean;
   /** Hits inside the window at or below which a lesson counts as unused. */
   maxHits?: number;
   /**
    * How many of the responsible agents' most recent topics the window covers.
-   * Topics, not runs: a run exists only when a review judged the topic relevant
-   * to the domain, so skipped or merged topics would silently shrink the
-   * window and make an active lesson look unused.
+   * This number also decides eligibility: a lesson must have been written
+   * before the window's oldest topic, so it has lived through a full window
+   * instead of starting at zero hits by construction.
    */
   windowTopics?: number;
 }
@@ -75,18 +80,18 @@ const scopeWhere = (ctx: ExpertiseContext, scope: DomainScope) =>
   scope.kind === 'user' ? eq(topics.userId, ctx.userId) : inArray(topics.agentId, scope.agentIds);
 
 /**
- * Retires lessons that no hit inside the domain's recent-topic window touches.
+ * Retires lessons that have already lived through a full window of work and
+ * still have not been applied inside one.
  *
- * The window asks "was this lesson applied in the last N topics these agents
- * worked on", which survives a change of task mix better than a calendar date:
- * a quiet fortnight does not by itself condemn a lesson, but a hundred topics
- * that never touched it does.
+ * Both the verdict and the eligibility are measured in topics rather than
+ * days: a hundred topics is a hundred pieces of work whatever the calendar
+ * says, and a lesson that predates them has had a fair sample.
  */
 export const retireStaleLessons = async (
   ctx: ExpertiseContext,
   options: RetireStaleLessonsOptions = {},
 ): Promise<RetireStaleLessonsResult> => {
-  const { maxHits = 3, windowTopics = 100 } = options;
+  const { dryRun = false, maxHits = 3, windowTopics = 100 } = options;
   const now = new Date();
   const retired: RetiredLesson[] = [];
   const skipped: SkippedDomain[] = [];
@@ -118,7 +123,7 @@ export const retireStaleLessons = async (
     }
 
     const windowRows = await ctx.db
-      .select({ id: topics.id })
+      .select({ id: topics.id, updatedAt: topics.updatedAt })
       .from(topics)
       .where(where)
       .orderBy(desc(topics.updatedAt))
@@ -129,6 +134,11 @@ export const retireStaleLessons = async (
       skipped.push({ domainId: domain.id, reason: 'no-topics', title: domain.title });
       continue;
     }
+
+    // A lesson written after the window's oldest topic has not lived through a
+    // full window: its own creation removed every earlier topic, so it starts
+    // at zero hits no matter how it will be used.
+    const windowStartAt = windowRows.at(-1)!.updatedAt;
 
     // Count only hits whose run points at a topic inside the window. Hits from
     // acceptance or goal-gate runs are real evidence, but they do not belong to
@@ -149,26 +159,34 @@ export const retireStaleLessons = async (
           inArray(expertiseRuns.subjectId, windowTopicIds),
         ),
       )
-      .where(and(eq(expertiseLessons.domainId, domain.id), eq(expertiseLessons.status, 'active')))
+      .where(
+        and(
+          eq(expertiseLessons.domainId, domain.id),
+          eq(expertiseLessons.status, 'active'),
+          lt(expertiseLessons.createdAt, windowStartAt),
+        ),
+      )
       .groupBy(expertiseLessons.id, expertiseLessons.code);
 
     const stale = counts.filter((lesson) => Number(lesson.hits) <= maxHits);
     if (stale.length === 0) continue;
 
-    await ctx.db
-      .update(expertiseLessons)
-      .set({
-        rejectedReason: `auto-retired: ${maxHits} or fewer hits in the last ${windowTopics} topics`,
-        retiredAt: now,
-        status: 'retired',
-        updatedAt: now,
-      })
-      .where(
-        inArray(
-          expertiseLessons.id,
-          stale.map((lesson) => lesson.id),
-        ),
-      );
+    if (!dryRun) {
+      await ctx.db
+        .update(expertiseLessons)
+        .set({
+          rejectedReason: `auto-retired: ${maxHits} or fewer hits in the last ${windowTopics} topics`,
+          retiredAt: now,
+          status: 'retired',
+          updatedAt: now,
+        })
+        .where(
+          inArray(
+            expertiseLessons.id,
+            stale.map((lesson) => lesson.id),
+          ),
+        );
+    }
 
     retired.push(
       ...stale.map((lesson) => ({

@@ -20,6 +20,25 @@ type ModelSettings = NonNullable<ChatModelCard['settings']>;
 /** The params that set how hard a model thinks, which a `reasoning: false` card must not offer. */
 const REASONING_PARAMS = new Set<string>(MODEL_REASONING_EXTEND_PARAMS);
 
+/** magpie's own price for one model, USD a million tokens, with its tiers. */
+interface MagpiePrice {
+  cache_read?: number;
+  cache_write?: number;
+  input?: number;
+  output?: number;
+  /**
+   * What a request costs whole once its input goes over `above`, lowest first:
+   * OpenAI's gpt-6-astra is 2× input and cache above 272K.
+   */
+  tiers?: Array<{
+    above: number;
+    cache_read?: number;
+    cache_write?: number;
+    input?: number;
+    output?: number;
+  }>;
+}
+
 /**
  * One row of magpie's `GET /v1/models`.
  *
@@ -46,6 +65,12 @@ interface MagpieModelCard {
   kind?: string;
   /** The model's name as magpie's own lists label it, `· provider` and all. */
   magpie_label?: string;
+  /**
+   * The same price as `pricing`, USD a million tokens, given when the list was
+   * asked for it with `X-Magpie-Prices`: `pricing` is that price a token, and
+   * only this one says what a request over a tier's input size costs.
+   */
+  magpie_price?: MagpiePrice;
   max_input_tokens?: number;
   max_output_tokens?: number;
   modalities?: {
@@ -63,6 +88,13 @@ interface MagpieModelCard {
   supported_parameters?: string[];
   supported_reasoning_levels?: { effort: string }[];
   tool_call?: boolean;
+  /**
+   * How the model searches the web, given when the list was asked with
+   * `X-Magpie-Drawers`: `native` for the vendor searching in its own answer,
+   * `magpie` for the gateway searching on the model's behalf. Left out when
+   * the model cannot search at all.
+   */
+  web_search?: string;
 }
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:3425';
@@ -169,8 +201,11 @@ const fromMagpie = (model: MagpieModelCard): Partial<ChatModelCard> => {
   const audio = takes('audio');
   const video = takes('video');
   const imageOutput = gives('image');
-  const pricing = pricingOf(model.pricing);
+  const pricing = pricingFromMagpiePrice(model.magpie_price) ?? pricingOf(model.pricing);
   const toolCalls = takesToolCalls(model);
+  // magpie names how a model searches, `native` in the vendor's own answer or
+  // `magpie` on the gateway's behalf, and says nothing at all when it cannot.
+  const search = model.web_search ? true : undefined;
 
   return {
     displayName: plainName(model),
@@ -181,6 +216,7 @@ const fromMagpie = (model: MagpieModelCard): Partial<ChatModelCard> => {
     ...(imageOutput === undefined ? {} : { imageOutput }),
     ...(pricing ? { pricing } : {}),
     ...(thinks === undefined ? {} : { reasoning: thinks }),
+    ...(search === undefined ? {} : { search }),
     ...(video === undefined ? {} : { video }),
     ...(vision === undefined ? {} : { vision }),
   };
@@ -226,6 +262,56 @@ const pricingOf = (raw: Record<string, unknown> | undefined): Pricing | undefine
   for (const [name, key] of PRICE_UNITS) {
     const rate = perMillion(raw[key]);
     if (rate !== undefined) units.push({ name, rate, strategy: 'fixed', unit: 'millionTokens' });
+  }
+
+  return units.length ? { currency: 'USD', units } : undefined;
+};
+
+/** magpie's own price keys, as model-bank names the same unit. */
+const MAGPIE_PRICE_UNITS: ReadonlyArray<[PricingUnitName, keyof Omit<MagpiePrice, 'tiers'>]> = [
+  ['textInput', 'input'],
+  ['textOutput', 'output'],
+  ['textInput_cacheRead', 'cache_read'],
+  ['textInput_cacheWrite', 'cache_write'],
+];
+
+/** A rate magpie gave, when it is one a price can be written from. */
+const rateOf = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+
+/**
+ * magpie's own price for one model, USD a million tokens, as model-bank's units.
+ *
+ * The gateway also gives that price a token as `pricing`, which is the same
+ * number moved six places and with no word on size. This one knows that a
+ * request whose input goes over a tier's size is billed at that tier's prices
+ * whole, which model-bank writes as `volume`, not as a ladder its parts climb.
+ */
+const pricingFromMagpiePrice = (price: MagpiePrice | undefined): Pricing | undefined => {
+  if (!price) return undefined;
+
+  const tier = price.tiers?.find((t) => (rateOf(t.above) ?? 0) > 0);
+  const units: Pricing['units'] = [];
+
+  for (const [name, key] of MAGPIE_PRICE_UNITS) {
+    const rate = rateOf(price[key]);
+    if (rate === undefined) continue;
+
+    if (!tier) {
+      units.push({ name, rate, strategy: 'fixed', unit: 'millionTokens' });
+      continue;
+    }
+
+    units.push({
+      mode: 'volume',
+      name,
+      strategy: 'tiered',
+      tiers: [
+        { rate, upTo: tier.above },
+        { rate: rateOf(tier[key]) ?? rate, upTo: 'infinity' },
+      ],
+      unit: 'millionTokens',
+    });
   }
 
   return units.length ? { currency: 'USD', units } : undefined;
@@ -291,16 +377,18 @@ const knownSettings = (
 };
 
 /**
- * The headers that ask magpie's list for the models an agent's list never
- * carries: its drawing models, its video models, and its decision models,
- * each row marked `kind` (see `provider.DrawersHeader` and its siblings in
- * magpie's `internal/provider/remote_magpie.go`). Without them the gateway
- * lists only models to chat with, and LobeHub's image and video pickers have
- * nothing to offer for this provider.
+ * The headers that ask magpie's list for more than an agent's list carries:
+ * its drawing models, its video models and its decision models, each row
+ * marked `kind`, and its own price a million tokens, tiers included (see
+ * `provider.DrawersHeader` and its siblings in magpie's
+ * `internal/provider/remote_magpie.go`). Without them the gateway lists only
+ * models to chat with at a price a token, and LobeHub's image and video
+ * pickers have nothing to offer for this provider.
  */
-const MEDIA_LIST_HEADERS = {
+const LIST_HEADERS = {
   'X-Magpie-Deciders': '1',
   'X-Magpie-Drawers': '1',
+  'X-Magpie-Prices': '1',
   'X-Magpie-Videomakers': '1',
 };
 
@@ -324,7 +412,7 @@ const KIND_TO_TYPE: Record<string, AiModelType | undefined> = {
  * calls as its vendor's entry says.
  */
 const fetchMagpieModels = async (client: OpenAI): Promise<ChatModelCard[]> => {
-  const response = await client.models.list({ headers: MEDIA_LIST_HEADERS });
+  const response = await client.models.list({ headers: LIST_HEADERS });
   const rows = (response.data as unknown as MagpieModelCard[]).filter((row) => !!row?.id);
 
   const models = await loadModels();
@@ -383,7 +471,15 @@ const fetchMagpieModels = async (client: OpenAI): Promise<ChatModelCard[]> => {
   );
   const kept = unique.filter((card) => card.id.includes('/') || !names.has(card.id));
 
-  return processMultiProviderModelList(kept, ModelProvider.Magpie, { preferCardValues: true });
+  const cards = await processMultiProviderModelList(kept, ModelProvider.Magpie, {
+    preferCardValues: true,
+  });
+
+  return cards.map((card) =>
+    // magpie lists a model it only serves for embeddings as a chat row, so it
+    // answers `web_search` for it too; a model that embeds does not search.
+    card.type === 'embedding' && card.search ? { ...card, search: false } : card,
+  );
 };
 
 export const params = {

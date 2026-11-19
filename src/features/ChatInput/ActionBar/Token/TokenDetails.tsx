@@ -27,6 +27,7 @@ const TokenDetails = memo<TokenDetailsProps>(({ breakdown }) => {
     toolCallsToken,
     toolsToken,
     totalToken,
+    usedToken,
   } = breakdown;
   const isDevMode = useUserStore((s) => userGeneralSettingsSelectors.config(s).isDevMode);
 

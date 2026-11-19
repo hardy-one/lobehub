@@ -217,6 +217,92 @@ describe('the model list magpie serves', () => {
     expect(cards[0].pricing?.units?.length).toBeGreaterThan(0);
   });
 
+  it('reads magpie’s own price by the tier it names, what a request that size costs whole', async () => {
+    const cards = await load([
+      model({
+        id: 'openai/gpt-6-luna',
+        magpie_price: { input: 0.1, output: 0.5, tiers: [{ above: 272_000, input: 0.2 }] },
+      }),
+    ]);
+
+    expect(cards[0].pricing).toEqual({
+      currency: 'USD',
+      units: [
+        {
+          mode: 'volume',
+          name: 'textInput',
+          strategy: 'tiered',
+          tiers: [
+            { rate: 0.1, upTo: 272_000 },
+            { rate: 0.2, upTo: 'infinity' },
+          ],
+          unit: 'millionTokens',
+        },
+        {
+          mode: 'volume',
+          name: 'textOutput',
+          strategy: 'tiered',
+          tiers: [
+            { rate: 0.5, upTo: 272_000 },
+            // a tier naming no price for this one keeps the price below it
+            { rate: 0.5, upTo: 'infinity' },
+          ],
+          unit: 'millionTokens',
+        },
+      ],
+    });
+  });
+
+  it('reads magpie’s own price flat when it names no tier', async () => {
+    const cards = await load([
+      model({ id: 'openai/gpt-5.6-sol', magpie_price: { input: 3, output: 10 } }),
+    ]);
+
+    expect(cards[0].pricing?.units).toEqual([
+      { name: 'textInput', rate: 3, strategy: 'fixed', unit: 'millionTokens' },
+      { name: 'textOutput', rate: 10, strategy: 'fixed', unit: 'millionTokens' },
+    ]);
+  });
+
+  it('takes magpie’s own price over the same price a token', async () => {
+    const cards = await load([
+      model({
+        id: 'openai/gpt-5.6-sol',
+        magpie_price: { input: 3, output: 10 },
+        pricing: { completion: '0.00001', prompt: '0.000001' },
+      }),
+    ]);
+
+    expect(cards[0].pricing?.units).toEqual([
+      { name: 'textInput', rate: 3, strategy: 'fixed', unit: 'millionTokens' },
+      { name: 'textOutput', rate: 10, strategy: 'fixed', unit: 'millionTokens' },
+    ]);
+  });
+
+  it('reads search from either way magpie says the model searches', async () => {
+    const cards = await load([
+      model({ id: 'openai/gpt-5.6-sol', web_search: 'native' }),
+      model({ id: 'workbuddy/kimi-k3-1', web_search: 'magpie' }),
+    ]);
+
+    expect(cards.map((c) => c.search)).toEqual([true, true]);
+  });
+
+  it('leaves search to model-bank when magpie says nothing', async () => {
+    const cards = await load([model({ id: 'workbuddy/kimi-k3-1' })]);
+
+    expect(cards[0].search).not.toBe(true);
+  });
+
+  it('leaves search off a model magpie lists only to embed', async () => {
+    const cards = await load([
+      model({ id: 'chatanywhere/text-embedding-3-small', web_search: 'magpie' }),
+    ]);
+
+    expect(cards[0].type).toBe('embedding');
+    expect(cards[0].search).not.toBe(true);
+  });
+
   it('takes the reasoning levels magpie kept', async () => {
     const cards = await load([
       model({ id: 'openai/gpt-5.6-sol', reasoning_levels: ['low', 'high'] }),
@@ -421,6 +507,7 @@ describe('the model list magpie serves', () => {
     expect(headers).toMatchObject({
       'X-Magpie-Deciders': '1',
       'X-Magpie-Drawers': '1',
+      'X-Magpie-Prices': '1',
       'X-Magpie-Videomakers': '1',
     });
   });

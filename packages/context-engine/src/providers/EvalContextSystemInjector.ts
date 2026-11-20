@@ -14,8 +14,10 @@ const log = debug('context-engine:provider:EvalContextSystemInjector');
 export interface EvalContext {
   envPrompt?: string;
   /**
-   * The attempt's clock (ISO date or instant). Every "today" the model sees
-   * renders from it, so the prompt reads like a real session on that day.
+   * The attempt's clock (ISO date or instant), rendered into `envPrompt` only.
+   * The system date line and eval-driven date pinning were removed; all other
+   * "today" values (temporal placeholders, tool prompts, time reminders) now
+   * render from the real wall clock or from each message's own `createdAt`.
    */
   sessionDate?: string;
   /** IANA timezone the clock renders in; UTC when absent. */

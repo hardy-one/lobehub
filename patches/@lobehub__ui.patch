@@ -2,8 +2,8 @@ diff --git a/es/hooks/useMarkdown/useMarkdownContent.mjs b/es/hooks/useMarkdown/
 --- a/es/hooks/useMarkdown/useMarkdownContent.mjs
 +++ b/es/hooks/useMarkdown/useMarkdownContent.mjs
 @@ -3,6 +3,76 @@
+ import { useMarkdownContext } from "../../Markdown/components/MarkdownProvider.mjs";
  import { addToCache, contentCache, preprocessMarkdownContent } from "./utils.mjs";
- import { useMemo } from "react";
  // src/hooks/useMarkdown/useMarkdownContent.ts
 +/**
 + * Index of the first character up to which `text` is structurally complete.

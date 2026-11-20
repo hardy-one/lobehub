@@ -194,6 +194,7 @@ export const buildServerCallLlmContext = async ({
 
   const contextEngineInput = {
     enableMcpAppContext: await isMcpAppsEnabled(ctx.userId),
+    enableTimeReminder: llmPayload.enableTimeReminder,
     additionalContexts: llmPayload.additionalContexts,
     attachmentPreviewFileIds: llmPayload.attachmentPreviewFileIds,
     agentDocumentChanges: facts.agentDocumentChanges,

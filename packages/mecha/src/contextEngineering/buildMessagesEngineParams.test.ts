@@ -123,7 +123,20 @@ describe('buildMessagesEngineParams', () => {
     expect(generators.defaultShell()).not.toContain('{{');
   });
 
-  it('renders every date the model sees from the eval session clock', () => {
+  it('renders placeholders from the wall clock in the user timezone', () => {
+    const params = buildMessagesEngineParams({
+      ...baseSnapshot(),
+      world: { userTimezone: 'Asia/Shanghai' },
+    });
+
+    expect(params.timezone).toBe('Asia/Shanghai');
+    expect(params.variableGenerators!.timezone()).toBe('Asia/Shanghai');
+    // The eval case clock no longer changes "today": no pinning of tool prompts
+    // and no override of the temporal placeholders.
+    expect(params.variableGenerators!.date()).toBeTruthy();
+  });
+
+  it('leaves a tool prompt current-date line untouched (no eval pinning)', () => {
     const params = buildMessagesEngineParams({
       ...baseSnapshot(),
       tools: {
@@ -136,25 +149,14 @@ describe('buildMessagesEngineParams', () => {
         ],
       },
       world: {
+        // Even with a case clock present, the manifest is not rewritten.
         evalContext: { sessionDate: '2026-07-21', timezone: 'Asia/Shanghai' },
         userTimezone: 'America/New_York',
       },
     });
 
-    expect(params.timezone).toBe('Asia/Shanghai');
-    expect(params.variableGenerators!.date()).toContain('July 21, 2026');
-    expect(params.variableGenerators!.timezone()).toBe('Asia/Shanghai');
-    expect(params.toolsConfig?.manifests?.[0].systemRole).toBe('Search.\nCurrent date: 2026-07-21');
+    expect(params.timezone).toBe('America/New_York');
+    expect(params.toolsConfig?.manifests?.[0].systemRole).toBe('Search.\nCurrent date: 2026-10-22');
     expect(params.toolsConfig?.manifests?.[1].systemRole).toBe('No date here');
-  });
-
-  it('renders the eval clock in UTC when the case names no timezone', () => {
-    const params = buildMessagesEngineParams({
-      ...baseSnapshot(),
-      world: { evalContext: { sessionDate: '2026-07-21T23:30:00Z' }, userTimezone: 'Asia/Tokyo' },
-    });
-
-    expect(params.timezone).toBe('UTC');
-    expect(params.variableGenerators!.date()).toContain('July 21, 2026');
   });
 });

@@ -242,10 +242,12 @@ export interface MessagesEngineParams {
   /** Provider ID */
   provider: string;
 
-  // ========== System date ==========
-  /** Whether to inject current date into system message (default: true) */
+  // ========== System date / time reminder ==========
+  /** @deprecated No longer used for the system date line; kept for compatibility. */
   enableSystemDate?: boolean;
-  /** User timezone for system date formatting (e.g. 'Asia/Shanghai') */
+  /** Whether to inject per-turn time reminders (default: true) */
+  enableTimeReminder?: boolean;
+  /** User timezone for time formatting (e.g. 'Asia/Shanghai') */
   timezone?: string | null;
 
   // ========== Agent configuration ==========

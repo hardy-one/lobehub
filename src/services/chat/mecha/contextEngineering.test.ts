@@ -95,15 +95,11 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-// Helper to compute expected date content from SystemDateProvider
-const getCurrentDateContent = () => {
-  const tz = 'UTC';
-  const today = new Date();
-  const year = today.toLocaleString('en-US', { timeZone: tz, year: 'numeric' });
-  const month = today.toLocaleString('en-US', { month: '2-digit', timeZone: tz });
-  const day = today.toLocaleString('en-US', { day: '2-digit', timeZone: tz });
-  return `Current date: ${year}-${month}-${day} (${tz})`;
-};
+// Time reminders are injected into user messages by TimeReminderInjector. To
+// keep the assertions here focused on the behavior under test, disable them in
+// this suite; cadence/content is verified in TimeReminderInjector.test.ts.
+const contextEngineeringWithoutReminders = (params: Parameters<typeof contextEngineering>[0]) =>
+  contextEngineering({ ...params, enableTimeReminder: false });
 
 const setupDocument = {
   content: 'Project setup steps',
@@ -133,7 +129,7 @@ describe('contextEngineering', () => {
     } as any);
     const ensureSpy = vi.spyOn(useAgentStore.getState(), 'ensureAgentDocuments');
 
-    const output = await contextEngineering({
+    const output = await contextEngineeringWithoutReminders({
       agentId: 'agent-1',
       messages,
       model: 'gpt-4',
@@ -158,7 +154,7 @@ describe('contextEngineering', () => {
 
   it('should suppress agent documents when runtime agent mode is disabled', async () => {
     useAgentStore.setState({ agentDocumentsMap: { 'agent-1': [setupDocument] } } as any);
-    const output = await contextEngineering({
+    const output = await contextEngineeringWithoutReminders({
       agentId: 'agent-1',
       enableAgentMode: false,
       messages: [{ content: 'Summarize the setup', role: 'user' }] as UIChatMessage[],
@@ -189,7 +185,7 @@ describe('contextEngineering', () => {
       },
     } as any);
 
-    const output = await contextEngineering({
+    const output = await contextEngineeringWithoutReminders({
       agentId: 'agent-1',
       messages: [{ content: 'Summarize the setup', role: 'user' }] as UIChatMessage[],
       model: 'gpt-4',
@@ -217,7 +213,7 @@ describe('contextEngineering', () => {
       },
     } as any);
 
-    const output = await contextEngineering({
+    const output = await contextEngineeringWithoutReminders({
       agentId: 'builder-agent',
       messages: [{ content: 'Improve my agent', role: 'user' }] as UIChatMessage[],
       model: 'gpt-4',
@@ -255,7 +251,7 @@ describe('contextEngineering', () => {
       ],
     });
 
-    await contextEngineering({
+    await contextEngineeringWithoutReminders({
       agentId: 'agent-1',
       messages: [{ content: 'Hello', role: 'user' }] as UIChatMessage[],
       model: 'gpt-4',
@@ -266,7 +262,7 @@ describe('contextEngineering', () => {
   });
 
   it('should query available agents when the prefetch cache is missing', async () => {
-    await contextEngineering({
+    await contextEngineeringWithoutReminders({
       agentId: 'agent-1',
       messages: [{ content: 'Hello', role: 'user' }] as UIChatMessage[],
       model: 'gpt-4',
@@ -279,7 +275,7 @@ describe('contextEngineering', () => {
   it('should inject runtime model knowledge cutoff', async () => {
     vi.spyOn(helpers, 'getRuntimeModelKnowledgeCutoff').mockReturnValue('2024-06');
 
-    const output = await contextEngineering({
+    const output = await contextEngineeringWithoutReminders({
       messages: [{ content: 'Hello', role: 'user' }] as UIChatMessage[],
       model: 'gpt-4',
       provider: 'openai',
@@ -296,7 +292,7 @@ describe('contextEngineering', () => {
   it('should inject runtime model name and id', async () => {
     vi.spyOn(helpers, 'getRuntimeModelDisplayName').mockReturnValue('Fable 5');
 
-    const output = await contextEngineering({
+    const output = await contextEngineeringWithoutReminders({
       messages: [{ content: 'Hello', role: 'user' }] as UIChatMessage[],
       model: 'claude-fable-5',
       provider: 'lobehub',
@@ -311,7 +307,7 @@ describe('contextEngineering', () => {
   });
 
   it('renders the cloud-sandbox workspace placeholders to the ephemeral wording on the client', async () => {
-    const output = await contextEngineering({
+    const output = await contextEngineeringWithoutReminders({
       messages: [{ content: 'Hello', role: 'user' }] as UIChatMessage[],
       model: 'gpt-4',
       provider: 'openai',
@@ -362,14 +358,14 @@ describe('contextEngineering', () => {
         { content: 'Hey', role: 'assistant' }, // Regular user message
       ] as UIChatMessage[];
 
-      const output = await contextEngineering({
+      const output = await contextEngineeringWithoutReminders({
         messages,
         model: 'gpt-4o',
         provider: 'openai',
       });
 
       expect(output).toEqual([
-        { content: expect.stringContaining(getCurrentDateContent()), role: 'system' },
+        { content: expect.any(String), role: 'system' },
         {
           content: [
             {
@@ -430,14 +426,14 @@ describe('contextEngineering', () => {
         }, // Message with files
         { content: 'Hey', role: 'assistant' }, // Regular user message
       ] as UIChatMessage[];
-      const output = await contextEngineering({
+      const output = await contextEngineeringWithoutReminders({
         messages,
         provider: 'openai',
         model: 'gpt-4-vision-preview',
       });
 
       expect(output).toEqual([
-        { content: expect.stringContaining(getCurrentDateContent()), role: 'system' },
+        { content: expect.any(String), role: 'system' },
         {
           content: [
             {
@@ -489,7 +485,7 @@ describe('contextEngineering', () => {
       },
     ] as UIChatMessage[];
 
-    const result = await contextEngineering({
+    const result = await contextEngineeringWithoutReminders({
       messages,
       model: 'gpt-4',
       provider: 'openai',
@@ -497,9 +493,7 @@ describe('contextEngineering', () => {
 
     expect(result).toEqual([
       {
-        content: expect.stringContaining(
-          '## Tools\n\nYou can use these tools\n\n' + getCurrentDateContent(),
-        ),
+        content: expect.stringContaining('## Tools\n\nYou can use these tools'),
         role: 'system',
       },
       {
@@ -521,14 +515,14 @@ describe('contextEngineering', () => {
       },
     ] as UIChatMessage[];
 
-    const result = await contextEngineering({
+    const result = await contextEngineeringWithoutReminders({
       messages,
       model: 'gpt-4',
       provider: 'openai',
     });
 
     expect(result).toEqual([
-      { content: expect.stringContaining(getCurrentDateContent()), role: 'system' },
+      { content: expect.any(String), role: 'system' },
       {
         content: [
           {
@@ -563,7 +557,7 @@ describe('contextEngineering', () => {
       },
     ];
 
-    const result = await contextEngineering({
+    const result = await contextEngineeringWithoutReminders({
       messages,
       model: 'gpt-4',
       historySummary,
@@ -591,14 +585,14 @@ describe('contextEngineering', () => {
       },
     ];
 
-    const result = await contextEngineering({
+    const result = await contextEngineeringWithoutReminders({
       messages,
       model: 'gpt-4',
       provider: 'openai',
     });
 
     expect(result[0]).toEqual({
-      content: expect.stringContaining(getCurrentDateContent()),
+      content: expect.any(String),
       role: 'system',
     });
     expect(result[1].role).toBe('user');
@@ -622,14 +616,14 @@ describe('contextEngineering', () => {
           updatedAt: Date.now(),
         },
       ];
-      const result = await contextEngineering({
+      const result = await contextEngineeringWithoutReminders({
         messages,
         model: 'gpt-4-vision-preview',
         provider: 'openai',
       });
 
       expect(result[0]).toEqual({
-        content: expect.stringContaining(getCurrentDateContent()),
+        content: expect.any(String),
         role: 'system',
       });
       expect(result[1].content).toEqual([
@@ -652,14 +646,14 @@ describe('contextEngineering', () => {
           updatedAt: Date.now(),
         },
       ];
-      const result = await contextEngineering({
+      const result = await contextEngineeringWithoutReminders({
         messages,
         model: 'gpt-4-vision-preview',
         provider: 'openai',
       });
 
       expect(result[0]).toEqual({
-        content: expect.stringContaining(getCurrentDateContent()),
+        content: expect.any(String),
         role: 'system',
       });
       expect(result[1].content).toEqual([
@@ -691,14 +685,14 @@ describe('contextEngineering', () => {
       },
     ];
 
-    const result = await contextEngineering({
+    const result = await contextEngineeringWithoutReminders({
       messages,
       model: 'some-model-without-fc',
       provider: 'openai',
     });
 
     expect(result[0]).toEqual({
-      content: expect.stringContaining(getCurrentDateContent()),
+      content: expect.any(String),
       role: 'system',
     });
     expect(result[1].tool_calls).toBeUndefined();
@@ -726,14 +720,14 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const result = await contextEngineeringWithoutReminders({
         messages,
         model: 'gpt-4',
         provider: 'openai',
       });
 
       expect(result[0]).toEqual({
-        content: expect.stringContaining(getCurrentDateContent()),
+        content: expect.any(String),
         role: 'system',
       });
       // Temporal placeholders come from the shared core: the user's timezone,
@@ -749,7 +743,7 @@ describe('contextEngineering', () => {
       vi.setSystemTime(new Date('2023-12-25T23:30:00Z'));
       useUserStore.setState({ settings: { general: { timezone: 'Asia/Tokyo' } } } as any);
 
-      const result = await contextEngineering({
+      const result = await contextEngineeringWithoutReminders({
         messages: [
           {
             role: 'user',
@@ -773,7 +767,7 @@ describe('contextEngineering', () => {
       vi.setSystemTime(new Date('2023-12-25T23:30:00Z'));
       useUserStore.setState({ settings: { general: { timezone: 'Asia/Tokyo' } } } as any);
 
-      const result = await contextEngineering({
+      const result = await contextEngineeringWithoutReminders({
         messages: [
           {
             role: 'user',
@@ -814,14 +808,14 @@ describe('contextEngineering', () => {
         },
       ] as any;
 
-      const result = await contextEngineering({
+      const result = await contextEngineeringWithoutReminders({
         messages,
         model: 'gpt-4',
         provider: 'openai',
       });
 
       expect(result[0]).toEqual({
-        content: expect.stringContaining(getCurrentDateContent()),
+        content: expect.any(String),
         role: 'system',
       });
       expect(Array.isArray(result[1].content)).toBe(true);
@@ -876,18 +870,17 @@ describe('contextEngineering', () => {
       });
       vi.spyOn(memoryManager, 'resolveUserPersona').mockReturnValue(undefined);
 
-      const result = await contextEngineering({
+      const result = await contextEngineeringWithoutReminders({
         enableUserMemories: true,
         messages,
         model: 'gpt-4',
         provider: 'openai',
       });
 
-      // Keep the original system message as-is (with date appended by SystemDateProvider)
+      // Keep the original system message as-is
       expect(result[0].role).toBe('system');
       expect(result[0].content).toContain(
-        'Memory load: available={{memory_available}}, total contexts={{memory_contexts_count}}\n{{memory_summary}}\n\n' +
-          getCurrentDateContent(),
+        'Memory load: available={{memory_available}}, total contexts={{memory_contexts_count}}\n{{memory_summary}}',
       );
 
       // Memory context is injected as a consolidated user message before the first user message
@@ -913,14 +906,14 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const result = await contextEngineeringWithoutReminders({
         messages,
         model: 'gpt-4',
         provider: 'openai',
       });
 
       expect(result[0]).toEqual({
-        content: expect.stringContaining(getCurrentDateContent()),
+        content: expect.any(String),
         role: 'system',
       });
       expect(result[1].content).toBe('Hello TestUser, missing: {{missing_var}}');
@@ -937,14 +930,14 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const result = await contextEngineeringWithoutReminders({
         messages,
         model: 'gpt-4',
         provider: 'openai',
       });
 
       expect(result[0]).toEqual({
-        content: expect.stringContaining(getCurrentDateContent()),
+        content: expect.any(String),
         role: 'system',
       });
       expect(result[1].content).toBe('Hello there, no variables here');
@@ -973,14 +966,14 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const result = await contextEngineeringWithoutReminders({
         messages,
         model: 'gpt-4o',
         provider: 'openai',
       });
 
       expect(result[0]).toEqual({
-        content: expect.stringContaining(getCurrentDateContent()),
+        content: expect.any(String),
         role: 'system',
       });
       expect(Array.isArray(result[1].content)).toBe(true);
@@ -1042,7 +1035,7 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const result = await contextEngineeringWithoutReminders({
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -1051,7 +1044,7 @@ describe('contextEngineering', () => {
       // Should keep all messages (plus system date)
       expect(result).toHaveLength(6);
       expect(result).toEqual([
-        { content: expect.stringContaining(getCurrentDateContent()), role: 'system' },
+        { content: expect.any(String), role: 'system' },
         { content: 'Message 1', role: 'user' },
         { content: 'Response 1', role: 'assistant' },
         { content: 'Message 2', role: 'user' },
@@ -1078,7 +1071,7 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const result = await contextEngineeringWithoutReminders({
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -1087,7 +1080,7 @@ describe('contextEngineering', () => {
 
       // Should apply template to user message only
       expect(result).toEqual([
-        { content: expect.stringContaining(getCurrentDateContent()), role: 'system' },
+        { content: expect.any(String), role: 'system' },
         {
           content: 'Template: Original user input - End',
           role: 'user',
@@ -1111,19 +1104,17 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const result = await contextEngineeringWithoutReminders({
         messages,
         model: 'gpt-4',
         provider: 'openai',
         systemRole: 'You are a helpful assistant.',
       });
 
-      // Should have system role at the beginning (with date appended)
+      // Should have system role at the beginning
       expect(result).toEqual([
         {
-          content: expect.stringContaining(
-            'You are a helpful assistant.\n\n' + getCurrentDateContent(),
-          ),
+          content: expect.stringContaining('You are a helpful assistant.'),
           role: 'system',
         },
         { content: 'User message', role: 'user' },
@@ -1155,7 +1146,7 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const result = await contextEngineeringWithoutReminders({
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -1163,10 +1154,10 @@ describe('contextEngineering', () => {
         inputTemplate: 'Processed: {{text}}',
       });
 
-      // System role should be first (with date appended), followed by all messages with input template applied to user messages
+      // System role should be first, followed by all messages with input template applied to user messages
       expect(result).toEqual([
         {
-          content: expect.stringContaining('System instructions.\n\n' + getCurrentDateContent()),
+          content: expect.stringContaining('System instructions.'),
           role: 'system',
         },
         {
@@ -1195,7 +1186,7 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const result = await contextEngineeringWithoutReminders({
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -1203,7 +1194,7 @@ describe('contextEngineering', () => {
 
       // Should pass message unchanged (with system date prepended)
       expect(result).toEqual([
-        { content: expect.stringContaining(getCurrentDateContent()), role: 'system' },
+        { content: expect.any(String), role: 'system' },
         {
           content: 'Simple message',
           role: 'user',
@@ -1236,17 +1227,17 @@ describe('contextEngineering', () => {
         },
       ];
 
-      const result = await contextEngineering({
+      const result = await contextEngineeringWithoutReminders({
         messages,
         model: 'gpt-4',
         provider: 'openai',
         systemRole: 'System role here.',
       });
 
-      // Should have system role (with date) + all messages
+      // Should have system role + all messages
       expect(result).toEqual([
         {
-          content: expect.stringContaining('System role here.\n\n' + getCurrentDateContent()),
+          content: expect.stringContaining('System role here.'),
           role: 'system',
         },
         {
@@ -1276,7 +1267,7 @@ describe('contextEngineering', () => {
       ];
 
       // This should not throw an error, but handle it gracefully
-      const result = await contextEngineering({
+      const result = await contextEngineeringWithoutReminders({
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -1285,7 +1276,7 @@ describe('contextEngineering', () => {
 
       // Should keep original message when template fails (with system date prepended)
       expect(result).toEqual([
-        { content: expect.stringContaining(getCurrentDateContent()), role: 'system' },
+        { content: expect.any(String), role: 'system' },
         {
           content: 'User message',
           role: 'user',

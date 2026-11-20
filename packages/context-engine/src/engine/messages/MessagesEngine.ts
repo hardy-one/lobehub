@@ -72,9 +72,9 @@ import {
   SKILL_STORE_TOOL_ID,
   SkillContextProvider,
   SkillImportRouteInjector,
-  SystemDateProvider,
   SystemRoleInjector,
   TaskManagerContextInjector,
+  TimeReminderInjector,
   TodoInjector,
   ToolDiscoveryProvider,
   ToolSystemRoleProvider,
@@ -210,6 +210,7 @@ export class MessagesEngine {
       topicReferences,
       documentReferences,
       enableSystemDate,
+      enableTimeReminder,
       timezone,
     } = this.params;
 
@@ -242,13 +243,11 @@ export class MessagesEngine {
           : undefined;
     const isTodoEnabled = effectiveTodos !== undefined;
 
+    // Time is now carried by TimeReminderInjector as per-turn snapshots, so the
+    // system prompt no longer gets a wall-clock "Current date" line (which
+    // invalidated the whole cached prefix once a day). Removing it also removes
+    // the reason SystemDateProvider needed its own activation-independent gate.
     const toolIds = toolsConfig?.tools || [];
-    // Keep SystemDateProvider independent of dynamically activated tools:
-    // toggling it off when web-browsing or user-memory is activated mid-run
-    // mutates the leading system message and invalidates the prompt-cache prefix.
-    const isSystemDateEnabled = enableSystemDate !== false;
-    // An eval attempt renders "today" from its case clock, never the wall clock.
-    const evalClock = evalContext?.sessionDate ? new Date(evalContext.sessionDate) : undefined;
     const currentUserMessage = [...messages]
       .reverse()
       .find((m) => m.role === 'user' && typeof m.content === 'string')?.content as
@@ -346,8 +345,7 @@ export class MessagesEngine {
         context: botPlatformContext,
         enabled: !!botPlatformContext,
       }),
-      // System date
-      new SystemDateProvider({ enabled: isSystemDateEnabled, now: evalClock, timezone }),
+      // System date is now provided by TimeReminderInjector (per-turn snapshots).
       // Model info (name / id / knowledge cutoff)
       new ModelInfoProvider({
         displayName: modelDisplayName,
@@ -632,6 +630,21 @@ export class MessagesEngine {
       // inside an assistantGroup. (Regression discovered while wiring lobehub
       // skill identity placeholders — see .)
       new PlaceholderVariablesProcessor({ variableGenerators: variableGenerators || {} }),
+
+      // Absolute-time snapshots on a deterministic 10-min cadence so the model
+      // keeps a sense of when each turn happened without breaking prefix cache.
+      // Runs AFTER all message transformation/template processing so the block
+      // stays at the absolute head of each user message, not wrapped inside an
+      // input template. Respects an explicit "no date injection" request; unlike
+      // the system date it is not suppressed by date-aware tools (per-turn
+      // spacing is not redundant with a tool's current-date blurb).
+      new TimeReminderInjector({
+        // Either explicit switch disables date-like injection. `enableSystemDate`
+        // is honored for backward compatibility with callers/tests that use it
+        // to request "no date in prompt".
+        enabled: enableSystemDate !== false && enableTimeReminder !== false,
+        timezone,
+      }),
 
       // =============================================
       // Phase 6: Content Processing

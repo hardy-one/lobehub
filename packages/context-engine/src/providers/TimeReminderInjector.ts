@@ -84,8 +84,8 @@ const prependBlock = (message: Message, block: string): Message => {
  *
  * Deliberately does NOT use BaseEveryUserContentProvider: its wrapWithSystemContext
  * adds a SYSTEM CONTEXT wrapper + "only required when the query relies on it"
- * instruction and appends to the tail. We want a bare `<time_reminder>` block at
- * the head of the message instead.
+ * instruction and appends to the tail. We want a bare `<current_time_reminder>`
+ * block at the head of the message instead.
  */
 export class TimeReminderInjector extends BaseProcessor {
   readonly name = 'TimeReminderInjector';
@@ -119,7 +119,7 @@ export class TimeReminderInjector extends BaseProcessor {
       lastInjectedAt = t;
       cloned.messages[i] = prependBlock(
         message,
-        `<time_reminder>\nIt is ${ts} (${this.config.timezone || 'UTC'}).\n</time_reminder>`,
+        `<current_time_reminder>\nIt is ${ts} (${this.config.timezone || 'UTC'}).\n</current_time_reminder>`,
       );
       injectCount++;
     }
@@ -128,7 +128,7 @@ export class TimeReminderInjector extends BaseProcessor {
     return this.markAsExecuted(cloned);
   }
 
-  /** Format an epoch instant as `YYYY-MM-DD HH:MM:SS` in the configured zone, or null on bad zone. */
+  /** Format an epoch instant as `Fri 2026-11-20 16:37:03 +08:00 (Asia/Shanghai)`, or null on bad zone. */
   private formatTime(t: number): string | null {
     const tz = this.config.timezone || 'UTC';
     try {
@@ -142,11 +142,18 @@ export class TimeReminderInjector extends BaseProcessor {
         month: '2-digit',
         second: '2-digit',
         timeZone: tz,
+        timeZoneName: 'longOffset',
+        weekday: 'short',
         year: 'numeric',
       }).formatToParts(new Date(t));
       const get = (type: Intl.DateTimeFormatPartTypes) =>
         parts.find((p) => p.type === type)?.value ?? '';
-      return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')}`;
+      // `longOffset` yields "GMT+08:00"; normalize to "+08:00" (and GMT to +00:00).
+      const offset = get('timeZoneName').replace(/^GMT/, '') || '+00:00';
+      return (
+        `${get('weekday')} ${get('year')}-${get('month')}-${get('day')} ` +
+        `${get('hour')}:${get('minute')}:${get('second')} ${offset}`
+      );
     } catch {
       return null;
     }

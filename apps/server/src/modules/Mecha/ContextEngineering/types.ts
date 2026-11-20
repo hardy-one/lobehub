@@ -154,6 +154,9 @@ export interface ServerMessagesEngineParams {
    */
   enableStaleToolResultTrim?: boolean;
 
+  /** Disable per-turn time reminders (default: enabled). */
+  enableTimeReminder?: boolean;
+
   /** Force finish flag: when true, injects summary prompt for max-steps completion */
   forceFinish?: boolean;
 

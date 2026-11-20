@@ -28,7 +28,7 @@ const messageAt = (i: number, createdAt: number | string): Message => ({
   role: 'user',
 });
 
-// Extract the text of every time_reminder block from the processed messages.
+// Extract the text of every current_time_reminder block from the processed messages.
 const reminderTexts = (messages: Message[]): string[] => {
   const out: string[] = [];
   for (const m of messages) {
@@ -39,7 +39,7 @@ const reminderTexts = (messages: Message[]): string[] => {
 };
 
 describe('TimeReminderInjector', () => {
-  it('injects a bare time_reminder block prepended to the user text (no SYSTEM CONTEXT wrapper)', async () => {
+  it('injects a bare current_time_reminder block prepended to the user text (no SYSTEM CONTEXT wrapper)', async () => {
     const result = await new TimeReminderInjector({
       enabled: true,
       timezone: 'UTC',
@@ -47,9 +47,9 @@ describe('TimeReminderInjector', () => {
 
     const content = String(result.messages[0].content);
     expect(content).toBe(
-      '<time_reminder>\nIt is 2026-11-19 20:00:00 (UTC).\n</time_reminder>\n\nuser 0',
+      '<current_time_reminder>\nIt is Thu 2026-11-19 20:00:00 +00:00 (UTC).\n</current_time_reminder>\n\nuser 0',
     );
-    expect(content.startsWith('<time_reminder>')).toBe(true);
+    expect(content.startsWith('<current_time_reminder>')).toBe(true);
     expect(content.endsWith('user 0')).toBe(true);
     expect(content).not.toContain('SYSTEM CONTEXT');
     expect(content).not.toContain('context.instruction');
@@ -72,7 +72,7 @@ describe('TimeReminderInjector', () => {
     const parts = result.messages[0].content as any[];
     expect(parts[0].type).toBe('text');
     expect(parts[0].text).toBe(
-      '<time_reminder>\nIt is 2026-11-19 20:00:00 (UTC).\n</time_reminder>\n\ndescribe this',
+      '<current_time_reminder>\nIt is Thu 2026-11-19 20:00:00 +00:00 (UTC).\n</current_time_reminder>\n\ndescribe this',
     );
     expect(parts[1].type).toBe('image_url');
   });
@@ -87,11 +87,11 @@ describe('TimeReminderInjector', () => {
     // 0 -> inject; 2/4/9 skipped; 35 (>=10 from 0) inject; 37 skipped;
     // 70 inject; 72/74 skipped; 130 inject; 132 skipped; 200 inject.
     expect(reminderTexts(result.messages)).toEqual([
-      '2026-11-19 20:00:00 (UTC)',
-      '2026-11-19 20:35:00 (UTC)',
-      '2026-11-19 21:10:00 (UTC)',
-      '2026-11-19 22:10:00 (UTC)',
-      '2026-11-19 23:20:00 (UTC)',
+      'Thu 2026-11-19 20:00:00 +00:00 (UTC)',
+      'Thu 2026-11-19 20:35:00 +00:00 (UTC)',
+      'Thu 2026-11-19 21:10:00 +00:00 (UTC)',
+      'Thu 2026-11-19 22:10:00 +00:00 (UTC)',
+      'Thu 2026-11-19 23:20:00 +00:00 (UTC)',
     ]);
   });
 
@@ -108,7 +108,10 @@ describe('TimeReminderInjector', () => {
     // The reminders present in the 6-message build must be an exact prefix of
     // the 12-message build — same values, same order, no new early insertions.
     expect(from12.slice(0, from6.length)).toEqual(from6);
-    expect(from6).toEqual(['2026-11-19 20:00:00 (UTC)', '2026-11-19 20:35:00 (UTC)']);
+    expect(from6).toEqual([
+      'Thu 2026-11-19 20:00:00 +00:00 (UTC)',
+      'Thu 2026-11-19 20:35:00 +00:00 (UTC)',
+    ]);
   });
 
   it('skips synthetic injection carriers so the cadence anchors on real turns', async () => {
@@ -133,11 +136,11 @@ describe('TimeReminderInjector', () => {
     }).process(makeContext([carrier, ...realMessages]));
 
     // The carrier must stay clean...
-    expect(String(result.messages[0].content)).not.toContain('<time_reminder>');
+    expect(String(result.messages[0].content)).not.toContain('<current_time_reminder>');
     // ...and each real turn gets its own snapshot on the normal cadence.
     expect(reminderTexts(result.messages)).toEqual([
-      '2026-11-19 20:00:00 (UTC)',
-      '2026-11-19 20:35:00 (UTC)',
+      'Thu 2026-11-19 20:00:00 +00:00 (UTC)',
+      'Thu 2026-11-19 20:35:00 +00:00 (UTC)',
     ]);
   });
 
@@ -153,8 +156,8 @@ describe('TimeReminderInjector', () => {
       timezone: 'UTC',
     }).process(makeContext([messageAt(0, BASE), carrier]));
 
-    expect(String(result.messages[1].content)).not.toContain('<time_reminder>');
-    expect(reminderTexts(result.messages)).toEqual(['2026-11-19 20:00:00 (UTC)']);
+    expect(String(result.messages[1].content)).not.toContain('<current_time_reminder>');
+    expect(reminderTexts(result.messages)).toEqual(['Thu 2026-11-19 20:00:00 +00:00 (UTC)']);
   });
 
   it('skips agent-mention-delegation carriers (no systemInjection tag)', async () => {
@@ -172,11 +175,11 @@ describe('TimeReminderInjector', () => {
       timezone: 'UTC',
     }).process(makeContext([messageAt(0, BASE), mention, messageAt(1, BASE + 35 * MIN)]));
 
-    expect(String(result.messages[1].content)).not.toContain('<time_reminder>');
+    expect(String(result.messages[1].content)).not.toContain('<current_time_reminder>');
     // The real turns still anchor on themselves, not on the mention's Date.now().
     expect(reminderTexts(result.messages)).toEqual([
-      '2026-11-19 20:00:00 (UTC)',
-      '2026-11-19 20:35:00 (UTC)',
+      'Thu 2026-11-19 20:00:00 +00:00 (UTC)',
+      'Thu 2026-11-19 20:35:00 +00:00 (UTC)',
     ]);
   });
 
@@ -192,8 +195,8 @@ describe('TimeReminderInjector', () => {
     }).process(makeContext(messages));
     expect(reminderTexts(result.messages)).toEqual([
       // 20:00Z -> 04:00 next day in Shanghai; 40min apart -> both injected
-      '2026-11-20 04:00:00 (Asia/Shanghai)',
-      '2026-11-20 04:40:00 (Asia/Shanghai)',
+      'Fri 2026-11-20 04:00:00 +08:00 (Asia/Shanghai)',
+      'Fri 2026-11-20 04:40:00 +08:00 (Asia/Shanghai)',
     ]);
 
     // Invalid timezone: no injection, no throw (pipeline must survive).

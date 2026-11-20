@@ -4,16 +4,6 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { serverMessagesEngine } from '../index';
 
-// Helper to compute expected date content from SystemDateProvider
-const getCurrentDateContent = () => {
-  const tz = 'UTC';
-  const today = new Date();
-  const year = today.toLocaleString('en-US', { timeZone: tz, year: 'numeric' });
-  const month = today.toLocaleString('en-US', { month: '2-digit', timeZone: tz });
-  const day = today.toLocaleString('en-US', { day: '2-digit', timeZone: tz });
-  return `Current date: ${year}-${month}-${day} (${tz})`;
-};
-
 describe('serverMessagesEngine', () => {
   const createBasicMessages = (): UIChatMessage[] => [
     {
@@ -32,6 +22,32 @@ describe('serverMessagesEngine', () => {
     } as UIChatMessage,
   ];
 
+  describe('time reminders (default on)', () => {
+    it('injects absolute-time snapshots on a deterministic cadence when not disabled', async () => {
+      const t0 = Date.parse('2026-11-19T20:00:00Z');
+      const messages = [
+        { content: 'first', createdAt: t0, id: 'u1', role: 'user' } as UIChatMessage,
+        { content: 'reply', createdAt: t0 + 1000, id: 'a1', role: 'assistant' } as UIChatMessage,
+        // 12 min later: crosses the 10-min cadence -> must get a fresh snapshot
+        { content: 'second', createdAt: t0 + 12 * 60_000, id: 'u2', role: 'user' } as UIChatMessage,
+      ];
+      // NOTE: enableTimeReminder deliberately omitted -> exercises the default-on path.
+      const { messages: result } = await serverMessagesEngine({
+        messages,
+        model: 'gpt-4',
+        provider: 'openai',
+        timezone: 'UTC',
+      });
+
+      const user1 = result.find((m) => String(m.content).includes('first'))!;
+      const user2 = result.find((m) => String(m.content).includes('second'))!;
+      expect(String(user1.content)).toContain('<time_reminder>');
+      expect(String(user1.content)).toContain('It is 2026-11-19 20:00:00 (UTC).');
+      expect(String(user2.content)).toContain('<time_reminder>');
+      expect(String(user2.content)).toContain('It is 2026-11-19 20:12:00 (UTC).');
+    });
+  });
+
   /**
    * These cover the wrapper→engine seam rather than the injectors themselves.
    * The injectors had unit tests and still shipped dead: `serverMessagesEngine`
@@ -42,6 +58,7 @@ describe('serverMessagesEngine', () => {
   describe('system-message context forwarded to the engine', () => {
     it('forwards project instructions', async () => {
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages: createBasicMessages(),
         model: 'gpt-4',
         projectInstructions: [{ content: 'Use bun, not npm.', source: 'AGENTS.md' }],
@@ -56,6 +73,7 @@ describe('serverMessagesEngine', () => {
 
     it('forwards the connector ownership note', async () => {
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         connectorOwnershipNote: 'Gmail runs on Alice’s account.',
         messages: createBasicMessages(),
         model: 'gpt-4',
@@ -70,6 +88,7 @@ describe('serverMessagesEngine', () => {
 
     it('keeps the connector note ahead of the project instructions', async () => {
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         connectorOwnershipNote: 'CONNECTOR-NOTE',
         messages: createBasicMessages(),
         model: 'gpt-4',
@@ -88,6 +107,7 @@ describe('serverMessagesEngine', () => {
 
     it('leaves the system message alone when a run has neither', async () => {
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages: createBasicMessages(),
         model: 'gpt-4',
         provider: 'openai',
@@ -104,6 +124,7 @@ describe('serverMessagesEngine', () => {
 
     it('forwards non-empty planTodo state to MessagesEngine', async () => {
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages: createBasicMessages(),
         model: 'gpt-4',
         planTodo: { enabled: true, todos: { items, updatedAt: 'now' } },
@@ -119,6 +140,7 @@ describe('serverMessagesEngine', () => {
 
     it('does not inject an empty TODO state', async () => {
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages: createBasicMessages(),
         model: 'gpt-4',
         planTodo: { enabled: true, todos: { items: [], updatedAt: 'canonical-clear' } },
@@ -140,6 +162,7 @@ describe('serverMessagesEngine', () => {
         stepContext: { todos },
       }).process();
       const { messages: serverResult } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages: createBasicMessages(),
         model: 'gpt-4',
         planTodo: { enabled: true, todos },
@@ -161,15 +184,15 @@ describe('serverMessagesEngine', () => {
       const messages = createBasicMessages();
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages,
         model: 'gpt-4',
         provider: 'openai',
       });
 
       expect(Array.isArray(result)).toBe(true);
-      // 3 messages: system date + 2 original messages
-      expect(result.length).toBe(3);
-      expect(result[0]).toEqual({ content: getCurrentDateContent(), role: 'system' });
+      // No system date line any more: just the 2 original messages.
+      expect(result.length).toBe(2);
       result.forEach((msg) => {
         expect(msg).toHaveProperty('role');
         expect(msg).toHaveProperty('content');
@@ -184,6 +207,7 @@ describe('serverMessagesEngine', () => {
       const systemRole = 'You are a helpful assistant';
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -191,7 +215,7 @@ describe('serverMessagesEngine', () => {
       });
 
       expect(result[0].role).toBe('system');
-      expect(result[0].content).toBe(systemRole + '\n\n' + getCurrentDateContent());
+      expect(result[0].content).toBe(systemRole);
     });
 
     it('renders the cloud-sandbox workspace placeholders to the ephemeral wording unless the builder supplies them', async () => {
@@ -202,6 +226,7 @@ describe('serverMessagesEngine', () => {
       // No additionalVariables — the run got no persistent workspace: the
       // original ephemeral-session wording must render, never the literal tokens.
       const { messages: fallback } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -216,6 +241,7 @@ describe('serverMessagesEngine', () => {
 
       // The builder's persistent-workspace guidance overrides both fallbacks.
       const { messages: resolved } = await serverMessagesEngine({
+        enableTimeReminder: false,
         additionalVariables: {
           sandbox_session_files: '- Files in your working directory persist',
           sandbox_workspace: '- Your working directory is a persistent workspace',
@@ -241,6 +267,7 @@ describe('serverMessagesEngine', () => {
       // No additionalVariables — e.g. a web-originated device run whose bound cwd
       // could not be resolved. The literal must never survive into the prompt.
       const { messages: fallback } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -251,6 +278,7 @@ describe('serverMessagesEngine', () => {
 
       // A resolved cwd (deviceSystemInfo.workingDirectory) overrides the fallback.
       const { messages: resolved } = await serverMessagesEngine({
+        enableTimeReminder: false,
         additionalVariables: { workingDirectory: '/Users/tj/project' },
         messages,
         model: 'gpt-4',
@@ -271,6 +299,7 @@ describe('serverMessagesEngine', () => {
         'ISO: {{iso}} Timestamp: {{timestamp}} Locale: {{locale}}';
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -291,6 +320,7 @@ describe('serverMessagesEngine', () => {
       const messages = createBasicMessages();
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         additionalVariables: { locale: 'zh-CN' },
         messages,
         model: 'gpt-4',
@@ -308,6 +338,7 @@ describe('serverMessagesEngine', () => {
       // Kiritimati is UTC+14 — always a different hour (and often day) than UTC,
       // so a UTC-based rendering cannot accidentally pass.
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -331,6 +362,7 @@ describe('serverMessagesEngine', () => {
       const messages = createBasicMessages();
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages,
         model: 'gpt-4',
         modelKnowledgeCutoff: '2024-06',
@@ -340,9 +372,7 @@ describe('serverMessagesEngine', () => {
 
       expect(result[0].role).toBe('system');
       expect(result[0].content).toBe(
-        'You are a helpful assistant\n\n' +
-          getCurrentDateContent() +
-          '\n\nModel knowledge cutoff: 2024-06',
+        'You are a helpful assistant\n\nModel knowledge cutoff: 2024-06',
       );
     });
 
@@ -350,6 +380,7 @@ describe('serverMessagesEngine', () => {
       const messages = createBasicMessages();
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages,
         model: 'claude-fable-5',
         modelDisplayName: 'Fable 5',
@@ -360,25 +391,25 @@ describe('serverMessagesEngine', () => {
 
       expect(result[0].role).toBe('system');
       expect(result[0].content).toBe(
-        'You are a helpful assistant\n\n' +
-          getCurrentDateContent() +
-          '\n\nCurrent model: Fable 5 (claude-fable-5)\nModel knowledge cutoff: 2026-01',
+        'You are a helpful assistant\n\nCurrent model: Fable 5 (claude-fable-5)\nModel knowledge cutoff: 2026-01',
       );
     });
 
     it('should handle empty messages', async () => {
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages: [],
         model: 'gpt-4',
         provider: 'openai',
       });
 
-      // SystemDateProvider injects a system date message even with empty input
-      expect(result).toEqual([{ content: getCurrentDateContent(), role: 'system' }]);
+      // No system-date injection any more; empty input stays empty.
+      expect(result).toEqual([]);
     });
 
     it('should include file URLs in server-side file context', async () => {
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages: [
           {
             content: 'Read this',
@@ -410,6 +441,7 @@ describe('serverMessagesEngine', () => {
     it('sends attachments planned for preview as previews', async () => {
       const content = 'row,value\n'.repeat(1000);
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         attachmentPreviewFileIds: ['file1'],
         messages: [
           {
@@ -443,6 +475,7 @@ describe('serverMessagesEngine', () => {
 
     it('should pass active topic document initial context into MessagesEngine', async () => {
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         initialContext: {
           activeTopicDocument: {
             agentDocumentId: 'agd_1',
@@ -475,6 +508,7 @@ describe('serverMessagesEngine', () => {
       const messages = createBasicMessages();
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         knowledge: {
           fileContents: [
             {
@@ -499,6 +533,7 @@ describe('serverMessagesEngine', () => {
       const messages = createBasicMessages();
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         knowledge: {
           knowledgeBases: [
             {
@@ -538,6 +573,7 @@ describe('serverMessagesEngine', () => {
       ];
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         capabilities: { isCanUseFC: () => true },
         messages,
         model: 'gpt-4',
@@ -559,6 +595,7 @@ describe('serverMessagesEngine', () => {
       const messages = createBasicMessages();
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -584,6 +621,7 @@ describe('serverMessagesEngine', () => {
       const isCanUseFC = vi.fn().mockReturnValue(true);
 
       await serverMessagesEngine({
+        enableTimeReminder: false,
         capabilities: { isCanUseFC },
         messages,
         model: 'gpt-4',
@@ -599,6 +637,7 @@ describe('serverMessagesEngine', () => {
 
       // Should not throw
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -682,6 +721,7 @@ describe('serverMessagesEngine', () => {
 
     it('trims stale tool results by default', async () => {
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages: supersededReadMessages(),
         model: 'gpt-4',
         provider: 'openai',
@@ -694,6 +734,7 @@ describe('serverMessagesEngine', () => {
 
     it('forwards enableStaleToolResultTrim: false to the engine', async () => {
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         enableStaleToolResultTrim: false,
         messages: supersededReadMessages(),
         model: 'gpt-4',
@@ -711,6 +752,7 @@ describe('serverMessagesEngine', () => {
       const messages = createBasicMessages();
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -743,6 +785,7 @@ describe('serverMessagesEngine', () => {
       const messages = createBasicMessages();
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -762,6 +805,7 @@ describe('serverMessagesEngine', () => {
       const messages = createBasicMessages();
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         agentBuilderContext: {
           config: { model: 'gpt-4', systemRole: 'Test role' },
           meta: { description: 'Test agent', title: 'Test' },
@@ -788,6 +832,7 @@ describe('serverMessagesEngine', () => {
       ];
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         inputTemplate: 'Please respond to: {{text}}',
         messages,
         model: 'gpt-4',
@@ -805,6 +850,7 @@ describe('serverMessagesEngine', () => {
       const historySummary = 'Previous conversation about AI';
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         historySummary,
         messages,
         model: 'gpt-4',
@@ -825,6 +871,7 @@ describe('serverMessagesEngine', () => {
       const formatHistorySummary = vi.fn((s: string) => `<custom>${s}</custom>`);
 
       await serverMessagesEngine({
+        enableTimeReminder: false,
         formatHistorySummary,
         historySummary,
         messages,
@@ -845,6 +892,7 @@ describe('serverMessagesEngine', () => {
       const messages = createBasicMessages();
 
       await serverMessagesEngine({
+        enableTimeReminder: false,
         messages,
         model: 'gpt-4',
         provider: 'openai',
@@ -867,6 +915,7 @@ describe('serverMessagesEngine', () => {
       ];
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         inputTemplate: '{{text}} (tz: {{timezone}})',
         messages,
         model: 'gpt-4',
@@ -892,6 +941,7 @@ describe('serverMessagesEngine', () => {
       ];
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         additionalVariables: {
           customVar: 'custom-value',
         },
@@ -909,6 +959,7 @@ describe('serverMessagesEngine', () => {
       const messages = createBasicMessages();
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         additionalVariables: {},
         messages,
         model: 'gpt-4',
@@ -925,6 +976,7 @@ describe('serverMessagesEngine', () => {
       const messages = createBasicMessages();
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         discordContext: {
           channel: { id: 'ch-1', name: 'general' },
           guild: { id: 'guild-1', name: 'Test Guild' },
@@ -941,6 +993,7 @@ describe('serverMessagesEngine', () => {
       const messages = createBasicMessages();
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         evalContext: {
           envPrompt: 'This is an evaluation environment',
         },
@@ -956,6 +1009,7 @@ describe('serverMessagesEngine', () => {
       const messages = createBasicMessages();
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         agentManagementContext: {
           availablePlugins: [
             { identifier: 'web-browsing', name: 'Web Browsing', type: 'builtin' as const },
@@ -973,6 +1027,7 @@ describe('serverMessagesEngine', () => {
       const messages = createBasicMessages();
 
       const { messages: result } = await serverMessagesEngine({
+        enableTimeReminder: false,
         agentBuilderContext: {
           config: { model: 'gpt-4', systemRole: 'Test role' },
           meta: { description: 'Test agent', title: 'Test' },

@@ -136,6 +136,8 @@ export interface CallLLMPayload {
    * phase instead of sending an oversized request.
    */
   compressionThreshold?: number;
+  /** Disable per-turn time reminders for this call (default: enabled). */
+  enableTimeReminder?: boolean;
   isFirstMessage?: boolean;
   messages: any[];
   model: string;

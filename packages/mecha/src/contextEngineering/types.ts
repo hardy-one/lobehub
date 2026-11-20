@@ -87,6 +87,8 @@ export interface ContextRunSnapshot {
   enableAgentMode?: boolean;
   enableExpertise?: boolean;
   enableMcpAppContext?: boolean;
+  /** Disable per-turn time reminders (default: enabled). */
+  enableTimeReminder?: boolean;
   expertise?: ExpertiseContextSnapshot;
   /** maxSteps exceeded: tools are stripped and a summary prompt is injected. */
   forceFinish?: boolean;

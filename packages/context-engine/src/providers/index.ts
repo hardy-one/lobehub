@@ -62,6 +62,7 @@ export {
 export { SystemDateProvider } from './SystemDateProvider';
 export { SystemRoleInjector } from './SystemRoleInjector';
 export { TaskManagerContextInjector } from './TaskManagerContextInjector';
+export { TimeReminderInjector } from './TimeReminderInjector';
 export { TodoInjector } from './TodoInjector';
 export { ToolDiscoveryProvider } from './ToolDiscoveryProvider';
 export { selectToolPromptManifests, ToolSystemRoleProvider } from './ToolSystemRole';

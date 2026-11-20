@@ -1,5 +1,5 @@
 import { PageAgentIdentifier } from '@lobechat/builtin-tool-page-agent';
-import type { LobeToolManifest, MessagesEngineParams } from '@lobechat/context-engine';
+import type { MessagesEngineParams } from '@lobechat/context-engine';
 
 import type { ContextSnapshot } from './types';
 import { createVariableGenerators } from './variableGenerators';
@@ -8,31 +8,6 @@ const definedOnly = <T extends Record<string, unknown>>(record: T): Partial<T> =
   Object.fromEntries(
     Object.entries(record).filter(([, value]) => value !== undefined),
   ) as Partial<T>;
-
-const CURRENT_DATE_LINE = /Current date: \d{4}-\d{2}-\d{2}/g;
-
-/**
- * A tool prompt that states the current date (web browsing does, from the
- * wall clock at load time) is rewritten to the attempt's clock, so the model
- * sees one consistent "today".
- */
-const pinManifestDates = (
-  manifests: LobeToolManifest[] | undefined,
-  clock: Date,
-  timezone: string,
-): LobeToolManifest[] | undefined => {
-  if (!manifests) return manifests;
-  const date = new Intl.DateTimeFormat('en-CA', {
-    day: '2-digit',
-    month: '2-digit',
-    timeZone: timezone,
-    year: 'numeric',
-  }).format(clock);
-  return manifests.map((manifest) => {
-    const systemRole = manifest.systemRole?.replaceAll(CURRENT_DATE_LINE, `Current date: ${date}`);
-    return systemRole === manifest.systemRole ? manifest : { ...manifest, systemRole };
-  });
-};
 
 /**
  * Turn a {@link ContextSnapshot} into the parameters the messages engine runs
@@ -44,17 +19,11 @@ export const buildMessagesEngineParams = (snapshot: ContextSnapshot): MessagesEn
 
   const enabledToolIds = tools?.enabledToolIds;
 
-  // An eval attempt runs on its case clock: every "today" the model sees —
-  // `{{date}}`, the system date line, a tool prompt's current date — renders
-  // from the session date in the case timezone (UTC when none), never from the
-  // wall clock or the caller's timezone.
-  const evalClock = world?.evalContext?.sessionDate
-    ? new Date(world.evalContext.sessionDate)
-    : undefined;
-  const timezone = evalClock ? (world?.evalContext?.timezone ?? 'UTC') : world?.userTimezone;
-  const manifests = evalClock
-    ? pinManifestDates(tools?.manifests, evalClock, timezone!)
-    : tools?.manifests;
+  // All "today" values render from the wall clock in the user's timezone.
+  // The eval case clock was removed together with the system-date line: time
+  // now comes from per-turn message `createdAt` in TimeReminderInjector.
+  const timezone = world?.userTimezone;
+  const manifests = tools?.manifests;
   // The page agent's system role is only meaningful while a page is being
   // edited; hide it unless the run enabled the tool explicitly.
   const disabledToolIdentifiers =
@@ -67,6 +36,7 @@ export const buildMessagesEngineParams = (snapshot: ContextSnapshot): MessagesEn
     enableAgentMode: run.enableAgentMode,
     enableExpertise: run.enableExpertise,
     enableMcpAppContext: run.enableMcpAppContext,
+    enableTimeReminder: run.enableTimeReminder,
     expertise: run.expertise,
     forceFinish: run.forceFinish,
     formatHistorySummary: run.formatHistorySummary,
@@ -109,7 +79,6 @@ export const buildMessagesEngineParams = (snapshot: ContextSnapshot): MessagesEn
     fileContext: fileContext ?? { enabled: true, includeFileUrl: true },
     variableGenerators: createVariableGenerators({
       model: model.model,
-      now: evalClock ? () => evalClock : undefined,
       provider: model.provider,
       timezone,
       variables,

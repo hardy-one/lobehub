@@ -52,16 +52,6 @@ const mockCreateHeaderWithAuth = vi.hoisted(() =>
   vi.fn(async ({ headers }: { headers: Record<string, string> }) => headers),
 );
 
-// Helper to compute expected date content from SystemDateProvider
-const getCurrentDateContent = () => {
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const today = new Date();
-  const year = today.toLocaleString('en-US', { timeZone: tz, year: 'numeric' });
-  const month = today.toLocaleString('en-US', { month: '2-digit', timeZone: tz });
-  const day = today.toLocaleString('en-US', { day: '2-digit', timeZone: tz });
-  return `Current date: ${year}-${month}-${day} (${tz})`;
-};
-
 /**
  * Default mock resolvedAgentConfig for tests
  */
@@ -256,6 +246,7 @@ describe('ChatService', () => {
         },
       ];
       await chatService.createAssistantMessage({
+        enableTimeReminder: false,
         messages,
         resolvedAgentConfig: createMockResolvedConfig({
           plugins: enabledPlugins,
@@ -288,6 +279,7 @@ describe('ChatService', () => {
       const messages = [{ content: 'Hello', role: 'user' }] as UIChatMessage[];
 
       await chatService.createAssistantMessage({
+        enableTimeReminder: false,
         model: 'gemini-3.1-flash-lite-image',
         messages,
         provider: ModelProvider.LobeHub,
@@ -353,6 +345,7 @@ describe('ChatService', () => {
         ] as UIChatMessage[];
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           model: 'gpt-4',
           provider: 'openai',
@@ -364,11 +357,11 @@ describe('ChatService', () => {
 
         const calledMessages = getChatCompletionSpy.mock.calls[0][0].messages as any[];
 
-        // System date + (2 history messages + 1 current user message)
+        // 2 history messages + 1 current user message
         expect(calledMessages).toHaveLength(4);
         expect(calledMessages[0]).toEqual(
           expect.objectContaining({
-            content: expect.stringContaining(getCurrentDateContent()),
+            content: expect.any(String),
             role: 'system',
           }),
         );
@@ -407,6 +400,7 @@ describe('ChatService', () => {
         ] as UIChatMessage[];
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           model: 'gpt-4',
           provider: 'openai',
@@ -418,11 +412,11 @@ describe('ChatService', () => {
 
         const calledMessages = getChatCompletionSpy.mock.calls[0][0].messages as any[];
 
-        // System date + current user message only
+        // Current user message only
         expect(calledMessages).toHaveLength(2);
         expect(calledMessages[0]).toEqual(
           expect.objectContaining({
-            content: expect.stringContaining(getCurrentDateContent()),
+            content: expect.any(String),
             role: 'system',
           }),
         );
@@ -459,6 +453,7 @@ describe('ChatService', () => {
         ] as UIChatMessage[];
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           model: 'gpt-4',
           provider: 'openai',
@@ -470,11 +465,11 @@ describe('ChatService', () => {
 
         const calledMessages = getChatCompletionSpy.mock.calls[0][0].messages as any[];
 
-        // System date + all original messages
+        // All original messages
         expect(calledMessages).toHaveLength(4);
         expect(calledMessages[0]).toEqual(
           expect.objectContaining({
-            content: expect.stringContaining(getCurrentDateContent()),
+            content: expect.any(String),
             role: 'system',
           }),
         );
@@ -496,6 +491,7 @@ describe('ChatService', () => {
         vi.spyOn(aiModelSelectors, 'modelExtendParams').mockReturnValue(() => ['enableReasoning']);
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           model: 'deepseek-reasoner',
           provider: 'deepseek',
@@ -525,6 +521,7 @@ describe('ChatService', () => {
         vi.spyOn(aiModelSelectors, 'modelExtendParams').mockReturnValue(() => ['enableReasoning']);
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           model: 'deepseek-reasoner',
           provider: 'deepseek',
@@ -554,6 +551,7 @@ describe('ChatService', () => {
         vi.spyOn(aiModelSelectors, 'modelExtendParams').mockReturnValue(() => ['enableReasoning']);
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           model: 'deepseek-reasoner',
           provider: 'deepseek',
@@ -575,6 +573,174 @@ describe('ChatService', () => {
         );
       });
 
+      it('should set reasoning_effort when model supports reasoningEffort and user configures it', async () => {
+        const getChatCompletionSpy = vi.spyOn(chatService, 'getChatCompletion');
+        const messages = [{ content: 'Test reasoning effort', role: 'user' }] as UIChatMessage[];
+
+        // Mock aiModelSelectors for extend params support
+        vi.spyOn(aiModelSelectors, 'isModelHasExtendParams').mockReturnValue(() => true);
+        vi.spyOn(aiModelSelectors, 'modelExtendParams').mockReturnValue(() => ['reasoningEffort']);
+        // The user-level model-instance config supplies the effort; the legacy
+        // agent chatConfig value below must be ignored by the resolver
+        vi.spyOn(aiModelSelectors, 'modelReasoningConfig').mockReturnValue(() => ({
+          reasoningEffort: 'high',
+        }));
+
+        await chatService.createAssistantMessage({
+          enableTimeReminder: false,
+          messages,
+          model: 'test-model',
+          provider: 'test-provider',
+          resolvedAgentConfig: createMockResolvedConfig({
+            agentConfig: { model: 'test-model', provider: 'test-provider' },
+            chatConfig: { reasoningEffort: 'low' },
+          }),
+        });
+
+        expect(getChatCompletionSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            reasoning_effort: 'high',
+          }),
+          expect.anything(),
+        );
+      });
+
+      it('should map DeepSeek reasoning effort to enabled thinking', async () => {
+        const getChatCompletionSpy = vi.spyOn(chatService, 'getChatCompletion');
+        const messages = [
+          { content: 'Test DeepSeek reasoning effort', role: 'user' },
+        ] as UIChatMessage[];
+
+        vi.spyOn(aiModelSelectors, 'isModelHasExtendParams').mockReturnValue(() => true);
+        vi.spyOn(aiModelSelectors, 'modelExtendParams').mockReturnValue(() => [
+          'deepseekV4ReasoningEffort',
+        ]);
+        // Reasoning fields are user-level model-instance settings now — agent
+        // chatConfig values are ignored by the resolver
+        vi.spyOn(aiModelSelectors, 'modelReasoningConfig').mockReturnValue(() => ({
+          deepseekV4ReasoningEffort: 'max',
+        }));
+
+        await chatService.createAssistantMessage({
+          enableTimeReminder: false,
+          messages,
+          model: 'deepseek-v4-pro',
+          provider: 'deepseek',
+          resolvedAgentConfig: createMockResolvedConfig({
+            agentConfig: { model: 'deepseek-v4-pro', provider: 'deepseek' },
+          }),
+        });
+
+        expect(getChatCompletionSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            reasoning_effort: 'max',
+            thinking: {
+              type: 'enabled',
+            },
+          }),
+          expect.anything(),
+        );
+      });
+
+      it('should map DeepSeek reasoning effort none to disabled thinking', async () => {
+        const getChatCompletionSpy = vi.spyOn(chatService, 'getChatCompletion');
+        const messages = [
+          { content: 'Test DeepSeek reasoning disabled', role: 'user' },
+        ] as UIChatMessage[];
+
+        vi.spyOn(aiModelSelectors, 'isModelHasExtendParams').mockReturnValue(() => true);
+        vi.spyOn(aiModelSelectors, 'modelExtendParams').mockReturnValue(() => [
+          'deepseekV4ReasoningEffort',
+        ]);
+        vi.spyOn(aiModelSelectors, 'modelReasoningConfig').mockReturnValue(() => ({
+          deepseekV4ReasoningEffort: 'none',
+        }));
+
+        await chatService.createAssistantMessage({
+          enableTimeReminder: false,
+          messages,
+          model: 'deepseek-v4-pro',
+          provider: 'deepseek',
+          resolvedAgentConfig: createMockResolvedConfig({
+            agentConfig: { model: 'deepseek-v4-pro', provider: 'deepseek' },
+          }),
+        });
+
+        expect(getChatCompletionSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            thinking: {
+              type: 'disabled',
+            },
+          }),
+          expect.anything(),
+        );
+      });
+
+      it('should map Qwen3.8 Max reasoning effort to enabled thinking', async () => {
+        const getChatCompletionSpy = vi.spyOn(chatService, 'getChatCompletion');
+        const messages = [
+          { content: 'Test Qwen3.8 Max reasoning effort', role: 'user' },
+        ] as UIChatMessage[];
+
+        vi.spyOn(aiModelSelectors, 'isModelHasExtendParams').mockReturnValue(() => true);
+        vi.spyOn(aiModelSelectors, 'modelExtendParams').mockReturnValue(() => [
+          'qwen38ReasoningEffort',
+        ]);
+
+        await chatService.createAssistantMessage({
+          enableTimeReminder: false,
+          messages,
+          model: 'qwen3.8-max',
+          provider: 'qwen',
+          resolvedAgentConfig: createMockResolvedConfig({
+            agentConfig: { model: 'qwen3.8-max', provider: 'qwen' },
+            chatConfig: { qwen38ReasoningEffort: 'medium' },
+          }),
+        });
+
+        expect(getChatCompletionSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            reasoning_effort: 'medium',
+            thinking: {
+              type: 'enabled',
+            },
+          }),
+          expect.anything(),
+        );
+      });
+
+      it('should map Qwen3.8 Max reasoning effort none to disabled thinking', async () => {
+        const getChatCompletionSpy = vi.spyOn(chatService, 'getChatCompletion');
+        const messages = [
+          { content: 'Test Qwen3.8 Max reasoning disabled', role: 'user' },
+        ] as UIChatMessage[];
+
+        vi.spyOn(aiModelSelectors, 'isModelHasExtendParams').mockReturnValue(() => true);
+        vi.spyOn(aiModelSelectors, 'modelExtendParams').mockReturnValue(() => [
+          'qwen38ReasoningEffort',
+        ]);
+
+        await chatService.createAssistantMessage({
+          enableTimeReminder: false,
+          messages,
+          model: 'qwen3.8-max',
+          provider: 'qwen',
+          resolvedAgentConfig: createMockResolvedConfig({
+            agentConfig: { model: 'qwen3.8-max', provider: 'qwen' },
+            chatConfig: { qwen38ReasoningEffort: 'none' },
+          }),
+        });
+
+        expect(getChatCompletionSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            thinking: {
+              type: 'disabled',
+            },
+          }),
+          expect.anything(),
+        );
+      });
+
       it('should set thinkingBudget when model supports thinkingBudget and user configures it', async () => {
         const getChatCompletionSpy = vi.spyOn(chatService, 'getChatCompletion');
         const messages = [{ content: 'Test thinking budget', role: 'user' }] as UIChatMessage[];
@@ -584,6 +750,7 @@ describe('ChatService', () => {
         vi.spyOn(aiModelSelectors, 'modelExtendParams').mockReturnValue(() => ['thinkingBudget']);
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           model: 'test-model',
           provider: 'test-provider',
@@ -630,6 +797,7 @@ describe('ChatService', () => {
 
         const getChatCompletionSpy = vi.spyOn(chatService, 'getChatCompletion');
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           model: 'gpt-4-vision-preview',
           provider: 'openai',
@@ -642,7 +810,7 @@ describe('ChatService', () => {
           {
             messages: [
               expect.objectContaining({
-                content: expect.stringContaining('Current date:'),
+                content: expect.any(String),
                 role: 'system',
               }),
               {
@@ -696,6 +864,7 @@ describe('ChatService', () => {
 
         const getChatCompletionSpy = vi.spyOn(chatService, 'getChatCompletion');
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           resolvedAgentConfig: createMockResolvedConfig(),
         });
@@ -705,7 +874,7 @@ describe('ChatService', () => {
             enabledSearch: undefined,
             messages: [
               expect.objectContaining({
-                content: expect.stringContaining('Current date:'),
+                content: expect.any(String),
                 role: 'system',
               }),
               { content: 'Hello', role: 'user' },
@@ -768,6 +937,7 @@ describe('ChatService', () => {
         const getChatCompletionSpy = vi.spyOn(chatService, 'getChatCompletion');
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           model: 'gpt-4-vision-preview',
           provider: ModelProvider.OpenAI,
@@ -794,7 +964,7 @@ describe('ChatService', () => {
           {
             messages: [
               expect.objectContaining({
-                content: expect.stringContaining('Current date:'),
+                content: expect.any(String),
                 role: 'system',
               }),
               {
@@ -869,6 +1039,7 @@ describe('ChatService', () => {
         const getChatCompletionSpy = vi.spyOn(chatService, 'getChatCompletion');
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           model: 'gpt-4-vision-preview',
           provider: ModelProvider.OpenAI,
@@ -895,7 +1066,7 @@ describe('ChatService', () => {
           {
             messages: [
               expect.objectContaining({
-                content: expect.stringContaining('Current date:'),
+                content: expect.any(String),
                 role: 'system',
               }),
               {
@@ -985,6 +1156,7 @@ describe('ChatService', () => {
         const getChatCompletionSpy = vi.spyOn(chatService, 'getChatCompletion');
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           model: 'gpt-4-vision-preview',
           provider: ModelProvider.OpenAI,
@@ -1063,6 +1235,7 @@ describe('ChatService', () => {
         const seoManifests = [seoEnabledManifest()] as any;
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           model: 'gpt-3.5-turbo-1106',
           top_p: 1,
@@ -1091,7 +1264,7 @@ describe('ChatService', () => {
 
         expect(requestMessages[0]).toEqual(
           expect.objectContaining({
-            content: expect.stringContaining(getCurrentDateContent()),
+            content: expect.any(String),
             role: 'system',
           }),
         );
@@ -1147,6 +1320,7 @@ describe('ChatService', () => {
         const seoManifests = [seoEnabledManifest()] as any;
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           model: 'gpt-3.5-turbo-1106',
           top_p: 1,
@@ -1175,7 +1349,7 @@ describe('ChatService', () => {
 
         expect(requestMessages[0]).toEqual(
           expect.objectContaining({
-            content: expect.stringContaining('system\n\n' + getCurrentDateContent()),
+            content: expect.stringContaining('system'),
             role: 'system',
           }),
         );
@@ -1203,6 +1377,7 @@ describe('ChatService', () => {
         ] as UIChatMessage[];
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           model: 'gpt-3.5-turbo-1106',
           top_p: 1,
@@ -1227,7 +1402,7 @@ describe('ChatService', () => {
 
         expect(requestMessages[0]).toEqual(
           expect.objectContaining({
-            content: expect.stringContaining('system\n\n' + getCurrentDateContent()),
+            content: expect.stringContaining('system'),
             role: 'system',
           }),
         );
@@ -1276,6 +1451,7 @@ describe('ChatService', () => {
         ];
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           resolvedAgentConfig: createMockResolvedConfig({
             enabledToolIds: [WebBrowsingManifest.identifier],
@@ -1336,6 +1512,7 @@ describe('ChatService', () => {
         );
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           resolvedAgentConfig: createMockResolvedConfig(),
         });
@@ -1387,6 +1564,7 @@ describe('ChatService', () => {
         );
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           resolvedAgentConfig: createMockResolvedConfig(),
         });
@@ -1412,6 +1590,7 @@ describe('ChatService', () => {
         const messages = [{ content: 'Hello', role: 'user' }] as UIChatMessage[];
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           resolvedAgentConfig: createMockResolvedConfig({
             chatConfig: { memory: { enabled: false } },
@@ -1434,6 +1613,7 @@ describe('ChatService', () => {
         const messages = [{ content: 'Hello', role: 'user' }] as UIChatMessage[];
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           resolvedAgentConfig: createMockResolvedConfig({
             chatConfig: { memory: { enabled: true } },
@@ -1456,6 +1636,7 @@ describe('ChatService', () => {
         const messages = [{ content: 'Hello', role: 'user' }] as UIChatMessage[];
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           messages,
           resolvedAgentConfig: createMockResolvedConfig({
             chatConfig: {},
@@ -1480,6 +1661,7 @@ describe('ChatService', () => {
         useChatStore.setState({ activeAgentId: 'edited-agent' } as any);
 
         await chatService.createAssistantMessage({
+          enableTimeReminder: false,
           agentId: 'builder-agent',
           messages: [{ content: 'Hello', role: 'user' }] as UIChatMessage[],
           resolvedAgentConfig: createMockResolvedConfig({
@@ -1947,6 +2129,7 @@ describe('ChatService private methods', () => {
       ]);
 
       await chatService.createAssistantMessage({
+        enableTimeReminder: false,
         messages,
         model: 'test-model',
         provider: 'test-provider',
@@ -1977,6 +2160,7 @@ describe('ChatService private methods', () => {
       ]);
 
       await chatService.createAssistantMessage({
+        enableTimeReminder: false,
         messages,
         model: 'test-model',
         provider: 'test-provider',
@@ -2011,6 +2195,7 @@ describe('ChatService private methods', () => {
       }));
 
       await chatService.createAssistantMessage({
+        enableTimeReminder: false,
         messages,
         model: 'test-model',
         provider: 'test-provider',
@@ -2037,6 +2222,7 @@ describe('ChatService private methods', () => {
       vi.spyOn(aiModelSelectors, 'modelExtendParams').mockReturnValue(() => ['thinkingBudget']);
 
       await chatService.createAssistantMessage({
+        enableTimeReminder: false,
         messages,
         model: 'test-model',
         provider: 'test-provider',

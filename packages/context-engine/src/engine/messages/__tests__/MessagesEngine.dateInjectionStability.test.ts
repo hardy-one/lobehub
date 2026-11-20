@@ -16,7 +16,6 @@ const createMessages = (): UIChatMessage[] => [
 ];
 
 const createParams = (overrides?: Partial<MessagesEngineParams>): MessagesEngineParams => ({
-  evalContext: { sessionDate: '2026-11-21T12:00:00Z' },
   messages: createMessages(),
   model: 'gemini-4-neon',
   provider: 'lobehub',
@@ -34,9 +33,9 @@ const createParams = (overrides?: Partial<MessagesEngineParams>): MessagesEngine
   ...overrides,
 });
 
-describe('MessagesEngine SystemDateProvider stability', () => {
+describe('MessagesEngine date injection stability', () => {
   it.each(['lobe-web-browsing', 'lobe-user-memory'])(
-    'keeps SystemDateProvider and the leading system prefix stable when %s is activated mid-run',
+    'keeps the leading system prefix free of a wall-clock date and byte-stable when %s is activated mid-run',
     async (toolId) => {
       const before = await new MessagesEngine(
         createParams({
@@ -67,19 +66,31 @@ describe('MessagesEngine SystemDateProvider stability', () => {
       const beforeSystem = before.messages[0].content as string;
       const afterSystem = after.messages[0].content as string;
 
-      expect(beforeSystem).toContain('Current date: 2026-11-21 (Asia/Shanghai)');
-      expect(afterSystem).toContain('Current date: 2026-11-21 (Asia/Shanghai)');
+      // The system prompt carries no wall-clock date any more; time lives in the
+      // per-turn <time_reminder> block instead, so activation cannot mutate the
+      // leading system prefix.
+      expect(beforeSystem).not.toContain('Current date:');
+      expect(afterSystem).not.toContain('Current date:');
       expect(afterSystem.startsWith(beforeSystem)).toBe(true);
     },
   );
 
-  it('still respects explicit enableSystemDate: false', async () => {
+  it('renders no wall-clock date in the system prompt even with an eval attempt clock', async () => {
+    const result = await new MessagesEngine(
+      createParams({ evalContext: { sessionDate: '2026-11-21T12:00:00Z' } }),
+    ).process();
+
+    expect(result.messages[0].content as string).not.toContain('Current date:');
+  });
+
+  it('still respects explicit enableSystemDate: false by suppressing the time reminder', async () => {
     const result = await new MessagesEngine(
       createParams({
         enableSystemDate: false,
       }),
     ).process();
 
-    expect(result.messages[0].content as string).not.toContain('Current date:');
+    const userMessage = result.messages.find((message) => message.role === 'user');
+    expect(String(userMessage?.content)).not.toContain('<time_reminder>');
   });
 });

@@ -99,6 +99,8 @@ interface ContextEngineeringContext {
    */
   enableAgentMode?: boolean;
   enableHistoryCount?: boolean;
+  /** Disable per-turn time reminders (used by exact-payload test suites). */
+  enableTimeReminder?: boolean;
   enableUserMemories?: boolean;
   /** Group ID for multi-agent scenarios */
   groupId?: string;
@@ -150,6 +152,7 @@ export const contextEngineering = async ({
   inputTemplate,
   enableUserMemories,
   enableHistoryCount,
+  enableTimeReminder,
   historyCount,
   historySummary,
   agentId,
@@ -405,6 +408,7 @@ export const contextEngineering = async ({
       // is `false` (chat mode). ChatService resolves it from stored user intent
       // plus the selected model's function-call ability.
       enableAgentMode: effectiveEnableAgentMode,
+      enableTimeReminder,
       formatHistorySummary: historySummaryPrompt,
       historySummary,
       initialContext,

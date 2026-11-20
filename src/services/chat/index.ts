@@ -79,6 +79,7 @@ export interface GetChatCompletionPayload extends Partial<Omit<ChatStreamPayload
   attachmentPreviewFileIds?: string[];
   discoveryExcludedToolIds?: string[];
   discoveryManifests?: Record<string, LobeToolManifest>;
+  enableTimeReminder?: boolean;
   groupId?: string;
   messages: UIChatMessage[];
   /**
@@ -162,6 +163,7 @@ class ChatService {
       attachmentPreviewFileIds,
       discoveryExcludedToolIds,
       discoveryManifests,
+      enableTimeReminder,
       topicId,
       resolvedAgentConfig,
       ...params
@@ -261,6 +263,7 @@ class ChatService {
       enableAgentMode: modelParams.enableAgentMode,
       // Use raw chatConfig values, not selectors with business logic that may force false
       enableHistoryCount: chatConfig.enableHistoryCount,
+      enableTimeReminder,
       enableUserMemories,
       groupId,
       additionalContexts,

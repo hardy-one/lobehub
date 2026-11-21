@@ -133,7 +133,14 @@ export const generateObjectViaToolCalling = async (
   const toolCall =
     toolCalls?.find((item) => item.function?.name === tool.function.name) ?? toolCalls?.[0];
 
-  if (!toolCall?.function) throw new StructuredOutputError('no tool calls returned');
+  if (!toolCall?.function)
+    throw new StructuredOutputError('no tool calls returned', {
+      finishReason: res.choices?.[0]?.finish_reason,
+      hasTextContent: !!res.choices?.[0]?.message?.content,
+      model,
+      provider: runtime.id,
+      responseId: res.id,
+    });
 
   return parseStructuredToolArguments(toolCall.function.arguments);
 };
@@ -223,7 +230,14 @@ export const generateToolCallsViaChatCompletions = async (
   }
 
   const toolCalls = res.choices?.[0]?.message?.tool_calls;
-  if (!toolCalls?.length) throw new StructuredOutputError('no tool calls returned');
+  if (!toolCalls?.length)
+    throw new StructuredOutputError('no tool calls returned', {
+      finishReason: res.choices?.[0]?.finish_reason,
+      hasTextContent: !!res.choices?.[0]?.message?.content,
+      model,
+      provider: runtime.id,
+      responseId: res.id,
+    });
 
   return toolCalls.map((item) => {
     if (!('function' in item) || !item.function) {

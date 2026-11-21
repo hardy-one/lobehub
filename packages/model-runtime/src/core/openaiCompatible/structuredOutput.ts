@@ -1,8 +1,19 @@
 /** An upstream structured-output response cannot satisfy the required tool-call contract. */
 export class StructuredOutputError extends Error {
-  constructor(reason: string) {
+  /**
+   * Protocol-level diagnostics (provider, model, finish reason, response
+   * shape). Metadata only — never model-generated text, which can be private.
+   */
+  context?: Record<string, unknown>;
+
+  /** Machine-readable failure reason, kept separate from the message for classifiers. */
+  reason: string;
+
+  constructor(reason: string, context?: Record<string, unknown>) {
     super(`Invalid structured output: ${reason}`);
     this.name = 'StructuredOutputError';
+    this.reason = reason;
+    this.context = context;
   }
 }
 

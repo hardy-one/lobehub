@@ -21,6 +21,34 @@ import { StructuredOutputError } from './structuredOutput';
 type Runtime = OpenAICompatibleRuntimeContext;
 type Factory = OpenAICompatibleFactoryOptions;
 
+/**
+ * Total attempts for a forced tool call that comes back with no tool call at
+ * all. Some providers treat `tool_choice` as a soft hint and answer in plain
+ * text instead (observed on DashScope-family gateways at a ~10% rate), which
+ * is a transient, retryable shape failure — not a contract violation.
+ */
+const STRUCTURED_OUTPUT_MAX_ATTEMPTS = 3;
+
+/**
+ * A tool-call response with no tool call, retried with an explicit reminder.
+ * Other StructuredOutputError reasons (malformed arguments, unparseable text)
+ * mean the model did answer through the contract and a resend would not help.
+ */
+const isMissingToolCallError = (error: unknown): error is StructuredOutputError =>
+  error instanceof StructuredOutputError && error.reason === 'no tool calls returned';
+
+const reinforceToolCallRequest = (payload: GenerateObjectPayload): GenerateObjectPayload => ({
+  ...payload,
+  messages: [
+    ...payload.messages,
+    {
+      content:
+        'Your previous response did not call a tool. You must call one of the provided tools now to return your result — do not answer in plain text.',
+      role: 'user' as const,
+    },
+  ],
+});
+
 /** Factory-level Responses API routing control (supports instance override). */
 const shouldUseResponsesForGenerateObject = (
   runtime: Runtime,
@@ -45,6 +73,32 @@ const shouldUseResponsesForGenerateObject = (
     model,
     responseApi,
   });
+};
+
+/**
+ * Runs a forced tool-call request, retrying the "answered in plain text"
+ * shape failure up to STRUCTURED_OUTPUT_MAX_ATTEMPTS total attempts. The
+ * final error carries `attempts` in its diagnostic context.
+ */
+const retryMissingToolCalls = async <T>(
+  payload: GenerateObjectPayload,
+  attemptCall: (payload: GenerateObjectPayload) => Promise<T>,
+  log?: debug.Debugger,
+): Promise<T> => {
+  let current = payload;
+
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await attemptCall(current);
+    } catch (error) {
+      if (!isMissingToolCallError(error) || attempt >= STRUCTURED_OUTPUT_MAX_ATTEMPTS) {
+        if (isMissingToolCallError(error)) error.context = { ...error.context, attempts: attempt };
+        throw error;
+      }
+      log?.('structured output: attempt %d returned no tool calls, retrying', attempt);
+      current = reinforceToolCallRequest(current);
+    }
+  }
 };
 
 export const generateObject = async (
@@ -72,16 +126,25 @@ export const generateObject = async (
       log('using tools-based generation');
       log('generateObjectWithTools called with model: %s, toolsCount: %d', model, tools.length);
 
-      return shouldUseResponsesForGenerateObject(runtime, factory, payload, 'tool calling')
-        ? await generateToolCallsViaResponses(runtime, factory, payload, options, usagePayload, log)
-        : await generateToolCallsViaChatCompletions(
-            runtime,
-            factory,
-            payload,
-            options,
-            usagePayload,
-            log,
-          );
+      const useResponses = shouldUseResponsesForGenerateObject(
+        runtime,
+        factory,
+        payload,
+        'tool calling',
+      );
+      const attempt = (current: GenerateObjectPayload) =>
+        useResponses
+          ? generateToolCallsViaResponses(runtime, factory, current, options, usagePayload, log)
+          : generateToolCallsViaChatCompletions(
+              runtime,
+              factory,
+              current,
+              options,
+              usagePayload,
+              log,
+            );
+
+      return await retryMissingToolCalls(payload, attempt, log);
     }
 
     if (!schema) throw new Error('tools or schema is required');
@@ -94,7 +157,11 @@ export const generateObject = async (
     // endpoints) must simulate structured output via forced tool calling.
     if (factory.generateObject?.useToolsCalling || detectModelProvider(model) === 'deepseek') {
       log('using tool calling fallback for structured output');
-      return await generateObjectViaToolCalling(runtime, factory, payload, options, usagePayload);
+      return await retryMissingToolCalls(
+        payload,
+        (current) => generateObjectViaToolCalling(runtime, factory, current, options, usagePayload),
+        log,
+      );
     }
 
     const shouldUseResponses = shouldUseResponsesForGenerateObject(

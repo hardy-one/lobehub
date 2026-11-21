@@ -144,6 +144,33 @@ describe('generateObject tool-calling fallback', () => {
     expect(result).toEqual({ summary: 'Task completed', title: 'Done' });
   });
 
+  it('should retry soft tool-call failures on the json_schema-unsupported fallback path', async () => {
+    const instance = createInstance();
+    const textOnly = {
+      choices: [{ finish_reason: 'stop', message: { content: 'A plain-text answer.' } }],
+    };
+    const createMock = vi
+      .spyOn((instance as any).client.chat.completions, 'create')
+      .mockRejectedValueOnce(responseFormatUnsupportedError)
+      .mockResolvedValueOnce(textOnly as any)
+      .mockResolvedValueOnce(toolCallResponse as any);
+
+    const result = await instance.generateObject({ ...generateObjectPayload, model: 'big-pickle' });
+
+    // 1: json_schema rejected, 2: fallback attempt answered in plain text,
+    // 3: reinforced fallback succeeds through tool calling.
+    expect(createMock).toHaveBeenCalledTimes(3);
+    const fallbackRetryPayload = createMock.mock.calls[2][0];
+    expect(fallbackRetryPayload.tool_choice).toEqual({
+      function: { name: 'task_topic_handoff' },
+      type: 'function',
+    });
+    const lastMessage = fallbackRetryPayload.messages.at(-1);
+    expect(lastMessage.role).toBe('user');
+    expect(lastMessage.content).toContain('must call one of the provided tools');
+    expect(result).toEqual({ summary: 'Task completed', title: 'Done' });
+  });
+
   it('should not retry on unrelated provider errors', async () => {
     const instance = createInstance();
     vi.spyOn((instance as any).client.chat.completions, 'create').mockRejectedValue(

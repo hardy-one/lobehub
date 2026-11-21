@@ -158,32 +158,23 @@ export const generateObjectViaJsonSchema = async (
   const { model } = payload;
 
   log('calling chat.completions.create for structured output');
-  let res: OpenAI.ChatCompletion;
-  try {
-    res = await runtime.client.chat.completions.create(
-      runtime.withMappedRequestModel(
-        handleGenerateObjectPayload(runtime, factory, payload, {
-          ...getGenerateObjectReasoningParams(payload),
-          messages: await convertGenerateObjectMessages(runtime, factory, payload),
-          model,
-          response_format: { json_schema: processedSchema, type: 'json_schema' },
-          ...runtime.resolvePromptCacheKeyParams(model, options?.user),
-          user: options?.user,
-        }),
+  // Routing policy (including the tool-calling fallback when the upstream
+  // rejects `json_schema`) belongs to the dispatcher, not here: this
+  // function makes a single request and lets provider errors surface.
+  const res = await runtime.client.chat.completions.create(
+    runtime.withMappedRequestModel(
+      handleGenerateObjectPayload(runtime, factory, payload, {
+        ...getGenerateObjectReasoningParams(payload),
+        messages: await convertGenerateObjectMessages(runtime, factory, payload),
         model,
-      ) as OpenAI.ChatCompletionCreateParamsNonStreaming,
-      { headers: options?.headers, signal: options?.signal },
-    );
-  } catch (error) {
-    // Gateways can serve json_schema-incapable upstreams under arbitrary
-    // model ids (e.g. OpenCode Zen's `big-pickle` proxies DeepSeek), which
-    // the model-id detection above cannot catch. Retry once via forced
-    // tool calling when the upstream rejects the response_format type.
-    if (!isResponseFormatUnsupportedError(error)) throw error;
-
-    log('provider rejected json_schema response_format, retrying via tool calling');
-    return await generateObjectViaToolCalling(runtime, factory, payload, options, usagePayload);
-  }
+        response_format: { json_schema: processedSchema, type: 'json_schema' },
+        ...runtime.resolvePromptCacheKeyParams(model, options?.user),
+        user: options?.user,
+      }),
+      model,
+    ) as OpenAI.ChatCompletionCreateParamsNonStreaming,
+    { headers: options?.headers, signal: options?.signal },
+  );
   if (res.usage) {
     await options?.onUsage?.(convertOpenAIUsage(res.usage, usagePayload));
   }

@@ -11,6 +11,7 @@ import { resolveHeteroSpawnCommand } from '../spawn/resolveCliCommand';
 const PROBE_TIMEOUT_MS = 15_000;
 
 const PROBE_ERROR_MESSAGES: Record<HeterogeneousAgentModelCatalogErrorCode, string> = {
+  auth_required: 'Pi CLI requires authentication',
   cli_not_found: 'Pi CLI was not found',
   command_failed: 'Pi thinking-level probe failed',
   device_unavailable: 'The device is not available',

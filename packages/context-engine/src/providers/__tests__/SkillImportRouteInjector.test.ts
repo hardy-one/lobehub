@@ -189,7 +189,13 @@ describe('SkillImportRouteInjector', () => {
       ]),
     );
 
-    const content = result.messages[0].content as string;
+    // T-202 / C2: injection lives in the deterministic tail slot; the real
+    // user message keeps its original text verbatim.
+    expect(result.messages[0].content).toBe(
+      'Read https://lobehub.com/skills/anthropics-skills-pptx/skill.md and install it as documented.',
+    );
+    const content = result.messages[1].content as string;
+    expect((result.messages[1] as any).meta.virtualLastUser).toBe(true);
 
     expect(content).toContain('<skill_import_route>');
     expect(content).toContain('install="importFromMarket"');
@@ -213,7 +219,10 @@ describe('SkillImportRouteInjector', () => {
       ]),
     );
 
-    const content = result.messages[0].content as string;
+    expect(result.messages[0].content).toBe(
+      'install https://github.com/anthropics/skills/tree/main/skills/pptx',
+    );
+    const content = result.messages[1].content as string;
 
     expect(content).toContain('install="importSkill"');
     expect(content).toContain('type="url"');
@@ -235,7 +244,10 @@ describe('SkillImportRouteInjector', () => {
       ]),
     );
 
-    const content = result.messages[0].content as string;
+    expect(result.messages[0].content).toBe(
+      'https://lobehub.com/skills/anthropics-skills-pptx/skill.md — install as documented',
+    );
+    const content = result.messages[1].content as string;
     const ladder = content.slice(content.indexOf('Install priority'));
 
     expect(ladder).toContain('never skip up it');
@@ -257,28 +269,30 @@ describe('SkillImportRouteInjector', () => {
       ]),
     );
 
+    // All 3 original messages unchanged; injection is the tail slot at index 3.
     expect(result.messages[0].content).toBe('https://lobehub.com/skills/old-one');
-    expect(result.messages[2].content).toContain('identifier="new-one"');
-    expect(result.messages[2].content).not.toContain('identifier="old-one"');
+    expect(result.messages[2].content).toBe('now https://lobehub.com/skills/new-one');
+    expect(result.messages).toHaveLength(4);
+    expect(result.messages[3].content).toContain('identifier="new-one"');
+    expect(result.messages[3].content).not.toContain('identifier="old-one"');
   });
 
-  it('handles multimodal content by appending to the last text part', async () => {
+  it('handles multimodal content, deriving the tail slot from the text part without touching the user message', async () => {
     const injector = new SkillImportRouteInjector({ enabled: true });
 
+    const originalParts = [
+      { image_url: { url: 'https://example.com/a.png' }, type: 'image_url' },
+      { text: 'install https://lobehub.com/skills/a-b/skill.md', type: 'text' },
+    ];
     const result = await injector.process(
-      createContext([
-        {
-          content: [
-            { image_url: { url: 'https://example.com/a.png' }, type: 'image_url' },
-            { text: 'install https://lobehub.com/skills/a-b/skill.md', type: 'text' },
-          ],
-          role: 'user',
-        },
-      ]),
+      createContext([{ content: originalParts, role: 'user' }]),
     );
 
-    const parts = result.messages[0].content as any[];
-    expect(parts[1].text).toContain('identifier="a-b"');
+    // The real user's multimodal content is untouched (P4).
+    expect(result.messages[0].content).toEqual(originalParts);
+    // Injection derived from the text part, projected into the tail slot.
+    const tail = result.messages[1].content as string;
+    expect(tail).toContain('identifier="a-b"');
   });
 
   it('skips injection when no skill source is present', async () => {

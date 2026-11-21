@@ -45,8 +45,12 @@ describe('DocumentReferenceContextInjector', () => {
       ]),
     );
 
+    // T-202 / C8: injection projected to a deterministic tail slot; original
+    // messages (including the <refer_document> user message) stay untouched.
     expect(result.messages[0].content).toBe('First');
-    const last = result.messages[2].content as string;
+    expect(result.messages[2].content).toBe('Use <refer_document name="Voice" id="doc-1" />');
+    const last = result.messages[3].content as string;
+    expect((result.messages[3] as any).meta.virtualLastUser).toBe(true);
     expect(last).toContain('<referred_documents');
     expect(last).toContain('<document id="doc-1" title="Voice &quot;Guide&quot;">');
     expect(last).toContain('# Voice\nShort sentences.');
@@ -68,7 +72,8 @@ describe('DocumentReferenceContextInjector', () => {
     const result = await injector.process(
       createContext([{ content: 'Hi', id: 'user-1', role: 'user' }]),
     );
-    const content = result.messages[0].content as string;
+    expect(result.messages[0].content).toBe('Hi');
+    const content = result.messages[1].content as string;
 
     expect(content).toContain('<document id="doc-1" title="Long" truncated="true">');
     expect(content).toContain('<document id="doc-2" title="Gone" status="unavailable" />');
@@ -87,7 +92,8 @@ describe('DocumentReferenceContextInjector', () => {
     const result = await injector.process(
       createContext([{ content: 'Hi', id: 'user-1', role: 'user' }]),
     );
-    const content = result.messages[0].content as string;
+    expect(result.messages[0].content).toBe('Hi');
+    const content = result.messages[1].content as string;
 
     expect(content).toContain('<document id="doc-1" title="Long" truncated="true">');
     expect(content).not.toContain('readDocument');

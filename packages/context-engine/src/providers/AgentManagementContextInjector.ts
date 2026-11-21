@@ -1,13 +1,23 @@
 import { escapeXml } from '@lobechat/prompts';
 import { agentIdentityLabel, type RuntimeMentionedAgent } from '@lobechat/types';
 import debug from 'debug';
+import { Md5 } from 'ts-md5';
 
 import { BaseFirstUserContentProvider } from '../base/BaseFirstUserContentProvider';
-import type { PipelineContext, ProcessorOptions } from '../types';
+import { BaseProcessor } from '../base/BaseProcessor';
+import {
+  type InjectionSnapshotStore,
+  mentionedAgentsKey,
+  type MentionedAgentsSnapshot,
+} from '../injection/InjectionSnapshotStore';
+import type { Message, PipelineContext, ProcessorOptions } from '../types';
 
 declare module '../types' {
   interface PipelineContextMetadataOverrides {
     agentManagementContextInjected?: boolean;
+    agentMentionDelegationInjectionCreatedAt?: number;
+    /** T-218 B1 P2: source-derived tail-slot identity (no Date.now()/random). */
+    agentMentionDelegationInjectionId?: string;
   }
 }
 
@@ -263,7 +273,7 @@ ${parts.join('\n')}
  * Format mentioned agents as delegation context for injection after the user message.
  * Instructs the AI to delegate to the mentioned agent(s) via callAgent.
  */
-const formatMentionedAgentsContext = (mentionedAgents: RuntimeMentionedAgent[]): string => {
+export const formatMentionedAgentsContext = (mentionedAgents: RuntimeMentionedAgent[]): string => {
   const agentsXml = mentionedAgents
     .map((a) => `  <agent id="${escapeXml(a.id)}" name="${escapeXml(a.name)}" />`)
     .join('\n');
@@ -285,11 +295,9 @@ ${agentsXml}
  *    ...) into a single consolidated message, preserving Phase 3 ordering
  *    and prefix-cache friendliness.
  *
- * 2. **After last user message** — `<mentioned_agents>` delegation hint.
- *    Always its own standalone message because position matters for model
- *    salience (delegation instructions need to be the last thing the model
- *    sees before responding). Handled by overriding `doProcess` to splice
- *    after `super.doProcess()` returns.
+ * 2. **`<mentioned_agents>` delegation hint** — a separate injection point
+ *    (T-193 §2.7 B1) implemented by {@link AgentMentionDelegationInjector}:
+ *    projected into the virtual tail slot with a deterministic identity.
  */
 export class AgentManagementContextInjector extends BaseFirstUserContentProvider {
   readonly name = 'AgentManagementContextInjector';
@@ -335,7 +343,7 @@ export class AgentManagementContextInjector extends BaseFirstUserContentProvider
 
   protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
     // 1) Let BaseFirstUserContentProvider handle the before-first-user merge
-    let result = await super.doProcess(context);
+    const result = await super.doProcess(context);
 
     // Track metadata when we actually injected content
     if (this.config.enabled && this.config.context) {
@@ -346,55 +354,157 @@ export class AgentManagementContextInjector extends BaseFirstUserContentProvider
       }
     }
 
-    // 2) Handle mentionedAgents — separate standalone message after last user
+    // 2) The `<mentioned_agents>` delegation hint is a separate injection point
+    // (T-193 §2.7 B1). It is handled by `AgentMentionDelegationInjector`, which
+    // the engine runs at the end of the pipeline so the hint lands in the
+    // virtual tail slot (messages.length-1) with a source-derived identity.
+    return result;
+  }
+}
+
+/**
+ * Deterministic epoch from an unknown createdAt value (never wall clock).
+ * Mirrors the C3 helper: identity must derive from the source message only (P2).
+ */
+const toEpoch = (value: unknown): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'string') {
+    const t = Date.parse(value);
+    if (Number.isFinite(t)) return t;
+  }
+  return 0;
+};
+
+/**
+ * T-193 §2.7.1 anchor u: the last real user message — role 'user' without any
+ * injection carrier marker (systemInjection / injectType / virtualLastUser / steer).
+ */
+const findLastRealUserIndex = (messages: PipelineContext['messages']): number => {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== 'user') continue;
+    const meta: any = (m as any).meta;
+    if (meta?.systemInjection || meta?.injectType || meta?.virtualLastUser || meta?.steer) continue;
+    return i;
+  }
+  return -1;
+};
+
+export interface AgentMentionDelegationInjectorConfig {
+  /** Agent Management context (only `mentionedAgents` is consumed here). */
+  context?: AgentManagementContext;
+  /** Whether Agent Management tool is enabled */
+  enabled?: boolean;
+  /**
+   * T-218 B1 (M1): session-scoped injection snapshot store. When supplied, the
+   * formatted block is solidified under `<topicId>:mentionedAgents` and reused
+   * byte-identically while the mentioned-agent set is unchanged. A different set
+   * re-projects immediately (fingerprint check) so delegation semantics never
+   * freeze on a stale set (T-193 §3.1 功能优先).
+   */
+  snapshotStore?: InjectionSnapshotStore;
+  topicId?: string;
+}
+
+/**
+ * Agent Mention Delegation Injector (T-193 §2.7 B1, = F2)
+ *
+ * Projects the `<mentioned_agents>` delegation hint into the **virtual tail
+ * slot** — the last message of the payload (index `messages.length-1`) — only
+ * when `mentionedAgents` is non-empty.
+ *
+ * Changes versus the original per-operation splice:
+ *  - position: was `splice(lastUserIndex + 1, 0, …)`, now the tail slot, so the
+ *    hint can never shift messages that follow it (the `[0,k)` prefix stays
+ *    byte-identical even when the mention disappears on a later operation);
+ *  - identity: was `agent-mention-delegation-${Date.now()}` with
+ *    `createdAt: Date.now()`, now derived from the immutable mentioned-agent
+ *    set and the carrier user message (`inject:agent-mention-delegation:<md5>`);
+ *  - no mention → no injection and no empty placeholder block (functional
+ *    semantics fully preserved).
+ *
+ * The trigger expression and the injection template are byte-for-byte the
+ * original ones (P5). The message deliberately is NOT tagged `systemInjection`
+ * (kept from the original implementation) — only `injectType` identifies it.
+ */
+export class AgentMentionDelegationInjector extends BaseProcessor {
+  readonly name = 'AgentMentionDelegationInjector';
+
+  constructor(
+    private config: AgentMentionDelegationInjectorConfig,
+    options: ProcessorOptions = {},
+  ) {
+    super(options);
+  }
+
+  protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
+    // ---- Original trigger expressions, verbatim (P5) ----
     if (!this.config.enabled || !this.config.context) {
-      return result;
+      return this.markAsExecuted(context);
     }
 
     const hasMentionedAgents =
       this.config.context.mentionedAgents && this.config.context.mentionedAgents.length > 0;
 
     if (!hasMentionedAgents) {
-      return result;
+      return this.markAsExecuted(context);
     }
 
-    // Clone again only if super.doProcess didn't already (i.e. when buildContent
-    // returned null). cloneContext is cheap and idempotent at this granularity.
-    result = this.cloneContext(result);
+    const mentionedAgents = this.config.context.mentionedAgents!;
 
-    const mentionedContent = formatMentionedAgentsContext(this.config.context.mentionedAgents!);
+    const clonedContext = this.cloneContext(context);
 
-    // Find the last user message index — but skip the synthetic systemInjection
-    // wrapper messages so we anchor to a real user turn.
-    let lastUserIndex = -1;
-    for (let i = result.messages.length - 1; i >= 0; i--) {
-      const msg = result.messages[i];
-      if (msg.role === 'user' && !msg.meta?.systemInjection) {
-        lastUserIndex = i;
-        break;
+    // Anchor for the carrier createdAt: the real last user message (source
+    // object), never the wall clock.
+    const lastUserIndex = findLastRealUserIndex(clonedContext.messages);
+
+    if (lastUserIndex === -1) {
+      log('No real user message found, skipping mention delegation injection');
+      return this.markAsExecuted(context);
+    }
+
+    const carrierCreatedAt = toEpoch(clonedContext.messages[lastUserIndex].createdAt);
+
+    // ---- Original injection template, verbatim (P5) ----
+    const mentionedContent = formatMentionedAgentsContext(mentionedAgents);
+
+    // Source-derived identity: mentioned-agent set only — no Date.now()/random (P2).
+    const fingerprint = Md5.hashStr(JSON.stringify(mentionedAgents.map((a) => [a.id, a.name])));
+    const injectionId = `inject:agent-mention-delegation:${fingerprint}`;
+
+    // M1: reuse the solidified bytes while the set fingerprint matches; a new
+    // set re-projects immediately (functional semantics first).
+    let content = mentionedContent;
+    const { snapshotStore, topicId } = this.config;
+    if (snapshotStore && topicId) {
+      const key = mentionedAgentsKey(topicId);
+      const stored = snapshotStore.getIfFresh<MentionedAgentsSnapshot>(key, fingerprint);
+      if (stored) {
+        content = stored.content;
+      } else {
+        snapshotStore.refresh(key, { content: mentionedContent, fingerprint, id: injectionId });
       }
     }
 
-    if (lastUserIndex !== -1) {
-      // NOTE: deliberately NOT tagging this with `systemInjection: true`.
-      // The delegation hint is a standalone instruction anchored after the
-      // last user message — it must NOT be picked up as the "consolidated
-      // system context" by subsequent BaseFirstUserContentProvider injectors
-      // (which would mistakenly append identity / memory / etc. into the
-      // delegation block).
-      const mentionMessage = {
-        content: mentionedContent,
-        createdAt: Date.now(),
-        id: `agent-mention-delegation-${Date.now()}`,
-        meta: { injectType: 'agent-mention-delegation' },
-        role: 'user' as const,
-        updatedAt: Date.now(),
-      };
+    const mentionMessage: Message = {
+      content,
+      createdAt: carrierCreatedAt,
+      // NOTE: deliberately NOT tagging this with `systemInjection: true`
+      // (unchanged from the original). The hint is a standalone user turn.
+      id: injectionId,
+      meta: { injectType: 'agent-mention-delegation' },
+      role: 'user' as const,
+      updatedAt: carrierCreatedAt,
+    };
 
-      result.messages.splice(lastUserIndex + 1, 0, mentionMessage);
-      log('Mentioned agents delegation context injected after last user message');
-    }
+    // T form: fixed virtual tail slot, index messages.length-1.
+    clonedContext.messages.push(mentionMessage);
+    clonedContext.metadata.agentMentionDelegationInjectionId = injectionId;
+    clonedContext.metadata.agentMentionDelegationInjectionCreatedAt = carrierCreatedAt;
 
-    return result;
+    log('Mentioned agents delegation projected to tail slot (id=%s)', injectionId);
+
+    return this.markAsExecuted(clonedContext);
   }
 }

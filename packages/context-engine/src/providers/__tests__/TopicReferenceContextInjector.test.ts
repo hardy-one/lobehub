@@ -60,8 +60,12 @@ describe('TopicReferenceContextInjector', () => {
 
     const result = await injector.process(context);
 
-    expect(result.messages).toHaveLength(3);
-    const lastContent = result.messages[2].content as string;
+    // T-202 / C7: injection projected to a deterministic tail slot; original
+    // messages (including the <refer_topic> user message) stay untouched.
+    expect(result.messages).toHaveLength(4);
+    expect(result.messages[2].content).toContain('<refer_topic');
+    const lastContent = result.messages[3].content as string;
+    expect((result.messages[3] as any).meta.virtualLastUser).toBe(true);
     expect(lastContent).toContain('<referred_topics hint=');
     expect(lastContent).toContain('lh topic view');
     expect(lastContent).not.toContain('getTopicContext');
@@ -88,7 +92,8 @@ describe('TopicReferenceContextInjector', () => {
     const context = createContext([{ content: 'Check this topic', id: 'user-1', role: 'user' }]);
 
     const result = await injector.process(context);
-    const lastContent = result.messages[0].content as string;
+    expect(result.messages[0].content).toBe('Check this topic');
+    const lastContent = result.messages[1].content as string;
 
     expect(lastContent).toContain('<pending_topics');
     expect(lastContent).toContain('lh topic view');
@@ -118,7 +123,8 @@ describe('TopicReferenceContextInjector', () => {
     ]);
 
     const result = await injector.process(context);
-    const lastContent = result.messages[0].content as string;
+    expect(result.messages[0].content).toBe('Refer to both topics');
+    const lastContent = result.messages[1].content as string;
 
     expect(lastContent).toContain('<topic id="topic-a" title="Topic A" type="summary">');
     expect(lastContent).toContain('Summary of topic A.');
@@ -153,11 +159,20 @@ some context
     ]);
 
     const result = await injector.process(context);
-    const content = result.messages[0].content as string;
-
-    expect(content.match(/<!-- SYSTEM CONTEXT \(NOT PART OF USER QUERY\) -->/g)).toHaveLength(1);
-    expect(content).toContain('<existing_context>');
-    expect(content).toContain('<topic_reference_context>');
+    // T-202 / C7: the existing wrapper on the user message is left byte-for-byte;
+    // P5 keeps the ORIGINAL wrapper-branch template verbatim — because the real
+    // user already has a SYSTEM_CONTEXT wrapper, the original branch emits a
+    // context block (no extra START/END), now placed in the tail slot.
+    const userContent = result.messages[0].content as string;
+    expect(userContent.match(/<!-- SYSTEM CONTEXT \(NOT PART OF USER QUERY\) -->/g)).toHaveLength(
+      1,
+    );
+    expect(userContent).toContain('<existing_context>');
+    expect(userContent).not.toContain('<topic_reference_context>');
+    const tail = result.messages[1].content as string;
+    expect(tail).toContain('<topic_reference_context>');
+    expect(tail).toContain('Topic summary.');
+    expect(tail).not.toContain('<existing_context>');
   });
 
   it('should inject recent messages when no summary available', async () => {
@@ -180,7 +195,8 @@ some context
     ]);
 
     const result = await injector.process(context);
-    const lastContent = result.messages[0].content as string;
+    expect(result.messages[0].content).toBe('Tell me about that topic');
+    const lastContent = result.messages[1].content as string;
 
     expect(lastContent).toContain(
       '<topic id="topic-recent" title="React Q&A" type="recent_messages">',

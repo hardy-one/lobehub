@@ -1,12 +1,18 @@
 import debug from 'debug';
+import { Md5 } from 'ts-md5';
 
 import { BaseLastUserContentProvider } from '../base/BaseLastUserContentProvider';
-import type { PipelineContext, ProcessorOptions } from '../types';
+import type { InjectionSnapshotStore } from '../injection/InjectionSnapshotStore';
+import { findLastRealUserIndex, makeTailMessage, toEpoch } from '../injection/lastUserInjection';
+import type { Message, PipelineContext, ProcessorOptions } from '../types';
 
 declare module '../types' {
   interface PipelineContextMetadataOverrides {
     topicReferenceCount?: number;
     topicReferenceInjected?: boolean;
+    topicReferenceInjectionCreatedAt?: number;
+    /** T-202 P2: source-derived tail-slot identity (no Date.now()/random). */
+    topicReferenceInjectionId?: string;
   }
 }
 
@@ -29,6 +35,9 @@ export interface TopicReferenceItem {
 export interface TopicReferenceContextInjectorConfig {
   /** Whether topic reference context injection is enabled */
   enabled?: boolean;
+  /** T-202 / C7 (M2): interface symmetry only, UNUSED — pure derivation, no store write. */
+  snapshotStore?: InjectionSnapshotStore;
+  topicId?: string;
   /** Referenced topics (with or without summaries) */
   topicReferences?: TopicReferenceItem[];
 }
@@ -126,26 +135,50 @@ export class TopicReferenceContextInjector extends BaseLastUserContentProvider {
 
     log('Formatted content length:', formattedContent.length);
 
-    const lastUserIndex = this.findLastUserMessageIndex(clonedContext.messages);
+    const lastUserIndex = findLastRealUserIndex(clonedContext.messages);
 
-    log('Last user message index:', lastUserIndex);
+    log('Last real user message index:', lastUserIndex);
 
     if (lastUserIndex === -1) {
       log('No user messages found, skipping injection');
       return this.markAsExecuted(clonedContext);
     }
 
+    // T-202 批 B 剩余 / C7: project into a deterministic virtual tail slot.
+    // P5: ORIGINAL wrapper-branch template kept verbatim (byte-for-byte the
+    // pre-change branch expressions); only PLACEMENT changed.
     const hasExistingWrapper = this.hasExistingSystemContext(clonedContext);
     const contentToAppend = hasExistingWrapper
       ? this.createContextBlock(formattedContent, 'topic_reference_context')
       : this.wrapWithSystemContext(formattedContent, 'topic_reference_context');
 
-    this.appendToLastUserMessage(clonedContext, contentToAppend);
+    // Source-derived identity: fingerprint of immutable refer_topic ids → id.
+    const fingerprint = Md5.hashStr(
+      this.config
+        .topicReferences!.map((r) => r.topicId)
+        .sort()
+        .join('|'),
+    );
+    const injectionId = `inject:lastUser:topicReference:${fingerprint}`;
+    const carrierCreatedAt = toEpoch((clonedContext.messages[lastUserIndex] as Message).createdAt);
 
+    const tailMessage = makeTailMessage({
+      content: contentToAppend,
+      createdAt: carrierCreatedAt,
+      id: injectionId,
+      injectType: 'topic-reference',
+    });
+    clonedContext.messages.push(tailMessage);
+
+    // T-202 / C7 is M2 pure derivation: it writes NOTHING to any store. Tail-slot
+    // bytes come solely from the immutable refer_topic message tags; no store write.
+
+    clonedContext.metadata.topicReferenceInjectionId = injectionId;
+    clonedContext.metadata.topicReferenceInjectionCreatedAt = carrierCreatedAt;
     clonedContext.metadata.topicReferenceInjected = true;
     clonedContext.metadata.topicReferenceCount = this.config.topicReferences.length;
 
-    log('Topic reference context appended to last user message');
+    log('Topic reference context projected to tail slot');
 
     return this.markAsExecuted(clonedContext);
   }

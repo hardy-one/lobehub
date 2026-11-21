@@ -122,7 +122,11 @@ describe('agent-document index snapshot', () => {
     expect(third.payload.slice(0, second.payload.length)).toEqual(second.payload);
 
     const index = JSON.stringify(first.payload[0].content);
-    expect(index).toContain('9.4k');
+    // SIZE is bucketed (shared.ts `formatSize`) so edits inside a document do
+    // not rewrite the shared prompt prefix: 9,400 chars is the `~1k` bucket,
+    // never the exact `9.4k`.
+    expect(index).toMatch(/Draft report\s+2af6eb88-8bdb-468f-887f-620baa394efa\s+~1k/);
+    expect(index).not.toContain('9.4k');
     expect(index).not.toContain('Launch plan');
 
     const lastContent = (payload: typeof first.payload) => payload.at(-1)!.content as string;

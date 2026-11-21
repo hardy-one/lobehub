@@ -30,7 +30,10 @@ describe('SelectedToolInjector', () => {
     expect(result.metadata.selectedToolContext).toBeUndefined();
   });
 
-  it('should inject selected tools into the last user message', async () => {
+  // T-202 批 B 剩余 / C4: tools are projected to a deterministic tail slot instead
+  // of being appended into the last real user message, so per-operation churn
+  // stays out of the [0,k) prefix. The original user messages are untouched.
+  it('should project selected tools to a tail slot, leaving the last user message untouched', async () => {
     const provider = new SelectedToolInjector({
       selectedTools: [
         { identifier: 'web-search', name: 'Web Search' },
@@ -46,20 +49,21 @@ describe('SelectedToolInjector', () => {
 
     const result = await provider.process(context);
 
-    expect(result.messages).toHaveLength(3);
-    expect(result.messages[2].content).toContain('Current request');
-    expect(result.messages[2].content).toContain('<selected_tool_context>');
-    expect(result.messages[2].content).toContain('<selected_tools>');
-    expect(result.messages[2].content).toContain(
-      '<tool identifier="web-search" name="Web Search" />',
-    );
+    // original 3 messages unchanged + 1 deterministic tail slot
+    expect(result.messages).toHaveLength(4);
+    expect(result.messages[2].content).toBe('Current request');
+    const tail = result.messages[3].content as string;
+    expect(tail).toContain('<selected_tool_context>');
+    expect(tail).toContain('<selected_tools>');
+    expect(tail).toContain('<tool identifier="web-search" name="Web Search" />');
+    expect((result.messages[3] as any).meta.virtualLastUser).toBe(true);
     expect(result.metadata.selectedToolContext).toEqual({
       injected: true,
       toolsCount: 2,
     });
   });
 
-  it('should inject tool content inline when available', async () => {
+  it('should inject tool content inline in the tail slot when available', async () => {
     const provider = new SelectedToolInjector({
       selectedTools: [
         {
@@ -77,7 +81,9 @@ describe('SelectedToolInjector', () => {
 
     const result = await provider.process(context);
 
-    const content = result.messages[0].content as string;
+    // index 0 = untouched real user, index 1 = tail slot
+    expect(result.messages[0].content).toBe('Find info about cats');
+    const content = result.messages[1].content as string;
     // Tool with content: rendered as open/close tag with content inside
     expect(content).toContain('<tool identifier="web-search" name="Web Search">');
     expect(content).toContain('Search the web for information.');

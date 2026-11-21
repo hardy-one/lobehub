@@ -1,12 +1,21 @@
 import type { AgentSenderMetadata } from '@lobechat/types';
 import debug from 'debug';
+import { Md5 } from 'ts-md5';
 
 import { BaseProcessor } from '../base/BaseProcessor';
+import type { InjectionSnapshotStore } from '../injection/InjectionSnapshotStore';
+import {
+  messageWrapperKey,
+  wrapperBlockId,
+  type WrapperSnapshot,
+} from '../injection/MessageWrapperSnapshots';
 import type { PipelineContext, ProcessorOptions } from '../types';
 
 declare module '../types' {
   interface PipelineContextMetadataOverrides {
     agentSenderMessagesProcessed?: number;
+    /** T-198 G1: deterministic wrapper identity, recorded pre-cleanup for P2. */
+    agentSenderWrapperIds?: Array<{ fingerprint: string; id: string; messageId: string }>;
   }
 }
 
@@ -27,6 +36,13 @@ export interface AgentSenderMessageConfig {
    * could never run.
    */
   canRunLhCommand?: boolean;
+  /**
+   * T-198 G1 M2: session-scoped wrapper snapshot store and topic id. When both
+   * are supplied the prepend header is solidified once per message and reused
+   * byte-identically across operations. Omitted → legacy behaviour unchanged.
+   */
+  snapshotStore?: InjectionSnapshotStore;
+  topicId?: string;
 }
 
 const escapeAttribute = (value: string) =>
@@ -88,6 +104,9 @@ export class AgentSenderMessageProcessor extends BaseProcessor {
   protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
     const clonedContext = this.cloneContext(context);
     let processedCount = 0;
+    const wrapperIds: Array<{ fingerprint: string; id: string; messageId: string }> = [];
+    const { snapshotStore, topicId } = this.config;
+    const useSnapshot = !!(snapshotStore && topicId);
 
     for (let i = 0; i < clonedContext.messages.length; i++) {
       const message = clonedContext.messages[i];
@@ -96,14 +115,42 @@ export class AgentSenderMessageProcessor extends BaseProcessor {
         continue;
       }
 
+      // Original prepend template, byte-for-byte (P5). Only the *source* of the
+      // header becomes a solidified snapshot under M2.
+      const header = formatAgentSenderHeader(message.id, sender, this.config);
+      let injectedHeader = header;
+
+      if (useSnapshot) {
+        // Fingerprint from the message's immutable fields + the exact header,
+        // never Date.now()/random (P2). The header already derives its message_id
+        // attribute from message.id, so identical source ⇒ identical fingerprint.
+        const fingerprint = Md5.hashStr(
+          JSON.stringify({ header, messageId: message.id, role: message.role }),
+        );
+        const key = messageWrapperKey(topicId!, 'agentSender', message.id);
+        let snapshot = snapshotStore!.get<WrapperSnapshot>(key);
+        if (!snapshot) {
+          snapshot = { fingerprint, payload: header };
+          snapshotStore!.set(key, snapshot);
+        }
+        // Cross-operation reuse: always project the stored bytes.
+        injectedHeader = snapshot.payload;
+        wrapperIds.push({
+          fingerprint: snapshot.fingerprint,
+          id: wrapperBlockId('agentSender', message.id, snapshot.fingerprint),
+          messageId: message.id,
+        });
+      }
+
       clonedContext.messages[i] = {
         ...message,
-        content: `${formatAgentSenderHeader(message.id, sender, this.config)}\n\n${message.content}`,
+        content: `${injectedHeader}\n\n${message.content}`,
       };
       processedCount++;
     }
 
     clonedContext.metadata.agentSenderMessagesProcessed = processedCount;
+    if (useSnapshot) clonedContext.metadata.agentSenderWrapperIds = wrapperIds;
     log('Marked %d agent-sent messages', processedCount);
 
     return this.markAsExecuted(clonedContext);

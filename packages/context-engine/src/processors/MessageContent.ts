@@ -4,9 +4,16 @@ import { imageUrlToBase64 } from '@lobechat/utils/imageToBase64';
 import { parseDataUri } from '@lobechat/utils/uriParser';
 import { isDesktopLocalStaticServerUrl } from '@lobechat/utils/url';
 import debug from 'debug';
+import { Md5 } from 'ts-md5';
 
 import { BaseProcessor } from '../base/BaseProcessor';
 import { createMediaFileRef } from '../const/mediaRef';
+import type { InjectionSnapshotStore } from '../injection/InjectionSnapshotStore';
+import {
+  messageWrapperKey,
+  wrapperBlockId,
+  type WrapperSnapshot,
+} from '../injection/MessageWrapperSnapshots';
 import type { PipelineContext, ProcessorOptions } from '../types';
 import { normalizeAudioDurationMs } from '../utils/audio';
 import { getModelVisibleAudioList } from '../utils/voiceMessage';
@@ -15,6 +22,8 @@ declare module '../types' {
   interface PipelineContextMetadataOverrides {
     assistantMessagesProcessed?: number;
     messageContentProcessed?: number;
+    /** T-198 G8: deterministic wrapper identity, recorded pre-cleanup for P2. */
+    messageContentWrapperIds?: Array<{ fingerprint: string; id: string; messageId: string }>;
     toolMessagesProcessed?: number;
     userMessagesProcessed?: number;
   }
@@ -128,6 +137,14 @@ export interface MessageContentConfig {
   model: string;
   /** Provider name */
   provider: string;
+  /**
+   * T-198 G8 M2: session-scoped wrapper snapshot store and topic id. When both
+   * are supplied, the text appended to a user message (vision-downgrade
+   * placeholders + filesPrompts) is solidified once per message and reused
+   * byte-identically across operations. Omitted → legacy behaviour unchanged.
+   */
+  snapshotStore?: InjectionSnapshotStore;
+  topicId?: string;
 }
 
 export interface UserMessageContentPart {
@@ -159,6 +176,8 @@ export class MessageContentProcessor extends BaseProcessor {
   readonly name = 'MessageContentProcessor';
 
   private readonly previewFileIds?: ReadonlySet<string>;
+  /** T-198 G8: accumulated deterministic wrapper identities for this run. */
+  private wrapperIds: Array<{ fingerprint: string; id: string; messageId: string }> = [];
 
   constructor(
     private config: MessageContentConfig,
@@ -169,8 +188,19 @@ export class MessageContentProcessor extends BaseProcessor {
     if (previewFileIds?.length) this.previewFileIds = new Set(previewFileIds);
   }
 
+  private recordWrapperId(topicId: string, messageId: string, fingerprint: string): void {
+    this.wrapperIds.push({
+      fingerprint,
+      id: wrapperBlockId('messageContent', messageId, fingerprint),
+      messageId,
+    });
+    void topicId;
+  }
+
   protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
     const clonedContext = this.cloneContext(context);
+    this.wrapperIds = [];
+    const { snapshotStore, topicId } = this.config;
 
     let processedCount = 0;
     let userMessagesProcessed = 0;
@@ -219,6 +249,7 @@ export class MessageContentProcessor extends BaseProcessor {
     clonedContext.metadata.userMessagesProcessed = userMessagesProcessed;
     clonedContext.metadata.assistantMessagesProcessed = assistantMessagesProcessed;
     clonedContext.metadata.toolMessagesProcessed = toolMessagesProcessed;
+    if (snapshotStore && topicId) clonedContext.metadata.messageContentWrapperIds = this.wrapperIds;
 
     log(
       `Message content processing completed, processed ${processedCount} messages (user: ${userMessagesProcessed}, assistant: ${assistantMessagesProcessed}, tool: ${toolMessagesProcessed})`,
@@ -328,6 +359,35 @@ export class MessageContentProcessor extends BaseProcessor {
       if (filesContext) {
         textContent = (textContent + '\n\n' + filesContext).trim();
       }
+    }
+
+    // T-198 G8 M2: solidify the fully rendered text (user text + appended
+    // vision-downgrade placeholders + filesPrompts) once per message and reuse
+    // it byte-identically on later operations. The fingerprint takes only
+    // immutable message/attachment fields + model/provider — never Date.now().
+    // The append template above is unchanged (P5); the user text stays a prefix
+    // of the stored payload (P4).
+    const { snapshotStore, topicId } = this.config;
+    if (snapshotStore && topicId) {
+      const fingerprint = Md5.hashStr(
+        JSON.stringify({
+          audioList,
+          content: message.content,
+          fileList: message.fileList,
+          imageList: message.imageList,
+          model: this.config.model,
+          provider: this.config.provider,
+          videoList: message.videoList,
+        }),
+      );
+      const key = messageWrapperKey(topicId, 'messageContent', message.id);
+      let snapshot = snapshotStore.get<WrapperSnapshot>(key);
+      if (!snapshot) {
+        snapshot = { fingerprint, payload: textContent };
+        snapshotStore.set(key, snapshot);
+      }
+      textContent = snapshot.payload;
+      this.recordWrapperId(topicId, message.id, snapshot.fingerprint);
     }
 
     // Add text part

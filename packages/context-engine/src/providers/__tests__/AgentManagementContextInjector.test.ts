@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import { InjectionSnapshotStore } from '../../injection/InjectionSnapshotStore';
 import type { PipelineContext } from '../../types';
 import { AgentBuilderContextInjector } from '../AgentBuilderContextInjector';
-import { AgentManagementContextInjector } from '../AgentManagementContextInjector';
+import {
+  AgentManagementContextInjector,
+  AgentMentionDelegationInjector,
+} from '../AgentManagementContextInjector';
 import { UserMemoryInjector } from '../UserMemoryInjector';
 
 describe('AgentManagementContextInjector', () => {
@@ -113,8 +117,8 @@ describe('AgentManagementContextInjector', () => {
   });
 
   describe('mentionedAgents delegation', () => {
-    it('should inject delegation context after the last user message', async () => {
-      const injector = new AgentManagementContextInjector({
+    it('should inject delegation context into the tail slot', async () => {
+      const injector = new AgentMentionDelegationInjector({
         enabled: true,
         context: {
           mentionedAgents: [{ id: 'agt_designer', name: 'Designer Agent' }],
@@ -142,8 +146,8 @@ describe('AgentManagementContextInjector', () => {
       expect(delegationMsg.meta.injectType).toBe('agent-mention-delegation');
     });
 
-    it('should inject after the LAST user message, not the first', async () => {
-      const injector = new AgentManagementContextInjector({
+    it('should land after the LAST user message, not the first', async () => {
+      const injector = new AgentMentionDelegationInjector({
         enabled: true,
         context: {
           mentionedAgents: [{ id: 'agt_1', name: 'Agent A' }],
@@ -166,7 +170,7 @@ describe('AgentManagementContextInjector', () => {
     });
 
     it('should handle multiple mentioned agents', async () => {
-      const injector = new AgentManagementContextInjector({
+      const injector = new AgentMentionDelegationInjector({
         enabled: true,
         context: {
           mentionedAgents: [
@@ -185,6 +189,36 @@ describe('AgentManagementContextInjector', () => {
       expect(delegationMsg.content).toContain('Agent A');
       expect(delegationMsg.content).toContain('Agent B');
     });
+
+    it('shows the current mentioned agents after the set changes between operations', async () => {
+      const store = new InjectionSnapshotStore();
+      const topicId = 'tpc_mention_refresh';
+      const inject = (agents: Array<{ id: string; name: string }>) =>
+        new AgentMentionDelegationInjector({
+          context: { mentionedAgents: agents },
+          enabled: true,
+          snapshotStore: store,
+          topicId,
+        }).process(
+          createContext([
+            { role: 'system', content: 'sys' },
+            { role: 'user', content: 'hi' },
+          ]),
+        );
+
+      const first = await inject([{ id: 'agt_a', name: 'Agent A' }]);
+      const second = await inject([{ id: 'agt_b', name: 'Agent B' }]);
+      const tail = (result: PipelineContext) => String(result.messages.at(-1)?.content);
+
+      expect(tail(first)).toContain('Agent A');
+
+      const current = tail(second);
+      expect(current).toContain('Agent B');
+      expect(current).not.toContain('Agent A');
+      expect(second.metadata.agentMentionDelegationInjectionId).not.toBe(
+        first.metadata.agentMentionDelegationInjectionId,
+      );
+    });
   });
 
   describe('combined: agent-management + mentionedAgents', () => {
@@ -202,12 +236,17 @@ describe('AgentManagementContextInjector', () => {
           mentionedAgents: [{ id: 'agt_dev', name: 'Developer' }],
         },
       });
+      const delegation = new AgentMentionDelegationInjector({
+        context: { mentionedAgents: [{ id: 'agt_dev', name: 'Developer' }] },
+        enabled: true,
+      });
 
       const ctx = createContext([
         { role: 'system', content: 'sys' },
         { role: 'user', content: 'Let @Developer build this' },
       ]);
-      const result = await injector.process(ctx);
+      const afterMgmt = await injector.process(ctx);
+      const result = await delegation.process(afterMgmt);
 
       // system + management_context + user + delegation
       expect(result.messages).toHaveLength(4);
@@ -334,6 +373,10 @@ describe('AgentManagementContextInjector', () => {
 
       ctx = await memory.process(ctx);
       ctx = await mgmt.process(ctx);
+      ctx = await new AgentMentionDelegationInjector({
+        context: { mentionedAgents: [{ id: 'agt_x', name: 'X' }] },
+        enabled: true,
+      }).process(ctx);
 
       // [system, merged context, real user, delegation]
       expect(ctx.messages).toHaveLength(4);
@@ -350,7 +393,7 @@ describe('AgentManagementContextInjector', () => {
 
   describe('only mentionedAgents (no providers/plugins)', () => {
     it('should NOT inject empty agent-management context but SHOULD inject delegation', async () => {
-      const injector = new AgentManagementContextInjector({
+      const injector = new AgentMentionDelegationInjector({
         enabled: true,
         context: {
           // No providers, no plugins — only mentionedAgents

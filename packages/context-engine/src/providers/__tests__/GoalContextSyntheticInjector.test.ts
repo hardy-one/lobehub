@@ -2,6 +2,7 @@ import { buildGoalOverviewPrompt } from '@lobechat/prompts';
 import type { InitialGoalOverviewContext } from '@lobechat/types';
 import { describe, expect, it } from 'vitest';
 
+import { InjectionSnapshotStore } from '../../injection/InjectionSnapshotStore';
 import type { PipelineContext } from '../../types';
 import { GoalContextSyntheticInjector } from '../GoalContextSyntheticInjector';
 
@@ -20,6 +21,13 @@ const OVERVIEW: InitialGoalOverviewContext = {
 };
 // The injector owns prompt composition — callers pass structured data only.
 const OVERVIEW_PROMPT = buildGoalOverviewPrompt(OVERVIEW);
+
+const overview = (marker: string): InitialGoalOverviewContext => ({
+  findings: [`finding-${marker}`],
+  goal: { requirement: `req-${marker}`, status: 'running', title: `Goal ${marker}` },
+  pendingDecisions: [],
+  tasks: [{ seq: 1, status: 'active', title: `Task ${marker}` }],
+});
 
 describe('GoalContextSyntheticInjector', () => {
   it('injects a getGoalContext tool pair right after the last user message', async () => {
@@ -71,6 +79,37 @@ describe('GoalContextSyntheticInjector', () => {
     expect(result.messages[6].tool_calls?.[0]?.function?.name).toBe('getGoalContext');
     expect(result.messages[7].role).toBe('tool');
     expect(result.messages[2].content).toBe('第一轮回答');
+  });
+
+  it('injects the current goal overview after it changes between operations', async () => {
+    const store = new InjectionSnapshotStore();
+    const topicId = 'tpc_goal_refresh';
+    const inject = (marker: string) =>
+      new GoalContextSyntheticInjector({
+        enabled: true,
+        overview: overview(marker),
+        snapshotStore: store,
+        topicId,
+      }).process(
+        createContext([
+          { content: 'sys', role: 'system' },
+          { content: '现在进展如何？', role: 'user' },
+        ]),
+      );
+
+    const first = await inject('A');
+    const second = await inject('B');
+    const toolContent = (result: PipelineContext) =>
+      String(result.messages.find((message) => message.role === 'tool')?.content);
+
+    expect(toolContent(first)).toContain('Goal A');
+
+    const current = toolContent(second);
+    expect(current).toContain('Goal B');
+    expect(current).not.toContain('Goal A');
+    expect(second.metadata.goalContextInjectionIds?.toolCallId).not.toBe(
+      first.metadata.goalContextInjectionIds?.toolCallId,
+    );
   });
 
   it('keeps a real tool chain intact when the current turn already ran tools', async () => {

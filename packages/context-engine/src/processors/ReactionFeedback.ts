@@ -1,12 +1,16 @@
 import type { EmojiReaction } from '@lobechat/types';
 import debug from 'debug';
+import { Md5 } from 'ts-md5';
 
 import { BaseProcessor } from '../base/BaseProcessor';
+import { wrapperBlockId } from '../injection/MessageWrapperSnapshots';
 import type { PipelineContext, ProcessorOptions } from '../types';
 
 declare module '../types' {
   interface PipelineContextMetadataOverrides {
     reactionFeedbackProcessed?: number;
+    /** T-200 G7: deterministic wrapper identity, recorded pre-cleanup for P2. */
+    reactionFeedbackWrapperIds?: Array<{ fingerprint: string; id: string; messageId: string }>;
   }
 }
 
@@ -21,6 +25,14 @@ export interface ReactionFeedbackConfig {
  * Reaction Feedback Processor
  * Converts emoji reactions on assistant messages to feedback text
  * and injects into the next user message, where the model will actually attend to it.
+ *
+ * T-209 (M2 · pure derivation): the prepended tag is a PURE FUNCTION of the
+ * already-persisted `metadata.reactions` of the preceding assistant message(s)
+ * plus the target user message id. Same source → same bytes on every
+ * operation, so the `[0,k)` prefix is stable with no store write; a newly added
+ * reaction is prepended immediately. Trigger logic (collection, injection into
+ * the next user message, pending reset) and the tag template are byte-for-byte
+ * unchanged (P5).
  */
 export class ReactionFeedbackProcessor extends BaseProcessor {
   readonly name = 'ReactionFeedbackProcessor';
@@ -39,6 +51,7 @@ export class ReactionFeedbackProcessor extends BaseProcessor {
 
     const clonedContext = this.cloneContext(context);
     let processedCount = 0;
+    const wrapperIds: Array<{ fingerprint: string; id: string; messageId: string }> = [];
 
     // Collect emojis from assistant messages, then inject into the next user message
     let pendingEmojis: string[] = [];
@@ -62,7 +75,19 @@ export class ReactionFeedbackProcessor extends BaseProcessor {
         const originalContent = message.content;
 
         if (typeof originalContent === 'string') {
+          // Original prepend template, byte-for-byte (P5).
           const feedbackTag = `[User Feedback Emoji: ${pendingEmojis.join(' ')}]`;
+
+          // P2: identity derived only from the immutable source (reaction emojis
+          // already persisted in assistant metadata + target user message id).
+          const fingerprint = Md5.hashStr(
+            JSON.stringify({ emojis: pendingEmojis, messageId: message.id }),
+          );
+          wrapperIds.push({
+            fingerprint,
+            id: wrapperBlockId('reactionFeedback', message.id, fingerprint),
+            messageId: message.id,
+          });
 
           clonedContext.messages[i] = {
             ...message,
@@ -76,6 +101,7 @@ export class ReactionFeedbackProcessor extends BaseProcessor {
     }
 
     clonedContext.metadata.reactionFeedbackProcessed = processedCount;
+    clonedContext.metadata.reactionFeedbackWrapperIds = wrapperIds;
     log(`Reaction feedback processing completed, processed ${processedCount} messages`);
 
     return this.markAsExecuted(clonedContext);

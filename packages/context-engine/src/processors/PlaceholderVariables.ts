@@ -1,13 +1,22 @@
-import { PLUGIN_SCHEMA_SEPARATOR } from '../const/plugin';
-import { truncateSurrogateSafe } from '../utils/truncateSurrogateSafe';
 import debug from 'debug';
+import { Md5 } from 'ts-md5';
 
 import { BaseProcessor } from '../base/BaseProcessor';
+import { PLUGIN_SCHEMA_SEPARATOR } from '../const/plugin';
+import type { InjectionSnapshotStore } from '../injection/InjectionSnapshotStore';
+import {
+  messageWrapperKey,
+  type PlaceholderValuesSnapshot,
+  wrapperBlockId,
+} from '../injection/MessageWrapperSnapshots';
 import type { PipelineContext, ProcessorOptions } from '../types';
+import { truncateSurrogateSafe } from '../utils/truncateSurrogateSafe';
 
 declare module '../types' {
   interface PipelineContextMetadataOverrides {
     placeholderVariablesProcessed?: number;
+    /** T-198 G4: deterministic wrapper identity, recorded pre-cleanup for P2. */
+    placeholderVariablesWrapperIds?: Array<{ fingerprint: string; id: string; messageId: string }>;
   }
 }
 
@@ -154,6 +163,21 @@ export interface PlaceholderVariablesConfig {
    * passed through untouched.
    */
   hydratedToolResults?: Readonly<Record<string, readonly string[]>>;
+  /**
+   * Stable message id used as the snapshot key suffix when this processor is
+   * driven through MessagesEngine (where messages are processed as a batch
+   * with a single topic id). Defaults to 'batch'.
+   */
+  snapshotMessageId?: string;
+  /**
+   * T-198 G4 M2: session-scoped snapshot store and topic id. When both are
+   * supplied the *resolved* placeholder values are solidified on the first
+   * matching request and reused on later operations, so a generator returning
+   * a changing value (e.g. a clock) cannot drift the payload prefix. Omitted →
+   * legacy behaviour unchanged.
+   */
+  snapshotStore?: InjectionSnapshotStore;
+  topicId?: string;
   /** Variable generators mapping, key is variable name, value is generator function */
   variableGenerators: Record<string, () => string>;
 }
@@ -363,6 +387,12 @@ const extractUnresolvedPlaceholderNames = (message: any, generatorKeys: string[]
 export class PlaceholderVariablesProcessor extends BaseProcessor {
   readonly name = 'PlaceholderVariablesProcessor';
 
+  /**
+   * T-198 G4: the generators actually used for this run. When snapshot-backed,
+   * these are frozen resolved values so later operations reuse identical bytes.
+   */
+  private activeGenerators?: Record<string, () => string>;
+
   constructor(
     private config: PlaceholderVariablesConfig,
     options: ProcessorOptions = {},
@@ -410,7 +440,46 @@ export class PlaceholderVariablesProcessor extends BaseProcessor {
       );
     }
 
-    const generatorKeys = Object.keys(generators);
+    // T-198 G4 M2: solidify the *resolved* generator values once per session so
+    // a generator returning a changing value (e.g. a wall clock) cannot drift
+    // the payload prefix across operations. Only the source of the values
+    // changes: the replacement rule (double-brace placeholders only) stays
+    // byte-for-byte identical (P5) and non-placeholder text stays verbatim (P4).
+    const { snapshotStore, topicId, snapshotMessageId } = this.config;
+    const useSnapshot = !!(snapshotStore && topicId);
+    let effectiveGenerators = generators;
+    const wrapperIds: Array<{ fingerprint: string; id: string; messageId: string }> = [];
+    if (useSnapshot) {
+      const snapshotKeyMessageId = snapshotMessageId ?? 'batch';
+      const resolved: Record<string, string> = {};
+      for (const key of Object.keys(generators)) {
+        try {
+          const value = generators[key]();
+          if (value !== undefined) resolved[key] = value;
+        } catch {
+          // Keep the placeholder unresolved, matching the legacy filter-out.
+        }
+      }
+      const fingerprint = Md5.hashStr(JSON.stringify(resolved));
+      const key = messageWrapperKey(topicId!, 'placeholderVariables', snapshotKeyMessageId);
+      let snapshot = snapshotStore!.get<PlaceholderValuesSnapshot>(key);
+      if (!snapshot) {
+        snapshot = { fingerprint, values: resolved };
+        snapshotStore!.set(key, snapshot);
+      }
+      // Freeze resolved values into plain generators; key set is unchanged.
+      effectiveGenerators = Object.fromEntries(
+        Object.entries(snapshot.values).map(([k, v]) => [k, () => v]),
+      );
+      wrapperIds.push({
+        fingerprint: snapshot.fingerprint,
+        id: wrapperBlockId('placeholderVariables', snapshotKeyMessageId, snapshot.fingerprint),
+        messageId: snapshotKeyMessageId,
+      });
+    }
+
+    const generatorKeys = Object.keys(effectiveGenerators);
+    this.activeGenerators = effectiveGenerators;
     log(`Starting placeholder variables processing with ${generatorKeys.length} generators`);
     log('Generator keys: %o', generatorKeys);
 
@@ -497,6 +566,7 @@ export class PlaceholderVariablesProcessor extends BaseProcessor {
 
     // Update metadata
     clonedContext.metadata.placeholderVariablesProcessed = processedCount;
+    if (useSnapshot) clonedContext.metadata.placeholderVariablesWrapperIds = wrapperIds;
 
     // Attach failure diagnostics to metadata so the dashboard can surface them
     // without requiring debug-level logging.
@@ -524,7 +594,8 @@ export class PlaceholderVariablesProcessor extends BaseProcessor {
     if (!message?.content) return { processed: message, unresolvedPlaceholders: [] };
 
     const { content } = message;
-    const generatorKeys = Object.keys(this.config.variableGenerators);
+    const effectiveGenerators = this.activeGenerators ?? this.config.variableGenerators;
+    const generatorKeys = Object.keys(effectiveGenerators);
     const generatorSet = new Set(generatorKeys);
 
     // Helper to collect unresolved placeholder names from a text
@@ -538,7 +609,7 @@ export class PlaceholderVariablesProcessor extends BaseProcessor {
       return {
         processed: {
           ...message,
-          content: parsePlaceholderVariables(content, this.config.variableGenerators, depth),
+          content: parsePlaceholderVariables(content, effectiveGenerators, depth),
         },
         unresolvedPlaceholders: [...new Set(unresolved)],
       };
@@ -555,7 +626,7 @@ export class PlaceholderVariablesProcessor extends BaseProcessor {
               allUnresolved.push(...unresolved);
               return {
                 ...item,
-                text: parsePlaceholderVariables(item.text, this.config.variableGenerators, depth),
+                text: parsePlaceholderVariables(item.text, effectiveGenerators, depth),
               };
             }
             return item;

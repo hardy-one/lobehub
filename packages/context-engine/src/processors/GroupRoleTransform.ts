@@ -1,6 +1,8 @@
 import debug from 'debug';
+import { Md5 } from 'ts-md5';
 
 import { BaseProcessor } from '../base/BaseProcessor';
+import { wrapperBlockId } from '../injection/MessageWrapperSnapshots';
 import type { Message, PipelineContext, ProcessorOptions } from '../types';
 
 declare module '../types' {
@@ -9,6 +11,8 @@ declare module '../types' {
       assistantTransformed: number;
       toolTransformed: number;
     };
+    /** T-200 G13: deterministic wrapper identities, recorded pre-cleanup for P2. */
+    groupRoleTransformWrapperIds?: Array<{ fingerprint: string; id: string; messageId: string }>;
   }
 }
 
@@ -57,17 +61,12 @@ export interface GroupRoleTransformConfig {
  * 2. Other agents' assistant messages: Convert to user with speaker tag
  * 3. Other agents' tool messages: Convert to user with tool_result tag
  *
- * @example
- * ```typescript
- * const processor = new GroupRoleTransformProcessor({
- *   currentAgentId: 'travel-advisor',
- *   agentMap: {
- *     'weather-expert': { name: 'Weather Expert', role: 'participant' },
- *     'travel-advisor': { name: 'Travel Advisor', role: 'participant' },
- *     'supervisor': { name: 'Supervisor', role: 'supervisor' },
- *   }
- * });
- * ```
+ * T-209 (M2 · pure derivation): each wrapper is a PURE FUNCTION of the source
+ * message's immutable fields (agent name, content, tools / tool identity). Same
+ * source → same bytes on every operation, so the `[0,k)` prefix is stable with
+ * no store write; changed content is transformed immediately. Role conversion
+ * and the `<speaker>` / `<tool_result>` templates stay byte-for-byte unchanged
+ * (P5).
  */
 export class GroupRoleTransformProcessor extends BaseProcessor {
   readonly name = 'GroupRoleTransformProcessor';
@@ -90,6 +89,7 @@ export class GroupRoleTransformProcessor extends BaseProcessor {
 
     let assistantTransformed = 0;
     let toolTransformed = 0;
+    const wrapperIds: Array<{ fingerprint: string; id: string; messageId: string }> = [];
 
     clonedContext.messages = clonedContext.messages.map((msg: Message) => {
       // Process assistant messages
@@ -100,7 +100,7 @@ export class GroupRoleTransformProcessor extends BaseProcessor {
         }
 
         // Other agent: transform to user with speaker tag
-        const transformed = this.transformAssistantMessage(msg);
+        const transformed = this.transformAssistantMessage(msg, wrapperIds);
         if (transformed !== msg) {
           assistantTransformed++;
           log(`Transformed assistant message from agent: ${msg.agentId} to user`);
@@ -116,7 +116,7 @@ export class GroupRoleTransformProcessor extends BaseProcessor {
         }
 
         // Other agent: transform to user with tool_result tag
-        const transformed = this.transformToolMessage(msg);
+        const transformed = this.transformToolMessage(msg, wrapperIds);
         if (transformed !== msg) {
           toolTransformed++;
           log(`Transformed tool message from agent: ${msg.agentId} to user`);
@@ -132,6 +132,7 @@ export class GroupRoleTransformProcessor extends BaseProcessor {
       assistantTransformed,
       toolTransformed,
     };
+    clonedContext.metadata.groupRoleTransformWrapperIds = wrapperIds;
 
     log(
       `Group role transform completed: ${assistantTransformed} assistant messages, ${toolTransformed} tool messages transformed`,
@@ -143,7 +144,10 @@ export class GroupRoleTransformProcessor extends BaseProcessor {
   /**
    * Transform an assistant message from another agent to a user message
    */
-  private transformAssistantMessage(msg: Message): Message {
+  private transformAssistantMessage(
+    msg: Message,
+    wrapperIds: Array<{ fingerprint: string; id: string; messageId: string }>,
+  ): Message {
     const agentInfo = this.config.agentMap[msg.agentId];
     if (!agentInfo) {
       // No agent info found, keep original
@@ -164,6 +168,21 @@ export class GroupRoleTransformProcessor extends BaseProcessor {
       content += this.buildToolUseSection(msg.tools);
     }
 
+    // P2: identity derived only from the immutable source (no wall clock/random).
+    const fingerprint = Md5.hashStr(
+      JSON.stringify({
+        agentName,
+        content: msg.content,
+        messageId: msg.id,
+        tools: msg.tools,
+      }),
+    );
+    wrapperIds.push({
+      fingerprint,
+      id: wrapperBlockId('groupRoleTransform', msg.id, fingerprint),
+      messageId: msg.id,
+    });
+
     return {
       ...msg,
       content,
@@ -176,7 +195,10 @@ export class GroupRoleTransformProcessor extends BaseProcessor {
   /**
    * Transform a tool result message from another agent to a user message
    */
-  private transformToolMessage(msg: Message): Message {
+  private transformToolMessage(
+    msg: Message,
+    wrapperIds: Array<{ fingerprint: string; id: string; messageId: string }>,
+  ): Message {
     const agentInfo = this.config.agentMap[msg.agentId];
     if (!agentInfo) {
       // No agent info found, keep original
@@ -191,6 +213,22 @@ export class GroupRoleTransformProcessor extends BaseProcessor {
     const content = `${this.buildSpeakerTag(agentName)}<tool_result id="${toolCallId}" name="${toolName}">
 ${resultContent}
 </tool_result>`;
+
+    // P2: identity derived only from the immutable source (no wall clock/random).
+    const fingerprint = Md5.hashStr(
+      JSON.stringify({
+        agentName,
+        content: msg.content,
+        messageId: msg.id,
+        toolCallId,
+        toolName,
+      }),
+    );
+    wrapperIds.push({
+      fingerprint,
+      id: wrapperBlockId('groupRoleTransform', msg.id, fingerprint),
+      messageId: msg.id,
+    });
 
     return {
       ...msg,

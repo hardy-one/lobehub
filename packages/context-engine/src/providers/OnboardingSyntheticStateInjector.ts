@@ -1,6 +1,11 @@
 import debug from 'debug';
+import { Md5 } from 'ts-md5';
 
 import { BaseProcessor } from '../base/BaseProcessor';
+import {
+  type InjectionSnapshotStore,
+  tailOnboardingStateKey,
+} from '../injection/InjectionSnapshotStore';
 import type { Message, PipelineContext, ProcessorOptions } from '../types';
 import type {
   OnboardingContextInjectorConfig,
@@ -10,7 +15,20 @@ import { formatOnboardingUserInfo } from './OnboardingContextInjector';
 
 const log = debug('context-engine:provider:OnboardingSyntheticStateInjector');
 
-const makeSyntheticToolCallId = () => `synthetic-getOnboardingState-${Date.now()}`;
+declare module '../types' {
+  interface PipelineContextMetadataOverrides {
+    /** T-204 P2: deterministic synthetic tool-pair identity (no Date.now()/random). */
+    onboardingStateInjectionIds?: { toolCallId: string; assistantId: string; toolId: string };
+  }
+}
+
+export interface OnboardingStateToolPairSnapshot {
+  assistantId: string;
+  content: string;
+  fingerprint: string;
+  toolCallId: string;
+  toolId: string;
+}
 
 /**
  * Onboarding Synthetic State Injector
@@ -28,7 +46,10 @@ export class OnboardingSyntheticStateInjector extends BaseProcessor {
   readonly name = 'OnboardingSyntheticStateInjector';
 
   constructor(
-    private config: OnboardingContextInjectorConfig,
+    private config: OnboardingContextInjectorConfig & {
+      snapshotStore?: InjectionSnapshotStore;
+      topicId?: string;
+    },
     _options: ProcessorOptions = {},
   ) {
     super(_options);
@@ -43,7 +64,7 @@ export class OnboardingSyntheticStateInjector extends BaseProcessor {
     const ctx = this.config.onboardingContext;
 
     // Build the synthetic tool result content (mimics getOnboardingState response)
-    const stateResult = this.buildStateResult(
+    let stateResult = this.buildStateResult(
       ctx.phaseGuidance,
       ctx.soulContent,
       ctx.personaContent,
@@ -69,11 +90,48 @@ export class OnboardingSyntheticStateInjector extends BaseProcessor {
     // Insert the pair right after the last user message
     const insertIdx = lastUserIdx + 1;
 
-    const toolCallId = makeSyntheticToolCallId();
+    // ---- T-204 M1 snapshot: synthetic tool pair identity + content are derived
+    // from the current source fingerprint (no Date.now()) and stored in
+    // `topicId:tail:onboardingState`. Matching fingerprints reuse the stored
+    // bytes; a changed onboarding state refreshes the snapshot so later
+    // operations never see stale state. ----
+    const sourceFingerprint = Md5.hashStr(stateResult);
+    const { snapshotStore, topicId } = this.config;
+    let pair: OnboardingStateToolPairSnapshot;
+    if (snapshotStore && topicId) {
+      const key = tailOnboardingStateKey(topicId);
+      const stored = snapshotStore.getIfFresh<OnboardingStateToolPairSnapshot>(
+        key,
+        sourceFingerprint,
+      );
+      if (stored) {
+        pair = stored;
+        // P5: the projected tool-result body keeps the baseline template slot.
+        stateResult = stored.content;
+      } else {
+        pair = snapshotStore.refresh(key, {
+          assistantId: `synthetic-assistant:${sourceFingerprint}`,
+          content: stateResult,
+          fingerprint: sourceFingerprint,
+          toolCallId: `synthetic-getOnboardingState:${sourceFingerprint}`,
+          toolId: `synthetic-tool:${sourceFingerprint}`,
+        });
+      }
+    } else {
+      // No store supplied: same identity shape, but source-derived so the id
+      // never depends on a wall clock (P2).
+      pair = {
+        assistantId: `synthetic-assistant-${sourceFingerprint}`,
+        content: stateResult,
+        fingerprint: sourceFingerprint,
+        toolCallId: `synthetic-getOnboardingState-${sourceFingerprint}`,
+        toolId: `synthetic-tool-${sourceFingerprint}`,
+      };
+    }
 
     const assistantMsg: Message = {
       content: '',
-      id: `synthetic-assistant-${Date.now()}`,
+      id: pair.assistantId,
       role: 'assistant',
       tool_calls: [
         {
@@ -81,7 +139,7 @@ export class OnboardingSyntheticStateInjector extends BaseProcessor {
             arguments: '{}',
             name: 'lobe-web-onboarding____getOnboardingState',
           },
-          id: toolCallId,
+          id: pair.toolCallId,
           type: 'function',
         },
       ],
@@ -89,12 +147,17 @@ export class OnboardingSyntheticStateInjector extends BaseProcessor {
 
     const toolMsg: Message = {
       content: stateResult,
-      id: `synthetic-tool-${Date.now()}`,
+      id: pair.toolId,
       role: 'tool',
-      tool_call_id: toolCallId,
+      tool_call_id: pair.toolCallId,
     };
 
     clonedContext.messages.splice(insertIdx, 0, assistantMsg, toolMsg);
+    clonedContext.metadata.onboardingStateInjectionIds = {
+      assistantId: pair.assistantId,
+      toolCallId: pair.toolCallId,
+      toolId: pair.toolId,
+    };
 
     log('Injected synthetic getOnboardingState pair at index %d', insertIdx);
     return this.markAsExecuted(clonedContext);

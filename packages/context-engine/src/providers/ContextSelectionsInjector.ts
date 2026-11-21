@@ -7,6 +7,11 @@ import type { Message, ProcessorOptions } from '../types';
 
 const log = debug('context-engine:provider:ContextSelectionsInjector');
 
+/**
+ * Messages persisted before `metadata.contextSelections` existed only carry
+ * `metadata.pageSelections`. Project those onto the generic shape so old turns
+ * keep injecting; the page-selection rendering itself is unchanged.
+ */
 const fromLegacyPageSelections = (
   selections: PageSelection[] | undefined,
 ): ContextSelection[] | undefined =>
@@ -35,6 +40,15 @@ export interface ContextSelectionsInjectorConfig {
  * These selections are not page-editor selections: they can come from chat text,
  * code snippets, page selections normalized into the generic format, or other
  * future context sources.
+ *
+ * T-193 §1.3 M2 / T-199 c4e1c67b: the wrapper is a PURE FUNCTION of the
+ * current user's already-persisted, immutable metadata — `contextSelections`
+ * when present, otherwise the legacy `pageSelections` projection (those writes
+ * still happen for compatibility, see metadata.ts and operation/types.ts). It
+ * is recomputed byte-identically inside each processing pass and appended to
+ * the payload in place. Nothing derived here is written to a snapshot store, to
+ * pipeline metadata, or to any UI state — the injection exists only as a local
+ * result in the messages sent upstream.
  */
 export class ContextSelectionsInjector extends BaseEveryUserContentProvider {
   readonly name = 'ContextSelectionsInjector';
@@ -54,6 +68,8 @@ export class ContextSelectionsInjector extends BaseEveryUserContentProvider {
       return null;
     }
 
+    // M2: derive purely from the immutable, already-persisted metadata. No read
+    // from or write to any session/metadata/UI state.
     const contextSelections =
       (message.metadata?.contextSelections as ContextSelection[] | undefined) ??
       fromLegacyPageSelections(message.metadata?.pageSelections as PageSelection[] | undefined);

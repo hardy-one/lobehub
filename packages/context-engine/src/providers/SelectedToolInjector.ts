@@ -1,9 +1,12 @@
 import { escapeXml } from '@lobechat/prompts';
 import type { RuntimeSelectedTool } from '@lobechat/types';
 import debug from 'debug';
+import { Md5 } from 'ts-md5';
 
 import { BaseLastUserContentProvider } from '../base/BaseLastUserContentProvider';
 import { CONTEXT_INSTRUCTION, SYSTEM_CONTEXT_END, SYSTEM_CONTEXT_START } from '../base/constants';
+import type { InjectionSnapshotStore } from '../injection/InjectionSnapshotStore';
+import { findLastRealUserIndex, makeTailMessage, toEpoch } from '../injection/lastUserInjection';
 import type { PipelineContext, ProcessorOptions } from '../types';
 
 declare module '../types' {
@@ -12,6 +15,9 @@ declare module '../types' {
       injected: boolean;
       toolsCount: number;
     };
+    selectedToolInjectionCreatedAt?: number;
+    /** T-202 P2: source-derived tail-slot identity (no Date.now()/random). */
+    selectedToolInjectionId?: string;
   }
 }
 
@@ -20,6 +26,13 @@ const log = debug('context-engine:provider:SelectedToolInjector');
 export interface SelectedToolInjectorConfig {
   enabled?: boolean;
   selectedTools?: RuntimeSelectedTool[];
+  /**
+   * T-202 批 B 剩余 / C4 (M2): accepted for interface symmetry but UNUSED — pure
+   * derivation from immutable source, writes nothing to any store. Byte stability
+   * of [0,k) comes from deterministic tail-slot placement.
+   */
+  snapshotStore?: InjectionSnapshotStore;
+  topicId?: string;
 }
 
 export const formatSelectedTools = (selectedTools: RuntimeSelectedTool[]): string | null => {
@@ -113,6 +126,7 @@ export class SelectedToolInjector extends BaseLastUserContentProvider {
   }
 
   protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
+    // Original trigger expression, verbatim (P5).
     if (this.config.enabled === false) return this.markAsExecuted(context);
 
     const clonedContext = this.cloneContext(context);
@@ -124,7 +138,7 @@ export class SelectedToolInjector extends BaseLastUserContentProvider {
     }
 
     // Deduplicate: skip tools already @mentioned in earlier messages (via editorData)
-    const lastUserIndex = this.findLastUserMessageIndex(clonedContext.messages);
+    const lastUserIndex = findLastRealUserIndex(clonedContext.messages);
 
     if (lastUserIndex === -1) {
       log('No user messages found, skipping injection');
@@ -156,19 +170,40 @@ export class SelectedToolInjector extends BaseLastUserContentProvider {
       return this.markAsExecuted(clonedContext);
     }
 
+    // T-202 批 B 剩余 / C4: project into a deterministic virtual tail slot,
+    // mirroring C3. P5: the ORIGINAL wrapper-branch template is kept verbatim
+    // (byte-for-byte the pre-change branch expressions); only PLACEMENT changed.
     const hasExistingWrapper = this.hasExistingSystemContext(clonedContext);
     const contentToAppend = hasExistingWrapper
       ? this.createContextBlock(content, 'selected_tool_context')
       : this.wrapWithSystemContext(content, 'selected_tool_context');
 
-    this.appendToLastUserMessage(clonedContext, contentToAppend);
+    // Source-derived fingerprint (selectedTools + historical @mention ids) → id.
+    const fingerprintSrc = JSON.stringify(selectedTools) + '|' + [...previousIds].sort().join(',');
+    const fingerprint = Md5.hashStr(fingerprintSrc);
+    const injectionId = `inject:lastUser:selectedTools:${fingerprint}`;
+    const carrierCreatedAt = toEpoch(clonedContext.messages[lastUserIndex].createdAt);
 
+    const tailMessage = makeTailMessage({
+      content: contentToAppend,
+      createdAt: carrierCreatedAt,
+      id: injectionId,
+      injectType: 'selected-tools',
+    });
+    clonedContext.messages.push(tailMessage);
+
+    // T-202 / C4 is M2 pure derivation: it writes NOTHING to any store. Tail-slot
+    // bytes come solely from immutable selected-tool source + historical dedup;
+    // no session/injection store write, so no UI or store side effect.
+
+    clonedContext.metadata.selectedToolInjectionId = injectionId;
+    clonedContext.metadata.selectedToolInjectionCreatedAt = carrierCreatedAt;
     clonedContext.metadata.selectedToolContext = {
       injected: true,
       toolsCount: selectedTools.length,
     };
 
-    log('Selected tool context appended, tools count: %d', selectedTools.length);
+    log('Selected tool context projected to tail slot, tools count: %d', selectedTools.length);
 
     return this.markAsExecuted(clonedContext);
   }

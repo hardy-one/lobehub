@@ -1,7 +1,10 @@
 import debug from 'debug';
+import { Md5 } from 'ts-md5';
 
 import { BaseLastUserContentProvider } from '../base/BaseLastUserContentProvider';
-import type { PipelineContext, ProcessorOptions } from '../types';
+import type { InjectionSnapshotStore } from '../injection/InjectionSnapshotStore';
+import { findLastRealUserIndex, makeTailMessage, toEpoch } from '../injection/lastUserInjection';
+import type { Message, PipelineContext, ProcessorOptions } from '../types';
 
 declare module '../types' {
   interface PipelineContextMetadataOverrides {
@@ -9,6 +12,9 @@ declare module '../types' {
       injected: boolean;
       urls: string[];
     };
+    skillImportRouteInjectionCreatedAt?: number;
+    /** T-202 P2: source-derived tail-slot identity (no Date.now()/random). */
+    skillImportRouteInjectionId?: string;
   }
 }
 
@@ -173,6 +179,13 @@ export const formatSkillImportRoutes = (routes: SkillImportRoute[]): string | nu
 
 export interface SkillImportRouteInjectorConfig {
   enabled?: boolean;
+  /**
+   * T-202 批 B 剩余 / C2 (M2): accepted for interface symmetry but UNUSED — links
+   * are derived from the already-persisted last-user message text; this point
+   * writes nothing to any store. Byte stability of [0,k) comes from tail-slot.
+   */
+  snapshotStore?: InjectionSnapshotStore;
+  topicId?: string;
 }
 
 /**
@@ -198,10 +211,11 @@ export class SkillImportRouteInjector extends BaseLastUserContentProvider {
   }
 
   protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
+    // Original trigger expression, verbatim (P5).
     if (this.config.enabled === false) return this.markAsExecuted(context);
 
     const clonedContext = this.cloneContext(context);
-    const lastUserIndex = this.findLastUserMessageIndex(clonedContext.messages);
+    const lastUserIndex = findLastRealUserIndex(clonedContext.messages);
 
     if (lastUserIndex === -1) {
       log('No user messages found, skipping injection');
@@ -227,19 +241,44 @@ export class SkillImportRouteInjector extends BaseLastUserContentProvider {
     const content = formatSkillImportRoutes(routes);
     if (!content) return this.markAsExecuted(clonedContext);
 
+    // T-202 批 B 剩余 / C2: project into a deterministic virtual tail slot.
+    // P5: the ORIGINAL wrapper-branch template is kept verbatim (byte-for-byte
+    // the pre-change branch expressions); only the PLACEMENT changed — the
+    // resulting text is pushed to a tail slot instead of into the real user.
     const hasExistingWrapper = this.hasExistingSystemContext(clonedContext);
     const contentToAppend = hasExistingWrapper
       ? this.createContextBlock(content, 'skill_import_route')
       : this.wrapWithSystemContext(content, 'skill_import_route');
 
-    this.appendToLastUserMessage(clonedContext, contentToAppend);
+    // Source-derived identity: fingerprint of the immutable link text + real user
+    // createdAt. No wall clock / random component (P2).
+    const realUser = clonedContext.messages[lastUserIndex];
+    const fingerprint = Md5.hashStr(routes.map((r) => r.url).join('|'));
+    const injectionId = `inject:lastUser:skillImportRoute:${fingerprint}`;
+    const carrierCreatedAt = toEpoch((realUser as Message).createdAt);
+    const tailMessage = makeTailMessage({
+      content: contentToAppend,
+      createdAt: carrierCreatedAt,
+      id: injectionId,
+      injectType: 'skill-import-route',
+    });
+    clonedContext.messages.push(tailMessage);
+
+    // T-202 / C2 is M2 pure derivation: it writes NOTHING to any store. The
+    // tail-slot bytes come solely from the already-persisted user message text;
+    // no session/injection store write, so there is no UI or store side effect.
 
     clonedContext.metadata.skillImportRoute = {
       injected: true,
       urls: routes.map((route) => route.url),
     };
+    clonedContext.metadata.skillImportRouteInjectionId = injectionId;
+    clonedContext.metadata.skillImportRouteInjectionCreatedAt = carrierCreatedAt;
 
-    log('Skill import route injected for: %o', clonedContext.metadata.skillImportRoute.urls);
+    log(
+      'Skill import route projected to tail slot for: %o',
+      clonedContext.metadata.skillImportRoute.urls,
+    );
 
     return this.markAsExecuted(clonedContext);
   }

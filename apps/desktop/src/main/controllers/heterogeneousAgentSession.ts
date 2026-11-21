@@ -162,10 +162,10 @@ export interface AgentSession {
   env?: Record<string, string>;
   grokAcpSession?: GrokAcpSession;
   hostedProviderBinding?: HostedProviderBinding;
-  /** Open input of a live CLI run (Claude Code). */
-  liveInput?: ClaudeCodeLiveInput;
   /** Protocol-native thinking level applied to the Pi session before each run. */
   initialThinkingLevel?: string;
+  /** Open input of a live CLI run (Claude Code). */
+  liveInput?: ClaudeCodeLiveInput;
   model?: string;
   modelSource?: string;
   modelVerificationLastAttemptAt?: number;

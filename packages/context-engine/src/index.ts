@@ -17,6 +17,54 @@ export { ContextEngine } from './pipeline';
 // Context Providers
 export * from './providers';
 
+// Session-scoped injection snapshot store (T-193 §1.3 M1 / T-194 共用基建)
+export {
+  type ContextSelectionsSnapshot,
+  EVERY_USER_CONTEXT_SELECTIONS_SUFFIX,
+  everyUserContextSelectionsKey,
+  type FingerprintSnapshot,
+  FIRST_USER_EXPERTISE_SUFFIX,
+  firstUserExpertiseKey,
+  InjectionSnapshotStore,
+  LAST_USER_ACTIVE_DOC_SUFFIX,
+  LAST_USER_DOCUMENT_REFERENCE_SUFFIX,
+  LAST_USER_PROJECT_SUFFIX,
+  LAST_USER_SELECTED_SKILLS_SUFFIX,
+  LAST_USER_SELECTED_TOOLS_SUFFIX,
+  LAST_USER_SKILL_IMPORT_ROUTE_SUFFIX,
+  LAST_USER_TASK_MGR_SUFFIX,
+  LAST_USER_TOPIC_REFERENCE_SUFFIX,
+  lastUserActiveDocKey,
+  lastUserDocumentReferenceKey,
+  lastUserProjectKey,
+  lastUserSelectedSkillsKey,
+  lastUserSelectedToolsKey,
+  lastUserSkillImportRouteKey,
+  lastUserTaskMgrKey,
+  lastUserTopicReferenceKey,
+  STABLE_PREFIX_ADDITIONAL_CONTEXT_SUFFIX,
+  stablePrefixAdditionalContextKey,
+  TAIL_ADDITIONAL_CONTEXT_SUFFIX,
+  TAIL_GOAL_CONTEXT_SUFFIX,
+  TAIL_ONBOARDING_STATE_SUFFIX,
+  tailAdditionalContextKey,
+  tailGoalContextKey,
+  tailOnboardingStateKey,
+  VIRTUAL_TAIL_ONBOARDING_HINT_SUFFIX,
+  VIRTUAL_TAIL_TODOS_SUFFIX,
+  virtualTailOnboardingHintKey,
+  virtualTailTodosKey,
+} from './injection/InjectionSnapshotStore';
+
+// T-198 批 E 消息内包裹族共用 M2 快照基建
+export {
+  MESSAGE_WRAPPER_SUFFIX,
+  messageWrapperKey,
+  type PlaceholderValuesSnapshot,
+  wrapperBlockId,
+  type WrapperSnapshot,
+} from './injection/MessageWrapperSnapshots';
+
 // Token accounting (compression triggers + UI breakdown)
 export type {
   ContextTokenAccounting,

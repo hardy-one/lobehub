@@ -44,6 +44,7 @@ import {
   AgentDocumentSystemReplaceInjector,
   AgentIdentityInjector,
   AgentManagementContextInjector,
+  AgentMentionDelegationInjector,
   BotPlatformContextInjector,
   ConnectorOwnershipInjector,
   ContextSelectionsInjector,
@@ -286,6 +287,22 @@ export class MessagesEngine {
       enabled: hasAgentDocuments,
     };
 
+    // T-201 批 A: per-injector M1 snapshot options. When a session-scoped
+    // injection store is supplied, each first-user provider solidifies its
+    // built content under `<topicId>:<suffix>` and reuses it byte-identically
+    // across operations, with a source-derived carrier id. Trigger conditions
+    // and injection text templates are untouched (T-193 P5).
+    const firstUserOptions = (keySuffix: string) =>
+      this.params.injectionSnapshotStore && this.params.topicId
+        ? {
+            firstUserSnapshot: {
+              keySuffix,
+              store: this.params.injectionSnapshotStore,
+              topicId: this.params.topicId,
+            },
+          }
+        : {};
+
     return [
       // =============================================
       // Phase 0: Placeholder Residue Filtering
@@ -392,61 +409,94 @@ export class MessagesEngine {
       // Order matters: first executed = first in content
       // =============================================
 
-      // User memory
-      new UserMemoryInjector({ ...userMemory, enabled: isUserMemoryEnabled }),
+      // A1 UserMemory
+      new UserMemoryInjector(
+        { ...userMemory, enabled: isUserMemoryEnabled },
+        firstUserOptions('firstUser:userMemory'),
+      ),
       // Operation-scoped learned expertise (captured once and reused verbatim across steps)
       new ExpertiseContextInjector({
         enabled: this.params.enableExpertise,
         expertise: this.params.expertise,
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
       }),
-      // Group context (agent identity and group info for multi-agent chat)
-      new GroupContextInjector({
-        currentAgentId: agentGroup?.currentAgentId,
-        currentAgentName: agentGroup?.currentAgentName,
-        currentAgentRole: agentGroup?.currentAgentRole,
-        enabled: isGroupContextEnabled,
-        groupTitle: agentGroup?.groupTitle,
-        members: agentGroup?.members,
-        systemPrompt: agentGroup?.systemPrompt,
-      }),
-      // Discord context (channel/guild info)
-      new DiscordContextProvider({ context: discordContext, enabled: !!discordContext }),
-      // Plan (high-level plan document)
-      new PlanInjector({ enabled: !!isPlanEnabled, plan: planTodo?.plan }),
-      // Knowledge (agent files + knowledge bases)
-      new KnowledgeInjector({
-        canReadAttachment,
-        fileContents: knowledge?.fileContents,
-        knowledgeBases: knowledge?.knowledgeBases,
-      }),
-      // Agent documents → before first user message
-      new AgentDocumentContextInjector(agentDocConfig),
-      // Tool Discovery (available tools for dynamic activation)
-      new ToolDiscoveryProvider({
-        availableTools: toolDiscoveryConfig?.availableTools,
-        enabled:
-          !!toolDiscoveryConfig?.availableTools && toolDiscoveryConfig.availableTools.length > 0,
-      }),
-      // Agent Builder context (current agent config/meta for editing)
-      new AgentBuilderContextInjector({
-        enabled: isAgentBuilderEnabled,
-        agentContext: agentBuilderContext,
-      }),
-      // Agent Management context (available models and plugins)
-      new AgentManagementContextInjector({
-        enabled: isAgentManagementEnabled,
-        context: agentManagementContext,
-      }),
-      // Group Agent Builder context (current group config/members for editing)
-      new GroupAgentBuilderContextInjector({
-        enabled: isGroupAgentBuilderEnabled,
-        groupContext: groupAgentBuilderContext,
-      }),
-      // Onboarding context (phase guidance + document contents — stable, cacheable)
-      new OnboardingContextInjector({
-        enabled: !!onboardingContext?.phaseGuidance,
-        onboardingContext,
-      }),
+      // A3 Group context (agent identity and group info for multi-agent chat)
+      new GroupContextInjector(
+        {
+          currentAgentId: agentGroup?.currentAgentId,
+          currentAgentName: agentGroup?.currentAgentName,
+          currentAgentRole: agentGroup?.currentAgentRole,
+          enabled: isGroupContextEnabled,
+          groupTitle: agentGroup?.groupTitle,
+          members: agentGroup?.members,
+          systemPrompt: agentGroup?.systemPrompt,
+        },
+        firstUserOptions('firstUser:group'),
+      ),
+      // A4 Discord context (channel/guild info)
+      new DiscordContextProvider(
+        { context: discordContext, enabled: !!discordContext },
+        firstUserOptions('firstUser:discord'),
+      ),
+      // A5 Plan (high-level plan document)
+      new PlanInjector(
+        { enabled: !!isPlanEnabled, plan: planTodo?.plan },
+        firstUserOptions('firstUser:plan'),
+      ),
+      // A6 Knowledge (agent files + knowledge bases)
+      new KnowledgeInjector(
+        {
+          canReadAttachment,
+          fileContents: knowledge?.fileContents,
+          knowledgeBases: knowledge?.knowledgeBases,
+        },
+        firstUserOptions('firstUser:knowledge'),
+      ),
+      // A7 Agent documents → before first user message
+      new AgentDocumentContextInjector(agentDocConfig, firstUserOptions('firstUser:agentDoc')),
+      // A8 Tool Discovery (available tools for dynamic activation)
+      new ToolDiscoveryProvider(
+        {
+          availableTools: toolDiscoveryConfig?.availableTools,
+          enabled:
+            !!toolDiscoveryConfig?.availableTools && toolDiscoveryConfig.availableTools.length > 0,
+        },
+        firstUserOptions('firstUser:toolDiscovery'),
+      ),
+      // A9 Agent Builder context (current agent config/meta for editing)
+      new AgentBuilderContextInjector(
+        {
+          enabled: isAgentBuilderEnabled,
+          agentContext: agentBuilderContext,
+        },
+        firstUserOptions('firstUser:agentBuilder'),
+      ),
+      // A10 Agent Management context (available models and plugins)
+      // Content-isolated from B1 (mentionedAgents) which uses its own key.
+      new AgentManagementContextInjector(
+        {
+          enabled: isAgentManagementEnabled,
+          context: agentManagementContext,
+        },
+        firstUserOptions('firstUser:agentMgmt'),
+      ),
+      // A11 Group Agent Builder context (current group config/members for editing)
+      new GroupAgentBuilderContextInjector(
+        {
+          enabled: isGroupAgentBuilderEnabled,
+          groupContext: groupAgentBuilderContext,
+        },
+        firstUserOptions('firstUser:groupAgentBuilder'),
+      ),
+      // A12 Onboarding context (phase guidance + document contents — stable, cacheable)
+      new OnboardingContextInjector(
+        {
+          enabled: !!onboardingContext?.phaseGuidance,
+          onboardingContext,
+        },
+        firstUserOptions('firstUser:onboarding'),
+      ),
 
       // =============================================
       // Phase 4: User Message Augmentation
@@ -454,7 +504,14 @@ export class MessagesEngine {
       // =============================================
 
       // Agent documents → after-first-user, context-end
-      new AgentDocumentMessageInjector(agentDocConfig),
+      new AgentDocumentMessageInjector({
+        ...agentDocConfig,
+        // T-219 457: session-scoped M1 store for the two role:'system' carriers.
+        // Position is still decided by each document's `position` enum alone;
+        // the store only replaces the wall-clock carrier identity.
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
+      }),
       // Agent-document change notes → the user message each belongs to (the
       // index renders a snapshot; these say what changed since). Not gated on
       // `hasAgentDocuments`: a snapshot taken before the first document has no
@@ -464,18 +521,41 @@ export class MessagesEngine {
         enabled: isAgentMode && !!agentDocumentChanges,
       }),
       // Active topic document → last user message, for continuing document work outside page scope
+      // T-202 批 B 剩余 / C1: M1 topicId:lastUser:activeDoc, §2.7.1 segment order 1.
       new ActiveTopicDocumentContextInjector({
         activeTopicDocument: initialContext?.activeTopicDocument,
         enabled: hasActiveTopicDocument,
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
       }),
       // LobeHub skill URLs in the current message → route them to the Skill Store
       // instead of letting the model crawl the page and follow its CLI steps.
-      new SkillImportRouteInjector({ enabled: isSkillStoreReachable }),
+      // T-202 批 B 剩余 / C2: M2 derived from persisted message text, tail slot.
+      new SkillImportRouteInjector({
+        enabled: isSkillStoreReachable,
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
+      }),
       // Selected skills (ephemeral user-selected slash skills for this request)
-      new SelectedSkillInjector({ enabled: hasSelectedSkills, selectedSkills }),
+      // T-195 批 B / C3: M2 source-derived churn confined to tail slot.
+      new SelectedSkillInjector({
+        enabled: hasSelectedSkills,
+        selectedSkills,
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
+      }),
       // Selected tools (ephemeral user-selected @tool for this request)
-      new SelectedToolInjector({ enabled: hasSelectedTools, selectedTools }),
+      // T-202 批 B 剩余 / C4: M2 source-derived churn confined to tail slot.
+      new SelectedToolInjector({
+        enabled: hasSelectedTools,
+        selectedTools,
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
+      }),
       // Generic user-attached selections from chat/code/text contexts.
+      // D1 W-form wrapper: derived purely from each user's immutable,
+      // persisted metadata.contextSelections. No snapshot store / topicId —
+      // nothing derived is written to session/metadata/UI state.
       new ContextSelectionsInjector({
         enabled: true,
         mcpAppsEnabled: this.params.enableMcpAppContext,
@@ -483,25 +563,37 @@ export class MessagesEngine {
       // Local-system file snapshots (replay send-time @file reads as real tool results)
       new LocalSystemToolSnapshotInjector({ enabled: true }),
       // Project context (members, linked knowledge, open tasks) for a run inside a project
+      // T-195 批 B / C5: M1 topicId:lastUser:project snapshot, stable u.content tail.
       new ProjectContextInjector({
         contextPrompt: initialContext?.projectContext?.contextPrompt,
         enabled: !!initialContext?.projectContext?.contextPrompt,
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
       }),
       // Task Manager page context (inject current tasks list/detail to last user message)
+      // T-202 批 B 剩余 / C6: M1 topicId:lastUser:taskMgr, §2.7.1 segment order 3.
       new TaskManagerContextInjector({
         contextPrompt: initialContext?.taskManager?.contextPrompt,
         enabled: !!initialContext?.taskManager?.contextPrompt,
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
       }),
       // Topic Reference context (referenced topic summaries to last user message)
+      // T-202 批 B 剩余 / C7: M2 derived from immutable <refer_topic> tags, tail slot.
       new TopicReferenceContextInjector({
         enabled: !!(topicReferences && topicReferences.length > 0),
         topicReferences,
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
       }),
       // Document Reference context (dragged/referenced agent documents to last user message)
+      // T-202 批 B 剩余 / C8: M2 derived from immutable <refer_document> tags, tail slot.
       new DocumentReferenceContextInjector({
         canReadDocuments,
         documentReferences,
         enabled: !!(documentReferences && documentReferences.length > 0),
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
       }),
 
       // =============================================
@@ -515,23 +607,35 @@ export class MessagesEngine {
       new GoalContextSyntheticInjector({
         enabled: !!initialContext?.goalOverview,
         overview: initialContext?.goalOverview,
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
       }),
       // Onboarding synthetic state (fake getOnboardingState tool call pair to drive action loop)
       new OnboardingSyntheticStateInjector({
         enabled: !!onboardingContext?.phaseGuidance,
         onboardingContext,
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
       }),
       // Onboarding action hints (phase-specific tool call reminders)
       new OnboardingActionHintInjector({
         enabled: !!onboardingContext?.phaseGuidance,
         onboardingContext,
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
       }),
       // Todo list (standalone virtual tail message)
       new TodoInjector({
         enabled: isTodoEnabled && planTodo?.injectTodos !== false,
         todos: effectiveTodos,
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
       }),
-      new RuntimeAdditionalContextProvider({ additionalContexts }),
+      new RuntimeAdditionalContextProvider({
+        additionalContexts,
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
+      }),
 
       // =============================================
       // Phase 5: Message Transformation
@@ -542,7 +646,11 @@ export class MessagesEngine {
       // sub-agent; mark them as its report before any user-text template
       new SubAgentResultMessageProcessor(),
       // Input template processing
-      new InputTemplateProcessor({ inputTemplate }),
+      new InputTemplateProcessor({
+        inputTemplate,
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
+      }),
       // AgentCouncil message flatten
       new AgentCouncilFlattenProcessor(),
       // Group message flatten
@@ -628,7 +736,12 @@ export class MessagesEngine {
       // run after the hoist or it would silently miss every placeholder buried
       // inside an assistantGroup. (Regression discovered while wiring lobehub
       // skill identity placeholders — see .)
-      new PlaceholderVariablesProcessor({ variableGenerators: variableGenerators || {} }),
+      new PlaceholderVariablesProcessor({
+        snapshotMessageId: this.params.topicId ? `variables:${this.params.topicId}` : undefined,
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
+        variableGenerators: variableGenerators || {},
+      }),
 
       // Absolute-time snapshots on a deterministic 10-min cadence so the model
       // keeps a sense of when each turn happened without breaking prefix cache.
@@ -659,6 +772,8 @@ export class MessagesEngine {
           ...(toolsConfig?.manifests ?? []).map((manifest) => manifest.identifier),
           ...(toolDiscoveryConfig?.availableTools ?? []).map((tool) => tool.identifier),
         ].some((identifier) => LH_COMMAND_TOOL_IDENTIFIERS.includes(identifier)),
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
       }),
       // Message content processing (image encoding, multimodal)
       new MessageContentProcessor({
@@ -669,6 +784,8 @@ export class MessagesEngine {
         isCanUseVision: capabilities?.isCanUseVision || (() => true),
         model,
         provider,
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
       }),
       // Tool call processing
       new ToolCallProcessor({
@@ -691,6 +808,15 @@ export class MessagesEngine {
       new ToolMessageReorder(),
       // Force finish summary (when maxSteps exceeded)
       new ForceFinishSummaryInjector({ enabled: !!forceFinish }),
+      // B1 mentioned_agents delegation hint — virtual tail slot (T-193 §2.7 B1).
+      // Registered after every other injector so the hint is the LAST message
+      // (index messages.length-1) and can never shift the messages before it.
+      new AgentMentionDelegationInjector({
+        context: agentManagementContext,
+        enabled: isAgentManagementEnabled,
+        snapshotStore: this.params.injectionSnapshotStore,
+        topicId: this.params.topicId,
+      }),
       // Message cleanup (final step)
       new MessageCleanupProcessor(),
     ];

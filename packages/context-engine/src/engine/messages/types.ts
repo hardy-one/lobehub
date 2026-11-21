@@ -12,6 +12,7 @@ import type {
 
 import type { OpenAIChatMessage, UIChatMessage } from '@/types/index';
 
+import type { InjectionSnapshotStore } from '../../injection/InjectionSnapshotStore';
 import type { AgentInfo } from '../../processors/GroupRoleTransform';
 import type { RevokedDocumentReads } from '../../processors/RevokedDocumentResultFilter';
 import type { AgentBuilderContext } from '../../providers/AgentBuilderContextInjector';
@@ -293,6 +294,14 @@ export interface MessagesEngineParams {
   additionalContexts?: readonly RuntimeAdditionalContextFragment[];
   /** Immutable expertise captured when the operation started. */
   expertise?: ExpertiseContextSnapshot;
+  /**
+   * T-193 §1.3 M1: session-scoped injection snapshot store. When supplied,
+   * A2 (ExpertiseContextInjector) writes `topicId:firstUser:expertise` once and
+   * reuses it on every later operation of the same session.
+   */
+  injectionSnapshotStore?: InjectionSnapshotStore;
+  /** Session/topic id used to key injection snapshots. */
+  topicId?: string;
 
   // ========== Capability injection (dependency injection) ==========
   /** Model capability checker */

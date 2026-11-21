@@ -217,8 +217,16 @@ describe('MessagesEngine', () => {
           }),
         ).process();
 
-        expect(result.messages[0].content).toContain('<topic_reference_context>');
+        // T-202 批 B 剩余 / C7: TopicReference is now an M2 virtual-tail slot
+        // (T-193 §2.7), no longer appended into the real user message. The real
+        // user (index 0) must therefore stay untouched; the topic-reference block
+        // appears in a tail slot, and todo + runtime contexts remain in the last.
+        expect(result.messages[0].content).toBe('Hello');
+        expect(result.messages[0].content).not.toContain('<topic_reference_context>');
         expect(result.messages[0].content).not.toContain('<todo_context>');
+        expect(
+          result.messages.some((m: any) => (m.content ?? '').includes('<topic_reference_context>')),
+        ).toBe(true);
         expect(result.messages.at(-1)?.content).toContain('<todo_context>');
         expect(result.messages.at(-1)?.content).toContain('<runtime_context>');
       });

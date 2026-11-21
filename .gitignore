@@ -196,3 +196,9 @@ apps/desktop/core-dist
 # Packaged builtin desktop core
 /apps/desktop/core.asar
 /apps/desktop/core.asar.unpacked/
+
+# injection dev evidence (never shipped)
+.t*-evidence/
+.t*-dom/
+packages/context-engine/.t*-evidence/
+packages/context-engine/.t202-ui-dom-snapshot.txt

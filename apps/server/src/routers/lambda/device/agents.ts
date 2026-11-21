@@ -175,10 +175,12 @@ export const agentsRouter = router({
         deviceId: z.string(),
         env: z.record(z.string(), z.string()).optional(),
         type: z.enum([
+          'antigravity',
           'codebuddy',
           'codex',
           'copilot',
           'cursor',
+          'deepseek-harness',
           'droid',
           'devin',
           'grok-build',

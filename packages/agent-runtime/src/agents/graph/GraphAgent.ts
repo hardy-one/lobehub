@@ -35,6 +35,34 @@ const NODE_OUTPUT_EXTRACTION_FORMAT =
 const ajv = new Ajv({ allErrors: true, strict: false });
 const conditionAjv = new Ajv({ allErrors: false, strict: true });
 
+/**
+ * T-217 外部 E2 · deterministic identity for the retry-only extraction prompt.
+ *
+ * The retry lifecycle stays stage-scoped on purpose (T-193 §3.3): solidifying
+ * `<extraction_task>` into session storage would leak the extraction prompt
+ * into normal requests. So this point only gets the two mandated changes —
+ * tail-slot placement and a source-derived id — and never writes session state.
+ * The id is a pure function of the retry context (node id, attempt, rendered
+ * prompt bytes): no Date.now(), no random component (T-193 §1.4 P2), so
+ * re-running the same retry stage re-projects byte-identical messages.
+ */
+const fnv1a32 = (input: string): string => {
+  let hash = 0x811c9dc5;
+
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+
+  return (hash >>> 0).toString(16).padStart(8, '0');
+};
+
+const retryExtractionMessageId = (
+  currentNode: string,
+  attempt: number,
+  extractionPrompt: string,
+): string => `inject:graphRetry:${currentNode}:${attempt}:${fnv1a32(extractionPrompt)}`;
+
 type GraphState =
   | {
       phase: 'init';
@@ -571,7 +599,17 @@ export class GraphAgent implements Agent {
     });
     const payload: GeneralAgentCallLLMInstructionPayload = {
       allowedToolNames: [],
-      messages: [...input.state.messages, { content: extractionPrompt, role: 'user' as const }],
+      // T-217 外部 E2: the retry prompt is a self-contained virtual user pinned
+      // to the tail slot (index `messages.length-1`) with a source-derived id;
+      // no session write, so the retry-only lifecycle is preserved.
+      messages: [
+        ...input.state.messages,
+        {
+          content: extractionPrompt,
+          id: retryExtractionMessageId(graphState.currentNode, nextAttempt, extractionPrompt),
+          role: 'user' as const,
+        },
+      ],
       model: input.state.modelRuntimeConfig?.model ?? '',
       provider: input.state.modelRuntimeConfig?.provider ?? '',
       tools: [],

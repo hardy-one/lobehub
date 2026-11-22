@@ -144,6 +144,33 @@ describe('generateObject tool-calling fallback', () => {
     expect(result).toEqual({ summary: 'Task completed', title: 'Done' });
   });
 
+  it('should retry soft tool-call failures on the json_schema-unsupported fallback path', async () => {
+    const instance = createInstance();
+    const textOnly = {
+      choices: [{ finish_reason: 'stop', message: { content: 'A plain-text answer.' } }],
+    };
+    const createMock = vi
+      .spyOn((instance as any).client.chat.completions, 'create')
+      .mockRejectedValueOnce(responseFormatUnsupportedError)
+      .mockResolvedValueOnce(textOnly as any)
+      .mockResolvedValueOnce(toolCallResponse as any);
+
+    const result = await instance.generateObject({ ...generateObjectPayload, model: 'big-pickle' });
+
+    // 1: json_schema rejected, 2: fallback attempt answered in plain text,
+    // 3: reinforced fallback succeeds through tool calling.
+    expect(createMock).toHaveBeenCalledTimes(3);
+    const fallbackRetryPayload = createMock.mock.calls[2][0];
+    expect(fallbackRetryPayload.tool_choice).toEqual({
+      function: { name: 'task_topic_handoff' },
+      type: 'function',
+    });
+    const lastMessage = fallbackRetryPayload.messages.at(-1);
+    expect(lastMessage.role).toBe('user');
+    expect(lastMessage.content).toContain('must call one of the provided tools');
+    expect(result).toEqual({ summary: 'Task completed', title: 'Done' });
+  });
+
   it('should not retry on unrelated provider errors', async () => {
     const instance = createInstance();
     vi.spyOn((instance as any).client.chat.completions, 'create').mockRejectedValue(
@@ -361,5 +388,119 @@ describe('generateObject and the provider Responses switch', () => {
 
     expect(chatCreate).toHaveBeenCalledTimes(1);
     expect(responsesCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('generateObject forced tool-call retry loop', () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const createInstance = () => new TestRuntime({ apiKey: 'test' });
+  const toolPayload = {
+    messages: [{ content: 'Write the persona', role: 'user' as const }],
+    model: 'qwen-token-plan/qwen3.8-flash',
+    tools: [
+      {
+        type: 'function' as const,
+        function: {
+          name: 'commit_user_persona',
+          parameters: { properties: { persona: { type: 'string' } }, type: 'object' as const },
+        },
+      },
+    ],
+  };
+  const textOnlyResponse = {
+    choices: [{ finish_reason: 'stop', message: { content: 'A plain-text persona.' } }],
+  };
+  const toolCallOk = {
+    choices: [
+      {
+        message: {
+          tool_calls: [
+            {
+              function: { arguments: '{"persona":"done"}', name: 'commit_user_persona' },
+              id: 'call_1',
+              type: 'function',
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  it('should retry a plain-text answer and succeed on the second attempt', async () => {
+    const instance = createInstance();
+    const createMock = vi
+      .spyOn((instance as any).client.chat.completions, 'create')
+      .mockResolvedValueOnce(textOnlyResponse as any)
+      .mockResolvedValue(toolCallOk as any);
+
+    const result = await instance.generateObject(toolPayload);
+
+    expect(result).toEqual([{ arguments: { persona: 'done' }, name: 'commit_user_persona' }]);
+    expect(createMock).toHaveBeenCalledTimes(2);
+    const retryPayload = createMock.mock.calls[1][0];
+    const lastMessage = retryPayload.messages.at(-1);
+    expect(lastMessage.role).toBe('user');
+    expect(lastMessage.content).toContain('must call one of the provided tools');
+  });
+
+  it('should give up after three attempts with diagnostics on the final error', async () => {
+    const instance = createInstance();
+    const createMock = vi
+      .spyOn((instance as any).client.chat.completions, 'create')
+      .mockResolvedValue(textOnlyResponse as any);
+
+    await expect(instance.generateObject(toolPayload)).rejects.toMatchObject({
+      context: {
+        attempts: 3,
+        finishReason: 'stop',
+        hasTextContent: true,
+        model: 'qwen-token-plan/qwen3.8-flash',
+        provider: 'testprovider',
+      },
+      name: 'StructuredOutputError',
+    });
+    expect(createMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('should not retry malformed tool arguments', async () => {
+    const instance = createInstance();
+    const createMock = vi
+      .spyOn((instance as any).client.chat.completions, 'create')
+      .mockResolvedValue({
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                { function: { arguments: '{broken', name: 'commit_user_persona' }, id: 'c1' },
+              ],
+            },
+          },
+        ],
+      } as any);
+
+    await expect(instance.generateObject(toolPayload)).rejects.toThrow(
+      'Invalid structured output: invalid JSON in tool arguments',
+    );
+    expect(createMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('should retry missing function calls through the Responses API path', async () => {
+    const instance = createInstance();
+    const createMock = vi
+      .spyOn((instance as any).client.responses, 'create')
+      .mockResolvedValueOnce({ output: [{ type: 'message' }] } as any)
+      .mockResolvedValue({
+        output: [
+          { arguments: '{"persona":"done"}', name: 'commit_user_persona', type: 'function_call' },
+        ],
+      } as any);
+
+    const result = await instance.generateObject({ ...toolPayload, responseApi: true });
+
+    expect(result).toEqual([{ arguments: { persona: 'done' }, name: 'commit_user_persona' }]);
+    expect(createMock).toHaveBeenCalledTimes(2);
   });
 });

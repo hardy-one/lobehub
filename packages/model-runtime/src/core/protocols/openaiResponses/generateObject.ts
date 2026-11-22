@@ -155,7 +155,14 @@ export const generateToolCallsViaResponses = async (
 
   log('received %d function calls from Responses API', functionCalls?.length || 0);
 
-  if (!functionCalls?.length) throw new StructuredOutputError('no tool calls returned');
+  if (!functionCalls?.length)
+    throw new StructuredOutputError('no tool calls returned', {
+      model,
+      outputTypes: res.output?.map((item) => item.type),
+      provider: runtime.id,
+      responseId: res.id,
+      status: res.status,
+    });
   return functionCalls.map((item) => ({
     arguments: parseStructuredToolArguments(item.arguments),
     name: item.name,

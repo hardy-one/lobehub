@@ -146,7 +146,12 @@ export class LobeOllamaAI implements LobeRuntimeAI {
     if (!tools) return parseStructuredOutputText(response.message?.content);
 
     const toolCalls = response.message?.tool_calls;
-    if (!toolCalls?.length) throw new StructuredOutputError('no tool calls returned');
+    if (!toolCalls?.length)
+      throw new StructuredOutputError('no tool calls returned', {
+        hasTextContent: !!response.message?.content,
+        model,
+        provider: 'ollama',
+      });
 
     return toolCalls.map((item) => ({
       arguments: parseStructuredToolArguments(item.function.arguments),

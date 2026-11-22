@@ -14,6 +14,7 @@ import {
 import { and, desc, eq, isNull, lt, or } from 'drizzle-orm';
 
 import { messagePlugins, messages, messageTranslates, messageTTS, users } from '../../schemas';
+import { notInjection } from '../../utils/injection';
 import {
   createChatImageItem,
   groupMessageFilesByKind,
@@ -161,6 +162,9 @@ export class MessagePageQueries extends MessageScope {
               scope,
               // Filter out messages that belong to MessageGroups
               isNull(messages.messageGroupId),
+              // Append-only v2: injected context rows are engine input, never
+              // part of the transcript this page renders.
+              notInjection(),
               where,
               beforeCondition,
             ),

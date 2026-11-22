@@ -16,6 +16,7 @@ import {
   notAgentShareFileReference,
 } from '../../../utils/fileVisibility';
 import { normalizeInboxAgentMeta, normalizeInboxAgentTitle } from '../../../utils/inboxAgent';
+import { notInjection } from '../../../utils/injection';
 import { isUserKnowledgeBase } from '../../../utils/knowledgeBaseType';
 import { searchableMessageText } from '../../../utils/searchableMessage';
 import { notShareVisitorMessage, notShareVisitorTopic } from '../../../utils/shareVisitor';
@@ -296,6 +297,8 @@ export async function searchMessages(
       and(
         context.scanScopeWhere(messages),
         ne(messages.role, 'tool'),
+        // Append-only v2: injected rows are runtime input, never search results.
+        notInjection(),
         // Twin of the topics guard: visitor messages inherit the creator's
         // userId and are only identifiable through their parent topic.
         notShareVisitorMessage(),

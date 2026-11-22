@@ -101,6 +101,36 @@ describe('Channel Threads from a run', () => {
     expect(active.threads.map((thread) => thread.threadId)).toEqual([a.threadId]);
   });
 
+  it('omits injected rows from a running run’s activity', async () => {
+    const state = await setup();
+    const root = await state.say('Write the report');
+    const a = await state.run({ rootMessageId: root.id });
+    await db.insert(messages).values([
+      {
+        content: 'Real draft step',
+        role: 'assistant',
+        topicId: a.claim.topic.id,
+        userId: fixture.memberId,
+      },
+      {
+        content: 'Injected todos context',
+        isInjection: true,
+        role: 'assistant',
+        sourceKey: 'todos',
+        topicId: a.claim.topic.id,
+        userId: fixture.memberId,
+      },
+    ]);
+    const main = await state.run();
+
+    const page = await state.history.listThreads(main.operationId);
+    const thread = page.threads.find((item) => item.threadId === a.threadId);
+
+    expect(thread?.run?.activity).toEqual([
+      { at: expect.any(String), role: 'assistant', text: 'Real draft step' },
+    ]);
+  });
+
   it('pages older Threads from nextBefore and stops at the last page', async () => {
     const state = await setup();
     for (const title of ['Work 0', 'Work 1', 'Work 2', 'Work 3']) {

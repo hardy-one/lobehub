@@ -13,6 +13,7 @@ import {
   topics,
 } from '../schemas';
 import type { LobeChatDatabase } from '../type';
+import { notInjection } from '../utils/injection';
 import { notShareVisitorTopic } from '../utils/shareVisitor';
 import { notTrashed } from '../utils/softDelete';
 import { CHANNEL_TOPIC_TRIGGER } from '../utils/topicVisibility';
@@ -293,6 +294,9 @@ export class RecentModel {
         and(
           inArray(messages.topicId, topicIds),
           eq(messages.role, 'assistant'),
+          // Append-only v2: the Recent sidebar renders this text, so injected
+          // rows must never become the preview.
+          notInjection(),
           buildWorkspaceWhere({ userId: this.userId, workspaceId: this.workspaceId }, messages),
           ne(messages.content, ''),
         ),

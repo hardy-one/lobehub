@@ -29681,6 +29681,19 @@
           "primaryKey": false,
           "notNull": false
         },
+        "is_injection": {
+          "name": "is_injection",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "source_key": {
+          "name": "source_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "tools": {
           "name": "tools",
           "type": "jsonb",
@@ -30160,7 +30173,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "messages_injection_source_key_check": {
+          "name": "messages_injection_source_key_check",
+          "value": "\"messages\".\"is_injection\" = (\"messages\".\"source_key\" IS NOT NULL)"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.messages_files": {

@@ -1,4 +1,5 @@
 import debug from 'debug';
+import { Md5 } from 'ts-md5';
 
 import { BaseVirtualLastUserContentProvider } from '../base/BaseVirtualLastUserContentProvider';
 import {
@@ -17,6 +18,13 @@ declare module '../types' {
 }
 
 const log = debug('context-engine:provider:OnboardingActionHintInjector');
+
+export interface OnboardingActionHintSnapshot {
+  /** Hint content captured for this fingerprint. */
+  content: string;
+  /** Source-derived fingerprint of the formatted hint content (no wall clock/random). */
+  fingerprint: string;
+}
 
 /** Deterministic epoch from an unknown createdAt value (never wall clock). */
 const toEpoch = (value: unknown): number => {
@@ -68,6 +76,9 @@ export class OnboardingActionHintInjector extends BaseVirtualLastUserContentProv
   /** createdAt of the last real user turn — deterministic carrier identity (P2). */
   private carrierCreatedAt = 0;
 
+  /** Source-derived fingerprint of the hint content resolved for this operation. */
+  private hintFingerprint = '';
+
   constructor(
     private config: OnboardingContextInjectorConfig & {
       snapshotStore?: InjectionSnapshotStore;
@@ -91,26 +102,12 @@ export class OnboardingActionHintInjector extends BaseVirtualLastUserContentProv
    * the last real user's createdAt — no wall-clock time or random id anywhere.
    */
   protected createVirtualLastUserMessage(content: string): Message {
-    const { snapshotStore, topicId } = this.config;
-
-    // ---- T-204 M1 solidification: the first injecting request writes the hint
-    // snapshot; later injecting operations of the same session project the exact
-    // same bytes. The shouldSkip/buildContent triggers are untouched. ----
-    let projectedContent = content;
-    if (snapshotStore && topicId) {
-      const key = virtualTailOnboardingHintKey(topicId);
-      const stored = snapshotStore.get<string>(key);
-      if (stored) {
-        projectedContent = stored;
-      } else {
-        snapshotStore.set(key, content);
-      }
-    }
+    const { topicId } = this.config;
 
     return {
-      content: projectedContent,
+      content,
       createdAt: this.carrierCreatedAt,
-      id: `inject:virtualTail:onboardingHint:${topicId ?? 'legacy'}`,
+      id: `inject:virtualTail:onboardingHint:${topicId ?? 'legacy'}:${this.hintFingerprint}`,
       meta: this.createVirtualLastUserMeta(),
       role: 'user' as const,
       updatedAt: this.carrierCreatedAt,
@@ -256,7 +253,23 @@ export class OnboardingActionHintInjector extends BaseVirtualLastUserContentProv
       return this.markAsExecuted(context);
     }
 
-    const { topicId } = this.config;
+    // ---- T-204 M1 snapshot: fingerprint the current hint content. Matching
+    // fingerprints reuse the stored bytes; a changed phase guidance or Discovery
+    // progress refreshes the snapshot so later operations never see stale hints.
+    // The shouldSkip/buildContent triggers are untouched. ----
+    const sourceFingerprint = Md5.hashStr(content);
+    this.hintFingerprint = sourceFingerprint;
+    let projectedContent = content;
+    const { snapshotStore, topicId } = this.config;
+    if (snapshotStore && topicId) {
+      const key = virtualTailOnboardingHintKey(topicId);
+      const stored = snapshotStore.getIfFresh<OnboardingActionHintSnapshot>(key, sourceFingerprint);
+      if (stored) {
+        projectedContent = stored.content;
+      } else {
+        snapshotStore.refresh(key, { content, fingerprint: sourceFingerprint });
+      }
+    }
 
     // Deterministic carrier timestamp from the last real user turn, never now().
     const lastRealUser = [...context.messages]
@@ -270,11 +283,11 @@ export class OnboardingActionHintInjector extends BaseVirtualLastUserContentProv
     this.carrierCreatedAt = toEpoch(lastRealUser?.createdAt);
 
     const clonedContext = this.cloneContext(context);
-    clonedContext.messages.push(this.createVirtualLastUserMessage(content));
+    clonedContext.messages.push(this.createVirtualLastUserMessage(projectedContent));
 
     // P2: expose the deterministic virtual-tail identity via metadata so it
     // remains provable after MessageCleanup strips `meta`.
-    clonedContext.metadata.onboardingHintInjectionId = `inject:virtualTail:onboardingHint:${topicId ?? 'legacy'}`;
+    clonedContext.metadata.onboardingHintInjectionId = `inject:virtualTail:onboardingHint:${topicId ?? 'legacy'}:${this.hintFingerprint}`;
     clonedContext.metadata.onboardingHintInjectionCreatedAt = this.carrierCreatedAt;
 
     return this.markAsExecuted(clonedContext);

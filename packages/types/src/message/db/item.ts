@@ -11,6 +11,11 @@ export interface DBMessageItem {
   favorite: boolean | null;
 
   id: string;
+  /**
+   * Append-only v2: `true` marks a persisted injected-context row. Such rows
+   * always carry `sourceKey`; real conversation rows never do.
+   */
+  isInjection: boolean;
   metadata?: MessageMetadata | null;
   model: string | null;
   observationId: string | null;
@@ -23,6 +28,7 @@ export interface DBMessageItem {
   search: GroundingSearch | null;
   sessionId: string | null;
 
+  sourceKey: string | null;
   threadId: string | null;
   tools: any | null;
 

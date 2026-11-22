@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { InjectionSnapshotStore } from '../../injection/InjectionSnapshotStore';
 import type { PipelineContext } from '../../types';
 import { OnboardingActionHintInjector } from '../OnboardingActionHintInjector';
 import type { OnboardingContext } from '../OnboardingContextInjector';
@@ -197,5 +198,67 @@ describe('OnboardingActionHintInjector', () => {
       expect(last?.content).toContain('THIS TURN call `showAgentMarketplace`');
       expect(last?.content).not.toContain('ALREADY opened');
     });
+  });
+});
+
+describe('OnboardingActionHintInjector snapshot refresh', () => {
+  const topicId = 'tpc_onboarding_hint_refresh';
+
+  const inject = (
+    store: InjectionSnapshotStore,
+    phaseGuidance: string,
+    context?: Partial<OnboardingContext>,
+  ) =>
+    new OnboardingActionHintInjector({
+      enabled: true,
+      onboardingContext: {
+        ...context,
+        personaContent: '# Persona',
+        phaseGuidance,
+        soulContent: '# SOUL',
+      },
+      snapshotStore: store,
+      topicId,
+    }).process(
+      createContext([
+        {
+          content: 'I mostly write docs',
+          createdAt: 1_700_000_000_000,
+          id: 'user-real-1',
+          role: 'user',
+          updatedAt: 1_700_000_000_000,
+        },
+      ]),
+    );
+
+  it('shows the current guidance after the onboarding phase changes between operations', async () => {
+    const store = new InjectionSnapshotStore();
+
+    const first = await inject(store, 'Phase: Discovery. Explore the user world.', {
+      discoveryUserMessageCount: 1,
+      remainingDiscoveryExchanges: 2,
+    });
+    const second = await inject(store, 'Phase: Summary. Wrap-up.');
+
+    const firstHint = String(first.messages.at(-1)?.content);
+    expect(firstHint).toContain('SYSTEM REMINDER: Current Discovery turn status');
+    expect(firstHint).toContain('User discovery exchanges observed: 1');
+
+    const currentHint = String(second.messages.at(-1)?.content);
+    expect(currentHint).toContain('THIS TURN call `showAgentMarketplace`');
+    expect(currentHint).not.toContain('SYSTEM REMINDER: Current Discovery turn status');
+  });
+
+  it('keeps the injected bytes stable while the onboarding guidance is unchanged', async () => {
+    const store = new InjectionSnapshotStore();
+    const phaseGuidance = 'Phase: User Identity. Learn who the user is.';
+
+    const first = await inject(store, phaseGuidance);
+    const second = await inject(store, phaseGuidance);
+
+    expect(second.messages.at(-1)?.content).toBe(first.messages.at(-1)?.content);
+    expect(second.metadata.onboardingHintInjectionId).toBe(
+      first.metadata.onboardingHintInjectionId,
+    );
   });
 });

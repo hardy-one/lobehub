@@ -324,7 +324,7 @@ describe('voice send mode', () => {
 
   const setAsr = (model = 'whisper-1', provider = 'openai') =>
     useUserStore.setState({
-      settings: { systemAgent: { asr: { model, provider } } },
+      settings: { ...VOICE_MESSAGE_ENABLED, systemAgent: { asr: { model, provider } } },
       workspaceUserPreference: {},
     } as any);
 

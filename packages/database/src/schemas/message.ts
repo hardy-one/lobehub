@@ -7,6 +7,7 @@ import type {
 import { sql } from 'drizzle-orm';
 import {
   boolean,
+  check,
   index,
   jsonb,
   numeric,
@@ -119,6 +120,14 @@ export const messages = pgTable(
     favorite: boolean('favorite').default(false),
     error: jsonb('error'),
 
+    /**
+     * Append-only v2: injected context rows are persisted alongside real
+     * conversation rows, distinguished by `source_key`. Real rows keep both
+     * columns at their defaults (`false` / `NULL`).
+     */
+    isInjection: boolean('is_injection').default(false).notNull(),
+    sourceKey: text('source_key'),
+
     tools: jsonb('tools'),
 
     traceId: text('trace_id'),
@@ -155,6 +164,10 @@ export const messages = pgTable(
     ...timestamps,
   },
   (table) => [
+    check(
+      'messages_injection_source_key_check',
+      sql`${table.isInjection} = (${table.sourceKey} IS NOT NULL)`,
+    ),
     index('messages_created_at_idx').on(table.createdAt),
     uniqueIndex('message_client_id_user_unique').on(table.clientId, table.userId),
     index('messages_topic_id_idx').on(table.topicId),

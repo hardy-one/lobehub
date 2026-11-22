@@ -21,6 +21,13 @@
       "when": 1793445041315,
       "tag": "0002_artifact_deployments_hardy_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795353539692,
+      "tag": "0003_message_injection_source_key",
+      "breakpoints": true
     }
   ],
   "version": "7"

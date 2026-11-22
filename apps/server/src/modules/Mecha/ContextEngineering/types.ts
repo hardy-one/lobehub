@@ -11,6 +11,7 @@ import type {
   EvalContext,
   FileContent,
   GroupAgentBuilderContext,
+  InjectionSnapshotStore,
   KnowledgeBaseInfo,
   LobeToolManifest,
   OnboardingContext,
@@ -218,6 +219,15 @@ export interface ServerMessagesEngineParams {
   // ========== User memory ==========
   /** User memory configuration */
   userMemory?: ServerUserMemoryConfig;
+  // ========== Session-scoped injection snapshots ==========
+  /**
+   * T-193 M1 session store. Supplied by the runtime host (the server keeps it
+   * per topic, process-wide); when absent the injectors keep their legacy
+   * per-operation behavior.
+   */
+  injectionSnapshotStore?: InjectionSnapshotStore;
+  /** Topic id used as the snapshot key prefix. */
+  topicId?: string;
 }
 
 // Re-export types for convenience

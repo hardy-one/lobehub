@@ -17,6 +17,7 @@ import {
 import { type UIChatMessage } from '@lobechat/types';
 
 import { serverMessagesEngine } from '@/server/modules/Mecha/ContextEngineering';
+import { getServerInjectionSnapshotStore } from '@/server/modules/Mecha/ContextEngineering/injectionSnapshotStore';
 import {
   createServerContextFactProviders,
   resolveServerConnectorFeatures,
@@ -108,6 +109,10 @@ export const buildServerCallLlmContext = async ({
 
   const agentId = state.origin?.agentId;
   const topicId = ctx.topicId ?? state.origin?.topicId;
+  // Session-scoped M1 store: one per topic for the lifetime of the process, so
+  // the second operation reuses the bytes the first one solidified instead of
+  // silently falling back to per-operation assembly.
+  const injectionSnapshotStore = getServerInjectionSnapshotStore(topicId);
   // `<current_group_context>` must describe the group the builder tools will
   // write to — after a `createGroup` that is the new group, not the pinned one.
   const editingGroupId =
@@ -205,6 +210,7 @@ export const buildServerCallLlmContext = async ({
       groupAgentBuilderContext: facts.step.groupAgentBuilderContext,
     }),
     historyCount,
+    injectionSnapshotStore,
     initialContext: (state as any).initialContext?.initialContext,
     knowledge: {
       fileContents: agentConfig.files
@@ -244,6 +250,7 @@ export const buildServerCallLlmContext = async ({
     connectorOwnershipNote: state.world?.connectorOwnershipNote,
     projectInstructions: state.world?.projectInstructions,
     systemRole: agentConfig.systemRole ?? undefined,
+    topicId,
     toolDiscoveryConfig,
     toolsConfig: {
       manifests: Object.values(resolved.promptManifestMap),
@@ -311,6 +318,7 @@ export const buildServerCallLlmContext = async ({
     );
 
   const {
+    injectionSnapshotStore: _injectionSnapshotStore,
     messages: _inputMsgs,
     toolsConfig: _toolsConfig,
     ...contextEngineInputLite

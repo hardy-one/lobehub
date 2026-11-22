@@ -1,7 +1,8 @@
+import { MessagesEngine } from '@lobechat/context-engine';
 import {
+  buildMessagesEngineParams,
   type ContextEngineeringResult,
   type ContextSnapshot,
-  runContextEngineering,
 } from '@lobechat/mecha';
 
 import { type ServerMessagesEngineParams } from './types';
@@ -146,7 +147,22 @@ export const toContextSnapshot = ({
  */
 export const serverMessagesEngine = async (
   params: ServerMessagesEngineParams,
-): Promise<ContextEngineeringResult> => runContextEngineering(toContextSnapshot(params));
+): Promise<ContextEngineeringResult> => {
+  const { injectionSnapshotStore, topicId } = params;
+  const engineParams = buildMessagesEngineParams(toContextSnapshot(params));
+
+  // `ContextSnapshot` is the host-agnostic, data-only input (the desktop host
+  // assembles its own). The session-scoped store is live host state, not
+  // snapshot data, so the server attaches it at this boundary instead.
+  const engine = new MessagesEngine({
+    ...engineParams,
+    ...(injectionSnapshotStore && { injectionSnapshotStore }),
+    ...(topicId && { topicId }),
+  });
+  const result = await engine.process();
+
+  return { messages: result.messages, metadata: result.metadata };
+};
 
 // Re-export types
 export type {

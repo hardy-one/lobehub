@@ -113,6 +113,76 @@ beforeEach(() => {
   });
 });
 
+describe('buildServerCallLlmContext - injection snapshot pass-through', () => {
+  it('passes a session store and topic id into the engine input', async () => {
+    await buildServerCallLlmContext({
+      ctx: createCtx({ topicId: 'tpc_pass_through' }),
+      llmPayload,
+      model: 'gpt-4',
+      provider: 'openai',
+      state,
+      tooling,
+    });
+
+    const input = serverMessagesEngineMock.mock.calls[0][0];
+    expect(input.topicId).toBe('tpc_pass_through');
+    expect(input.injectionSnapshotStore).toBeDefined();
+    expect(input.injectionSnapshotStore.get('missing')).toBeUndefined();
+  });
+
+  it('reuses the same store across separate operations of one topic', async () => {
+    const build = () =>
+      buildServerCallLlmContext({
+        ctx: createCtx({ topicId: 'tpc_same_session' }),
+        llmPayload,
+        model: 'gpt-4',
+        provider: 'openai',
+        state,
+        tooling,
+      });
+
+    await build();
+    await build();
+
+    const first = serverMessagesEngineMock.mock.calls[0][0].injectionSnapshotStore;
+    const second = serverMessagesEngineMock.mock.calls[1][0].injectionSnapshotStore;
+    expect(second).toBe(first);
+  });
+
+  it('falls back to the topic recorded on the operation state', async () => {
+    await buildServerCallLlmContext({
+      ctx: createCtx(),
+      llmPayload,
+      model: 'gpt-4',
+      provider: 'openai',
+      state: createState({ origin: { topicId: 'tpc_from_state' } }),
+      tooling,
+    });
+
+    const input = serverMessagesEngineMock.mock.calls[0][0];
+    expect(input.topicId).toBe('tpc_from_state');
+    expect(input.injectionSnapshotStore).toBeDefined();
+  });
+
+  it('leaves the engine on its legacy path when the run has no topic', async () => {
+    await buildServerCallLlmContext({
+      ctx: createCtx(),
+      llmPayload,
+      model: 'gpt-4',
+      provider: 'openai',
+      state,
+      tooling,
+    });
+
+    expect(serverMessagesEngineMock).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        injectionSnapshotStore: expect.anything(),
+        topicId: expect.anything(),
+      }),
+    );
+  });
+});
+
 /**
  * Covers the executor-context to engine-input link. Every failure this feature
  * has had was a name dropped from an explicit field list rather than broken

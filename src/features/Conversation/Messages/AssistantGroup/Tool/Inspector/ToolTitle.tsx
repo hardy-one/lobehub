@@ -172,7 +172,9 @@ const ToolTitle = memo<ToolTitleProps>(
             rowShinyText(isLoading),
           )}
         >
-          <span {...stylex.props(styles.label, labelCompact)}>{t(`builtins.shellCommand.${action}`)}</span>
+          <span {...stylex.props(styles.label, labelCompact)}>
+            {t(`builtins.shellCommand.${action}`)}
+          </span>
           {subject && (
             <span {...(isProse ? stylex.props(styles.standalone) : keywordStyles)}>{subject}</span>
           )}

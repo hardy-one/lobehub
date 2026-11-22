@@ -1,11 +1,11 @@
-import { createStaticStyles, Flexbox } from '@lobehub/ui';
+import { Flexbox } from '@lobehub/ui';
+import * as stylex from '@stylexjs/stylex';
 import isEqual from 'fast-deep-equal';
 import { memo, useCallback, useMemo } from 'react';
 
 import type { ChatStoreState } from '@/store/chat';
 import { useChatStore } from '@/store/chat';
 import { operationSelectors } from '@/store/chat/slices/operation/selectors';
-
 import { useDensity } from '@/styles/density';
 
 import { dataSelectors, useConversationStore } from '../../store';
@@ -13,15 +13,15 @@ import { resolveExecutingToolCallIds } from './activeToolCall';
 import Tool from './Tool';
 import { shouldRenderToolCall } from './toolRenderRules';
 
-const styles = createStaticStyles(({ css }) => ({
-  row: css`
-    /* Long turns mount dozens of rows inside a height-capped scroll area.
-       Skip style/layout/paint for the ones scrolled out of view instead of
-       keeping every row live. */
-    content-visibility: auto;
-    contain-intrinsic-size: auto 32px;
-  `,
-}));
+const styles = stylex.create({
+  row: {
+    // Long turns mount dozens of rows inside a height-capped scroll area.
+    // Skip style/layout/paint for the ones scrolled out of view instead of
+    // keeping every row live.
+    containIntrinsicSize: 'auto 32px',
+    contentVisibility: 'auto',
+  },
+});
 
 interface ToolsRendererProps {
   disableEditing?: boolean;
@@ -87,7 +87,7 @@ export const Tools = memo<ToolsRendererProps>(({ disableEditing, messageId, tool
   return (
     <Flexbox gap={compact ? 0 : 8}>
       {visibleToolCallIds.map((toolCallId) => (
-        <Flexbox className={styles.row} key={toolCallId}>
+        <Flexbox key={toolCallId} {...stylex.props(styles.row)}>
           <Tool
             assistantMessageId={messageId}
             disableEditing={disableEditing}

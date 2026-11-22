@@ -8,6 +8,7 @@ import {
   generateObjectViaJsonSchema,
   generateObjectViaToolCalling,
   generateToolCallsViaChatCompletions,
+  isResponseFormatUnsupportedError,
 } from '../protocols/openaiChatCompletions/generateObject';
 import {
   generateObjectViaResponses,
@@ -16,7 +17,7 @@ import {
 import type { OpenAICompatibleRuntimeContext } from './context';
 import { resolveErrorTypes } from './errors';
 import type { OpenAICompatibleFactoryOptions } from './factoryOptions';
-import { StructuredOutputError } from './structuredOutput';
+import { retryMissingToolCalls, StructuredOutputError } from './structuredOutput';
 
 type Runtime = OpenAICompatibleRuntimeContext;
 type Factory = OpenAICompatibleFactoryOptions;
@@ -72,16 +73,25 @@ export const generateObject = async (
       log('using tools-based generation');
       log('generateObjectWithTools called with model: %s, toolsCount: %d', model, tools.length);
 
-      return shouldUseResponsesForGenerateObject(runtime, factory, payload, 'tool calling')
-        ? await generateToolCallsViaResponses(runtime, factory, payload, options, usagePayload, log)
-        : await generateToolCallsViaChatCompletions(
-            runtime,
-            factory,
-            payload,
-            options,
-            usagePayload,
-            log,
-          );
+      const useResponses = shouldUseResponsesForGenerateObject(
+        runtime,
+        factory,
+        payload,
+        'tool calling',
+      );
+      const attempt = (current: GenerateObjectPayload) =>
+        useResponses
+          ? generateToolCallsViaResponses(runtime, factory, current, options, usagePayload, log)
+          : generateToolCallsViaChatCompletions(
+              runtime,
+              factory,
+              current,
+              options,
+              usagePayload,
+              log,
+            );
+
+      return await retryMissingToolCalls(payload, attempt, log);
     }
 
     if (!schema) throw new Error('tools or schema is required');
@@ -94,7 +104,11 @@ export const generateObject = async (
     // endpoints) must simulate structured output via forced tool calling.
     if (factory.generateObject?.useToolsCalling || detectModelProvider(model) === 'deepseek') {
       log('using tool calling fallback for structured output');
-      return await generateObjectViaToolCalling(runtime, factory, payload, options, usagePayload);
+      return await retryMissingToolCalls(
+        payload,
+        (current) => generateObjectViaToolCalling(runtime, factory, current, options, usagePayload),
+        log,
+      );
     }
 
     const shouldUseResponses = shouldUseResponsesForGenerateObject(
@@ -109,25 +123,41 @@ export const generateObject = async (
       ? { ...schema, schema: factory.generateObject.handleSchema(schema.schema) }
       : schema;
 
-    return shouldUseResponses
-      ? await generateObjectViaResponses(
-          runtime,
-          factory,
-          payload,
-          processedSchema,
-          options,
-          usagePayload,
-          log,
-        )
-      : await generateObjectViaJsonSchema(
-          runtime,
-          factory,
-          payload,
-          processedSchema,
-          options,
-          usagePayload,
-          log,
-        );
+    try {
+      return shouldUseResponses
+        ? await generateObjectViaResponses(
+            runtime,
+            factory,
+            payload,
+            processedSchema,
+            options,
+            usagePayload,
+            log,
+          )
+        : await generateObjectViaJsonSchema(
+            runtime,
+            factory,
+            payload,
+            processedSchema,
+            options,
+            usagePayload,
+            log,
+          );
+    } catch (error) {
+      // Gateways can serve json_schema-incapable upstreams under arbitrary
+      // model ids (e.g. OpenCode Zen's `big-pickle` proxies DeepSeek), which
+      // the model-id detection above cannot catch. Fall back to forced tool
+      // calling when the upstream rejects the response_format type, and run
+      // that fallback through the same retry policy as the tools branch.
+      if (!isResponseFormatUnsupportedError(error)) throw error;
+
+      log('provider rejected json_schema response_format, falling back to tool calling');
+      return await retryMissingToolCalls(
+        payload,
+        (current) => generateObjectViaToolCalling(runtime, factory, current, options, usagePayload),
+        log,
+      );
+    }
   } catch (error) {
     // Provider HTTP normalization must not hide the structured-output recovery signal.
     if (error instanceof StructuredOutputError) throw error;

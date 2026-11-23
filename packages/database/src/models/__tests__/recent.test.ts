@@ -725,6 +725,43 @@ describe('RecentModel', () => {
         );
       });
 
+      it('ignores injected rows in the topic preview', async () => {
+        await serverDB.insert(agents).values({ id: 'agent-inbox', userId, slug: 'inbox' });
+        await serverDB.insert(topics).values({
+          agentId: 'agent-inbox',
+          id: 'topic-injection-preview',
+          status: 'active',
+          updatedAt: minutesAgo(1),
+          userId,
+        });
+        await serverDB.insert(messages).values([
+          {
+            agentId: 'agent-inbox',
+            content: 'Real assistant answer',
+            createdAt: minutesAgo(2),
+            id: 'injection-preview-real',
+            role: 'assistant',
+            topicId: 'topic-injection-preview',
+            userId,
+          },
+          {
+            agentId: 'agent-inbox',
+            content: 'Injected assistant context',
+            createdAt: minutesAgo(1),
+            id: 'injection-preview-injected',
+            isInjection: true,
+            role: 'assistant',
+            sourceKey: 'todos',
+            topicId: 'topic-injection-preview',
+            userId,
+          },
+        ]);
+
+        const result = await recentModel.queryRecent(1, ['topic'], true);
+
+        expect(result[0].lastAssistantMessage).toBe('Real assistant answer');
+      });
+
       it('returns Date objects for updatedAt', async () => {
         await serverDB.insert(agents).values({ id: 'agent-inbox', userId, slug: 'inbox' });
         await serverDB.insert(topics).values({

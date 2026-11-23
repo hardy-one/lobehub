@@ -15,6 +15,7 @@ import type { SQL } from 'drizzle-orm';
 import { and, asc, count, desc, eq, inArray, isNotNull, ne } from 'drizzle-orm';
 
 import { messagePlugins, messages } from '../../schemas';
+import { notInjection } from '../../utils/injection';
 import { notShareVisitorMessage } from '../../utils/shareVisitor';
 import { nonNull } from '../utils/rows';
 import { resolveCursorPageWindow } from './cursorWindow';
@@ -343,7 +344,13 @@ export class MessageConversationQueries extends MessageScope {
     // Creator-facing only (CLI / topic transcript router): agent-share visitor
     // messages live under the creator's `userId`, so ownership alone would hand
     // the creator a visitor's full transcript from a raw topic id.
-    const where = and(this.ownership(), eq(messages.topicId, topicId), notShareVisitorMessage());
+    const where = and(
+      this.ownership(),
+      eq(messages.topicId, topicId),
+      notShareVisitorMessage(),
+      // Append-only v2: a transcript is user-facing, so injected rows stay out.
+      notInjection(),
+    );
 
     const [items, totalResult] = await Promise.all([
       this.db
@@ -466,6 +473,10 @@ export class MessageConversationQueries extends MessageScope {
       this.matchTopic(topicId),
       this.matchGroup(groupId),
       this.matchThread(undefined),
+      // The round window is resolved from these same rows, so injected `user`
+      // rows must not count as round starts. The page read filters them again
+      // in `queryWithWhere`.
+      notInjection(),
     );
 
     const { groupNodeWindow, hasMore, nextCursor, where } = await resolveCursorPageWindow(this.db, {

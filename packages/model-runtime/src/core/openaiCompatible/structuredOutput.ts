@@ -21,18 +21,45 @@ export class StructuredOutputError extends Error {
   }
 }
 
-export const parseStructuredToolArguments = (value: unknown): Record<string, unknown> => {
+/**
+ * Protocol-level facts that explain why a tool-call response was rejected.
+ * Metadata only: never carry model-generated text or parser messages.
+ */
+export interface StructuredToolArgumentsContext {
+  /** Chat Completions `finish_reason`, Responses `status`, or Ollama `done_reason`. */
+  finishReason?: null | string;
+  /** Responses API `incomplete_details.reason`; `max_output_tokens` means truncated. */
+  incompleteReason?: null | string;
+  /** Whether the provider reported that generation stopped at a token limit. */
+  truncated?: boolean;
+}
+
+const withArgumentsLength = (value: unknown, context: StructuredToolArgumentsContext) => ({
+  ...context,
+  ...(typeof value === 'string' ? { argumentsLength: value.length } : {}),
+});
+
+export const parseStructuredToolArguments = (
+  value: unknown,
+  context: StructuredToolArgumentsContext = {},
+): Record<string, unknown> => {
   let parsed = value;
   if (typeof value === 'string') {
     try {
       parsed = JSON.parse(value);
     } catch {
       // Do not attach the raw response or parser error: both can contain private model output.
-      throw new StructuredOutputError('invalid JSON in tool arguments');
+      throw new StructuredOutputError(
+        'invalid JSON in tool arguments',
+        withArgumentsLength(value, context),
+      );
     }
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new StructuredOutputError('JSON object required for tool arguments');
+    throw new StructuredOutputError(
+      'JSON object required for tool arguments',
+      withArgumentsLength(value, context),
+    );
   }
   return parsed as Record<string, unknown>;
 };
@@ -65,39 +92,62 @@ export const parseStructuredOutputText = (value: unknown): unknown => {
 };
 
 /**
- * Total attempts for a forced tool call that comes back with no tool call at
- * all. Some providers treat `tool_choice` as a soft hint and answer in plain
- * text instead (observed on DashScope-family gateways at a ~10% rate), which
- * is a transient, retryable shape failure — not a contract violation.
+ * Total attempts for a forced tool call whose response cannot satisfy the
+ * contract at the shape level. Some providers treat `tool_choice` as a soft
+ * hint and answer in plain text instead (observed on DashScope-family gateways
+ * at a ~10% rate); others call the tool but truncate or malform its JSON
+ * arguments. Both are transient shape failures a resend can repair.
  */
 const STRUCTURED_OUTPUT_MAX_ATTEMPTS = 3;
 
 /**
- * A tool-call response with no tool call, retried with an explicit reminder.
- * Other StructuredOutputError reasons (malformed arguments, unparseable text)
- * mean the model did answer through the contract and a resend would not help.
+ * Shape failures worth resending with a targeted reminder. Invalid JSON is
+ * retryable because the model did call the tool and can usually repair its own
+ * arguments. `JSON object required` is not: the reply was valid JSON but the
+ * wrong shape, and the other reasons mean no parsable response was produced at
+ * all, so a resend would only repeat the malformed contract.
  */
-const isMissingToolCallError = (error: unknown): error is StructuredOutputError =>
-  error instanceof StructuredOutputError && error.reason === 'no tool calls returned';
+const RETRYABLE_STRUCTURED_OUTPUT_REASONS = [
+  'invalid JSON in tool arguments',
+  'no tool calls returned',
+] as const;
 
-const reinforceToolCallRequest = (payload: GenerateObjectPayload): GenerateObjectPayload => ({
+type RetryableStructuredOutputReason = (typeof RETRYABLE_STRUCTURED_OUTPUT_REASONS)[number];
+
+const isRetryableStructuredOutputError = (
+  error: unknown,
+): error is StructuredOutputError & { reason: RetryableStructuredOutputReason } =>
+  error instanceof StructuredOutputError &&
+  (RETRYABLE_STRUCTURED_OUTPUT_REASONS as readonly string[]).includes(error.reason);
+
+const RETRY_REMINDERS: Record<RetryableStructuredOutputReason, string> = {
+  'invalid JSON in tool arguments':
+    'Your previous tool arguments were not valid JSON. Call the same tool again and provide a single valid JSON object as its arguments. Output only that JSON object — do not wrap it in a Markdown code block or add any other text.',
+  'no tool calls returned':
+    'Your previous response did not call a tool. You must call one of the provided tools now to return your result — do not answer in plain text.',
+};
+
+const reinforceToolCallRequest = (
+  payload: GenerateObjectPayload,
+  reason: RetryableStructuredOutputReason,
+): GenerateObjectPayload => ({
   ...payload,
   messages: [
     ...payload.messages,
     {
-      content:
-        'Your previous response did not call a tool. You must call one of the provided tools now to return your result — do not answer in plain text.',
+      content: RETRY_REMINDERS[reason],
       role: 'user' as const,
     },
   ],
 });
 
 /**
- * Runs a forced tool-call request, retrying the "answered in plain text"
- * shape failure up to STRUCTURED_OUTPUT_MAX_ATTEMPTS total attempts. The
- * final error carries `attempts` in its diagnostic context.
+ * Runs a forced tool-call request, retrying shape failures (plain text instead
+ * of a tool call, or invalid JSON arguments) up to
+ * STRUCTURED_OUTPUT_MAX_ATTEMPTS total attempts. The final error carries
+ * `attempts` in its diagnostic context.
  */
-export const retryMissingToolCalls = async <T>(
+export const retryStructuredToolCalls = async <T>(
   payload: GenerateObjectPayload,
   attemptCall: (payload: GenerateObjectPayload) => Promise<T>,
   log?: Debugger,
@@ -108,12 +158,14 @@ export const retryMissingToolCalls = async <T>(
     try {
       return await attemptCall(current);
     } catch (error) {
-      if (!isMissingToolCallError(error) || attempt >= STRUCTURED_OUTPUT_MAX_ATTEMPTS) {
-        if (isMissingToolCallError(error)) error.context = { ...error.context, attempts: attempt };
+      if (!isRetryableStructuredOutputError(error) || attempt >= STRUCTURED_OUTPUT_MAX_ATTEMPTS) {
+        if (isRetryableStructuredOutputError(error)) {
+          error.context = { ...error.context, attempts: attempt };
+        }
         throw error;
       }
-      log?.('structured output: attempt %d returned no tool calls, retrying', attempt);
-      current = reinforceToolCallRequest(current);
+      log?.('structured output: attempt %d failed with %s, retrying', attempt, error.reason);
+      current = reinforceToolCallRequest(current, error.reason);
     }
   }
 };

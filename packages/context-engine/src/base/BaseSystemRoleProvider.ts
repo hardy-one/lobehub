@@ -41,7 +41,12 @@ export abstract class BaseSystemRoleProvider extends BaseProcessor {
 
     const clonedContext = this.cloneContext(context);
 
-    const systemMsgIndex = clonedContext.messages.findIndex((m) => m.role === 'system');
+    // Append-only v2: replayed injected rows may also be `role: 'system'`, but
+    // they are engine input, not the agent's prompt. Only the assembled prompt
+    // message is a valid append target.
+    const systemMsgIndex = clonedContext.messages.findIndex(
+      (m) => m.role === 'system' && !m.isInjection,
+    );
 
     if (systemMsgIndex >= 0) {
       const existing = clonedContext.messages[systemMsgIndex];

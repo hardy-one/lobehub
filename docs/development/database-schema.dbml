@@ -3487,6 +3487,8 @@ table messages {
   provider text
   favorite boolean [default: false]
   error jsonb
+  is_injection boolean [not null, default: false]
+  source_key text
   tools jsonb
   trace_id text
   observation_id text
@@ -3509,6 +3511,7 @@ table messages {
   updated_at "timestamp with time zone" [not null, default: `now()`]
 
   indexes {
+    
     created_at [name: 'messages_created_at_idx']
     (client_id, user_id) [name: 'message_client_id_user_unique', unique]
     topic_id [name: 'messages_topic_id_idx']

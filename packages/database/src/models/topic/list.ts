@@ -22,6 +22,7 @@ import {
 } from 'drizzle-orm';
 
 import { agents, chatGroups, messages, topics } from '../../schemas';
+import { notInjection } from '../../utils/injection';
 import { topicRunStartedAtColumn } from '../../utils/topicRunStartedAt';
 import { notChannelTopic } from '../../utils/topicVisibility';
 import { buildWorkspaceWhere } from '../../utils/workspace';
@@ -146,7 +147,15 @@ export const query = async (
   const firstUserMessageSubquery = ctx.db
     .select({ value: messages.content })
     .from(messages)
-    .where(and(eq(messages.topicId, topics.id), eq(messages.role, 'user'), ctx.messageOwnership()))
+    .where(
+      and(
+        eq(messages.topicId, topics.id),
+        eq(messages.role, 'user'),
+        ctx.messageOwnership(),
+        // Preview text is rendered; injected rows are not part of the chat.
+        notInjection(),
+      ),
+    )
     .orderBy(asc(messages.createdAt))
     .limit(1);
   const messageCountSubquery = ctx.db
@@ -630,6 +639,7 @@ export const queryTopics = async (
         eq(messages.topicId, topics.id),
         eq(messages.role, 'assistant'),
         ctx.messageOwnership(),
+        notInjection(),
         ne(messages.content, ''),
       ),
     )

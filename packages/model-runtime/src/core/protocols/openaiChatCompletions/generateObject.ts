@@ -142,7 +142,11 @@ export const generateObjectViaToolCalling = async (
       responseId: res.id,
     });
 
-  return parseStructuredToolArguments(toolCall.function.arguments);
+  const finishReason = res.choices?.[0]?.finish_reason;
+  return parseStructuredToolArguments(toolCall.function.arguments, {
+    finishReason,
+    truncated: finishReason === 'length',
+  });
 };
 
 /** Structured output through `response_format: { type: 'json_schema' }`. */
@@ -230,12 +234,16 @@ export const generateToolCallsViaChatCompletions = async (
       responseId: res.id,
     });
 
+  const finishReason = res.choices?.[0]?.finish_reason;
   return toolCalls.map((item) => {
     if (!('function' in item) || !item.function) {
       throw new StructuredOutputError('function tool call required');
     }
     return {
-      arguments: parseStructuredToolArguments(item.function.arguments),
+      arguments: parseStructuredToolArguments(item.function.arguments, {
+        finishReason,
+        truncated: finishReason === 'length',
+      }),
       name: item.function.name,
     };
   });

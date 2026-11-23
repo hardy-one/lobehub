@@ -17,7 +17,7 @@ import {
 import type { OpenAICompatibleRuntimeContext } from './context';
 import { resolveErrorTypes } from './errors';
 import type { OpenAICompatibleFactoryOptions } from './factoryOptions';
-import { retryMissingToolCalls, StructuredOutputError } from './structuredOutput';
+import { retryStructuredToolCalls, StructuredOutputError } from './structuredOutput';
 
 type Runtime = OpenAICompatibleRuntimeContext;
 type Factory = OpenAICompatibleFactoryOptions;
@@ -26,7 +26,7 @@ type Factory = OpenAICompatibleFactoryOptions;
 const shouldUseResponsesForGenerateObject = (
   runtime: Runtime,
   factory: Factory,
-  { model, responseApi }: GenerateObjectPayload,
+  { apiMode, model, responseApi }: GenerateObjectPayload,
   context: string,
 ) => {
   const instanceGenerateObject = ((runtime._options as any).generateObject || {}) as {
@@ -45,6 +45,7 @@ const shouldUseResponsesForGenerateObject = (
     flagUseResponseModels,
     model,
     responseApi,
+    userApiMode: apiMode,
   });
 };
 
@@ -91,7 +92,7 @@ export const generateObject = async (
               log,
             );
 
-      return await retryMissingToolCalls(payload, attempt, log);
+      return await retryStructuredToolCalls(payload, attempt, log);
     }
 
     if (!schema) throw new Error('tools or schema is required');
@@ -104,7 +105,7 @@ export const generateObject = async (
     // endpoints) must simulate structured output via forced tool calling.
     if (factory.generateObject?.useToolsCalling || detectModelProvider(model) === 'deepseek') {
       log('using tool calling fallback for structured output');
-      return await retryMissingToolCalls(
+      return await retryStructuredToolCalls(
         payload,
         (current) => generateObjectViaToolCalling(runtime, factory, current, options, usagePayload),
         log,
@@ -152,7 +153,7 @@ export const generateObject = async (
       if (!isResponseFormatUnsupportedError(error)) throw error;
 
       log('provider rejected json_schema response_format, falling back to tool calling');
-      return await retryMissingToolCalls(
+      return await retryStructuredToolCalls(
         payload,
         (current) => generateObjectViaToolCalling(runtime, factory, current, options, usagePayload),
         log,

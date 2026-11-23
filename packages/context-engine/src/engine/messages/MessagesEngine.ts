@@ -1,3 +1,4 @@
+import { INJECTION_SOURCE_KEYS } from '@lobechat/types';
 import debug from 'debug';
 
 import type { OpenAIChatMessage } from '@/types/index';
@@ -94,6 +95,15 @@ const log = debug('context-engine:MessagesEngine');
 const ATTACHMENTS_TOOL_ID = 'lobe-attachments';
 const AGENT_DOCUMENTS_TOOL_ID = 'lobe-agent-documents';
 const SKILLS_TOOL_ID = 'lobe-skills';
+
+/**
+ * Sources whose legacy injector is replaced by timeline replay as soon as the
+ * request timeline carries a row for them. Append-only v2 migrates one source
+ * per slice; a source enters this list only together with its replay handling.
+ */
+const PERSISTED_INJECTION_SOURCES: ReadonlySet<string> = new Set([
+  INJECTION_SOURCE_KEYS.AGENT_DOC_MESSAGE,
+]);
 
 /**
  * MessagesEngine - High-level message processing engine
@@ -234,6 +244,25 @@ export class MessagesEngine {
     const isAgentMode = enableAgentMode !== false;
     const isAgentManagementEnabled = !!agentManagementContext && isAgentMode;
     const hasAgentDocuments = !!agentDocuments && agentDocuments.length > 0 && isAgentMode;
+    // Append-only v2 dual-path: a registered source switches from its legacy
+    // injector to replaying persisted rows as soon as the timeline carries one.
+    // Presence is the switch, so a writer rollout needs no engine flag and both
+    // paths can never run for the same source in one request. Replayed rows
+    // keep their stored `role` (the payload target role) and their timeline
+    // position; the pipeline only transforms them, never rebuilds them.
+    const persistedInjectionSources = new Set(
+      messages
+        .filter(
+          (message) =>
+            message.isInjection === true &&
+            !!message.sourceKey &&
+            PERSISTED_INJECTION_SOURCES.has(message.sourceKey),
+        )
+        .map((message) => message.sourceKey),
+    );
+    const hasPersistedAgentDocMessage = persistedInjectionSources.has(
+      INJECTION_SOURCE_KEYS.AGENT_DOC_MESSAGE,
+    );
     const hasActiveTopicDocument = !!initialContext?.activeTopicDocument;
     // Runtime message state is authoritative, including an empty clear tombstone.
     const isPlanEnabled = planTodo?.enabled && planTodo?.plan;
@@ -460,8 +489,11 @@ export class MessagesEngine {
       // Injects context into specific user messages (last user, selected, etc.)
       // =============================================
 
-      // Agent documents → after-first-user, context-end
-      new AgentDocumentMessageInjector(agentDocConfig),
+      // Agent documents → after-first-user, context-end.
+      // Kept for requests whose timeline has no `agent_doc_message` row yet;
+      // once such a row exists it is replayed above and this injector stays
+      // silent (the legacy branch is removed only after every source migrates).
+      ...(hasPersistedAgentDocMessage ? [] : [new AgentDocumentMessageInjector(agentDocConfig)]),
       // Agent-document change notes → the user message each belongs to (the
       // index renders a snapshot; these say what changed since). Not gated on
       // `hasAgentDocuments`: a snapshot taken before the first document has no

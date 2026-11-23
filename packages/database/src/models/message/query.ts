@@ -325,6 +325,41 @@ export class MessageConversationQueries extends MessageScope {
   };
 
   /**
+   * Append-only v2 model-input read: every persisted injected row of a topic,
+   * in timeline order.
+   *
+   * This is a model-input (B-class) read and therefore deliberately does NOT
+   * apply `notInjection()`: replaying injected rows is the point. It does not
+   * paginate or filter by role, and it keeps the stored `role` — for injected
+   * rows that column is the payload target role, not a conversation role.
+   * Callers merge the rows into the real timeline by `(createdAt, id)`.
+   */
+  queryInjectionMessagesByTopic = async (topicId: string): Promise<UIChatMessage[]> => {
+    const rows = await this.db
+      .select({
+        content: messages.content,
+        createdAt: messages.createdAt,
+        id: messages.id,
+        role: messages.role,
+        sourceKey: messages.sourceKey,
+        updatedAt: messages.updatedAt,
+      })
+      .from(messages)
+      .where(and(this.ownership(), eq(messages.topicId, topicId), eq(messages.isInjection, true)))
+      .orderBy(asc(messages.createdAt), asc(messages.id));
+
+    return rows.map((row) => ({
+      content: row.content ?? '',
+      createdAt: row.createdAt.getTime(),
+      id: row.id,
+      isInjection: true,
+      role: row.role as UIChatMessage['role'],
+      sourceKey: row.sourceKey,
+      updatedAt: row.updatedAt.getTime(),
+    }));
+  };
+
+  /**
    * Return a lightweight, ownership-scoped transcript for a topic.
    *
    * Unlike the conversation query, this intentionally does not infer missing

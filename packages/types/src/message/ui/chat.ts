@@ -264,6 +264,12 @@ export interface UIChatMessage {
   groupId?: string;
   id: string;
   imageList?: ChatImageItem[];
+  /**
+   * Append-only v2: this row is persisted injected context (`messages.is_injection`),
+   * not a conversation turn. Engine assembly replays such rows; UI reads never
+   * receive them (`notInjection()`).
+   */
+  isInjection?: boolean;
   members?: UIChatMessage[];
   metadata?: MessageMetadata | null;
   model?: string | null;
@@ -342,14 +348,14 @@ export interface UIChatMessage {
    */
   signalCallbacks?: UISignalCallbacksBlock[];
   /**
+   * Append-only v2: the injector that produced an injected row. Matches the
+   * canonical {@link INJECTION_SOURCE_KEYS} table; `null`/absent on real rows.
+   */
+  sourceKey?: string | null;
+  /**
    * target member ID for DM messages in group chat
    */
   targetId?: string | null;
-  /**
-   * Task execution details for role='task' messages
-   * Retrieved from the associated Thread via sourceMessageId
-   */
-  taskDetail?: TaskDetail;
   /**
    * Completion blocks a supervisor turn folds into its own row.
    *
@@ -357,6 +363,11 @@ export interface UIChatMessage {
    * `#<message-id>` deep link can still reach a block the turn swallowed.
    */
   taskCompletions?: AssistantContentBlock[];
+  /**
+   * Task execution details for role='task' messages
+   * Retrieved from the associated Thread via sourceMessageId
+   */
+  taskDetail?: TaskDetail;
   /**
    * Task messages for role='tasks' virtual message
    * Contains aggregated task messages with same parentId

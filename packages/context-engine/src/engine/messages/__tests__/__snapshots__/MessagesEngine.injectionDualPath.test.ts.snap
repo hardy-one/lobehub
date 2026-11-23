@@ -1,0 +1,30 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`MessagesEngine persisted-injection dual path (agent_doc_message) > keeps the legacy L1 output byte-identical when no persisted row exists 1`] = `
+[
+  {
+    "content": "You are a helpful assistant.",
+    "role": "system",
+  },
+  {
+    "content": "Hello",
+    "role": "user",
+  },
+  {
+    "content": "After-first-user memo",
+    "role": "system",
+  },
+  {
+    "content": "Hi there",
+    "role": "assistant",
+  },
+  {
+    "content": "Follow-up",
+    "role": "user",
+  },
+  {
+    "content": "Context-end memo",
+    "role": "system",
+  },
+]
+`;

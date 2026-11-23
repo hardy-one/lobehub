@@ -62,9 +62,9 @@ export interface SignInEmailStepProps {
   serverConfigInit: boolean;
   sessionExpired?: boolean;
   setAgreementChecked: (checked: boolean) => void;
+  showInvitationCode?: boolean;
   /** Provider whose sign-in just failed; explained under the provider buttons */
   socialErrorProvider?: string | null;
-  showInvitationCode?: boolean;
   socialLoading: string | null;
 }
 

@@ -13,6 +13,7 @@ import {
   topics,
 } from '../../schemas';
 import { sanitizeBm25Query } from '../../utils/bm25';
+import { notInjection } from '../../utils/injection';
 import { inJsonStringArray } from '../../utils/inJsonStringArray';
 import { ilikeContains } from '../../utils/like';
 import { searchableMessage } from '../../utils/searchableMessage';
@@ -387,7 +388,14 @@ export class MessageLookupQueries extends MessageScope {
       .from(messages)
       // Visitor messages have no sessionId, so the null-session (inbox) branch
       // would otherwise sweep them in.
-      .where(and(this.ownership(), this.matchSession(sessionId), notShareVisitorMessage()))
+      .where(
+        and(
+          this.ownership(),
+          this.matchSession(sessionId),
+          notShareVisitorMessage(),
+          notInjection(),
+        ),
+      )
       .orderBy(asc(messages.createdAt));
 
     return result as DBMessageItem[];
@@ -424,6 +432,7 @@ export class MessageLookupQueries extends MessageScope {
           eq(messages.topicId, topicId),
           isNull(messages.threadId),
           ne(messages.role, 'tool'),
+          notInjection(),
           ilikeContains(messages.content, needle),
         ),
       )

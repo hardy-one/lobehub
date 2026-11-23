@@ -39,6 +39,7 @@ import {
 } from '../../schemas';
 import type { LobeChatDatabase, Transaction } from '../../type';
 import { agentTitleSql } from '../../utils/inboxAgent';
+import { notInjection } from '../../utils/injection';
 import { notTrashed } from '../../utils/softDelete';
 import { normalizeWorkspaceId } from '../../utils/workspace';
 import { activeMembers, appendMessage, findThread } from './delivery';
@@ -524,6 +525,7 @@ export class ChannelHistoryRepository {
         and(
           eq(messages.topicId, topicId),
           eq(messages.userId, this.userId),
+          notInjection(),
           gte(messages.createdAt, since),
         ),
       )

@@ -170,6 +170,8 @@ export class MessageLookupQueries extends MessageScope {
           eq(messages.topicId, topicId),
           threadId ? eq(messages.threadId, threadId) : isNull(messages.threadId),
           eq(messages.role, 'user'),
+          // Injected rows share role='user'; they never carry an agent sender.
+          notInjection(),
         ),
       )
       .orderBy(desc(messages.createdAt), desc(messages.id))
@@ -266,6 +268,8 @@ export class MessageLookupQueries extends MessageScope {
           eq(messages.topicId, topicId),
           isNull(messages.threadId),
           eq(messages.role, 'user'),
+          // Injected rows are not a turn boundary.
+          notInjection(),
         ),
       );
 
@@ -292,6 +296,8 @@ export class MessageLookupQueries extends MessageScope {
           ),
           isNull(messages.threadId),
           eq(messages.role, 'assistant'),
+          // Injected context can carry role='assistant' too; it is not a reply.
+          notInjection(),
           sql`${messages.createdAt} >= coalesce((${lastUserAt}), '-infinity'::timestamptz)`,
         ),
       )

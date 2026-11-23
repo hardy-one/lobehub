@@ -103,6 +103,9 @@ const SKILLS_TOOL_ID = 'lobe-skills';
  */
 const PERSISTED_INJECTION_SOURCES: ReadonlySet<string> = new Set([
   INJECTION_SOURCE_KEYS.AGENT_DOC_MESSAGE,
+  INJECTION_SOURCE_KEYS.MENTION_DELEGATION,
+  INJECTION_SOURCE_KEYS.SELECTED_SKILL,
+  INJECTION_SOURCE_KEYS.SELECTED_TOOL,
 ]);
 
 /**
@@ -263,6 +266,15 @@ export class MessagesEngine {
     const hasPersistedAgentDocMessage = persistedInjectionSources.has(
       INJECTION_SOURCE_KEYS.AGENT_DOC_MESSAGE,
     );
+    const hasPersistedMentionDelegation = persistedInjectionSources.has(
+      INJECTION_SOURCE_KEYS.MENTION_DELEGATION,
+    );
+    const hasPersistedSelectedSkill = persistedInjectionSources.has(
+      INJECTION_SOURCE_KEYS.SELECTED_SKILL,
+    );
+    const hasPersistedSelectedTool = persistedInjectionSources.has(
+      INJECTION_SOURCE_KEYS.SELECTED_TOOL,
+    );
     const hasActiveTopicDocument = !!initialContext?.activeTopicDocument;
     // Runtime message state is authoritative, including an empty clear tombstone.
     const isPlanEnabled = planTodo?.enabled && planTodo?.plan;
@@ -320,6 +332,15 @@ export class MessagesEngine {
       documents: agentDocuments,
       enabled: hasAgentDocuments,
     };
+
+    // A persisted `mention_delegation` row already carries the delegation
+    // hint at its timeline position. Keep the rest of the agent-management
+    // context (providers/plugins/available agents) on its legacy path, but
+    // strip the mention payload so the injector cannot emit it twice.
+    const agentManagementContextForEngine =
+      hasPersistedMentionDelegation && agentManagementContext
+        ? { ...agentManagementContext, mentionedAgents: undefined }
+        : agentManagementContext;
 
     return [
       // =============================================
@@ -471,7 +492,7 @@ export class MessagesEngine {
       // Agent Management context (available models and plugins)
       new AgentManagementContextInjector({
         enabled: isAgentManagementEnabled,
-        context: agentManagementContext,
+        context: agentManagementContextForEngine,
       }),
       // Group Agent Builder context (current group config/members for editing)
       new GroupAgentBuilderContextInjector({
@@ -511,9 +532,15 @@ export class MessagesEngine {
       // instead of letting the model crawl the page and follow its CLI steps.
       new SkillImportRouteInjector({ enabled: isSkillStoreReachable }),
       // Selected skills (ephemeral user-selected slash skills for this request)
-      new SelectedSkillInjector({ enabled: hasSelectedSkills, selectedSkills }),
+      new SelectedSkillInjector({
+        enabled: hasSelectedSkills && !hasPersistedSelectedSkill,
+        selectedSkills,
+      }),
       // Selected tools (ephemeral user-selected @tool for this request)
-      new SelectedToolInjector({ enabled: hasSelectedTools, selectedTools }),
+      new SelectedToolInjector({
+        enabled: hasSelectedTools && !hasPersistedSelectedTool,
+        selectedTools,
+      }),
       // Generic user-attached selections from chat/code/text contexts.
       new ContextSelectionsInjector({
         enabled: true,

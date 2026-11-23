@@ -10,6 +10,20 @@
 export const INJECTION_SOURCE_KEYS = {
   /** `AgentDocumentMessageInjector` (after-first-user / context-end). */
   AGENT_DOC_MESSAGE: 'agent_doc_message',
+  /** `AgentManagementContextInjector`'s `<mentioned_agents>` delegation hint. */
+  MENTION_DELEGATION: 'mention_delegation',
+  /** `SelectedSkillInjector`'s `<selected_skill_context>` block. */
+  SELECTED_SKILL: 'selected_skill',
+  /** `SelectedToolInjector`'s `<selected_tool_context>` block. */
+  SELECTED_TOOL: 'selected_tool',
 } as const;
 
 export type InjectionSourceKey = (typeof INJECTION_SOURCE_KEYS)[keyof typeof INJECTION_SOURCE_KEYS];
+
+/**
+ * Runtime guard for the canonical key table. Writers validate against this
+ * before persisting so a typo can never create a source the engine will not
+ * replay; the database only enforces that `source_key` is present.
+ */
+export const isInjectionSourceKey = (value: string): value is InjectionSourceKey =>
+  (Object.values(INJECTION_SOURCE_KEYS) as string[]).includes(value);

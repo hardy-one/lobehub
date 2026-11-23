@@ -12,6 +12,7 @@ import type { AgentShareGate } from '../shareGate';
 import { resolveShareAutoAgentGrants, type ShareAutoGrantAgent } from '../shareGate/autoGrants';
 import { resolveShareVisitorDeviceAccess } from '../shareGate/deviceAccess';
 import type { ExecRunContext } from '../types';
+import { captureMessageInjections } from './messageInjectionCapture';
 import { type OperationInitDeps, runOperationInit } from './operationInit';
 import { resolveOperationInitSlots } from './operationInitSlots';
 import { createHistoryMessagesLoader } from './operationPrep';
@@ -100,9 +101,10 @@ const restoreRunContext = async (
   // turn's source message is then that row.
   const userMessageId = request.resumeFromHistory ? undefined : origin.sourceMessageId;
   // The row's metadata as persisted — what a later turn reads back from history.
-  const userMessageMetadata = userMessageId
-    ? ((await deps.messageModel.findById(userMessageId))?.metadata ?? undefined)
+  const userMessageRow = userMessageId
+    ? await deps.messageModel.findById(userMessageId)
     : undefined;
+  const userMessageMetadata = userMessageRow?.metadata ?? undefined;
   const channel = state.world?.channel;
   const deviceAccess = state.principal?.policy?.deviceAccess;
 
@@ -151,6 +153,7 @@ const restoreRunContext = async (
     shareGate: undefined,
     topicId: origin.topicId,
     trigger: origin.trigger,
+    userMessageCreatedAt: userMessageRow?.createdAt.getTime(),
     userMessageId,
     userMessageMetadata,
   };
@@ -229,6 +232,26 @@ export const runDeferredOperationInit = async (
       operationId,
     ),
   );
+
+  // Append-only v2 message ingestion (deferred path): the send path could not
+  // resolve the run's skill pool/manifests before handing off, so the step-0
+  // worker writes the same anchored rows once they exist.
+  if (!request.resumeFromHistory && ctx.userMessageId) {
+    try {
+      await captureMessageInjections({
+        anchorCreatedAt: ctx.userMessageCreatedAt,
+        mentionedAgents: request.hasMentionedAgents ? request.mentionedAgents : undefined,
+        messageModel: deps.messageModel,
+        selectedSkillIds: request.selectedSkillIds,
+        selectedToolIds: request.selectedToolIds,
+        skillSet: prep.operationSkillSet,
+        toolManifestMap: discovery.toolManifestMap,
+        topicId: ctx.topicId,
+      });
+    } catch (error) {
+      log('[%s] deferred init: failed to persist message injection rows: %O', operationId, error);
+    }
+  }
 
   const slots = await resolveOperationInitSlots({ discovery, initialContext, prep });
   const initialized = applyOperationInitSlots(state, slots);

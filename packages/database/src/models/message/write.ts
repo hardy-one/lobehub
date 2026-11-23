@@ -1,10 +1,12 @@
 import type {
   CreateMessageParams,
+  CreateMessageRoleType,
   DBMessageItem,
   ModelUsage,
   NewMessageQueryParams,
   UpdateMessageParams,
 } from '@lobechat/types';
+import { isInjectionSourceKey } from '@lobechat/types';
 import { runTimedSinkStage as runTimedStage } from '@lobechat/utils';
 import { and, eq, inArray } from 'drizzle-orm';
 
@@ -294,6 +296,48 @@ export class MessageWriteMutations extends MessageScope {
         role: params.role,
       },
     );
+  };
+
+  /**
+   * Append-only v2 write primitive: persist one injected-context row.
+   *
+   * The row is INSERT-only — there is deliberately no upsert or update
+   * counterpart, because a persisted row records exactly what an injector
+   * produced at that point in the timeline. `sourceKey` is validated against
+   * the canonical `INJECTION_SOURCE_KEYS` table before the insert, so a
+   * source the request engine cannot replay never reaches the database; the
+   * table's CHECK constraint only enforces that `source_key` is present.
+   *
+   * `createdAt` lets the caller anchor the row inside the timeline (for
+   * example just after the user turn it belongs to) instead of stamping it
+   * with the insert time, which can be minutes later for a deferred init.
+   */
+  appendInjectionRow = async (
+    topicId: string,
+    sourceKey: string,
+    content: string,
+    role: CreateMessageRoleType = 'user',
+    options: { createdAt?: Date | number } = {},
+  ): Promise<DBMessageItem> => {
+    if (!isInjectionSourceKey(sourceKey)) {
+      throw new Error(`Unknown injection source key: ${sourceKey}`);
+    }
+
+    const createdAt =
+      options.createdAt === undefined
+        ? undefined
+        : options.createdAt instanceof Date
+          ? options.createdAt.getTime()
+          : options.createdAt;
+
+    return this.create({
+      content,
+      createdAt,
+      isInjection: true,
+      role,
+      sourceKey,
+      topicId,
+    });
   };
 
   createUserAndAssistantMessages = async (

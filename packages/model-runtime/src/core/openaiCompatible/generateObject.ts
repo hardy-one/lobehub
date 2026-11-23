@@ -26,7 +26,7 @@ type Factory = OpenAICompatibleFactoryOptions;
 const shouldUseResponsesForGenerateObject = (
   runtime: Runtime,
   factory: Factory,
-  { model, responseApi }: GenerateObjectPayload,
+  { apiMode, model, responseApi }: GenerateObjectPayload,
   context: string,
 ) => {
   const instanceGenerateObject = ((runtime._options as any).generateObject || {}) as {
@@ -45,6 +45,7 @@ const shouldUseResponsesForGenerateObject = (
     flagUseResponseModels,
     model,
     responseApi,
+    userApiMode: apiMode,
   });
 };
 

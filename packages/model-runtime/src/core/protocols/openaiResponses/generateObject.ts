@@ -163,8 +163,13 @@ export const generateToolCallsViaResponses = async (
       responseId: res.id,
       status: res.status,
     });
+  const incompleteReason = res.incomplete_details?.reason;
   return functionCalls.map((item) => ({
-    arguments: parseStructuredToolArguments(item.arguments),
+    arguments: parseStructuredToolArguments(item.arguments, {
+      finishReason: res.status,
+      incompleteReason,
+      truncated: incompleteReason === 'max_output_tokens',
+    }),
     name: item.name,
   }));
 };

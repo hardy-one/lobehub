@@ -9,6 +9,7 @@ import type { LobeRuntimeAI } from '../../core/BaseAI';
 import {
   parseStructuredOutputText,
   parseStructuredToolArguments,
+  retryStructuredToolCalls,
   StructuredOutputError,
 } from '../../core/openaiCompatible/structuredOutput';
 import { convertIterableToStream, createModelPullStream, OllamaStream } from '../../core/streams';
@@ -102,7 +103,7 @@ export class LobeOllamaAI implements LobeRuntimeAI {
   }
 
   async generateObject(payload: GenerateObjectPayload, options?: GenerateObjectOptions) {
-    const { messages, model, schema, thinking, tools } = payload;
+    const { schema, tools } = payload;
     if (!tools && !schema) throw new Error('tools or schema is required');
 
     // `client.abort()` only reaches streamed requests, so a cancelled structured
@@ -116,47 +117,54 @@ export class LobeOllamaAI implements LobeRuntimeAI {
         })
       : this.client;
 
-    let response: ChatResponse;
-    try {
-      response = await client.chat({
-        format: tools ? undefined : schema!.schema,
-        messages,
-        model,
-        stream: false,
-        // Ollama rejects `think: true` on models without thinking, so only ever turn it off.
-        ...(thinking?.type === 'disabled' && { think: false }),
-        tools: tools as Tool[] | undefined,
-      });
-    } catch (error) {
-      throw await this.toRuntimeError(error);
-    }
+    const attempt = async (current: GenerateObjectPayload) => {
+      let response: ChatResponse;
+      try {
+        response = await client.chat({
+          format: current.tools ? undefined : current.schema!.schema,
+          messages: current.messages,
+          model: current.model,
+          stream: false,
+          // Ollama rejects `think: true` on models without thinking, so only ever turn it off.
+          ...(current.thinking?.type === 'disabled' && { think: false }),
+          tools: current.tools as Tool[] | undefined,
+        });
+      } catch (error) {
+        throw await this.toRuntimeError(error);
+      }
 
-    if (response.prompt_eval_count !== undefined || response.eval_count !== undefined) {
-      const inputTokens = response.prompt_eval_count ?? 0;
-      const outputTokens = response.eval_count ?? 0;
-      await options?.onUsage?.({
-        inputTextTokens: inputTokens,
-        outputTextTokens: outputTokens,
-        totalInputTokens: inputTokens,
-        totalOutputTokens: outputTokens,
-        totalTokens: inputTokens + outputTokens,
-      });
-    }
+      if (response.prompt_eval_count !== undefined || response.eval_count !== undefined) {
+        const inputTokens = response.prompt_eval_count ?? 0;
+        const outputTokens = response.eval_count ?? 0;
+        await options?.onUsage?.({
+          inputTextTokens: inputTokens,
+          outputTextTokens: outputTokens,
+          totalInputTokens: inputTokens,
+          totalOutputTokens: outputTokens,
+          totalTokens: inputTokens + outputTokens,
+        });
+      }
 
-    if (!tools) return parseStructuredOutputText(response.message?.content);
+      if (!current.tools) return parseStructuredOutputText(response.message?.content);
 
-    const toolCalls = response.message?.tool_calls;
-    if (!toolCalls?.length)
-      throw new StructuredOutputError('no tool calls returned', {
-        hasTextContent: !!response.message?.content,
-        model,
-        provider: 'ollama',
-      });
+      const toolCalls = response.message?.tool_calls;
+      if (!toolCalls?.length)
+        throw new StructuredOutputError('no tool calls returned', {
+          hasTextContent: !!response.message?.content,
+          model: current.model,
+          provider: 'ollama',
+        });
 
-    return toolCalls.map((item) => ({
-      arguments: parseStructuredToolArguments(item.function.arguments),
-      name: item.function.name,
-    }));
+      return toolCalls.map((item) => ({
+        arguments: parseStructuredToolArguments(item.function.arguments, {
+          finishReason: response.done_reason,
+          truncated: response.done_reason === 'length',
+        }),
+        name: item.function.name,
+      }));
+    };
+
+    return tools ? retryStructuredToolCalls(payload, attempt) : attempt(payload);
   }
 
   private async toRuntimeError(error: unknown) {

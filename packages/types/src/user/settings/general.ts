@@ -88,6 +88,10 @@ export interface UserGeneralConfig {
    */
   showMessageUsage?: boolean;
   telemetry: boolean;
-  timezone?: string;
+  /**
+   * Explicit IANA zone for every date the prompt renders. Unset or null means
+   * "follow system": each assembly host falls back to its own Intl probe.
+   */
+  timezone?: string | null;
   transitionMode?: ResponseAnimationStyle;
 }

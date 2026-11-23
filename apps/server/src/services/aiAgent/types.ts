@@ -83,6 +83,8 @@ export interface ExecRunContext {
   /** Topic id — guaranteed to exist by the time pipeline stages run. */
   topicId: string;
   trigger?: string;
+  /** Timestamp the user turn row was persisted with; see `TurnSetupResult`. */
+  userMessageCreatedAt?: number;
   /** User turn row id; undefined when the run starts from history (resume). */
   userMessageId?: string;
   /**

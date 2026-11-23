@@ -76,6 +76,10 @@ export class MessageConversationQueries extends MessageScope {
           this.ownership(),
           inArray(messages.topicId, topicIds),
           eq(messages.role, 'user'),
+          // Append-only v2: an injected row also has role='user' (it is a
+          // payload target role, not a conversation role), but it is context,
+          // never the latest thing a person said.
+          notInjection(),
           isNotNull(messages.content),
           ne(messages.content, ''),
         ),

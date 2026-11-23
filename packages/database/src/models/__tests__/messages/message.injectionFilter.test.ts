@@ -38,6 +38,7 @@ const seed = async () => {
       content: 'real question',
       createdAt: at(1),
       id: 'real-user',
+      metadata: { agentSender: { agentId: 'agent-real', hop: 2 } },
       role: 'user',
       topicId,
       userId,
@@ -163,13 +164,27 @@ describe('MessageModel injection filtering on user-facing reads', () => {
   });
 });
 
-describe('engine-side reads still see injected rows', () => {
-  it('queryLastUserMessageByTopics keeps the latest injected user row', async () => {
+describe('last-user detection skips injected rows', () => {
+  it('queryLastUserMessageByTopics returns the real user turn', async () => {
     const latest = await messageModel.queryLastUserMessageByTopics([topicId]);
 
-    expect(latest.get(topicId)).toBe('injected todos refresh');
+    expect(latest.get(topicId)).toBe('real question');
   });
 
+  it('findLatestUserTurnHop reads the real user turn', async () => {
+    const hop = await messageModel.findLatestUserTurnHop({ topicId });
+
+    expect(hop).toBe(2);
+  });
+
+  it('listLatestTurnAssistantContents keeps the real turn boundary', async () => {
+    const contents = await messageModel.listLatestTurnAssistantContents({ limit: 5, topicId });
+
+    expect(contents.map((row) => row.content)).toEqual(['real answer']);
+  });
+});
+
+describe('engine assembly still reads injected rows', () => {
   it('queryByIds still hydrates an injected row for engine assembly', async () => {
     const rows = await messageModel.queryByIds(['inj-early-user']);
 

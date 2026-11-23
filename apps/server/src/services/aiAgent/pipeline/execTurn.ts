@@ -36,6 +36,7 @@ import type { ApprovalClaimState } from './approvalResume';
 import { claimApprovalResume, tryReuseInterventionContinuation } from './approvalResume';
 import { isDeferredInitEnabled, shouldDeferOperationInit } from './deferInitGate';
 import { dispatchHeteroAgent } from './heteroDispatch';
+import { captureMessageInjections } from './messageInjectionCapture';
 import {
   buildOperationInitRequest,
   runOperationInit,
@@ -566,6 +567,7 @@ export const execAgentTurn = async (
     topicEditingGroupId: turn.topicEditingGroupId,
     topicId,
     trigger,
+    userMessageCreatedAt: turn.userMessageCreatedAt,
     userMessageId: turn.userMessageId,
     // Exactly what the user row was persisted with, so every stage reads the
     // message the way a later turn reads it back from history.
@@ -792,6 +794,31 @@ export const execAgentTurn = async (
           operationId,
         ),
       );
+
+  // Append-only v2 message ingestion: persist the context this turn's user
+  // message carries, anchored between the user row and the assistant
+  // placeholder. Selected skill/tool bodies only exist after operation prep
+  // resolved the run's skill pool and manifests, which is why the unified
+  // hook runs here rather than inside `setupTurn`. A deferred init writes the
+  // same rows in the step-0 worker once it has those inputs.
+  if (!deferInit && !runFromHistory && turn.userMessageId && 'prep' in init) {
+    try {
+      await captureMessageInjections({
+        anchorCreatedAt: turn.userMessageCreatedAt,
+        mentionedAgents: hasMentionedAgents ? mentionedAgents : undefined,
+        messageModel: deps.messageModel,
+        selectedSkillIds,
+        selectedToolIds,
+        skillSet: init.prep.operationSkillSet,
+        toolManifestMap: init.discovery.toolManifestMap,
+        topicId: turn.topicId,
+      });
+    } catch (error) {
+      // The row is an optimization for later turns; never fail this turn's
+      // answer because its context could not be persisted.
+      log('execAgent: failed to persist message injection rows: %O', error);
+    }
+  }
 
   // Claim the child slot on the supervisor's runningOperation marker LAST,
   // immediately before startup. The marker vanishes when the supervisor is

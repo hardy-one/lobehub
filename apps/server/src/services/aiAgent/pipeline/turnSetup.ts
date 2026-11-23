@@ -430,6 +430,12 @@ export interface TurnSetupResult {
    */
   topicEditingGroupId?: string;
   topicId: string;
+  /**
+   * Timestamp the user row was persisted with. Append-only v2 writers anchor
+   * injected rows just after it, inside the gap left before the assistant
+   * placeholder.
+   */
+  userMessageCreatedAt?: number;
   userMessageId?: string;
 }
 
@@ -984,9 +990,14 @@ export const setupTurn = async (
         return anchor.resolveParentId();
       };
       const userMessageParentId = await resolveParentId();
+      // Leave a small, explicit gap before the assistant placeholder so an
+      // injected row can be anchored between the two without racing the
+      // database clock (both rows otherwise share a millisecond).
+      const userMessageCreatedAt = Date.now();
       const userMessageParams = {
         agentId: conversationAgentId,
         content: prompt,
+        createdAt: userMessageCreatedAt,
         // Rich text as the composer authored it, like a client-runtime send stores.
         editorData: userMessage?.editorData,
         files: runAttachments.fileIds,
@@ -1074,6 +1085,9 @@ export const setupTurn = async (
           {
             agentId: assistantAgentId,
             content: LOADING_FLAT,
+            createdAt: userMessageRecord?.createdAt
+              ? userMessageRecord.createdAt.getTime() + 10
+              : undefined,
             // Stamp groupId so the assistant turn is visible in the group read path
             // (MessageModel.query filters group chats by messages.groupId).
             groupId: appContext?.groupId ?? undefined,
@@ -1174,6 +1188,7 @@ export const setupTurn = async (
     topicBoundDeviceId,
     topicEditingGroupId,
     topicId,
+    userMessageCreatedAt: userMessageRecord?.createdAt?.getTime(),
     userMessageId: userMessageRecord?.id ?? persistedUserMessageId,
   };
 };

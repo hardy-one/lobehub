@@ -15,7 +15,10 @@ export {
   AgentDocumentSystemReplaceInjector,
 } from './AgentDocumentInjector';
 export { AgentIdentityInjector } from './AgentIdentityInjector';
-export { AgentManagementContextInjector } from './AgentManagementContextInjector';
+export {
+  AgentManagementContextInjector,
+  formatMentionedAgentsContext,
+} from './AgentManagementContextInjector';
 export { BotPlatformContextInjector } from './BotPlatformContextInjector';
 export { ConnectorOwnershipInjector } from './ConnectorOwnershipInjector';
 export { ContextSelectionsInjector } from './ContextSelectionsInjector';

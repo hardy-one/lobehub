@@ -73,6 +73,7 @@ export class MessageModel {
   countUpTo: MessageAnalyticsQueries['countUpTo'];
 
   create: MessageWriteMutations['create'];
+  appendInjectionRow: MessageWriteMutations['appendInjectionRow'];
   createUserAndAssistantMessages: MessageWriteMutations['createUserAndAssistantMessages'];
   batchCreate: MessageWriteMutations['batchCreate'];
   createMessageQuery: MessageWriteMutations['createMessageQuery'];
@@ -192,6 +193,7 @@ export class MessageModel {
     this.hasMoreThanN = analytics.hasMoreThanN;
     this.countUpTo = analytics.countUpTo;
     this.create = writes.create;
+    this.appendInjectionRow = writes.appendInjectionRow;
     this.createUserAndAssistantMessages = writes.createUserAndAssistantMessages;
     this.batchCreate = writes.batchCreate;
     this.createMessageQuery = writes.createMessageQuery;

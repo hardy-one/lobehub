@@ -263,7 +263,7 @@ ${parts.join('\n')}
  * Format mentioned agents as delegation context for injection after the user message.
  * Instructs the AI to delegate to the mentioned agent(s) via callAgent.
  */
-const formatMentionedAgentsContext = (mentionedAgents: RuntimeMentionedAgent[]): string => {
+export const formatMentionedAgentsContext = (mentionedAgents: RuntimeMentionedAgent[]): string => {
   const agentsXml = mentionedAgents
     .map((a) => `  <agent id="${escapeXml(a.id)}" name="${escapeXml(a.name)}" />`)
     .join('\n');

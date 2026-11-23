@@ -71,13 +71,19 @@ export const resolveSignUpError = (
     return { field: 'email', message: t('betterAuth.errors.signupEmailInvalid') };
   }
 
+  // A rejected code is fixed in the field itself, so it never becomes a message next to
+  // the submit button.
+  if (error.code && INVITATION_CODE_ERROR_CODES.has(error.code)) {
+    return {
+      field: 'invitationCode',
+      message: translateAuthError(error, t) || t('betterAuth.errors.invitationCodeRequired'),
+    };
+  }
+
   const translated = translateAuthError(error, t);
   if (translated && error.code) {
     if (EMAIL_ERROR_CODES.has(error.code)) return { field: 'email', message: translated };
     if (PASSWORD_ERROR_CODES.has(error.code)) return { field: 'password', message: translated };
-    if (INVITATION_CODE_ERROR_CODES.has(error.code)) {
-      return { field: 'invitationCode', message: translated };
-    }
     return { message: translated };
   }
 

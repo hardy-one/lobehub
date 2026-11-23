@@ -17,6 +17,26 @@ const schema = {
   },
 };
 
+const suggestTools = [{ function: { name: 'suggest', parameters: {} }, type: 'function' as const }];
+
+const toolCallResponse = (args: string, doneReason = 'stop') => ({
+  done_reason: doneReason,
+  message: {
+    content: '',
+    role: 'assistant',
+    tool_calls: [{ function: { arguments: args, name: 'suggest' } }],
+  },
+});
+
+const captureStructuredError = async (promise: Promise<unknown>) => {
+  try {
+    await promise;
+  } catch (error) {
+    return error as StructuredOutputError;
+  }
+  throw new Error('expected the call to reject');
+};
+
 describe('LobeOllamaAI.generateObject', () => {
   let ollamaAI: LobeOllamaAI;
 
@@ -120,6 +140,40 @@ describe('LobeOllamaAI.generateObject', () => {
     ).rejects.toBeInstanceOf(StructuredOutputError);
   });
 
+  it('reports invalid tool arguments with Ollama done_reason and no raw arguments', async () => {
+    const args = '{"items":"TOP_SECRET_OLLAMA", "broken"';
+    vi.mocked(Ollama.prototype.chat).mockResolvedValue({
+      done_reason: 'length',
+      message: {
+        content: '',
+        role: 'assistant',
+        tool_calls: [{ function: { arguments: args, name: 'suggest' } }],
+      },
+    } as any);
+
+    let caught: any;
+    try {
+      await ollamaAI.generateObject({
+        messages: [{ content: 'hi', role: 'user' }],
+        model: 'llama3.2:3b',
+        tools: [{ function: { name: 'suggest', parameters: {} }, type: 'function' }],
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(StructuredOutputError);
+    expect(caught).toMatchObject({
+      context: {
+        argumentsLength: args.length,
+        finishReason: 'length',
+        truncated: true,
+      },
+      reason: 'invalid JSON in tool arguments',
+    });
+    expect(JSON.stringify(caught.context)).not.toContain('TOP_SECRET_OLLAMA');
+  });
+
   it('rejects a tools call that returns no tool calls', async () => {
     vi.mocked(Ollama.prototype.chat).mockResolvedValue({
       message: { content: 'no tools', role: 'assistant' },
@@ -132,6 +186,102 @@ describe('LobeOllamaAI.generateObject', () => {
         tools: [{ function: { name: 'suggest', parameters: {} }, type: 'function' }],
       }),
     ).rejects.toBeInstanceOf(StructuredOutputError);
+  });
+
+  it('retries invalid JSON tool arguments and returns the third attempt', async () => {
+    vi.mocked(Ollama.prototype.chat)
+      .mockResolvedValueOnce(toolCallResponse('{"items": "a", broken') as any)
+      .mockResolvedValueOnce(toolCallResponse('{"items": "b", broken') as any)
+      .mockResolvedValueOnce(toolCallResponse('{"items":["a"]}') as any);
+
+    const result = await ollamaAI.generateObject({
+      messages: [{ content: 'follow ups?', role: 'user' }],
+      model: 'llama3.2:3b',
+      tools: suggestTools,
+    });
+
+    expect(result).toEqual([{ arguments: { items: ['a'] }, name: 'suggest' }]);
+    expect(Ollama.prototype.chat).toHaveBeenCalledTimes(3);
+  });
+
+  it('throws with the attempt count after three invalid JSON tool replies', async () => {
+    const args = '{"items":"SECRET_ATTEMPTS", "broken"';
+    vi.mocked(Ollama.prototype.chat).mockResolvedValue(toolCallResponse(args) as any);
+
+    const error = await captureStructuredError(
+      ollamaAI.generateObject({
+        messages: [{ content: 'follow ups?', role: 'user' }],
+        model: 'llama3.2:3b',
+        tools: suggestTools,
+      }),
+    );
+
+    expect(error).toBeInstanceOf(StructuredOutputError);
+    expect(error).toMatchObject({
+      context: {
+        argumentsLength: args.length,
+        attempts: 3,
+        finishReason: 'stop',
+        truncated: false,
+      },
+      reason: 'invalid JSON in tool arguments',
+    });
+    expect(Ollama.prototype.chat).toHaveBeenCalledTimes(3);
+  });
+
+  it('retries truncated tool arguments until the attempt budget is exhausted', async () => {
+    const args = '{"items":["a"';
+    vi.mocked(Ollama.prototype.chat).mockResolvedValue(toolCallResponse(args, 'length') as any);
+
+    const error = await captureStructuredError(
+      ollamaAI.generateObject({
+        messages: [{ content: 'follow ups?', role: 'user' }],
+        model: 'llama3.2:3b',
+        tools: suggestTools,
+      }),
+    );
+
+    expect(error).toMatchObject({
+      context: {
+        argumentsLength: args.length,
+        attempts: 3,
+        finishReason: 'length',
+        truncated: true,
+      },
+      reason: 'invalid JSON in tool arguments',
+    });
+    expect(Ollama.prototype.chat).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not retry arguments that are valid JSON but not an object', async () => {
+    vi.mocked(Ollama.prototype.chat).mockResolvedValue(toolCallResponse('[1,2]') as any);
+
+    const error = await captureStructuredError(
+      ollamaAI.generateObject({
+        messages: [{ content: 'follow ups?', role: 'user' }],
+        model: 'llama3.2:3b',
+        tools: suggestTools,
+      }),
+    );
+
+    expect(error).toMatchObject({ reason: 'JSON object required for tool arguments' });
+    expect(Ollama.prototype.chat).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps raw tool arguments out of retry errors', async () => {
+    const args = '{"items":"TOP_SECRET_RETRY", "broken"';
+    vi.mocked(Ollama.prototype.chat).mockResolvedValue(toolCallResponse(args) as any);
+
+    const error = await captureStructuredError(
+      ollamaAI.generateObject({
+        messages: [{ content: 'follow ups?', role: 'user' }],
+        model: 'llama3.2:3b',
+        tools: suggestTools,
+      }),
+    );
+
+    expect(error.message).not.toContain('TOP_SECRET_RETRY');
+    expect(JSON.stringify(error.context)).not.toContain('TOP_SECRET_RETRY');
   });
 
   it('maps Ollama failures to an OllamaBizError', async () => {

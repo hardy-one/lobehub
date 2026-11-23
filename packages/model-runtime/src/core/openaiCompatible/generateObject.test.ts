@@ -465,25 +465,97 @@ describe('generateObject forced tool-call retry loop', () => {
     expect(createMock).toHaveBeenCalledTimes(3);
   });
 
-  it('should not retry malformed tool arguments', async () => {
+  const invalidJsonResponse = (finishReason = 'stop', args = '{"persona":"broken"') => ({
+    choices: [
+      {
+        finish_reason: finishReason,
+        message: {
+          tool_calls: [{ function: { arguments: args, name: 'commit_user_persona' }, id: 'c1' }],
+        },
+      },
+    ],
+  });
+
+  it('should retry invalid JSON arguments and succeed within three attempts', async () => {
     const instance = createInstance();
     const createMock = vi
       .spyOn((instance as any).client.chat.completions, 'create')
-      .mockResolvedValue({
-        choices: [
-          {
-            message: {
-              tool_calls: [
-                { function: { arguments: '{broken', name: 'commit_user_persona' }, id: 'c1' },
-              ],
-            },
-          },
-        ],
-      } as any);
+      .mockResolvedValueOnce(invalidJsonResponse() as any)
+      .mockResolvedValueOnce(invalidJsonResponse() as any)
+      .mockResolvedValue(toolCallOk as any);
 
-    await expect(instance.generateObject(toolPayload)).rejects.toThrow(
-      'Invalid structured output: invalid JSON in tool arguments',
-    );
+    const result = await instance.generateObject(toolPayload);
+
+    expect(result).toEqual([{ arguments: { persona: 'done' }, name: 'commit_user_persona' }]);
+    expect(createMock).toHaveBeenCalledTimes(3);
+    for (const callIndex of [1, 2]) {
+      const lastMessage = createMock.mock.calls[callIndex][0].messages.at(-1);
+      expect(lastMessage.role).toBe('user');
+      expect(lastMessage.content).toContain('previous tool arguments were not valid JSON');
+      expect(lastMessage.content).toContain('single valid JSON object');
+    }
+  });
+
+  it('should exhaust three attempts for invalid JSON with diagnostic metadata only', async () => {
+    const instance = createInstance();
+    const args = '{"persona":"TOP_SECRET_PERSONA_TEXT", "broken"';
+    const createMock = vi
+      .spyOn((instance as any).client.chat.completions, 'create')
+      .mockResolvedValue(invalidJsonResponse('stop', args) as any);
+
+    let caught: any;
+    try {
+      await instance.generateObject(toolPayload);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(createMock).toHaveBeenCalledTimes(3);
+    expect(caught).toMatchObject({
+      context: {
+        argumentsLength: args.length,
+        attempts: 3,
+        finishReason: 'stop',
+        truncated: false,
+      },
+      name: 'StructuredOutputError',
+      reason: 'invalid JSON in tool arguments',
+    });
+    expect(caught.message).not.toContain('TOP_SECRET_PERSONA_TEXT');
+    expect(JSON.stringify(caught.context)).not.toContain('TOP_SECRET_PERSONA_TEXT');
+  });
+
+  it('should keep retrying truncated invalid JSON and mark it as truncated', async () => {
+    const instance = createInstance();
+    const createMock = vi
+      .spyOn((instance as any).client.chat.completions, 'create')
+      .mockResolvedValue(invalidJsonResponse('length') as any);
+
+    await expect(instance.generateObject(toolPayload)).rejects.toMatchObject({
+      context: {
+        attempts: 3,
+        finishReason: 'length',
+        truncated: true,
+      },
+      reason: 'invalid JSON in tool arguments',
+    });
+    expect(createMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('should not retry valid JSON that is not an object', async () => {
+    const instance = createInstance();
+    const createMock = vi
+      .spyOn((instance as any).client.chat.completions, 'create')
+      .mockResolvedValue(invalidJsonResponse('stop', '["not-an-object"]') as any);
+
+    await expect(instance.generateObject(toolPayload)).rejects.toMatchObject({
+      context: {
+        argumentsLength: '["not-an-object"]'.length,
+        finishReason: 'stop',
+        truncated: false,
+      },
+      reason: 'JSON object required for tool arguments',
+    });
     expect(createMock).toHaveBeenCalledTimes(1);
   });
 
@@ -502,5 +574,38 @@ describe('generateObject forced tool-call retry loop', () => {
 
     expect(result).toEqual([{ arguments: { persona: 'done' }, name: 'commit_user_persona' }]);
     expect(createMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('should retry invalid JSON through the Responses API path with truncation metadata', async () => {
+    const instance = createInstance();
+    const args = '{"persona":"TOP_SECRET_RESPONSES_TEXT", "broken"';
+    const invalidResponse = {
+      incomplete_details: { reason: 'max_output_tokens' },
+      output: [{ arguments: args, name: 'commit_user_persona', type: 'function_call' }],
+      status: 'incomplete',
+    };
+    const createMock = vi
+      .spyOn((instance as any).client.responses, 'create')
+      .mockResolvedValue(invalidResponse as any);
+
+    let caught: any;
+    try {
+      await instance.generateObject({ ...toolPayload, responseApi: true });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(createMock).toHaveBeenCalledTimes(3);
+    expect(caught).toMatchObject({
+      context: {
+        argumentsLength: args.length,
+        attempts: 3,
+        finishReason: 'incomplete',
+        incompleteReason: 'max_output_tokens',
+        truncated: true,
+      },
+      reason: 'invalid JSON in tool arguments',
+    });
+    expect(JSON.stringify(caught.context)).not.toContain('TOP_SECRET_RESPONSES_TEXT');
   });
 });

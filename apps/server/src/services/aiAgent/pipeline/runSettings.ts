@@ -57,13 +57,17 @@ export const resolveRunSettings = async ({
     // expertise intentionally stay creator-scoped below (gated by
     // `allowReadMemory`), but the timezone has no such gate and must not
     // leak the creator's own setting into a visitor's turn.
+    // A stored null means "Follow System" — normalize to undefined at this
+    // boundary so `userTimezone?: string` stays honest down the chain
+    // (world → mecha → injector all treat absent as the UTC fallback).
     if (shareGate) {
       const visitorSettings = await runFacts.userSettings(shareGate.visitorUserId);
-      const visitorGeneralSettings = visitorSettings?.general as { timezone?: string } | undefined;
-      userTimezone = visitorGeneralSettings?.timezone;
+      const visitorGeneralSettings = visitorSettings?.general as
+        { timezone?: string | null } | undefined;
+      userTimezone = visitorGeneralSettings?.timezone ?? undefined;
     } else {
-      const generalSettings = settings?.general as { timezone?: string } | undefined;
-      userTimezone = generalSettings?.timezone;
+      const generalSettings = settings?.general as { timezone?: string | null } | undefined;
+      userTimezone = generalSettings?.timezone ?? undefined;
     }
   } catch (error) {
     log('execAgent: failed to fetch user settings: %O', error);

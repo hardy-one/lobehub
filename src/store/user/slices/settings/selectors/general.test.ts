@@ -66,6 +66,30 @@ describe('settingsSelectors', () => {
     });
   });
 
+  describe('currentTimezone', () => {
+    it('prefers the explicit user choice over the host probe', () => {
+      const s: UserState = merge(initialState, {
+        settings: {
+          general: { timezone: 'Asia/Tokyo' },
+        },
+      });
+
+      expect(userGeneralSettingsSelectors.currentTimezone(s as UserStore)).toBe('Asia/Tokyo');
+    });
+
+    it('treats null (Follow System) as unset and falls back to the host probe', () => {
+      const s: UserState = merge(initialState, {
+        settings: {
+          general: { timezone: null },
+        },
+      });
+
+      expect(userGeneralSettingsSelectors.currentTimezone(s as UserStore)).toBe(
+        Intl.DateTimeFormat().resolvedOptions().timeZone,
+      );
+    });
+  });
+
   describe('interfaceDensity', () => {
     it('defaults to loose when unset', () => {
       expect(userGeneralSettingsSelectors.interfaceDensity(initialState as UserStore)).toBe(

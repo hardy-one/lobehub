@@ -109,6 +109,37 @@ describe('SettingsAction', () => {
       );
     });
 
+    it('should persist an explicit null when the timezone returns to Follow System', async () => {
+      const { result } = renderHook(() => useUserStore());
+
+      // First pick an explicit zone...
+      await act(async () => {
+        await result.current.setSettings({ general: { timezone: 'Asia/Tokyo' } });
+      });
+
+      // ...then switch back to "Follow System", which the settings UI sends
+      // as null. The merge drops undefined but keeps null, and the
+      // default-value diff must not treat null as "same as unset" — otherwise
+      // the explicit zone would shadow the browser probe forever.
+      await act(async () => {
+        await result.current.setSettings({ general: { timezone: null } });
+      });
+
+      const payload = vi.mocked(userService.updateUserSettings).mock.lastCall?.[0] as any;
+      expect(payload.general.timezone).toBe(null);
+    });
+
+    it('should persist null when Follow System is chosen with no prior zone', async () => {
+      const { result } = renderHook(() => useUserStore());
+
+      await act(async () => {
+        await result.current.setSettings({ general: { timezone: null } });
+      });
+
+      const payload = vi.mocked(userService.updateUserSettings).mock.lastCall?.[0] as any;
+      expect(payload.general.timezone).toBe(null);
+    });
+
     it('should only send the columns touched by this call (multi-tab clobber regression)', async () => {
       const { result } = renderHook(() => useUserStore());
 

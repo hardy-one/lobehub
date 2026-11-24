@@ -1736,6 +1736,10 @@ export default {
   'settingCommon.themeMode.dark': 'Dark',
   'settingCommon.themeMode.light': 'Light',
   'settingCommon.themeMode.title': 'Theme',
+  'settingCommon.timezone.autoMode': 'Follow System',
+  'settingCommon.timezone.desc':
+    'The zone used for dates in the model context. Defaults to the current device.',
+  'settingCommon.timezone.title': 'Timezone',
   'settingCommon.title': 'General Settings',
   'settingConversation.display.title': 'Message Display',
   'settingConversation.input.title': 'Input & Sending',

@@ -213,4 +213,32 @@ describe('MessagesEngine persisted-injection dual path (agent_doc_message)', () 
 
     expect(result.messages).toMatchSnapshot();
   });
+
+  it('does not re-run the legacy injector for a persisted tool-touch row', async () => {
+    const touchContent = [
+      'Agent documents touched by a tool in this conversation. Their content is in the tool result, not this row.',
+      '',
+      'CHANGE  TITLE        ID',
+      'created Launch brief doc-1',
+    ].join('\n');
+
+    const result = await new MessagesEngine(
+      baseParams([
+        timeline()[0],
+        msg({
+          content: touchContent,
+          id: 'touch-row',
+          isInjection: true,
+          role: 'user',
+          sourceKey: AGENT_DOC_MESSAGE,
+        }),
+        timeline()[1],
+      ]),
+    ).process();
+
+    const serialized = JSON.stringify(result.messages);
+    expect(serialized.match(/Agent documents touched by a tool/g)).toHaveLength(1);
+    expect(serialized).not.toContain('After-first-user memo');
+    expect(serialized).not.toContain('Context-end memo');
+  });
 });

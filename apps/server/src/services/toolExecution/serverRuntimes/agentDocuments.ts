@@ -4,10 +4,15 @@ import { AgentDocumentsExecutionRuntime } from '@lobechat/builtin-tool-agent-doc
 import { agentShareDocumentAccessScope, ordinaryDocumentAccessScope } from '@lobechat/types';
 
 import type { AgentDocumentListItem } from '@/database/models/agentDocuments';
+import { MessageModel } from '@/database/models/message';
 import { TaskModel } from '@/database/models/task';
 import { AgentDocumentsService } from '@/server/services/agentDocuments';
 import { createDocumentWorkRegistrar } from '@/server/services/agentDocuments/documentWork';
 import { emitAgentDocumentToolOutcomeSafely } from '@/server/services/agentDocuments/toolOutcome';
+import {
+  type AgentDocumentTouchKind,
+  captureAgentDocumentTouchSafely,
+} from '@/server/services/aiAgent/pipeline/agentDocumentTouchCapture';
 
 import { resolveTaskWorkspaceId } from './resolveWorkspaceScope';
 import { type ServerRuntimeRegistration } from './types';
@@ -36,6 +41,23 @@ export const agentDocumentsRuntime: ServerRuntimeRegistration = {
     }
 
     const shareTopicId = context.agentShareVisitor ? context.topicId : undefined;
+    // The lambda router adapter uses the tool context's client message id;
+    // the runtime chain's `messageId` is the source message DB primary key
+    // (`state.origin.sourceMessageId`, set from the persisted user row id).
+    const messageModel = new MessageModel(db, userId, context.workspaceId ?? undefined);
+    const captureTouch = async (input: {
+      agentDocumentId?: string;
+      kind: AgentDocumentTouchKind;
+      title?: string;
+      topicId?: string;
+    }) => {
+      await captureAgentDocumentTouchSafely({
+        ...input,
+        messageId: context.messageId,
+        messageModel,
+        topicId: input.topicId ?? context.topicId,
+      });
+    };
     const documentAccessScope = context.agentShareVisitor
       ? agentShareDocumentAccessScope({
           shareId: context.agentShareVisitor.shareId,
@@ -105,6 +127,14 @@ export const agentDocumentsRuntime: ServerRuntimeRegistration = {
     const withDocumentOutcome = async <T>(
       input: {
         agentId?: string;
+        getTouch?: (result: T) =>
+          | {
+              agentDocumentId?: string;
+              kind: AgentDocumentTouchKind;
+              title?: string;
+              topicId?: string;
+            }
+          | undefined;
         getAgentDocumentId?: (result: T) => string | undefined;
         apiName: string;
         hintIsSkill?: boolean;
@@ -126,6 +156,8 @@ export const agentDocumentsRuntime: ServerRuntimeRegistration = {
           summary: input.summary,
           toolAction: input.toolAction,
         });
+        const touch = input.getTouch?.(result);
+        if (touch) await captureTouch(touch);
         return result;
       } catch (error) {
         await emitDocumentOutcome({
@@ -165,6 +197,11 @@ export const agentDocumentsRuntime: ServerRuntimeRegistration = {
               {
                 agentId,
                 apiName: 'copyDocument',
+                getTouch: (result) => ({
+                  agentDocumentId: result?.id,
+                  kind: 'created',
+                  title: result?.title,
+                }),
                 getAgentDocumentId: (result) => result?.id,
                 relation: 'created',
                 summary: 'Agent documents copied a document.',
@@ -181,6 +218,12 @@ export const agentDocumentsRuntime: ServerRuntimeRegistration = {
               {
                 agentId,
                 apiName: 'createDocument',
+                getTouch: (result) => ({
+                  agentDocumentId: result?.id,
+                  kind: 'created',
+                  title: result?.title ?? title,
+                  ...(shareTopicId ? { topicId: shareTopicId } : {}),
+                }),
                 getAgentDocumentId: (result) => result?.id,
                 hintIsSkill,
                 relation: 'created',
@@ -210,6 +253,12 @@ export const agentDocumentsRuntime: ServerRuntimeRegistration = {
               {
                 agentId,
                 apiName: 'createTopicDocument',
+                getTouch: (result) => ({
+                  agentDocumentId: result?.id,
+                  kind: 'created',
+                  title: result?.title ?? title,
+                  topicId: shareTopicId ?? topicId,
+                }),
                 getAgentDocumentId: (result) => result?.id,
                 hintIsSkill,
                 relation: 'created',
@@ -235,6 +284,11 @@ export const agentDocumentsRuntime: ServerRuntimeRegistration = {
             {
               agentId,
               apiName: 'createFolder',
+              getTouch: (result) => ({
+                agentDocumentId: result.folder.id,
+                kind: 'created',
+                title: result.folder.title,
+              }),
               getAgentDocumentId: (result) => result.folder.id,
               relation: 'created',
               summary: 'Agent documents created a folder.',
@@ -297,6 +351,7 @@ export const agentDocumentsRuntime: ServerRuntimeRegistration = {
             {
               agentId,
               apiName: 'modifyNodes',
+              getTouch: () => ({ agentDocumentId: id, kind: 'edited' }),
               getAgentDocumentId: () => id,
               relation: 'updated',
               summary: 'Agent documents modified document nodes.',
@@ -313,6 +368,7 @@ export const agentDocumentsRuntime: ServerRuntimeRegistration = {
             {
               agentId,
               apiName: 'removeDocument',
+              getTouch: () => ({ agentDocumentId: id, kind: 'deleted' }),
               getAgentDocumentId: () => id,
               relation: 'removed',
               summary: 'Agent documents removed a document.',
@@ -325,6 +381,7 @@ export const agentDocumentsRuntime: ServerRuntimeRegistration = {
             {
               agentId,
               apiName: 'renameDocument',
+              getTouch: () => ({ agentDocumentId: id, kind: 'edited', title: newTitle }),
               getAgentDocumentId: () => id,
               relation: 'updated',
               summary: 'Agent documents renamed a document.',
@@ -339,6 +396,7 @@ export const agentDocumentsRuntime: ServerRuntimeRegistration = {
             {
               agentId,
               apiName: 'replaceDocumentContent',
+              getTouch: () => ({ agentDocumentId: id, kind: 'edited' }),
               getAgentDocumentId: () => id,
               relation: 'updated',
               summary: 'Agent documents replaced document content.',

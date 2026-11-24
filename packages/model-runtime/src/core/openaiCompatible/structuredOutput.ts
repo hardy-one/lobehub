@@ -1,6 +1,8 @@
-import type { Debugger } from 'debug';
+import debug from 'debug';
 
 import type { GenerateObjectPayload } from '../../types';
+
+const log = debug('lobe-model-runtime:structured-output');
 
 /** An upstream structured-output response cannot satisfy the required tool-call contract. */
 export class StructuredOutputError extends Error {
@@ -144,6 +146,7 @@ export const parseStructuredToolArguments = (
   context: StructuredToolArgumentsContext = {},
 ): Record<string, unknown> => {
   let parsed = value;
+  let recovered = false;
   if (typeof value === 'string') {
     try {
       parsed = JSON.parse(value);
@@ -152,10 +155,52 @@ export const parseStructuredToolArguments = (
       // malformed response is diagnosable from logs. Never attach the full
       // arguments; large payloads would overwhelm the log. Restore the
       // metadata-only behavior before contributing this upstream.
-      throw new StructuredOutputError(
-        'invalid JSON in tool arguments',
-        withJsonErrorDiagnostics(value, error, context),
-      );
+      const invalidJson = () =>
+        new StructuredOutputError(
+          'invalid JSON in tool arguments',
+          withJsonErrorDiagnostics(value, error, context),
+        );
+
+      if (
+        error instanceof Error &&
+        /Unexpected non-whitespace character after JSON/i.test(error.message)
+      ) {
+        const positionMatch = /at position (\d+)/i.exec(error.message);
+        const position = positionMatch ? Number(positionMatch[1]) : Number.NaN;
+        if (
+          Number.isSafeInteger(position) &&
+          position > 0 &&
+          position < value.length &&
+          !/\s/.test(value[position])
+        ) {
+          try {
+            parsed = JSON.parse(value.slice(0, position));
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+              parsed = value;
+            } else {
+              recovered = true;
+            }
+            if (recovered) {
+              log(
+                'structured output: recovered by truncating %d trailing characters',
+                value.length - position,
+              );
+            }
+          } catch {
+            // Fall through to the original diagnostics when the reported prefix is invalid.
+          }
+        }
+      }
+      if (recovered) {
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          throw new StructuredOutputError(
+            'JSON object required for tool arguments',
+            withArgumentsLength(value, context),
+          );
+        }
+        return parsed as Record<string, unknown>;
+      }
+      throw invalidJson();
     }
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {

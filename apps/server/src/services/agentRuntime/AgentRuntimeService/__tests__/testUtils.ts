@@ -58,10 +58,16 @@ export const serverServicesFileModule = () => ({
 
 export const databaseModelsMessageModule = () => ({
   MessageModel: vi.fn().mockImplementation(function () {
+    const query = vi.fn().mockResolvedValue([]);
+
     return {
       findById: vi.fn().mockResolvedValue(undefined),
       findMessagePlugin: vi.fn().mockResolvedValue(undefined),
-      query: vi.fn().mockResolvedValue([]),
+      query,
+      // Tests drive the legacy `query` mock; the model-input read is the same
+      // read plus injection rows, which are empty unless a test opts in.
+      queryForModelInput: query,
+      queryInjectionMessagesByTopic: vi.fn().mockResolvedValue([]),
     };
   }),
 });

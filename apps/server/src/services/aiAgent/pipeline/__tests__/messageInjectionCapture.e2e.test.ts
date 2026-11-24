@@ -17,6 +17,7 @@ import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { MessageModel } from '@/database/models/message';
+import { mergeInjectionTimeline } from '@/database/models/message/injectionTimeline';
 
 import { buildMessageInjectionRows, captureMessageInjections } from '../messageInjectionCapture';
 
@@ -53,9 +54,6 @@ const toolManifestMap = {
 };
 
 const messageModel = new MessageModel(serverDB, userId);
-
-const mergeTimeline = (real: UIChatMessage[], injected: UIChatMessage[]): UIChatMessage[] =>
-  [...real, ...injected].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
 
 const engineParams = (
   timeline: UIChatMessage[],
@@ -154,7 +152,7 @@ describe('append-only v2 message ingestion (mention / skill / tool)', () => {
       INJECTION_SOURCE_KEYS.SELECTED_TOOL,
     ]);
 
-    const timeline = mergeTimeline(real, injected);
+    const timeline = mergeInjectionTimeline(real, injected);
     expect(timeline.map((row) => row.id)).toEqual([
       user.id,
       ...written.map((row) => row.id),

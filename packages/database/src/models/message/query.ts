@@ -19,6 +19,7 @@ import { notInjection } from '../../utils/injection';
 import { notShareVisitorMessage } from '../../utils/shareVisitor';
 import { nonNull } from '../utils/rows';
 import { resolveCursorPageWindow } from './cursorWindow';
+import { mergeInjectionTimeline } from './injectionTimeline';
 import type { MessageLookupQueries } from './lookup';
 import type { MessagePageQueries } from './queryWithWhere';
 import type { MessageScopeArgs } from './scope';
@@ -326,6 +327,34 @@ export class MessageConversationQueries extends MessageScope {
       { ...options, allowShareVisitor: true },
     );
     return messageItems.map((message) => toVisitorMessage(message));
+  };
+
+  /**
+   * Append-only v2 model-input read: {@link query} plus every injected row of
+   * the topic, merged by `(createdAt, id)` (conversation row first on a tie).
+   *
+   * This is the B-class read for request assembly. User-facing reads must keep
+   * using {@link query}, which applies `notInjection()`. No injected rows means
+   * the conversation result is returned untouched, so pre-v2 topics assemble
+   * byte-identically.
+   */
+  queryForModelInput = async (
+    params: QueryMessageParams = {},
+    options: {
+      allowShareVisitor?: boolean;
+      postProcessUrl?: (
+        path: string | null,
+        file: { fileType: string; id?: string | null },
+      ) => Promise<string>;
+      timing?: ModelTimingContext;
+      workAccessScope?: WorkAccessScope;
+    } = {},
+  ): Promise<UIChatMessage[]> => {
+    const messageItems = await this.query(params, options);
+    if (!params.topicId) return messageItems;
+
+    const injectedMessages = await this.queryInjectionMessagesByTopic(params.topicId);
+    return mergeInjectionTimeline(messageItems, injectedMessages);
   };
 
   /**

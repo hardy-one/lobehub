@@ -55,15 +55,21 @@ const groupTopicMessages = [
  * Mirrors `MessageModel.query` scoping: a `groupId` selects the group
  * conversation, while omitting it filters to `groupId IS NULL` rows.
  */
-const createMessageModel = () => ({
-  query: vi.fn(async (params: { groupId?: string; topicId?: string }) =>
+const createMessageModel = () => {
+  const query = vi.fn(async (params: { groupId?: string; topicId?: string }) =>
     groupTopicMessages.filter(
       (msg) =>
         msg.groupId === (params.groupId ?? null) &&
         (!params.topicId || params.topicId === TOPIC_ID),
     ),
-  ),
-});
+  );
+
+  return {
+    query,
+    queryForModelInput: query,
+    queryInjectionMessagesByTopic: vi.fn().mockResolvedValue([]),
+  };
+};
 
 const createLoader = (messageModel: ReturnType<typeof createMessageModel>, existingIds = []) =>
   createHistoryMessagesLoader(

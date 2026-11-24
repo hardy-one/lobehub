@@ -6,7 +6,12 @@ import type { GenerateObjectPayload } from '../../types';
 export class StructuredOutputError extends Error {
   /**
    * Protocol-level diagnostics (provider, model, finish reason, response
-   * shape). Metadata only — never model-generated text, which can be private.
+   * shape) plus, in this self-hosted build, a bounded excerpt of the malformed
+   * JSON arguments so failures can be debugged from logs.
+   *
+   * Privacy note: upstream open source must restore the metadata-only
+   * treatment; carrying model-generated text is allowed here only because the
+   * instance is self-hosted and the owner explicitly opted in.
    */
   context?: Record<string, unknown>;
 
@@ -23,7 +28,10 @@ export class StructuredOutputError extends Error {
 
 /**
  * Protocol-level facts that explain why a tool-call response was rejected.
- * Metadata only: never carry model-generated text or parser messages.
+ *
+ * This self-hosted build additionally carries the parser message and a bounded
+ * excerpt around the JSON syntax error. Restore the metadata-only behavior
+ * before contributing this back upstream.
  */
 export interface StructuredToolArgumentsContext {
   /** Chat Completions `finish_reason`, Responses `status`, or Ollama `done_reason`. */
@@ -79,18 +87,55 @@ const charCodeAtPosition = (source: string, position: number | undefined) => {
   return source.charCodeAt(position);
 };
 
-/** Metadata-only location of a JSON syntax error: never the surrounding text. */
-const withJsonErrorPosition = (
+const JSON_ERROR_SNIPPET_CONTEXT_RADIUS = 300;
+const JSON_ERROR_SNIPPET_FALLBACK_LENGTH = 600;
+const JSON_ERROR_SNIPPET_MAX_LENGTH = 700;
+const JSON_ERROR_SNIPPET_MARKER = '<<<HERE>>>';
+
+/** Guarantee the diagnostic never grows the log line beyond the agreed budget. */
+const clampJsonErrorSnippet = (snippet: string) =>
+  snippet.length <= JSON_ERROR_SNIPPET_MAX_LENGTH
+    ? snippet
+    : `${snippet.slice(0, JSON_ERROR_SNIPPET_MAX_LENGTH - 1)}…`;
+
+/**
+ * Excerpt around the parser-reported offset with `<<<HERE>>>` inserted exactly
+ * at the failure point. When the engine reports no usable position the excerpt
+ * degrades to the head of the arguments instead of disappearing.
+ */
+const buildJsonErrorSnippet = (source: string, position: number | undefined): string => {
+  if (position === undefined || position < 0 || position > source.length) {
+    if (!source) return JSON_ERROR_SNIPPET_MARKER;
+    const head = source.slice(0, JSON_ERROR_SNIPPET_FALLBACK_LENGTH);
+    return head.length < source.length ? `${head}…` : head;
+  }
+
+  const start = Math.max(0, position - JSON_ERROR_SNIPPET_CONTEXT_RADIUS);
+  const end = Math.min(source.length, position + JSON_ERROR_SNIPPET_CONTEXT_RADIUS);
+  const snippet = [
+    source.slice(start, position),
+    JSON_ERROR_SNIPPET_MARKER,
+    source.slice(position, end),
+  ].join('');
+  return clampJsonErrorSnippet(snippet);
+};
+
+/** JSON syntax error location plus a bounded, log-safe excerpt for debugging. */
+const withJsonErrorDiagnostics = (
   source: string,
   error: unknown,
   context: StructuredToolArgumentsContext,
 ) => {
   const jsonErrorPosition = extractJsonErrorPosition(error, source);
   const charCode = charCodeAtPosition(source, jsonErrorPosition);
+  const jsonErrorMessage =
+    error instanceof Error && typeof error.message === 'string' ? error.message : undefined;
   return {
     ...withArgumentsLength(source, context),
     ...(jsonErrorPosition === undefined ? {} : { jsonErrorPosition }),
     ...(charCode === undefined ? {} : { charCodeAtPosition: charCode }),
+    ...(jsonErrorMessage === undefined ? {} : { jsonErrorMessage }),
+    jsonErrorSnippet: buildJsonErrorSnippet(source, jsonErrorPosition),
   };
 };
 
@@ -103,10 +148,13 @@ export const parseStructuredToolArguments = (
     try {
       parsed = JSON.parse(value);
     } catch (error) {
-      // Do not attach the raw response or parser error: both can contain private model output.
+      // Self-hosted build: attach a bounded snippet and the parser message so a
+      // malformed response is diagnosable from logs. Never attach the full
+      // arguments; large payloads would overwhelm the log. Restore the
+      // metadata-only behavior before contributing this upstream.
       throw new StructuredOutputError(
         'invalid JSON in tool arguments',
-        withJsonErrorPosition(value, error, context),
+        withJsonErrorDiagnostics(value, error, context),
       );
     }
   }

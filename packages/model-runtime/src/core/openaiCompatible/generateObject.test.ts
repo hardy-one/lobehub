@@ -144,7 +144,7 @@ describe('generateObject tool-calling fallback', () => {
     expect(result).toEqual({ summary: 'Task completed', title: 'Done' });
   });
 
-  it('should retry soft tool-call failures on the json_schema-unsupported fallback path', async () => {
+  it('should fail immediately on soft tool-call failures after the json_schema fallback', async () => {
     const instance = createInstance();
     const textOnly = {
       choices: [{ finish_reason: 'stop', message: { content: 'A plain-text answer.' } }],
@@ -152,23 +152,23 @@ describe('generateObject tool-calling fallback', () => {
     const createMock = vi
       .spyOn((instance as any).client.chat.completions, 'create')
       .mockRejectedValueOnce(responseFormatUnsupportedError)
-      .mockResolvedValueOnce(textOnly as any)
-      .mockResolvedValueOnce(toolCallResponse as any);
+      .mockResolvedValue(textOnly as any);
 
-    const result = await instance.generateObject({ ...generateObjectPayload, model: 'big-pickle' });
-
-    // 1: json_schema rejected, 2: fallback attempt answered in plain text,
-    // 3: reinforced fallback succeeds through tool calling.
-    expect(createMock).toHaveBeenCalledTimes(3);
-    const fallbackRetryPayload = createMock.mock.calls[2][0];
-    expect(fallbackRetryPayload.tool_choice).toEqual({
-      function: { name: 'task_topic_handoff' },
-      type: 'function',
+    await expect(
+      instance.generateObject({ ...generateObjectPayload, model: 'big-pickle' }),
+    ).rejects.toMatchObject({
+      context: {
+        finishReason: 'stop',
+        hasTextContent: true,
+        model: 'big-pickle',
+        provider: 'testprovider',
+      },
+      reason: 'no tool calls returned',
     });
-    const lastMessage = fallbackRetryPayload.messages.at(-1);
-    expect(lastMessage.role).toBe('user');
-    expect(lastMessage.content).toContain('must call one of the provided tools');
-    expect(result).toEqual({ summary: 'Task completed', title: 'Done' });
+
+    expect(createMock).toHaveBeenCalledTimes(2);
+    const fallbackPayload = createMock.mock.calls[1][0];
+    expect(fallbackPayload.messages).toEqual(generateObjectPayload.messages);
   });
 
   it('should not retry on unrelated provider errors', async () => {
@@ -391,7 +391,7 @@ describe('generateObject and the provider Responses switch', () => {
   });
 });
 
-describe('generateObject forced tool-call retry loop', () => {
+describe('generateObject forced tool-call single attempt', () => {
   afterEach(() => {
     vi.clearAllMocks();
   });
@@ -429,40 +429,25 @@ describe('generateObject forced tool-call retry loop', () => {
     ],
   };
 
-  it('should retry a plain-text answer and succeed on the second attempt', async () => {
+  it('should fail immediately with diagnostics when no tool call is returned', async () => {
     const instance = createInstance();
     const createMock = vi
       .spyOn((instance as any).client.chat.completions, 'create')
       .mockResolvedValueOnce(textOnlyResponse as any)
       .mockResolvedValue(toolCallOk as any);
 
-    const result = await instance.generateObject(toolPayload);
-
-    expect(result).toEqual([{ arguments: { persona: 'done' }, name: 'commit_user_persona' }]);
-    expect(createMock).toHaveBeenCalledTimes(2);
-    const retryPayload = createMock.mock.calls[1][0];
-    const lastMessage = retryPayload.messages.at(-1);
-    expect(lastMessage.role).toBe('user');
-    expect(lastMessage.content).toContain('must call one of the provided tools');
-  });
-
-  it('should give up after three attempts with diagnostics on the final error', async () => {
-    const instance = createInstance();
-    const createMock = vi
-      .spyOn((instance as any).client.chat.completions, 'create')
-      .mockResolvedValue(textOnlyResponse as any);
-
     await expect(instance.generateObject(toolPayload)).rejects.toMatchObject({
       context: {
-        attempts: 3,
         finishReason: 'stop',
         hasTextContent: true,
         model: 'qwen-token-plan/qwen3.8-flash',
         provider: 'testprovider',
       },
-      name: 'StructuredOutputError',
+      reason: 'no tool calls returned',
     });
-    expect(createMock).toHaveBeenCalledTimes(3);
+
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(createMock.mock.calls[0][0].messages).toEqual(toolPayload.messages);
   });
 
   const invalidJsonResponse = (finishReason = 'stop', args = '{"persona":"broken"') => ({
@@ -476,27 +461,31 @@ describe('generateObject forced tool-call retry loop', () => {
     ],
   });
 
-  it('should retry invalid JSON arguments and succeed within three attempts', async () => {
+  it('should return valid tool calls after one request', async () => {
     const instance = createInstance();
     const createMock = vi
       .spyOn((instance as any).client.chat.completions, 'create')
-      .mockResolvedValueOnce(invalidJsonResponse() as any)
-      .mockResolvedValueOnce(invalidJsonResponse() as any)
-      .mockResolvedValue(toolCallOk as any);
+      .mockResolvedValueOnce(toolCallOk as any);
 
     const result = await instance.generateObject(toolPayload);
 
     expect(result).toEqual([{ arguments: { persona: 'done' }, name: 'commit_user_persona' }]);
-    expect(createMock).toHaveBeenCalledTimes(3);
-    for (const callIndex of [1, 2]) {
-      const lastMessage = createMock.mock.calls[callIndex][0].messages.at(-1);
-      expect(lastMessage.role).toBe('user');
-      expect(lastMessage.content).toContain('previous tool arguments were not valid JSON');
-      expect(lastMessage.content).toContain('single valid JSON object');
-    }
+    expect(createMock).toHaveBeenCalledTimes(1);
   });
 
-  it('should exhaust three attempts for invalid JSON with parser diagnostics', async () => {
+  it('should recover a trailing extra brace after one request', async () => {
+    const instance = createInstance();
+    const createMock = vi
+      .spyOn((instance as any).client.chat.completions, 'create')
+      .mockResolvedValueOnce(invalidJsonResponse('tool_calls', '{"persona":"done"}}') as any);
+
+    const result = await instance.generateObject(toolPayload);
+
+    expect(result).toEqual([{ arguments: { persona: 'done' }, name: 'commit_user_persona' }]);
+    expect(createMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('should throw on the first invalid JSON response with complete parser diagnostics', async () => {
     const instance = createInstance();
     const args = '{"persona":"TOP_SECRET_PERSONA_TEXT", "broken"';
     const createMock = vi
@@ -510,11 +499,10 @@ describe('generateObject forced tool-call retry loop', () => {
       caught = error;
     }
 
-    expect(createMock).toHaveBeenCalledTimes(3);
+    expect(createMock).toHaveBeenCalledTimes(1);
     expect(caught).toMatchObject({
       context: {
         argumentsLength: args.length,
-        attempts: 3,
         finishReason: 'stop',
         truncated: false,
       },
@@ -525,23 +513,28 @@ describe('generateObject forced tool-call retry loop', () => {
     expect(caught.context.jsonErrorMessage).toEqual(expect.any(String));
     expect(caught.context.jsonErrorSnippet).toContain('TOP_SECRET_PERSONA_TEXT');
     expect(caught.context.jsonErrorSnippet).toContain('<<<HERE>>>');
+    expect(caught.context).not.toHaveProperty('attempts');
   });
 
-  it('should keep retrying truncated invalid JSON and mark it as truncated', async () => {
+  it('should throw on the first truncated invalid JSON response and preserve diagnostics', async () => {
     const instance = createInstance();
+    const args = '{"persona":"broken"';
     const createMock = vi
       .spyOn((instance as any).client.chat.completions, 'create')
-      .mockResolvedValue(invalidJsonResponse('length') as any);
+      .mockResolvedValue(invalidJsonResponse('length', args) as any);
 
-    await expect(instance.generateObject(toolPayload)).rejects.toMatchObject({
+    const error = await instance.generateObject(toolPayload).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
       context: {
-        attempts: 3,
+        argumentsLength: args.length,
         finishReason: 'length',
         truncated: true,
       },
       reason: 'invalid JSON in tool arguments',
     });
-    expect(createMock).toHaveBeenCalledTimes(3);
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect((error as any).context).not.toHaveProperty('attempts');
   });
 
   it('should not retry valid JSON that is not an object', async () => {
@@ -561,24 +554,30 @@ describe('generateObject forced tool-call retry loop', () => {
     expect(createMock).toHaveBeenCalledTimes(1);
   });
 
-  it('should retry missing function calls through the Responses API path', async () => {
+  it('should throw on the first missing function call through the Responses API path', async () => {
     const instance = createInstance();
-    const createMock = vi
-      .spyOn((instance as any).client.responses, 'create')
-      .mockResolvedValueOnce({ output: [{ type: 'message' }] } as any)
-      .mockResolvedValue({
-        output: [
-          { arguments: '{"persona":"done"}', name: 'commit_user_persona', type: 'function_call' },
-        ],
-      } as any);
+    const createMock = vi.spyOn((instance as any).client.responses, 'create').mockResolvedValue({
+      id: 'resp_1',
+      output: [{ type: 'message' }],
+      status: 'completed',
+    } as any);
 
-    const result = await instance.generateObject({ ...toolPayload, responseApi: true });
-
-    expect(result).toEqual([{ arguments: { persona: 'done' }, name: 'commit_user_persona' }]);
-    expect(createMock).toHaveBeenCalledTimes(2);
+    await expect(
+      instance.generateObject({ ...toolPayload, responseApi: true }),
+    ).rejects.toMatchObject({
+      context: {
+        model: 'qwen-token-plan/qwen3.8-flash',
+        outputTypes: ['message'],
+        provider: 'testprovider',
+        responseId: 'resp_1',
+        status: 'completed',
+      },
+      reason: 'no tool calls returned',
+    });
+    expect(createMock).toHaveBeenCalledTimes(1);
   });
 
-  it('should retry invalid JSON through the Responses API path with truncation metadata', async () => {
+  it('should throw on the first invalid JSON through the Responses API path with diagnostics', async () => {
     const instance = createInstance();
     const args = '{"persona":"TOP_SECRET_RESPONSES_TEXT", "broken"';
     const invalidResponse = {
@@ -597,11 +596,10 @@ describe('generateObject forced tool-call retry loop', () => {
       caught = error;
     }
 
-    expect(createMock).toHaveBeenCalledTimes(3);
+    expect(createMock).toHaveBeenCalledTimes(1);
     expect(caught).toMatchObject({
       context: {
         argumentsLength: args.length,
-        attempts: 3,
         finishReason: 'incomplete',
         incompleteReason: 'max_output_tokens',
         truncated: true,
@@ -611,5 +609,6 @@ describe('generateObject forced tool-call retry loop', () => {
     expect(caught.context.jsonErrorMessage).toEqual(expect.any(String));
     expect(caught.context.jsonErrorSnippet).toContain('TOP_SECRET_RESPONSES_TEXT');
     expect(caught.context.jsonErrorSnippet).toContain('<<<HERE>>>');
+    expect(caught.context).not.toHaveProperty('attempts');
   });
 });

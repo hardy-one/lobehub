@@ -22,6 +22,16 @@ import { notShareVisitorMessage } from '../../utils/shareVisitor';
 import { notTrashed } from '../../utils/softDelete';
 import { notChannelTopicRef } from '../../utils/topicVisibility';
 
+/**
+ * Trigger written by AgentSignal's own nightly review dispatch.
+ *
+ * The nightly review opens a topic with this trigger to deliver its `<self_iteration_review>`
+ * prompt. Those messages land in the next review window, so counting them as activity made every
+ * reviewed agent feed itself back into the following night's target list. Kept separate from
+ * `AUTOMATED_PROMPT_TOPIC_TRIGGERS` because that constant governs message search.
+ */
+const AGENT_SIGNAL_REVIEW_TRIGGER = 'agent_signal';
+
 /** Restores the cursor timestamp inside PostgreSQL so workflow JSON never truncates its precision. */
 const cursorUsers = alias(users, 'nightly_review_cursor_users');
 
@@ -337,6 +347,12 @@ export class AgentSignalNightlyReviewModel {
           notShareVisitorMessage(),
           // Channel runs carry other members' Channel content; it stays in the Channel.
           notChannelTopicRef(messages.topicId),
+          // Nightly review writes its own prompt into an `agent_signal` topic (and may reuse an
+          // existing topic on its fallback path, hence the message-level check too). Those
+          // messages are not evidence that a person used the agent, and counting them made the
+          // review select the same agents again every night. Every other trigger stays active.
+          sql`${topics.trigger} IS DISTINCT FROM ${AGENT_SIGNAL_REVIEW_TRIGGER}`,
+          sql`${messages.metadata}->>'trigger' IS DISTINCT FROM ${AGENT_SIGNAL_REVIEW_TRIGGER}`,
           agentFilter,
           gte(messages.createdAt, options.windowStart),
           lte(messages.createdAt, options.windowEnd),

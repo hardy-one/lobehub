@@ -140,7 +140,7 @@ describe('LobeOllamaAI.generateObject', () => {
     ).rejects.toBeInstanceOf(StructuredOutputError);
   });
 
-  it('reports invalid tool arguments with Ollama done_reason and no raw arguments', async () => {
+  it('reports invalid tool arguments with Ollama done_reason and a bounded snippet', async () => {
     const args = '{"items":"TOP_SECRET_OLLAMA", "broken"';
     vi.mocked(Ollama.prototype.chat).mockResolvedValue({
       done_reason: 'length',
@@ -171,7 +171,9 @@ describe('LobeOllamaAI.generateObject', () => {
       },
       reason: 'invalid JSON in tool arguments',
     });
-    expect(JSON.stringify(caught.context)).not.toContain('TOP_SECRET_OLLAMA');
+    expect(caught.context.jsonErrorMessage).toEqual(expect.any(String));
+    expect(caught.context.jsonErrorSnippet).toContain('TOP_SECRET_OLLAMA');
+    expect(caught.context.jsonErrorSnippet).toContain('<<<HERE>>>');
   });
 
   it('rejects a tools call that returns no tool calls', async () => {
@@ -268,7 +270,7 @@ describe('LobeOllamaAI.generateObject', () => {
     expect(Ollama.prototype.chat).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps raw tool arguments out of retry errors', async () => {
+  it('includes a bounded snippet in retry errors', async () => {
     const args = '{"items":"TOP_SECRET_RETRY", "broken"';
     vi.mocked(Ollama.prototype.chat).mockResolvedValue(toolCallResponse(args) as any);
 
@@ -281,7 +283,8 @@ describe('LobeOllamaAI.generateObject', () => {
     );
 
     expect(error.message).not.toContain('TOP_SECRET_RETRY');
-    expect(JSON.stringify(error.context)).not.toContain('TOP_SECRET_RETRY');
+    expect(error.context?.jsonErrorSnippet).toContain('TOP_SECRET_RETRY');
+    expect(String(error.context?.jsonErrorSnippet).length).toBeLessThanOrEqual(700);
   });
 
   it('maps Ollama failures to an OllamaBizError', async () => {

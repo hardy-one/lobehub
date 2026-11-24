@@ -496,7 +496,7 @@ describe('generateObject forced tool-call retry loop', () => {
     }
   });
 
-  it('should exhaust three attempts for invalid JSON with diagnostic metadata only', async () => {
+  it('should exhaust three attempts for invalid JSON with parser diagnostics', async () => {
     const instance = createInstance();
     const args = '{"persona":"TOP_SECRET_PERSONA_TEXT", "broken"';
     const createMock = vi
@@ -522,7 +522,9 @@ describe('generateObject forced tool-call retry loop', () => {
       reason: 'invalid JSON in tool arguments',
     });
     expect(caught.message).not.toContain('TOP_SECRET_PERSONA_TEXT');
-    expect(JSON.stringify(caught.context)).not.toContain('TOP_SECRET_PERSONA_TEXT');
+    expect(caught.context.jsonErrorMessage).toEqual(expect.any(String));
+    expect(caught.context.jsonErrorSnippet).toContain('TOP_SECRET_PERSONA_TEXT');
+    expect(caught.context.jsonErrorSnippet).toContain('<<<HERE>>>');
   });
 
   it('should keep retrying truncated invalid JSON and mark it as truncated', async () => {
@@ -606,6 +608,8 @@ describe('generateObject forced tool-call retry loop', () => {
       },
       reason: 'invalid JSON in tool arguments',
     });
-    expect(JSON.stringify(caught.context)).not.toContain('TOP_SECRET_RESPONSES_TEXT');
+    expect(caught.context.jsonErrorMessage).toEqual(expect.any(String));
+    expect(caught.context.jsonErrorSnippet).toContain('TOP_SECRET_RESPONSES_TEXT');
+    expect(caught.context.jsonErrorSnippet).toContain('<<<HERE>>>');
   });
 });

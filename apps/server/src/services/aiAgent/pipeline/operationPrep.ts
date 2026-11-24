@@ -108,7 +108,7 @@ export const createHistoryMessagesLoader = (
     if (historyMessagesCache) return historyMessagesCache;
 
     if (existingMessageIds.length > 0) {
-      const messages = await deps.messageModel.query(
+      const messages = await deps.messageModel.queryForModelInput(
         {
           groupId: appContext?.groupId ?? undefined,
           sessionId: appContext?.sessionId,
@@ -118,13 +118,15 @@ export const createHistoryMessagesLoader = (
         historyQueryOptions,
       );
       const idSet = new Set(existingMessageIds);
-      historyMessagesCache = messages.filter((msg) => idSet.has(msg.id));
+      // An explicit message-id window still needs the injected rows anchored
+      // to those turns; only the conversation rows are id-filtered.
+      historyMessagesCache = messages.filter((msg) => msg.isInjection || idSet.has(msg.id));
     } else if (appContext?.topicId) {
       // Follow-up message in existing topic: load all history for context.
       // Exclude the turn we just persisted above (`selfMessageIds`) — history
       // must be the PRIOR turns only; the current prompt is appended separately
       // as the in-memory `userMessage`, so leaving it in would double-count it.
-      const messages = await deps.messageModel.query(
+      const messages = await deps.messageModel.queryForModelInput(
         {
           groupId: appContext?.groupId ?? undefined,
           sessionId: appContext?.sessionId,

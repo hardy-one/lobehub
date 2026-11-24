@@ -145,6 +145,7 @@ const buildService = (options?: ConstructorParameters<typeof AgentRuntimeService
   // The topic read every step starts with.
   const query = vi.fn().mockResolvedValue([]);
   (service as any).messageModel.query = query;
+  (service as any).messageModel.queryForModelInput = query;
   vi.spyOn((service as any).messageService, 'prepareUiMessages').mockImplementation(
     async (messages: any) => messages.map((message: UIChatMessage) => ({ ...message })),
   );

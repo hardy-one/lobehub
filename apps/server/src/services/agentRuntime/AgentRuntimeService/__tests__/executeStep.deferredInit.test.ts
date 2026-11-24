@@ -183,6 +183,7 @@ describe('AgentRuntimeService executeStep', () => {
       vi.spyOn(svc as any, 'createAgentRuntime').mockResolvedValue({ runtime: { step } });
       vi.spyOn((svc as any).messageService, 'prepareUiMessages').mockResolvedValue([]);
       (svc as any).messageModel.query = vi.fn().mockResolvedValue([]);
+      (svc as any).messageModel.queryForModelInput = (svc as any).messageModel.query;
       const coordinator = (svc as any).coordinator;
       for (const key of Object.getOwnPropertyNames(Object.getPrototypeOf(coordinator))) {
         if (key !== 'constructor' && typeof coordinator[key] === 'function') {

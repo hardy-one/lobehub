@@ -137,7 +137,7 @@ export async function queryMessagesFromDB(deps: MessagesDeps, state: AgentState)
   // reduce tool payloads to render-facing view models (see
   // `@lobechat/tool-view-model`), which would silently strip the results the
   // model is supposed to remember.
-  const messages = await deps.messageModel.query(
+  const messages = await deps.messageModel.queryForModelInput(
     {
       agentId: state.origin?.agentId,
       // Group runs must pass groupId, else the query filters `groupId IS NULL`
@@ -257,7 +257,7 @@ export async function queryStepEntryMessages(
     // only the message patch diffed against it does, which fills in the members
     // of a group the step changed (`publishStepMessagePatch`). A protocol-1 run
     // pushes this read as the `step_start` snapshot, so it keeps them.
-    messages = await deps.messageModel.query(
+    messages = await deps.messageModel.queryForModelInput(
       {
         agentId: state.origin.agentId,
         groupId: state.origin.groupId,
@@ -274,10 +274,15 @@ export async function queryStepEntryMessages(
     return {};
   }
 
+  // The UI snapshot is an A-class read: injected rows are model input only and
+  // must never surface in the transcript. They stay in `messages` for state
+  // hydration and device-context scans.
+  const persistedMessages = messages.filter((message) => !message.isInjection);
+
   const [uiResult] = await Promise.all([
     (async () => {
       try {
-        return await deps.messageService.prepareUiMessages(messages);
+        return await deps.messageService.prepareUiMessages(persistedMessages);
       } catch (error) {
         console.error('[queryStepEntryMessages] Failed to prepare UI messages: %O', error);
         return undefined;

@@ -1,5 +1,9 @@
+import debug from 'debug';
+
 import { BaseProcessor } from '../base/BaseProcessor';
 import type { Message, PipelineContext, ProcessorOptions } from '../types';
+
+const log = debug('context-engine:provider:TimeReminderInjector');
 
 /** Default cadence, matching DSH/Codex: inject only when >= 10 min since the last injected turn. */
 const DEFAULT_INTERVAL_MS = 10 * 60 * 1000;
@@ -100,6 +104,15 @@ export class TimeReminderInjector extends BaseProcessor {
   protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
     if (!this.config.enabled) return this.markAsExecuted(context);
 
+    // Fallback visibility: an unset zone renders UTC (server / bot runs have no
+    // browser probe), and an invalid zone would silently drop every reminder.
+    // Without these lines neither case leaves a trace in the operation log.
+    if (!this.config.timezone) {
+      log('timezone unset — falling back to UTC');
+    } else if (!this.isValidTimezone(this.config.timezone)) {
+      log('timezone %s is invalid — reminders skipped', this.config.timezone);
+    }
+
     const interval = this.config.intervalMs ?? DEFAULT_INTERVAL_MS;
     const cloned = this.cloneContext(context);
     let lastInjectedAt: number | undefined;
@@ -126,6 +139,15 @@ export class TimeReminderInjector extends BaseProcessor {
 
     if (injectCount > 0) cloned.metadata[`${this.name}InjectedCount`] = injectCount;
     return this.markAsExecuted(cloned);
+  }
+
+  private isValidTimezone(tz: string): boolean {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: tz });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Format an epoch instant as `Fri 2026-11-20 16:37:03 +08:00 (Asia/Shanghai)`, or null on bad zone. */

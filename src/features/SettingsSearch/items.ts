@@ -334,6 +334,13 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
     tab: SettingsTabs.Appearance,
   },
   {
+    anchor: 'appearance-timezone',
+    descKey: 'settingCommon.timezone.desc',
+    keywords: ['timezone', 'time zone', 'utc', '时区'],
+    labelKey: 'settingCommon.timezone.title',
+    tab: SettingsTabs.Appearance,
+  },
+  {
     anchor: 'appearance-animation',
     descKey: 'settingAppearance.animationMode.desc',
     keywords: ['animation', 'motion', 'transition'],

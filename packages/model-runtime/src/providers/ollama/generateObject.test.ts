@@ -181,20 +181,31 @@ describe('LobeOllamaAI.generateObject', () => {
       message: { content: 'no tools', role: 'assistant' },
     } as any);
 
-    await expect(
+    const error = await captureStructuredError(
       ollamaAI.generateObject({
         messages: [{ content: 'hi', role: 'user' }],
         model: 'llama3.2:3b',
         tools: [{ function: { name: 'suggest', parameters: {} }, type: 'function' }],
       }),
-    ).rejects.toBeInstanceOf(StructuredOutputError);
+    );
+
+    expect(error).toBeInstanceOf(StructuredOutputError);
+    expect(error).toMatchObject({
+      context: {
+        hasTextContent: true,
+        model: 'llama3.2:3b',
+        provider: 'ollama',
+      },
+      reason: 'no tool calls returned',
+    });
+    expect(error.context).not.toHaveProperty('attempts');
+    expect(Ollama.prototype.chat).toHaveBeenCalledTimes(1);
   });
 
-  it('retries invalid JSON tool arguments and returns the third attempt', async () => {
-    vi.mocked(Ollama.prototype.chat)
-      .mockResolvedValueOnce(toolCallResponse('{"items": "a", broken') as any)
-      .mockResolvedValueOnce(toolCallResponse('{"items": "b", broken') as any)
-      .mockResolvedValueOnce(toolCallResponse('{"items":["a"]}') as any);
+  it('returns valid tool calls after one request', async () => {
+    vi.mocked(Ollama.prototype.chat).mockResolvedValueOnce(
+      toolCallResponse('{"items":["a"]}') as any,
+    );
 
     const result = await ollamaAI.generateObject({
       messages: [{ content: 'follow ups?', role: 'user' }],
@@ -203,10 +214,25 @@ describe('LobeOllamaAI.generateObject', () => {
     });
 
     expect(result).toEqual([{ arguments: { items: ['a'] }, name: 'suggest' }]);
-    expect(Ollama.prototype.chat).toHaveBeenCalledTimes(3);
+    expect(Ollama.prototype.chat).toHaveBeenCalledTimes(1);
   });
 
-  it('throws with the attempt count after three invalid JSON tool replies', async () => {
+  it('recovers a trailing extra brace after one request', async () => {
+    vi.mocked(Ollama.prototype.chat).mockResolvedValueOnce(
+      toolCallResponse('{"items":["a"]}}') as any,
+    );
+
+    const result = await ollamaAI.generateObject({
+      messages: [{ content: 'follow ups?', role: 'user' }],
+      model: 'llama3.2:3b',
+      tools: suggestTools,
+    });
+
+    expect(result).toEqual([{ arguments: { items: ['a'] }, name: 'suggest' }]);
+    expect(Ollama.prototype.chat).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws on the first invalid JSON tool reply without an attempt count', async () => {
     const args = '{"items":"SECRET_ATTEMPTS", "broken"';
     vi.mocked(Ollama.prototype.chat).mockResolvedValue(toolCallResponse(args) as any);
 
@@ -222,16 +248,16 @@ describe('LobeOllamaAI.generateObject', () => {
     expect(error).toMatchObject({
       context: {
         argumentsLength: args.length,
-        attempts: 3,
         finishReason: 'stop',
         truncated: false,
       },
       reason: 'invalid JSON in tool arguments',
     });
-    expect(Ollama.prototype.chat).toHaveBeenCalledTimes(3);
+    expect(Ollama.prototype.chat).toHaveBeenCalledTimes(1);
+    expect(error.context).not.toHaveProperty('attempts');
   });
 
-  it('retries truncated tool arguments until the attempt budget is exhausted', async () => {
+  it('throws on the first truncated tool arguments with diagnostics', async () => {
     const args = '{"items":["a"';
     vi.mocked(Ollama.prototype.chat).mockResolvedValue(toolCallResponse(args, 'length') as any);
 
@@ -246,13 +272,13 @@ describe('LobeOllamaAI.generateObject', () => {
     expect(error).toMatchObject({
       context: {
         argumentsLength: args.length,
-        attempts: 3,
         finishReason: 'length',
         truncated: true,
       },
       reason: 'invalid JSON in tool arguments',
     });
-    expect(Ollama.prototype.chat).toHaveBeenCalledTimes(3);
+    expect(Ollama.prototype.chat).toHaveBeenCalledTimes(1);
+    expect(error.context).not.toHaveProperty('attempts');
   });
 
   it('does not retry arguments that are valid JSON but not an object', async () => {
@@ -270,7 +296,7 @@ describe('LobeOllamaAI.generateObject', () => {
     expect(Ollama.prototype.chat).toHaveBeenCalledTimes(1);
   });
 
-  it('includes a bounded snippet in retry errors', async () => {
+  it('includes a bounded snippet in first-failure errors', async () => {
     const args = '{"items":"TOP_SECRET_RETRY", "broken"';
     vi.mocked(Ollama.prototype.chat).mockResolvedValue(toolCallResponse(args) as any);
 

@@ -39,6 +39,61 @@ const withArgumentsLength = (value: unknown, context: StructuredToolArgumentsCon
   ...(typeof value === 'string' ? { argumentsLength: value.length } : {}),
 });
 
+/**
+ * V8 reports malformed JSON as `... at position N`, sometimes followed by
+ * `(line L column C)`. Engines that only expose a line/column (for example
+ * Gecko) are converted back to an offset against the same source text. A
+ * message without a recognizable position yields `undefined` instead of
+ * throwing: the diagnostic must never mask the structured-output failure.
+ */
+const extractJsonErrorPosition = (error: unknown, source: string): number | undefined => {
+  if (!(error instanceof Error) || typeof error.message !== 'string') return undefined;
+
+  const positionMatch = /at position (\d+)/.exec(error.message);
+  if (positionMatch) {
+    const position = Number(positionMatch[1]);
+    return Number.isSafeInteger(position) ? position : undefined;
+  }
+
+  const lineColumnMatch = /at line (\d+) column (\d+)/.exec(error.message);
+  if (!lineColumnMatch) return undefined;
+
+  const line = Number(lineColumnMatch[1]);
+  const column = Number(lineColumnMatch[2]);
+  if (!Number.isSafeInteger(line) || !Number.isSafeInteger(column) || line < 1 || column < 1) {
+    return undefined;
+  }
+
+  let lineStart = 0;
+  for (let currentLine = 1; currentLine < line; currentLine += 1) {
+    const lineBreak = source.indexOf('\n', lineStart);
+    if (lineBreak === -1) return undefined;
+    lineStart = lineBreak + 1;
+  }
+  return lineStart + column - 1;
+};
+
+/** The code unit at `position`, or `undefined` when the position is out of range. */
+const charCodeAtPosition = (source: string, position: number | undefined) => {
+  if (position === undefined || position < 0 || position >= source.length) return undefined;
+  return source.charCodeAt(position);
+};
+
+/** Metadata-only location of a JSON syntax error: never the surrounding text. */
+const withJsonErrorPosition = (
+  source: string,
+  error: unknown,
+  context: StructuredToolArgumentsContext,
+) => {
+  const jsonErrorPosition = extractJsonErrorPosition(error, source);
+  const charCode = charCodeAtPosition(source, jsonErrorPosition);
+  return {
+    ...withArgumentsLength(source, context),
+    ...(jsonErrorPosition === undefined ? {} : { jsonErrorPosition }),
+    ...(charCode === undefined ? {} : { charCodeAtPosition: charCode }),
+  };
+};
+
 export const parseStructuredToolArguments = (
   value: unknown,
   context: StructuredToolArgumentsContext = {},
@@ -47,11 +102,11 @@ export const parseStructuredToolArguments = (
   if (typeof value === 'string') {
     try {
       parsed = JSON.parse(value);
-    } catch {
+    } catch (error) {
       // Do not attach the raw response or parser error: both can contain private model output.
       throw new StructuredOutputError(
         'invalid JSON in tool arguments',
-        withArgumentsLength(value, context),
+        withJsonErrorPosition(value, error, context),
       );
     }
   }

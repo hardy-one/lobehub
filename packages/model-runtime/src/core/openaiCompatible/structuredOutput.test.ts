@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   parseStructuredOutputText,
@@ -6,6 +6,10 @@ import {
   retryStructuredToolCalls,
   StructuredOutputError,
 } from './structuredOutput';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('parseStructuredOutputText', () => {
   it.each([
@@ -43,6 +47,16 @@ describe('parseStructuredOutputText', () => {
 });
 
 describe('parseStructuredToolArguments', () => {
+  const captureStructuredError = (run: () => unknown): StructuredOutputError => {
+    try {
+      run();
+    } catch (error) {
+      expect(error).toBeInstanceOf(StructuredOutputError);
+      return error as StructuredOutputError;
+    }
+    throw new Error('expected structured output parsing to throw');
+  };
+
   it('parses valid JSON string arguments', () => {
     expect(parseStructuredToolArguments('{"persona":"done"}')).toEqual({ persona: 'done' });
   });
@@ -54,21 +68,80 @@ describe('parseStructuredToolArguments', () => {
   it('reports invalid JSON with protocol metadata and no raw arguments', () => {
     const args = '{"persona":"TOP_SECRET_PERSONA", "broken"';
 
-    try {
-      parseStructuredToolArguments(args, { finishReason: 'length', truncated: true });
-      throw new Error('expected parse to throw');
-    } catch (error) {
-      expect(error).toBeInstanceOf(StructuredOutputError);
-      const structuredError = error as StructuredOutputError;
-      expect(structuredError.reason).toBe('invalid JSON in tool arguments');
-      expect(structuredError.context).toEqual({
-        argumentsLength: args.length,
-        finishReason: 'length',
-        truncated: true,
-      });
-      expect(structuredError.message).not.toContain('TOP_SECRET_PERSONA');
-      expect(JSON.stringify(structuredError.context)).not.toContain('TOP_SECRET_PERSONA');
-    }
+    const structuredError = captureStructuredError(() =>
+      parseStructuredToolArguments(args, { finishReason: 'length', truncated: true }),
+    );
+
+    expect(structuredError.reason).toBe('invalid JSON in tool arguments');
+    expect(structuredError.context).toMatchObject({
+      argumentsLength: args.length,
+      finishReason: 'length',
+      truncated: true,
+    });
+    expect(structuredError.message).not.toContain('TOP_SECRET_PERSONA');
+    expect(JSON.stringify(structuredError.context)).not.toContain('TOP_SECRET_PERSONA');
+  });
+
+  it('locates an unescaped newline in the arguments', () => {
+    const args = '{"persona":"line one\nline two","done":true}';
+    const newlinePosition = args.indexOf('\n');
+
+    const structuredError = captureStructuredError(() => parseStructuredToolArguments(args));
+
+    expect(newlinePosition).toBeGreaterThan(-1);
+    expect(structuredError.context).toMatchObject({
+      argumentsLength: args.length,
+      charCodeAtPosition: 10,
+      jsonErrorPosition: newlinePosition,
+    });
+    expect(JSON.stringify(structuredError.context)).not.toContain('line one');
+  });
+
+  it('reports the code unit at an unescaped double quote', () => {
+    const args = '{"persona":"She said ""hello"" today"}';
+
+    const structuredError = captureStructuredError(() => parseStructuredToolArguments(args));
+
+    expect(structuredError.context).toMatchObject({
+      argumentsLength: args.length,
+      charCodeAtPosition: 34,
+    });
+    expect(JSON.stringify(structuredError.context)).not.toContain('She said');
+  });
+
+  it('omits the location when the parser message carries none', () => {
+    const structuredError = captureStructuredError(() => parseStructuredToolArguments(''));
+
+    expect(structuredError.reason).toBe('invalid JSON in tool arguments');
+    expect(structuredError.context).toEqual({ argumentsLength: 0 });
+    expect(structuredError.context?.jsonErrorPosition).toBeUndefined();
+    expect(structuredError.context?.charCodeAtPosition).toBeUndefined();
+  });
+
+  it('keeps the offset but omits the code unit when it points past the arguments', () => {
+    const args = '{"broken"';
+
+    const structuredError = captureStructuredError(() => parseStructuredToolArguments(args));
+
+    expect(structuredError.context).toMatchObject({
+      argumentsLength: args.length,
+      jsonErrorPosition: args.length,
+    });
+    expect(structuredError.context?.charCodeAtPosition).toBeUndefined();
+  });
+
+  it('converts a line and column parser message to an offset', () => {
+    const args = '{\n  bad';
+    vi.spyOn(JSON, 'parse').mockImplementationOnce(() => {
+      throw new SyntaxError('JSON.parse: unexpected character at line 2 column 3 of the JSON data');
+    });
+
+    const structuredError = captureStructuredError(() => parseStructuredToolArguments(args));
+
+    expect(structuredError.context).toMatchObject({
+      charCodeAtPosition: 'b'.charCodeAt(0),
+      jsonErrorPosition: 4,
+    });
   });
 
   it('reports a non-object JSON value without retrying it as malformed JSON', () => {

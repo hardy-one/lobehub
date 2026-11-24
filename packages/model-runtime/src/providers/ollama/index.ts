@@ -9,7 +9,6 @@ import type { LobeRuntimeAI } from '../../core/BaseAI';
 import {
   parseStructuredOutputText,
   parseStructuredToolArguments,
-  retryStructuredToolCalls,
   StructuredOutputError,
 } from '../../core/openaiCompatible/structuredOutput';
 import { convertIterableToStream, createModelPullStream, OllamaStream } from '../../core/streams';
@@ -117,17 +116,17 @@ export class LobeOllamaAI implements LobeRuntimeAI {
         })
       : this.client;
 
-    const attempt = async (current: GenerateObjectPayload) => {
+    const attempt = async () => {
       let response: ChatResponse;
       try {
         response = await client.chat({
-          format: current.tools ? undefined : current.schema!.schema,
-          messages: current.messages,
-          model: current.model,
+          format: tools ? undefined : schema!.schema,
+          messages: payload.messages,
+          model: payload.model,
           stream: false,
           // Ollama rejects `think: true` on models without thinking, so only ever turn it off.
-          ...(current.thinking?.type === 'disabled' && { think: false }),
-          tools: current.tools as Tool[] | undefined,
+          ...(payload.thinking?.type === 'disabled' && { think: false }),
+          tools: tools as Tool[] | undefined,
         });
       } catch (error) {
         throw await this.toRuntimeError(error);
@@ -145,13 +144,13 @@ export class LobeOllamaAI implements LobeRuntimeAI {
         });
       }
 
-      if (!current.tools) return parseStructuredOutputText(response.message?.content);
+      if (!tools) return parseStructuredOutputText(response.message?.content);
 
       const toolCalls = response.message?.tool_calls;
       if (!toolCalls?.length)
         throw new StructuredOutputError('no tool calls returned', {
           hasTextContent: !!response.message?.content,
-          model: current.model,
+          model: payload.model,
           provider: 'ollama',
         });
 
@@ -164,7 +163,7 @@ export class LobeOllamaAI implements LobeRuntimeAI {
       }));
     };
 
-    return tools ? retryStructuredToolCalls(payload, attempt) : attempt(payload);
+    return attempt();
   }
 
   private async toRuntimeError(error: unknown) {

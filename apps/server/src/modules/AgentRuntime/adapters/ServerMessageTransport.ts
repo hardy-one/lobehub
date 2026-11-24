@@ -149,17 +149,23 @@ export class ServerMessageTransport implements MessageTransport {
     params?: QueryMessagesInput,
     options?: QueryMessagesOptions,
   ): Promise<UIChatMessage[]> {
-    const messages = (
-      await this.messageModel.query(params, {
-        // Executors only ever read the operation's own, already-authorized topic.
-        // An agent-share visitor run executes under the CREATOR's identity, so
-        // without this opt-in `query()`'s creator-facing agent-share exclusion
-        // would blank the visitor's conversation mid-run (see `tool.ts`, which
-        // re-reads `state.messages` from the DB after every tool call).
-        allowShareVisitor: true,
-        postProcessUrl: options?.resolveAssetUrls ? this.options.postProcessUrl : undefined,
-      })
-    ).map(omitToolWorkRegistration);
+    // Executors only ever read the operation's own, already-authorized topic.
+    // An agent-share visitor run executes under the CREATOR's identity, so
+    // without this opt-in `query()`'s creator-facing agent-share exclusion
+    // would blank the visitor's conversation mid-run (see `tool.ts`, which
+    // re-reads `state.messages` from the DB after every tool call).
+    const queryOptions = {
+      allowShareVisitor: true,
+      postProcessUrl: options?.resolveAssetUrls ? this.options.postProcessUrl : undefined,
+    };
+    // Append-only v2: everything this transport returns feeds the model, so a
+    // topic-scoped read must replay the topic's injected rows in place.
+    // Without `topicId` the model input cannot be scoped, so keep the
+    // conversation-only read rather than merging an unrelated topic's rows.
+    const modelMessages = params?.topicId
+      ? await this.messageModel.queryForModelInput(params, queryOptions)
+      : await this.messageModel.query(params, queryOptions);
+    const messages = modelMessages.map(omitToolWorkRegistration);
 
     if (!options?.flatten) return messages;
 

@@ -790,5 +790,337 @@ describe('AgentSignalNightlyReviewModel', () => {
         },
       ]);
     });
+
+    it('excludes agents whose only window activity is AgentSignal review messages', async () => {
+      // The nightly review itself writes `<self_iteration_review>` prompts into topics whose
+      // trigger is `agent_signal`. Counting them as activity made every reviewed agent select
+      // itself again the following night.
+      await serverDB.insert(users).values(withSelfLearning({ id: enabledUserId }));
+      await serverDB.insert(agents).values([
+        {
+          id: 'nightly-signal-single-agent',
+          title: 'Review single',
+          userId: enabledUserId,
+        },
+        {
+          id: 'nightly-signal-multi-agent',
+          title: 'Review multi',
+          userId: enabledUserId,
+        },
+      ]);
+      await serverDB.insert(topics).values([
+        {
+          agentId: 'nightly-signal-single-agent',
+          id: 'nightly-signal-single-topic',
+          title: 'Review single',
+          trigger: 'agent_signal',
+          userId: enabledUserId,
+        },
+        {
+          agentId: 'nightly-signal-multi-agent',
+          id: 'nightly-signal-multi-topic',
+          title: 'Review multi',
+          trigger: 'agent_signal',
+          userId: enabledUserId,
+        },
+      ]);
+      await serverDB.insert(messages).values([
+        {
+          agentId: 'nightly-signal-single-agent',
+          content: '<self_iteration_review> single',
+          createdAt: new Date('2026-05-03T12:00:00.000Z'),
+          id: 'nightly-signal-single-message',
+          role: 'user',
+          topicId: 'nightly-signal-single-topic',
+          userId: enabledUserId,
+        },
+        {
+          agentId: 'nightly-signal-multi-agent',
+          content: '<self_iteration_review> first',
+          createdAt: new Date('2026-05-03T13:00:00.000Z'),
+          id: 'nightly-signal-multi-message-1',
+          role: 'user',
+          topicId: 'nightly-signal-multi-topic',
+          userId: enabledUserId,
+        },
+        {
+          agentId: 'nightly-signal-multi-agent',
+          content: '<self_iteration_review> second',
+          createdAt: new Date('2026-05-03T14:00:00.000Z'),
+          id: 'nightly-signal-multi-message-2',
+          role: 'assistant',
+          topicId: 'nightly-signal-multi-topic',
+          userId: enabledUserId,
+        },
+        {
+          agentId: 'nightly-signal-multi-agent',
+          content: '<self_iteration_review> third',
+          createdAt: new Date('2026-05-03T15:00:00.000Z'),
+          id: 'nightly-signal-multi-message-3',
+          role: 'user',
+          topicId: 'nightly-signal-multi-topic',
+          userId: enabledUserId,
+        },
+      ]);
+
+      const model = new AgentSignalNightlyReviewModel(serverDB);
+
+      const result = await model.listActiveAgentTargets(enabledUserId, {
+        windowEnd: new Date('2026-05-03T23:59:59.999Z'),
+        windowStart: new Date('2026-05-03T00:00:00.000Z'),
+      });
+
+      expect(result).toEqual([]);
+    });
+
+    it('keeps human, bot, and task activity active when AgentSignal review traffic is mixed in', async () => {
+      await serverDB.insert(users).values(withSelfLearning({ id: enabledUserId }));
+      await serverDB.insert(agents).values([
+        {
+          id: 'nightly-signal-mixed-agent',
+          title: 'Mixed source',
+          userId: enabledUserId,
+        },
+        {
+          id: 'nightly-task-agent',
+          title: 'Task only',
+          userId: enabledUserId,
+        },
+        {
+          id: 'nightly-bot-agent',
+          title: 'Bot only',
+          userId: enabledUserId,
+        },
+        {
+          id: 'nightly-human-agent',
+          title: 'Human only',
+          userId: enabledUserId,
+        },
+      ]);
+      await serverDB.insert(topics).values([
+        {
+          agentId: 'nightly-signal-mixed-agent',
+          id: 'nightly-signal-mixed-topic',
+          title: 'Review traffic',
+          trigger: 'agent_signal',
+          userId: enabledUserId,
+        },
+        {
+          agentId: 'nightly-signal-mixed-agent',
+          id: 'nightly-signal-mixed-task-topic',
+          title: 'Task traffic',
+          trigger: 'task',
+          userId: enabledUserId,
+        },
+        {
+          agentId: 'nightly-task-agent',
+          id: 'nightly-task-topic',
+          title: 'Task only',
+          trigger: 'task',
+          userId: enabledUserId,
+        },
+        {
+          agentId: 'nightly-bot-agent',
+          id: 'nightly-bot-topic',
+          title: 'Bot only',
+          trigger: 'bot',
+          userId: enabledUserId,
+        },
+        {
+          agentId: 'nightly-human-agent',
+          id: 'nightly-human-topic',
+          title: 'Human only',
+          trigger: null,
+          userId: enabledUserId,
+        },
+      ]);
+      await serverDB.insert(messages).values([
+        {
+          agentId: 'nightly-signal-mixed-agent',
+          content: '<self_iteration_review> mixed',
+          createdAt: new Date('2026-05-03T12:00:00.000Z'),
+          id: 'nightly-signal-mixed-review-message',
+          role: 'user',
+          topicId: 'nightly-signal-mixed-topic',
+          userId: enabledUserId,
+        },
+        {
+          agentId: 'nightly-signal-mixed-agent',
+          content: 'scheduled task prompt',
+          createdAt: new Date('2026-05-03T13:00:00.000Z'),
+          id: 'nightly-signal-mixed-task-message',
+          role: 'user',
+          topicId: 'nightly-signal-mixed-task-topic',
+          userId: enabledUserId,
+        },
+        {
+          agentId: 'nightly-task-agent',
+          content: 'task prompt',
+          createdAt: new Date('2026-05-03T14:00:00.000Z'),
+          id: 'nightly-task-message',
+          role: 'user',
+          topicId: 'nightly-task-topic',
+          userId: enabledUserId,
+        },
+        {
+          agentId: 'nightly-bot-agent',
+          content: 'IM message',
+          createdAt: new Date('2026-05-03T15:00:00.000Z'),
+          id: 'nightly-bot-message',
+          role: 'user',
+          topicId: 'nightly-bot-topic',
+          userId: enabledUserId,
+        },
+        {
+          agentId: 'nightly-human-agent',
+          content: 'typed by a person',
+          createdAt: new Date('2026-05-03T16:00:00.000Z'),
+          id: 'nightly-human-message',
+          role: 'user',
+          topicId: 'nightly-human-topic',
+          userId: enabledUserId,
+        },
+      ]);
+
+      const model = new AgentSignalNightlyReviewModel(serverDB);
+
+      const result = await model.listActiveAgentTargets(enabledUserId, {
+        windowEnd: new Date('2026-05-03T23:59:59.999Z'),
+        windowStart: new Date('2026-05-03T00:00:00.000Z'),
+      });
+
+      expect(result).toEqual([
+        {
+          agentId: 'nightly-human-agent',
+          failedToolCallCount: 0,
+          firstActivityAt: new Date('2026-05-03T16:00:00.000Z'),
+          lastActivityAt: new Date('2026-05-03T16:00:00.000Z'),
+          messageCount: 1,
+          name: null,
+          timezone: 'UTC',
+          title: 'Human only',
+          topicCount: 1,
+        },
+        {
+          agentId: 'nightly-bot-agent',
+          failedToolCallCount: 0,
+          firstActivityAt: new Date('2026-05-03T15:00:00.000Z'),
+          lastActivityAt: new Date('2026-05-03T15:00:00.000Z'),
+          messageCount: 1,
+          name: null,
+          timezone: 'UTC',
+          title: 'Bot only',
+          topicCount: 1,
+        },
+        {
+          agentId: 'nightly-task-agent',
+          failedToolCallCount: 0,
+          firstActivityAt: new Date('2026-05-03T14:00:00.000Z'),
+          lastActivityAt: new Date('2026-05-03T14:00:00.000Z'),
+          messageCount: 1,
+          name: null,
+          timezone: 'UTC',
+          title: 'Task only',
+          topicCount: 1,
+        },
+        {
+          agentId: 'nightly-signal-mixed-agent',
+          failedToolCallCount: 0,
+          firstActivityAt: new Date('2026-05-03T13:00:00.000Z'),
+          lastActivityAt: new Date('2026-05-03T13:00:00.000Z'),
+          messageCount: 1,
+          name: null,
+          timezone: 'UTC',
+          title: 'Mixed source',
+          topicCount: 1,
+        },
+      ]);
+    });
+
+    it('excludes a message whose metadata trigger is AgentSignal even on a normal topic', async () => {
+      // Reusing an existing topic on the review fallback path leaves the topic trigger untouched,
+      // so the message-level trigger is the only evidence that this row is review traffic.
+      await serverDB.insert(users).values(withSelfLearning({ id: enabledUserId }));
+      await serverDB.insert(agents).values([
+        {
+          id: 'nightly-metadata-only-agent',
+          title: 'Metadata only',
+          userId: enabledUserId,
+        },
+        {
+          id: 'nightly-metadata-mixed-agent',
+          title: 'Metadata mixed',
+          userId: enabledUserId,
+        },
+      ]);
+      await serverDB.insert(topics).values([
+        {
+          agentId: 'nightly-metadata-only-agent',
+          id: 'nightly-metadata-only-topic',
+          title: 'Normal topic',
+          trigger: null,
+          userId: enabledUserId,
+        },
+        {
+          agentId: 'nightly-metadata-mixed-agent',
+          id: 'nightly-metadata-mixed-topic',
+          title: 'Normal topic',
+          trigger: null,
+          userId: enabledUserId,
+        },
+      ]);
+      await serverDB.insert(messages).values([
+        {
+          agentId: 'nightly-metadata-only-agent',
+          content: '<self_iteration_review> metadata only',
+          createdAt: new Date('2026-05-03T12:00:00.000Z'),
+          id: 'nightly-metadata-only-message',
+          metadata: { trigger: 'agent_signal' },
+          role: 'user',
+          topicId: 'nightly-metadata-only-topic',
+          userId: enabledUserId,
+        },
+        {
+          agentId: 'nightly-metadata-mixed-agent',
+          content: '<self_iteration_review> metadata mixed',
+          createdAt: new Date('2026-05-03T13:00:00.000Z'),
+          id: 'nightly-metadata-mixed-review-message',
+          metadata: { trigger: 'agent_signal' },
+          role: 'user',
+          topicId: 'nightly-metadata-mixed-topic',
+          userId: enabledUserId,
+        },
+        {
+          agentId: 'nightly-metadata-mixed-agent',
+          content: 'typed by a person',
+          createdAt: new Date('2026-05-03T14:00:00.000Z'),
+          id: 'nightly-metadata-mixed-human-message',
+          role: 'user',
+          topicId: 'nightly-metadata-mixed-topic',
+          userId: enabledUserId,
+        },
+      ]);
+
+      const model = new AgentSignalNightlyReviewModel(serverDB);
+
+      const result = await model.listActiveAgentTargets(enabledUserId, {
+        windowEnd: new Date('2026-05-03T23:59:59.999Z'),
+        windowStart: new Date('2026-05-03T00:00:00.000Z'),
+      });
+
+      expect(result).toEqual([
+        {
+          agentId: 'nightly-metadata-mixed-agent',
+          failedToolCallCount: 0,
+          firstActivityAt: new Date('2026-05-03T14:00:00.000Z'),
+          lastActivityAt: new Date('2026-05-03T14:00:00.000Z'),
+          messageCount: 1,
+          name: null,
+          timezone: 'UTC',
+          title: 'Metadata mixed',
+          topicCount: 1,
+        },
+      ]);
+    });
   });
 });

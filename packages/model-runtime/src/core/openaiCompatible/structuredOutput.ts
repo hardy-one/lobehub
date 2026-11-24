@@ -1,7 +1,5 @@
 import debug from 'debug';
 
-import type { GenerateObjectPayload } from '../../types';
-
 const log = debug('lobe-model-runtime:structured-output');
 
 /** An upstream structured-output response cannot satisfy the required tool-call contract. */
@@ -236,84 +234,5 @@ export const parseStructuredOutputText = (value: unknown): unknown => {
       }
     }
     throw new StructuredOutputError('invalid JSON response text');
-  }
-};
-
-/**
- * Total attempts for a forced tool call whose response cannot satisfy the
- * contract at the shape level. Some providers treat `tool_choice` as a soft
- * hint and answer in plain text instead (observed on DashScope-family gateways
- * at a ~10% rate); others call the tool but truncate or malform its JSON
- * arguments. Both are transient shape failures a resend can repair.
- */
-const STRUCTURED_OUTPUT_MAX_ATTEMPTS = 3;
-
-/**
- * Shape failures worth resending with a targeted reminder. Invalid JSON is
- * retryable because the model did call the tool and can usually repair its own
- * arguments. `JSON object required` is not: the reply was valid JSON but the
- * wrong shape, and the other reasons mean no parsable response was produced at
- * all, so a resend would only repeat the malformed contract.
- */
-const RETRYABLE_STRUCTURED_OUTPUT_REASONS = [
-  'invalid JSON in tool arguments',
-  'no tool calls returned',
-] as const;
-
-type RetryableStructuredOutputReason = (typeof RETRYABLE_STRUCTURED_OUTPUT_REASONS)[number];
-
-const isRetryableStructuredOutputError = (
-  error: unknown,
-): error is StructuredOutputError & { reason: RetryableStructuredOutputReason } =>
-  error instanceof StructuredOutputError &&
-  (RETRYABLE_STRUCTURED_OUTPUT_REASONS as readonly string[]).includes(error.reason);
-
-const RETRY_REMINDERS: Record<RetryableStructuredOutputReason, string> = {
-  'invalid JSON in tool arguments':
-    'Your previous tool arguments were not valid JSON. Call the same tool again and provide a single valid JSON object as its arguments. Output only that JSON object — do not wrap it in a Markdown code block or add any other text.',
-  'no tool calls returned':
-    'Your previous response did not call a tool. You must call one of the provided tools now to return your result — do not answer in plain text.',
-};
-
-const reinforceToolCallRequest = (
-  payload: GenerateObjectPayload,
-  reason: RetryableStructuredOutputReason,
-): GenerateObjectPayload => ({
-  ...payload,
-  messages: [
-    ...payload.messages,
-    {
-      content: RETRY_REMINDERS[reason],
-      role: 'user' as const,
-    },
-  ],
-});
-
-/**
- * Runs a forced tool-call request, retrying shape failures (plain text instead
- * of a tool call, or invalid JSON arguments) up to
- * STRUCTURED_OUTPUT_MAX_ATTEMPTS total attempts. The final error carries
- * `attempts` in its diagnostic context.
- */
-export const retryStructuredToolCalls = async <T>(
-  payload: GenerateObjectPayload,
-  attemptCall: (payload: GenerateObjectPayload) => Promise<T>,
-  log?: Debugger,
-): Promise<T> => {
-  let current = payload;
-
-  for (let attempt = 1; ; attempt += 1) {
-    try {
-      return await attemptCall(current);
-    } catch (error) {
-      if (!isRetryableStructuredOutputError(error) || attempt >= STRUCTURED_OUTPUT_MAX_ATTEMPTS) {
-        if (isRetryableStructuredOutputError(error)) {
-          error.context = { ...error.context, attempts: attempt };
-        }
-        throw error;
-      }
-      log?.('structured output: attempt %d failed with %s, retrying', attempt, error.reason);
-      current = reinforceToolCallRequest(current, error.reason);
-    }
   }
 };

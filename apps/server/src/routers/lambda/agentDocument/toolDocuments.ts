@@ -3,11 +3,19 @@ import { MOVE_DOCUMENTS_MAX_IDS } from '@lobechat/builtin-tool-agent-documents';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 
+import { getServerDB } from '@/database/core/db-adaptor';
+import { MessageModel } from '@/database/models/message';
 import { TaskModel } from '@/database/models/task';
+import { normalizeWorkspaceId } from '@/database/utils/workspace';
 import { router } from '@/libs/trpc/lambda';
+import type { LambdaContext } from '@/libs/trpc/lambda/context';
 import { AgentDocumentEditRejectedError } from '@/server/services/agentDocuments/editRejectedError';
 import { findRevokedDocumentReads } from '@/server/services/agentDocuments/revokedReads';
 import { emitAgentDocumentToolOutcomeSafely } from '@/server/services/agentDocuments/toolOutcome';
+import {
+  type AgentDocumentTouchKind,
+  captureAgentDocumentTouchSafely,
+} from '@/server/services/aiAgent/pipeline/agentDocumentTouchCapture';
 import { assertCanPerformResourceAction } from '@/server/services/resourcePermission';
 import { resolveTaskOrThrow } from '@/server/services/task/utils';
 
@@ -118,6 +126,36 @@ const emitCreateDocumentToolOutcome = async (input: {
   });
 };
 
+/**
+ * Residual path only: client-direct / Agent Share tRPC calls that never enter
+ * the builtin executor. Ordinary AI tool calls run in agentDocumentsRuntime,
+ * which owns the touch row for the runtime chain; the two paths do not overlap.
+ */
+const captureToolTouch = async (input: {
+  agentDocumentId?: string;
+  ctx: Pick<LambdaContext, 'workspaceId'> & { userId: string };
+  kind: AgentDocumentTouchKind;
+  title?: string;
+  trigger?: 'tool';
+  topicId?: string;
+  toolContext?: z.infer<typeof agentDocumentToolContextSchema>;
+}) => {
+  if (input.trigger !== 'tool' || !input.toolContext?.topicId) return;
+
+  await captureAgentDocumentTouchSafely({
+    agentDocumentId: input.agentDocumentId,
+    clientMessageId: input.toolContext.messageId,
+    kind: input.kind,
+    messageModel: new MessageModel(
+      await getServerDB(),
+      input.ctx.userId,
+      normalizeWorkspaceId(input.ctx.workspaceId) ?? undefined,
+    ),
+    title: input.title,
+    topicId: input.topicId ?? input.toolContext.topicId,
+  });
+};
+
 export const toolDocumentsRouter = router({
   /**
    * Tool-oriented: associate an existing document with an agent
@@ -186,6 +224,14 @@ export const toolDocumentsRouter = router({
             status: 'succeeded',
             toolContext: input.toolContext,
             userId: ctx.userId,
+          });
+          await captureToolTouch({
+            agentDocumentId: doc?.id,
+            ctx,
+            kind: 'created',
+            title: input.title,
+            toolContext: input.toolContext,
+            trigger: input.trigger,
           });
         }
 
@@ -256,6 +302,14 @@ export const toolDocumentsRouter = router({
             toolContext: input.toolContext,
             topicId: input.topicId,
             userId: ctx.userId,
+          });
+          await captureToolTouch({
+            agentDocumentId: doc?.id,
+            ctx,
+            kind: 'created',
+            title,
+            toolContext: input.toolContext,
+            trigger: input.trigger,
           });
         }
 
@@ -378,11 +432,20 @@ export const toolDocumentsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       try {
-        return await ctx.agentDocumentService.modifyDocumentNodesById(
+        const doc = await ctx.agentDocumentService.modifyDocumentNodesById(
           input.id,
           input.operations,
           input.agentId,
         );
+        await captureToolTouch({
+          agentDocumentId: doc?.id ?? input.id,
+          ctx,
+          kind: 'edited',
+          title: doc?.title,
+          toolContext: input.toolContext,
+          trigger: input.trigger,
+        });
+        return doc;
       } catch (error) {
         if (error instanceof AgentDocumentEditRejectedError) {
           throw new TRPCError({ cause: error, code: 'BAD_REQUEST', message: error.message });
@@ -409,6 +472,15 @@ export const toolDocumentsRouter = router({
         input.content,
         input.agentId,
       );
+
+      await captureToolTouch({
+        agentDocumentId: doc?.id ?? input.id,
+        ctx,
+        kind: 'edited',
+        title: doc?.title,
+        toolContext: input.toolContext,
+        trigger: input.trigger,
+      });
 
       return doc;
     }),
@@ -437,6 +509,14 @@ export const toolDocumentsRouter = router({
           agentDocumentId: input.id,
           agentId: input.agentId,
           documentId: doc?.documentId,
+        });
+        await captureToolTouch({
+          agentDocumentId: input.id,
+          ctx,
+          kind: 'deleted',
+          title: doc?.title,
+          toolContext: input.toolContext,
+          trigger: input.trigger,
         });
       }
 

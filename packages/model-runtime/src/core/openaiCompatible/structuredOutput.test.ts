@@ -1,3 +1,6 @@
+// @vitest-environment node
+import { createRequire } from 'node:module';
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -57,12 +60,153 @@ describe('parseStructuredToolArguments', () => {
     throw new Error('expected structured output parsing to throw');
   };
 
+  const debug = createRequire(import.meta.url)('debug');
+  const createLogger = () => {
+    const previousDebug = process.env.DEBUG;
+    const log = vi.spyOn(debug, 'log').mockImplementation(() => {});
+    process.env.DEBUG = 'lobe-model-runtime:structured-output';
+    debug.enable(process.env.DEBUG);
+    return {
+      log,
+      restore: () => {
+        if (previousDebug === undefined) delete process.env.DEBUG;
+        else process.env.DEBUG = previousDebug;
+        debug.enable(previousDebug ?? '');
+      },
+    };
+  };
+
   it('parses valid JSON string arguments', () => {
     expect(parseStructuredToolArguments('{"persona":"done"}')).toEqual({ persona: 'done' });
   });
 
   it('accepts an already parsed object', () => {
     expect(parseStructuredToolArguments({ persona: 'done' })).toEqual({ persona: 'done' });
+  });
+
+  it.each([
+    { args: '{"a":1}}', parserPosition: 7 },
+    { args: '{"a":1}\n  garbage', parserPosition: 10 },
+    { args: '{"a":1}\r\n\tgarbage', parserPosition: 10 },
+  ])(
+    'recovers trailing content after a complete JSON object: $args',
+    ({ args, parserPosition }) => {
+      const { log, restore } = createLogger();
+
+      try {
+        expect(parseStructuredToolArguments(args)).toEqual({ a: 1 });
+        expect(log.mock.calls.flat().join('\n')).toMatch(
+          /structured output: recovered by truncating %d trailing characters/,
+        );
+        expect(log.mock.calls.flat()).toContain(args.length - parserPosition);
+      } finally {
+        restore();
+      }
+    },
+  );
+
+  it.each(['{"a":}', '{"a":1', '{"a":"b}'])(
+    'still rejects JSON errors before the end of the value: %s',
+    (args) => {
+      expect(() => parseStructuredToolArguments(args)).toThrowError(
+        /^Invalid structured output: invalid JSON in tool arguments$/,
+      );
+    },
+  );
+
+  it('preserves the original error when the reported position cannot be recovered', () => {
+    const { log, restore } = createLogger();
+    vi.spyOn(JSON, 'parse').mockImplementationOnce(() => {
+      throw new SyntaxError('Unexpected non-whitespace character after JSON at position 0');
+    });
+
+    const structuredError = captureStructuredError(() =>
+      parseStructuredToolArguments('{"a":1}}', { finishReason: 'tool_calls' }),
+    );
+
+    expect(structuredError.reason).toBe('invalid JSON in tool arguments');
+    expect(structuredError.context).toMatchObject({
+      argumentsLength: 8,
+      finishReason: 'tool_calls',
+      jsonErrorPosition: 0,
+      jsonErrorMessage: 'Unexpected non-whitespace character after JSON at position 0',
+      jsonErrorSnippet: '<<<HERE>>>{"a":1}}',
+    });
+    try {
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+
+  it('matches the after-JSON error case-insensitively', () => {
+    const { log, restore } = createLogger();
+    vi.spyOn(JSON, 'parse').mockImplementationOnce(() => {
+      throw new SyntaxError('unexpected NON-WHITESPACE character AFTER json AT POSITION 7');
+    });
+
+    try {
+      expect(parseStructuredToolArguments('{"a":1}}')).toEqual({ a: 1 });
+      expect(log.mock.calls.flat().join('\n')).toMatch(
+        /structured output: recovered by truncating %d trailing characters/,
+      );
+    } finally {
+      restore();
+    }
+  });
+
+  it('preserves the original error when the second parse fails', () => {
+    const parserMessage = 'Unexpected non-whitespace character after JSON at position 3';
+    vi.spyOn(JSON, 'parse')
+      .mockImplementationOnce(() => {
+        throw new SyntaxError(parserMessage);
+      })
+      .mockImplementationOnce(() => {
+        throw new SyntaxError('prefix is still invalid');
+      });
+
+    const structuredError = captureStructuredError(() =>
+      parseStructuredToolArguments('{"a":1}}', { finishReason: 'tool_calls', truncated: true }),
+    );
+
+    expect(structuredError.context).toEqual({
+      argumentsLength: 8,
+      charCodeAtPosition: 34,
+      finishReason: 'tool_calls',
+      jsonErrorMessage: parserMessage,
+      jsonErrorPosition: 3,
+      jsonErrorSnippet: '{"a<<<HERE>>>":1}}',
+      truncated: true,
+    });
+  });
+
+  it('does not scan past the parser-reported position', () => {
+    const { log, restore } = createLogger();
+    const args = '{"a":{"b":1}} trailing';
+    vi.spyOn(JSON, 'parse').mockImplementationOnce(() => {
+      throw new SyntaxError('Unexpected non-whitespace character after JSON at position 5');
+    });
+
+    const structuredError = captureStructuredError(() =>
+      parseStructuredToolArguments(args, { finishReason: 'stop' }),
+    );
+
+    expect(structuredError.reason).toBe('invalid JSON in tool arguments');
+    expect(structuredError.context?.jsonErrorPosition).toBe(5);
+    try {
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+
+  it('rejects a recovered non-object prefix', () => {
+    const args = 'null garbage';
+
+    const structuredError = captureStructuredError(() => parseStructuredToolArguments(args));
+
+    expect(structuredError.reason).toBe('invalid JSON in tool arguments');
+    expect(structuredError.context).toMatchObject({ argumentsLength: args.length });
   });
 
   it('reports invalid JSON with protocol metadata and a bounded snippet', () => {
@@ -214,6 +358,15 @@ describe('retryStructuredToolCalls', () => {
       { function: { name: 'commit_user_persona', parameters: {} }, type: 'function' as const },
     ],
   };
+
+  it('returns recovered arguments after one request without adding an attempt count', async () => {
+    const attemptCall = vi.fn(async () =>
+      parseStructuredToolArguments('{"a":1}}', { finishReason: 'tool_calls' }),
+    );
+
+    await expect(retryStructuredToolCalls(payload, attemptCall)).resolves.toEqual({ a: 1 });
+    expect(attemptCall).toHaveBeenCalledTimes(1);
+  });
 
   it('retries invalid JSON with a JSON-specific reminder', async () => {
     const attemptCall = vi

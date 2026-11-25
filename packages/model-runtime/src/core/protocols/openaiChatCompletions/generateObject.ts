@@ -225,16 +225,28 @@ export const generateToolCallsViaChatCompletions = async (
   }
 
   const toolCalls = res.choices?.[0]?.message?.tool_calls;
-  if (!toolCalls?.length)
+  const finishReason = res.choices?.[0]?.finish_reason;
+  if (!toolCalls?.length) {
+    const content = res.choices?.[0]?.message?.content;
+    if (content) {
+      try {
+        return parseStructuredToolArguments(content, {
+          finishReason,
+          truncated: finishReason === 'length',
+        });
+      } catch {
+        // Fall through to the original structured-output error.
+      }
+    }
     throw new StructuredOutputError('no tool calls returned', {
-      finishReason: res.choices?.[0]?.finish_reason,
-      hasTextContent: !!res.choices?.[0]?.message?.content,
+      finishReason,
+      hasTextContent: !!content,
       model,
       provider: runtime.id,
       responseId: res.id,
     });
+  }
 
-  const finishReason = res.choices?.[0]?.finish_reason;
   return toolCalls.map((item) => {
     if (!('function' in item) || !item.function) {
       throw new StructuredOutputError('function tool call required');

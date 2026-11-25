@@ -1,6 +1,6 @@
 ---
 name: pr
-description: "Create a PR for the current branch (targets `canary` by default), including splitting one cross-layer branch into ordered stacked PRs so a lower layer (db / shared package / server TRPC) merges before its callers (desktop / CLI / UI). Use when the user asks to create / submit a PR, or to split a branch because clients call a server contract that isn't on the trunk yet. Triggers on 'pr', 'create pr', 'submit pr', 'open a PR', 'pull request', 'split this PR', 'stacked PR', 'backend should merge first', '提 PR', '提个 PR', '新建 PR', '拆 PR', '后端先合', '分层合并'."
+description: "Create a PR for the current branch (targets `next` by default in this fork, hardy-one/lobehub), including splitting one cross-layer branch into ordered stacked PRs so a lower layer (db / shared package / server TRPC) merges before its callers (desktop / CLI / UI). Use when the user asks to create / submit a PR, or to split a branch because clients call a server contract that isn't on the trunk yet. Triggers on 'pr', 'create pr', 'submit pr', 'open a PR', 'pull request', 'split this PR', 'stacked PR', 'backend should merge first', '提 PR', '提个 PR', '新建 PR', '拆 PR', '后端先合', '分层合并'."
 user-invocable: true
 ---
 
@@ -8,8 +8,8 @@ user-invocable: true
 
 ## Branch Strategy
 
-- **Target branch**: `canary` (development branch, cloud production)
-- `main` is the release branch — never PR directly to main
+- Upstream lobehub/lobehub uses `canary` as its development branch and `main` as its release branch. This fork is hardy-one/lobehub; its target/trunk branch is `next`.
+- **Target branch**: `next` — create new branches from `origin/next`, open PRs with `--base next`, and do not treat `canary` or `main` as this fork's target branch.
 
 ## Steps
 
@@ -18,14 +18,14 @@ user-invocable: true
 - `git branch --show-current` — current branch name
 - `git status --short` — uncommitted changes
 - `git rev-parse --abbrev-ref @{u} 2>/dev/null` — remote tracking status
-- `git log --oneline origin/canary..HEAD` — unpushed commits
+- `git log --oneline origin/next..HEAD` — unpushed commits
 - `gh pr list --head "$(git branch --show-current)" --json number,title,state,url` — existing PR
-- `git diff --stat --stat-count=20 origin/canary..HEAD` — change summary
+- `git diff --stat --stat-count=20 origin/next..HEAD` — change summary
 - Reuse an existing acceptance link from the task when it covers the delivered behavior. If a lookup is needed, first follow [Publish auth preflight](../../acceptance/PROCESS.md#publish-auth-preflight), then run `publish_lh acceptance run list --json` and match on `branch`. Do not blindly unset API keys: the production credential may exist only in the environment. A lookup never requires creating a new round.
 
 ### 2. Handle uncommitted changes on default branch
 
-If current branch is `canary` (or `main`) AND there are uncommitted changes:
+If current branch is `next` AND there are uncommitted changes:
 
 1. Analyze the diff (`git diff`) to understand the changes
 2. Infer a branch name from the changes, format: `<type>/<short-description>` (e.g. `fix/i18n-cjk-spacing`)
@@ -34,7 +34,7 @@ If current branch is `canary` (or `main`) AND there are uncommitted changes:
 5. Commit with a proper gitmoji message
 6. Continue to step 3
 
-If current branch is `canary`/`main` but there are NO uncommitted changes and no unpushed commits, abort — nothing to create a PR for.
+If current branch is `next` but there are NO uncommitted changes and no unpushed commits, abort — nothing to create a PR for.
 
 ### 3. Push if needed
 
@@ -51,7 +51,7 @@ If current branch is `canary`/`main` but there are NO uncommitted changes and no
 
 A feature or fix needs a published acceptance round before the PR is opened (AGENTS.md → Acceptance). If step 1 found none for this branch, run the `acceptance` skill first and come back with its `https://app.lobehub.com/acceptance/<id>` link. When the delivery was already verified on the real product earlier in the session, that skill's ingest path publishes the existing observations and artifacts directly — no re-run, no re-plan. Pure refactors or tooling changes with no user-visible outcome may skip it — state that in the PR body instead of leaving the line out.
 
-### 6. Create PR with `gh pr create --base canary`
+### 6. Create PR with `gh pr create --base next`
 
 - Title: `<gitmoji> <type>(<scope>): <description>`
 - Body: based on PR template (`.github/PULL_REQUEST_TEMPLATE.md`)
@@ -111,7 +111,7 @@ A PR may only merge **after** every layer it calls is already on the trunk.
 
 - The **server contract** (new TRPC procedure, changed return shape, new table/model) merges first.
 - The **callers** (desktop, CLI, UI) merge after — they invoke that contract.
-- Tie-break with one question: _"if this merged alone to `canary` right now, would it build and behave?"_ If no, it belongs in a later PR.
+- Tie-break with one question: _"if this merged alone to `next` right now, would it build and behave?"_ If no, it belongs in a later PR.
 
 ## Which file goes in which PR
 
@@ -132,10 +132,10 @@ git branch feat/x-clients <FULL>         # the higher-layer branch starts here
 
 # 2. Rewrite the lower-layer branch to lower-layer files only
 git checkout feat/x                      # this becomes the SERVER PR
-git reset --hard origin/canary
+git reset --hard origin/next
 git checkout <FULL> -- <server/db files…>   # stages just those paths
 git commit -m "✨ feat(...): <server half>"
-git push --force-with-lease origin feat/x   # never --force; never push to canary
+git push --force-with-lease origin feat/x   # never --force; never push to next
 
 # 3. Build the higher-layer branch STACKED on the lower branch
 git checkout feat/x-clients
@@ -151,7 +151,7 @@ Then open the higher PR **based on the lower branch**, not the trunk:
 gh pr create --base feat/x --head feat/x-clients --title "…" --body "…"
 ```
 
-`--base feat/x` keeps the diff client-only (no server files leak in) and makes it physically impossible to merge the clients before the server. **After the server PR merges to `canary`, retarget the client PR's base to `canary`** (GitHub usually auto-retargets when the base branch merges; note it in the PR body so a human confirms).
+`--base feat/x` keeps the diff client-only (no server files leak in) and makes it physically impossible to merge the clients before the server. **After the server PR merges to `next`, retarget the client PR's base to `next`** (GitHub usually auto-retargets when the base branch merges; note it in the PR body so a human confirms).
 
 ## Verify the dependency actually holds
 
@@ -172,7 +172,7 @@ Filter to your touched files — this repo's standalone type-check emits pre-exi
 
 ## Gotchas
 
-- **Never push to `canary`.** A split branch cut with `git checkout -b feat/x origin/canary` _tracks_ `origin/canary`, so a bare `git push` targets canary. Always `git push origin feat/x` with the explicit branch name.
+- **Never push to `next`.** A split branch cut with `git checkout -b feat/x origin/next` _tracks_ `origin/next`, so a bare `git push` targets next. Always `git push origin feat/x` with the explicit branch name.
 - **`--force-with-lease`, not `--force`** when rewriting the lower branch — it aborts if the remote moved under you.
 - **Back up before `reset --hard`.** Step 1's `backup/x-full` + the pushed remote branch mean the full commit is referenced by ≥3 refs before you rewrite anything. Verify with `git branch --contains <FULL>`.
 - **Lockfiles:** this monorepo commits no root `pnpm-lock.yaml`, so a new `workspace:*` dep needs no lockfile churn. In a repo that _does_ commit one, regenerate it on each branch after the split.

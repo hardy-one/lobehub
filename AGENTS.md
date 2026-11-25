@@ -63,8 +63,8 @@ This proxy is a **development convenience, not a verification surface**: it runs
 
 ### Git Workflow
 
-- **Branch strategy**: `canary` is the development branch (cloud production); `main` is the release branch (periodically cherry-picks from canary)
-- New branches should be created from `canary`; PRs should target `canary`
+- **Branch strategy (upstream lobehub/lobehub)**: `canary` is the development branch (cloud production); `main` is the release branch (periodically cherry-picks from canary)
+- **This fork (hardy-one/lobehub)**: `next` is the target/trunk branch. Create new branches from `origin/next`, open PRs with `--base next`, and do not treat `canary` or `main` as this fork's target branch.
 - Use rebase for `git pull`
 - Commit messages: prefix with gitmoji
 - Branch format: `<type>/<feature-name>`

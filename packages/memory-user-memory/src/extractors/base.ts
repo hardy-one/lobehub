@@ -135,7 +135,24 @@ export abstract class BaseMemoryExtractor<
     return renderPlaceholderTemplate(this.promptTemplate || '', this.getTemplateProps(options));
   }
 
-  protected abstract buildUserPrompt(options: TExtractorTemplateProps): string;
+  buildUserPrompt(options: TExtractorTemplateProps): string {
+    const prompt =
+      this.agent === 'gatekeeper'
+        ? [
+            'Decide which memory layers should be extracted from the conversation above.',
+            'Write the reasoning in {{ gateKeeperLanguage }}.',
+            'Compare against the top {{ topK }} retrieved memories.',
+          ]
+        : [
+            `Extract ${this.agent.replace('layer-', '')} memories from the conversation above.`,
+            'Respond in {{ language }}.',
+            'Use the session date {{ sessionDate }} and available categories {{ availableCategories }}.',
+            'Compare against the top {{ topK }} retrieved memories.',
+            'Current user: {{ username }}.',
+          ];
+
+    return renderPlaceholderTemplate(prompt.join('\n'), this.getTemplateProps(options));
+  }
 
   async structuredCall(options?: TExtractorOptions): Promise<TOutput> {
     return tracer.startActiveSpan(`structuredCall: ${this.getPromptName()}`, async (span) => {

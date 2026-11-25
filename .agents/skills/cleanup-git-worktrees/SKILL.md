@@ -12,7 +12,7 @@ Use the bundled script to make classification deterministic. Treat cleanup as a 
 1. Run the audit from any worktree in the repository:
 
    ```bash
-   bash .agents/skills/cleanup-git-worktrees/scripts/cleanup.sh audit --fetch --gh --stale-days 15 --base origin/canary
+   bash .agents/skills/cleanup-git-worktrees/scripts/cleanup.sh audit --fetch --gh --stale-days 15 --base origin/next
    ```
 
    - `--fetch`: prune the remote first. Omit only when offline and say so.
@@ -25,7 +25,7 @@ Use the bundled script to make classification deterministic. Treat cleanup as a 
 
    | Classification                | Meaning                                                                        | Action                                 |
    | ----------------------------- | ------------------------------------------------------------------------------ | -------------------------------------- |
-   | `protected-branch`            | `main`, `canary`, or the base ref                                              | never                                  |
+   | `protected-branch`            | `next`, upstream `main`/`canary`, or the base ref                              | never                                  |
    | `protect-current`             | the worktree running the command                                               | never                                  |
    | `protect-main`                | the repository's main worktree                                                 | never                                  |
    | `review-pr-done-dirty`        | PR MERGED/CLOSED but the tree has real (non-scratch) edits                     | list the files; delete only when named |
@@ -52,7 +52,7 @@ Use the bundled script to make classification deterministic. Treat cleanup as a 
 
    ```bash
    bash .agents/skills/cleanup-git-worktrees/scripts/cleanup.sh clean \
-     --gh --stale-days 15 --base origin/canary \
+     --gh --stale-days 15 --base origin/next \
      --branch feat/example \
      --branch fix/example \
      --apply
@@ -66,7 +66,7 @@ Use the bundled script to make classification deterministic. Treat cleanup as a 
 
    ```bash
    nohup bash .agents/skills/cleanup-git-worktrees/scripts/cleanup.sh clean \
-     --gh --stale-days 15 --base origin/canary --branches-file /tmp/<unique>-targets.txt --apply \
+     --gh --stale-days 15 --base origin/next --branches-file /tmp/<unique>-targets.txt --apply \
      > /tmp/<unique>-clean.log 2>&1 < /dev/null & disown
    ```
 
@@ -82,9 +82,9 @@ Use the bundled script to make classification deterministic. Treat cleanup as a 
 Squash and rebase merges leave no ancestry, so `git merge-base --is-ancestor` and `git cherry` say "not merged" for branches whose PR landed. Use this ladder instead:
 
 1. `--gh` reports `pr_state=MERGED` and `tip_eq_pr=eq`: the local tip is exactly what GitHub merged. Done.
-2. `review-pr-merged-ahead` (tip moved past the PR head): list the extra commits with `git log <pr-head>..<branch>` and search the base for each subject: `git log origin/canary --oneline -F --grep="<subject>"`. A hit on the PR's squash commit means the commit was part of the PR. A miss means the commit is unmerged; check which live branch still contains it with `git branch --contains <sha>` before deleting.
+2. `review-pr-merged-ahead` (tip moved past the PR head): list the extra commits with `git log <pr-head>..<branch>` and search the base for each subject: `git log origin/next --oneline -F --grep="<subject>"`. A hit on the PR's squash commit means the commit was part of the PR. A miss means the commit is unmerged; check which live branch still contains it with `git branch --contains <sha>` before deleting.
 3. Branches named after a PR (`pr-18412`, `codex/pr-18497-fix`) are local review copies; verify the PR by number with `gh pr view N --json state,headRefOid` and compare subjects as above.
-4. Do not judge by `git diff origin/canary <branch> -- <files>`: on an old branch the diff is dominated by later changes on the base.
+4. Do not judge by `git diff origin/next <branch> -- <files>`: on an old branch the diff is dominated by later changes on the base.
 
 Zero `unpushed` means every local commit is reachable from some remote ref, so deleting the local branch loses nothing even when the PR is still OPEN; the user has approved deleting such branches once they pass the stale threshold.
 
@@ -95,13 +95,13 @@ The repository owner has approved the following for this repo, so a cleanup run 
 - **Dirt equal to the base is not dirt.** A tracked file listed as modified whose content is byte-identical to the base (`git diff --quiet <base> -- <file>`) is stale residue of a branch that is simply behind. When presenting, do not count it as a real change: list such files in their own group so the genuine modifications stay visible.
 - **Merged / closed PR branches are disposable together with their local commits.** When a branch's PR is `MERGED` or `CLOSED`, its worktree and local branch may be removed even when `unpushed > 0` or the tree is dirty. Record every branch SHA before deleting (reflog keeps them \~90 days) and state in the report that uncommitted edits are not recoverable.
 - **Local scratch does not block removal.** Untracked `*.probe.test.ts`, screenshots (`*.png`), PR body drafts (`pr-body*.md`) and `.records*` evidence are disposable (the `--scratch` default). Untracked spike scripts under `scripts/` are too, but they stay out of the default regex because `scripts/` also holds real new files; judge them by hand.
-- Still never delete: `main`, `canary`, the base ref, and the worktree running the command. A branch whose PR is **OPEN** is kept while it still holds local-only work (dirty files or `unpushed > 0`); a clean, fully-pushed branch with an open PR is the redundant local copy the stale rule already covers.
+- Still never delete: `next` (this fork's trunk), upstream `main`/`canary`, the base ref, and the worktree running the command. A branch whose PR is **OPEN** is kept while it still holds local-only work (dirty files or `unpushed > 0`); a clean, fully-pushed branch with an open PR is the redundant local copy the stale rule already covers.
 
 **Proving a merge when the repo squash-merges.** This repo squash-merges, so a landed PR leaves the squash commit on the base but none of the branch's own commits. Searching the base for an individual commit subject therefore fails for every squashed branch; do not read that as "unmerged". The script decides by commit dates instead: commits off the base that are not newer than `mergedAt` are pre-merge history the squash already carries (`candidate-pr-merged-history`). Post-merge commits that a remote ref still holds lose nothing locally (`candidate-pr-merged-pushed`), but say in the report that they never reached the base.
 
-`review-pr-merged-ahead` is left for local-only commits newer than the merge. List them with `git log --format='%h %cI %s' <branch> --not origin/canary --remotes=origin` and judge each:
+`review-pr-merged-ahead` is left for local-only commits newer than the merge. List them with `git log --format='%h %cI %s' <branch> --not origin/next --remotes=origin` and judge each:
 
-- a follow-up that landed through a later PR shows up on the base under the same subject plus `(#N)`: `git log origin/canary --oneline -F --grep="<subject>"`. Disposable.
+- a follow-up that landed through a later PR shows up on the base under the same subject plus `(#N)`: `git log origin/next --oneline -F --grep="<subject>"`. Disposable.
 - a follow-up nobody opened a PR for, made obsolete by later work on the base, is disposable under the policy above.
 - anything still relevant is kept and reported.
 
@@ -119,7 +119,7 @@ The bundled script refuses `review-*`, so removals the user approves for those a
 - Never discard dirty worktrees merely because their branch is merged, `[gone]`, or old; noise-only dirt (the `--noise` regex) does not count. The one exception is a worktree whose branch's PR is `MERGED` or `CLOSED`, per the repo-approved deletion policy above.
 - Never delete a branch with `unpushed > 0` through this script; list it and let the user decide. Same exception: a `MERGED`/`CLOSED` PR branch may be removed under the owner's standing approval, with its SHA recorded first.
 - Never use recursive deletion on a registered worktree. If Git partially removes a directory, stop and inspect the exact path before deciding how to recover.
-- Never delete `main`, `canary`, or the base branch.
+- Never delete `next` (this fork's trunk branch), upstream `main`/`canary`, or the base branch.
 - Preserve unrelated user changes and concurrent worktrees. The user's other sessions may be working in them.
 - The repo is a partial clone. Probing an object that is not local (an old PR head via `git cat-file`, `git log <pr-head>..`) silently fetches it from the remote, which turns a loop over 30 branches into tens of minutes. Export `GIT_NO_LAZY_FETCH=1` in ad-hoc loops, as the script does.
 - When writing ad-hoc verification loops, run them under `bash`, not the interactive `zsh`: zsh does not word-split `$var` in `for`/argument positions, so file lists collapse into one argument and checks silently pass.

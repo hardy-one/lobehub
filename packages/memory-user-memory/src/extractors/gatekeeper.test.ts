@@ -1,8 +1,6 @@
-import { renderPlaceholderTemplate } from '@lobechat/context-engine';
 import type { ModelRuntime } from '@lobechat/model-runtime';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { gatekeeperPrompt } from '../prompts';
 import type { GatekeeperOptions } from '../types';
 import { UserMemoryGateKeeper } from './gatekeeper';
 
@@ -14,6 +12,7 @@ const extractorConfig = {
 };
 
 const templateOptions: GatekeeperOptions = {
+  gateKeeperLanguage: 'English',
   retrievedContexts: ['existing context'],
   topK: 2,
 };
@@ -50,28 +49,33 @@ describe('UserMemoryGateKeeper', () => {
     const extractor = new UserMemoryGateKeeper(extractorConfig);
 
     expect(extractor.getTemplateProps({} as GatekeeperOptions)).toEqual({
+      gateKeeperLanguage: 'English',
       retrievedContext: 'No similar memories retrieved.',
       topK: 10,
     });
   });
 
-  it('throws when building user prompt without template', () => {
+  it('builds a short user prompt without loading the system template', () => {
     const extractor = new UserMemoryGateKeeper(extractorConfig);
 
-    expect(() => extractor.buildUserPrompt(templateOptions)).toThrowError(
-      'Prompt template not loaded',
+    const result = extractor.buildUserPrompt(templateOptions);
+
+    expect(result).toContain(
+      'Decide which memory layers should be extracted from the conversation above.',
     );
+    expect(result).toContain('Write the reasoning in English.');
+    expect(result).toContain('top 2 retrieved memories');
+    expect(result).not.toContain('You are a "gate keeper"');
   });
 
-  it('renders user prompt with provided template props', async () => {
+  it('does not repeat the system template in the user prompt', async () => {
     const extractor = new UserMemoryGateKeeper(extractorConfig);
 
     await extractor.ensurePromptTemplate();
     const result = extractor.buildUserPrompt(templateOptions);
-    const expectedProps = extractor.getTemplateProps(templateOptions);
 
-    expect(result).not.toBe('');
-    expect(result).toBe(renderPlaceholderTemplate(gatekeeperPrompt, expectedProps));
+    expect(result).not.toBe(extractor.getPrompt());
+    expect(result.length).toBeLessThan(extractor.getPrompt().length);
   });
 
   it('parses gatekeeper decisions from structured call', async () => {

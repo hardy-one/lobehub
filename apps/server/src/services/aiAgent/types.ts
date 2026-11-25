@@ -83,6 +83,8 @@ export interface ExecRunContext {
   /** Topic id — guaranteed to exist by the time pipeline stages run. */
   topicId: string;
   trigger?: string;
+  /** Rich-text data persisted on this turn, used for message-local context. */
+  userMessageEditorData?: NonNullable<InternalExecAgentParams['userMessage']>['editorData'];
   /** User turn row id; undefined when the run starts from history (resume). */
   userMessageId?: string;
   /**

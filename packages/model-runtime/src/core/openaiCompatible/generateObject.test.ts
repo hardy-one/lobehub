@@ -450,6 +450,91 @@ describe('generateObject forced tool-call single attempt', () => {
     expect(createMock.mock.calls[0][0].messages).toEqual(toolPayload.messages);
   });
 
+  it('should parse structured JSON written to content when no tool call is returned', async () => {
+    const instance = createInstance();
+    const createMock = vi
+      .spyOn((instance as any).client.chat.completions, 'create')
+      .mockResolvedValueOnce({
+        choices: [
+          {
+            finish_reason: 'stop',
+            message: { content: '{"persona":"done","tagline":"brief"}' },
+          },
+        ],
+      } as any);
+
+    const result = await instance.generateObject(toolPayload);
+
+    expect(result).toEqual({ persona: 'done', tagline: 'brief' });
+    expect(createMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('should recover a trailing extra brace in content when no tool call is returned', async () => {
+    const instance = createInstance();
+    vi.spyOn((instance as any).client.chat.completions, 'create').mockResolvedValueOnce({
+      choices: [
+        {
+          finish_reason: 'stop',
+          message: { content: '{"persona":"done"}}' },
+        },
+      ],
+    } as any);
+
+    await expect(instance.generateObject(toolPayload)).resolves.toEqual({ persona: 'done' });
+  });
+
+  it('should keep the original error when content is invalid JSON', async () => {
+    const instance = createInstance();
+    const content = '{"persona":"done"';
+    const createMock = vi
+      .spyOn((instance as any).client.chat.completions, 'create')
+      .mockResolvedValueOnce({
+        id: 'resp_1',
+        choices: [{ finish_reason: 'stop', message: { content } }],
+      } as any);
+
+    let caught: any;
+    try {
+      await instance.generateObject(toolPayload);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toMatchObject({
+      context: {
+        finishReason: 'stop',
+        hasTextContent: true,
+        model: 'qwen-token-plan/qwen3.8-flash',
+        provider: 'testprovider',
+        responseId: 'resp_1',
+      },
+      name: 'StructuredOutputError',
+      reason: 'no tool calls returned',
+    });
+    expect(Object.keys(caught.context).sort()).toEqual([
+      'finishReason',
+      'hasTextContent',
+      'model',
+      'provider',
+      'responseId',
+    ]);
+    expect(caught.message).not.toContain('persona');
+    expect(caught.context).not.toHaveProperty('jsonErrorSnippet');
+    expect(createMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('should keep the original error when content parses to an array', async () => {
+    const instance = createInstance();
+    vi.spyOn((instance as any).client.chat.completions, 'create').mockResolvedValueOnce({
+      choices: [{ finish_reason: 'stop', message: { content: '[{"persona":"done"}]' } }],
+    } as any);
+
+    await expect(instance.generateObject(toolPayload)).rejects.toMatchObject({
+      context: { finishReason: 'stop', hasTextContent: true },
+      reason: 'no tool calls returned',
+    });
+  });
+
   const invalidJsonResponse = (finishReason = 'stop', args = '{"persona":"broken"') => ({
     choices: [
       {

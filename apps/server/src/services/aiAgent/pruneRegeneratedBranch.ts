@@ -4,12 +4,15 @@
  */
 export interface MessageTreeRow {
   id: string;
+  isInjection?: boolean;
   messageGroupId: string | null;
   parentId: string | null;
 }
 
 interface HistoryItemLike {
   id: string;
+  isInjection?: boolean;
+  parentId?: string | null;
   role?: string;
 }
 
@@ -23,6 +26,10 @@ interface HistoryItemLike {
  * later turns that continued from it. Leaving them in makes the model "continue"
  * an already-answered turn (`[U1, A1]` → continue) instead of producing a fresh
  * answer (`[U1]` → A2).
+ *
+ * Injection rows explicitly parented to the anchor belong to the regenerated
+ * turn itself, so they are retained. Real descendants and injections parented
+ * to those descendants belong to the replaced answer and are removed.
  *
  * The branch must be pruned even after `/compact`: compaction hides the grouped
  * messages and the query returns a synthetic `compressedGroup` node that carries
@@ -59,7 +66,10 @@ export const pruneRegeneratedBranch = <T extends HistoryItemLike>(
   // Message ids on the anchor's old branch (old answer + later turns),
   // including messages hidden inside compaction groups.
   const descendantIds = new Set(
-    tree.filter((row) => descendsFromAnchor(row.id)).map((row) => row.id),
+    tree
+      .filter((row) => descendsFromAnchor(row.id))
+      .filter((row) => !row.isInjection || row.parentId !== anchorId)
+      .map((row) => row.id),
   );
 
   // Group nodes whose members fall on that branch (e.g. a compacted old branch).
@@ -71,6 +81,7 @@ export const pruneRegeneratedBranch = <T extends HistoryItemLike>(
 
   return history.filter((msg) => {
     if (msg.id === anchorId) return true;
+    if (msg.isInjection && msg.parentId === anchorId) return true;
     // Synthetic MessageGroup nodes carry the group id, not a message id.
     if (msg.role === 'compressedGroup' || msg.role === 'compareGroup') {
       return !prunedGroupIds.has(msg.id);

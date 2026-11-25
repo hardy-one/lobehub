@@ -69,6 +69,12 @@ interface CreateMessageInsertParams {
   updatedAt?: CreateMessageParams['updatedAt'];
 }
 
+interface AppendInjectionRowOptions {
+  anchorMessageId?: string;
+  createdAt?: Date | number;
+  threadId?: string | null;
+}
+
 interface CreateMessageRelationParams {
   fileChunks?: CreateMessageParams['fileChunks'];
   files?: CreateMessageParams['files'];
@@ -308,19 +314,43 @@ export class MessageWriteMutations extends MessageScope {
    * source the request engine cannot replay never reaches the database; the
    * table's CHECK constraint only enforces that `source_key` is present.
    *
-   * `createdAt` lets the caller anchor the row inside the timeline (for
-   * example just after the user turn it belongs to) instead of stamping it
-   * with the insert time, which can be minutes later for a deferred init.
+   * `createdAt` fixes the row's position in the timeline instead of stamping
+   * it with the insert time, which can be minutes later for a deferred init.
+   * An `anchorMessageId` must name a non-injected user row in the same topic;
+   * the row inherits that anchor's `threadId` unless explicitly overridden.
    */
   appendInjectionRow = async (
     topicId: string,
     sourceKey: string,
     content: string,
     role: CreateMessageRoleType = 'user',
-    options: { createdAt?: Date | number } = {},
+    options: AppendInjectionRowOptions = {},
   ): Promise<DBMessageItem> => {
     if (!isInjectionSourceKey(sourceKey)) {
       throw new Error(`Unknown injection source key: ${sourceKey}`);
+    }
+
+    let anchorThreadId: string | null | undefined;
+    if (options.anchorMessageId) {
+      const [anchorRow] = await this.db
+        .select({
+          isInjection: messages.isInjection,
+          role: messages.role,
+          threadId: messages.threadId,
+          topicId: messages.topicId,
+        })
+        .from(messages)
+        .where(and(eq(messages.id, options.anchorMessageId), this.ownership()))
+        .limit(1);
+      if (
+        !anchorRow ||
+        anchorRow.topicId !== topicId ||
+        anchorRow.isInjection ||
+        anchorRow.role !== 'user'
+      ) {
+        throw new Error(`Invalid injection anchor message: ${options.anchorMessageId}`);
+      }
+      anchorThreadId = anchorRow.threadId;
     }
 
     const createdAt =
@@ -334,8 +364,10 @@ export class MessageWriteMutations extends MessageScope {
       content,
       createdAt,
       isInjection: true,
+      ...(options.anchorMessageId ? { parentId: options.anchorMessageId } : {}),
       role,
       sourceKey,
+      threadId: options.threadId ?? anchorThreadId ?? undefined,
       topicId,
     });
   };

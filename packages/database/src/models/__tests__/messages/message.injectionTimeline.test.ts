@@ -1,4 +1,5 @@
 // @vitest-environment node
+import type { UIChatMessage } from '@lobechat/types';
 import { INJECTION_SOURCE_KEYS } from '@lobechat/types';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -7,6 +8,7 @@ import { getTestDB } from '../../../core/getTestDB';
 import { messages, topics, users } from '../../../schemas';
 import type { LobeChatDatabase } from '../../../type';
 import { MessageModel } from '../../message';
+import { mergeInjectionTimeline } from '../../message/injectionTimeline';
 
 const serverDB: LobeChatDatabase = await getTestDB();
 
@@ -19,6 +21,94 @@ const at = (minute: number) => new Date(Date.UTC(2026, 2, 1, 0, minute));
 
 const messageModel = new MessageModel(serverDB, userId);
 const agentDocSourceKey = INJECTION_SOURCE_KEYS.AGENT_DOC_MESSAGE;
+
+const message = (
+  id: string,
+  createdAt: number,
+  extra: Partial<UIChatMessage> = {},
+): UIChatMessage => ({
+  content: id,
+  createdAt,
+  id,
+  role: 'user',
+  ...extra,
+});
+
+describe('mergeInjectionTimeline', () => {
+  it('uses one createdAt / isInjection / id order regardless of parentId ownership', () => {
+    const firstUser = message('first-user', 100);
+    const firstAssistant = message('first-assistant', 200, {
+      parentId: firstUser.id,
+      role: 'assistant',
+    });
+    const laterUser = message('later-user', 300, { parentId: firstAssistant.id });
+    const delayedInjection = message('delayed-injection', 400, {
+      isInjection: true,
+      parentId: firstUser.id,
+    });
+    const tiedInjection = message('tied-injection', 300, {
+      isInjection: true,
+      parentId: laterUser.id,
+    });
+
+    expect(
+      mergeInjectionTimeline(
+        [laterUser, firstAssistant, firstUser],
+        [delayedInjection, tiedInjection],
+      ).map((row) => row.id),
+    ).toEqual([
+      'first-user',
+      'first-assistant',
+      'later-user',
+      'tied-injection',
+      'delayed-injection',
+    ]);
+  });
+
+  it('does not pull a child ahead of a parent with a later createdAt', () => {
+    const child = message('child', 100, { parentId: 'parent' });
+    const parent = message('parent', 200);
+
+    expect(mergeInjectionTimeline([parent], [child]).map((row) => row.id)).toEqual([
+      'child',
+      'parent',
+    ]);
+  });
+
+  it('keeps non-injected rows byte-identical to the legacy createdAt / id order', () => {
+    const rows = [
+      message('legacy-z', 200, { parentId: 'legacy-a', role: 'assistant' }),
+      message('legacy-b', 100),
+      message('legacy-a', 100),
+      message('legacy-c', 200),
+    ];
+    const snapshot = JSON.stringify(rows);
+    const legacyOrder = rows
+      .slice()
+      .sort(
+        (first, second) => first.createdAt - second.createdAt || first.id.localeCompare(second.id),
+      );
+    const injection = message('legacy-injection', 300, {
+      isInjection: true,
+      role: 'system',
+      sourceKey: agentDocSourceKey,
+    });
+
+    const merged = mergeInjectionTimeline(rows, [injection]);
+
+    expect(JSON.stringify(rows)).toBe(snapshot);
+    expect(merged.slice(0, rows.length).map((row) => row.id)).toEqual(
+      legacyOrder.map((row) => row.id),
+    );
+    expect(merged.at(-1)).toBe(injection);
+  });
+
+  it('returns the original array for empty injections', () => {
+    const rows = [message('user', 100), message('assistant', 200, { parentId: 'user' })];
+
+    expect(mergeInjectionTimeline(rows, [])).toBe(rows);
+  });
+});
 
 /**
  * Injected rows are interleaved with real turns, share timestamps (id is the
@@ -138,8 +228,10 @@ describe('MessageModel.queryInjectionMessagesByTopic', () => {
         createdAt: at(1).getTime(),
         id: 'inj-agent-doc',
         isInjection: true,
+        parentId: undefined,
         role: 'system',
         sourceKey: agentDocSourceKey,
+        threadId: undefined,
         updatedAt: at(1).getTime(),
       },
       {
@@ -147,8 +239,10 @@ describe('MessageModel.queryInjectionMessagesByTopic', () => {
         createdAt: at(3).getTime(),
         id: 'inj-todos-b',
         isInjection: true,
+        parentId: undefined,
         role: 'user',
         sourceKey: 'todos',
+        threadId: undefined,
         updatedAt: at(3).getTime(),
       },
       {
@@ -156,8 +250,10 @@ describe('MessageModel.queryInjectionMessagesByTopic', () => {
         createdAt: at(3).getTime(),
         id: 'inj-todos-c',
         isInjection: true,
+        parentId: undefined,
         role: 'user',
         sourceKey: 'todos',
+        threadId: undefined,
         updatedAt: at(3).getTime(),
       },
     ]);

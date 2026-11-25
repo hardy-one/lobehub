@@ -173,4 +173,25 @@ describe('PlaceholderVariablesProcessor — tool result passthrough', () => {
     // Not in the supplied allowlist — the default no longer applies.
     expect(result.messages[1].content).toBe('topic {{topic_id}}');
   });
+
+  it('leaves an injection row’s placeholders byte-identical while hydrating a real user', async () => {
+    const processor = new PlaceholderVariablesProcessor({ variableGenerators: timeGenerators });
+    const injection = {
+      content: 'topic {{topic_id}}  ',
+      isInjection: true,
+      parentId: 'u-0',
+      role: 'user',
+      sourceKey: 'agent-document-message',
+    };
+
+    const ctx = buildContext([injection, { content: 'now is {{time}}', role: 'user' }]);
+    const result = await processor.process(ctx);
+
+    expect(result.messages[0]).toEqual(injection);
+    expect(Buffer.from(String(result.messages[0].content), 'utf8')).toEqual(
+      Buffer.from('topic {{topic_id}}  ', 'utf8'),
+    );
+    expect(result.messages[1].content).not.toContain('{{time}}');
+    expect(result.metadata.placeholderVariablesProcessed).toBe(1);
+  });
 });

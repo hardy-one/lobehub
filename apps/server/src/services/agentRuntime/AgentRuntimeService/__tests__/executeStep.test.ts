@@ -535,6 +535,49 @@ describe('AgentRuntimeService', () => {
       },
     );
 
+    it('keeps injections in model input without letting them compete as runtime branches', async () => {
+      const state = {
+        ...mockState,
+        messages: [],
+        origin: { agentId: 'agent', topicId: 'topic' },
+      };
+      const messages = [
+        { content: 'question', createdAt: 1, id: 'u1', role: 'user' },
+        {
+          content: 'injected context',
+          createdAt: 2,
+          id: 'injection',
+          isInjection: true,
+          parentId: 'u1',
+          role: 'user',
+        },
+        {
+          content: 'answer',
+          createdAt: 3,
+          id: 'a1',
+          parentId: 'u1',
+          role: 'assistant',
+        },
+      ] as UIChatMessage[];
+      (service as any).messageModel.query.mockResolvedValue(messages);
+      vi.spyOn((service as any).messageService, 'prepareUiMessages').mockImplementation(
+        async (rows) => rows,
+      );
+
+      const result = await (service as any).queryStepEntryMessages(state);
+
+      expect(result.messages.map((message: UIChatMessage) => message.id)).toEqual([
+        'u1',
+        'injection',
+        'a1',
+      ]);
+      expect(state.messages.map((message: UIChatMessage) => message.id)).toEqual([
+        'u1',
+        'injection',
+        'a1',
+      ]);
+    });
+
     it('keeps ephemeral input while preparing the persisted UI snapshot', async () => {
       const messages = [{ role: 'user', content: 'transient prompt' }];
       const state = { ...mockState, messages, origin: { agentId: 'agent', topicId: 'topic' } };
@@ -550,6 +593,69 @@ describe('AgentRuntimeService', () => {
       expect(result.uiMessages).toEqual(ui);
       expect(result.messages).toHaveLength(4);
     });
+
+    it.each(['queryMessagesFromDB', 'queryStepEntryMessages'])(
+      'prunes a regenerated user branch but keeps its anchor injections through %s',
+      async (method) => {
+        const state = {
+          ...mockState,
+          messages: [],
+          origin: { agentId: 'agent', sourceMessageId: 'u1', topicId: 'topic' },
+        };
+        const messages = [
+          { content: 'prior', createdAt: 1, id: 'u0', role: 'user' },
+          { content: 'question', createdAt: 2, id: 'u1', role: 'user' },
+          {
+            content: 'anchor context',
+            createdAt: 3,
+            id: 'anchor-injection',
+            isInjection: true,
+            parentId: 'u1',
+            role: 'user',
+          },
+          {
+            content: 'old answer',
+            createdAt: 4,
+            id: 'a1',
+            parentId: 'u1',
+            role: 'assistant',
+          },
+          {
+            content: 'old answer context',
+            createdAt: 5,
+            id: 'answer-injection',
+            isInjection: true,
+            parentId: 'a1',
+            role: 'user',
+          },
+        ] as UIChatMessage[];
+        (service as any).messageModel.query.mockResolvedValue(messages);
+        (service as any).messageModel.findById.mockResolvedValue({
+          id: 'u1',
+          isInjection: false,
+          role: 'user',
+          topicId: 'topic',
+        });
+        (service as any).messageModel.queryTopicMessageTree.mockResolvedValue([
+          { id: 'u1', isInjection: false, messageGroupId: null, parentId: 'u0' },
+          { id: 'anchor-injection', isInjection: true, messageGroupId: null, parentId: 'u1' },
+          { id: 'a1', isInjection: false, messageGroupId: null, parentId: 'u1' },
+          { id: 'answer-injection', isInjection: true, messageGroupId: null, parentId: 'a1' },
+        ]);
+        vi.spyOn((service as any).messageService, 'prepareUiMessages').mockImplementation(
+          async (rows) => rows,
+        );
+
+        const result = await (service as any)[method](state);
+        const hydrated = Array.isArray(result) ? result : result.messages;
+
+        expect(hydrated.map((message: UIChatMessage) => message.id)).toEqual([
+          'u0',
+          'u1',
+          'anchor-injection',
+        ]);
+      },
+    );
 
     it('hydrates the model even when UI preparation fails', async () => {
       const state = { ...mockState, messages: [], origin: { agentId: 'agent', topicId: 'topic' } };

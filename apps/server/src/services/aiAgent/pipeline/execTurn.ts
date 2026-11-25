@@ -549,6 +549,7 @@ export const execAgentTurn = async (
           }
         : appContext,
     assistantMessageId: turn.assistantMessageId,
+    assistantMessageCreatedAt: turn.assistantMessageCreatedAt,
     autoSkillIds,
     botContext,
     botPlatformContext,
@@ -803,16 +804,26 @@ export const execAgentTurn = async (
   // same rows in the step-0 worker once it has those inputs.
   if (!deferInit && !runFromHistory && turn.userMessageId && 'prep' in init) {
     try {
-      await captureMessageInjections({
+      const { failed } = await captureMessageInjections({
+        anchorMessageId: turn.userMessageId,
         anchorCreatedAt: turn.userMessageCreatedAt,
+        assistantCreatedAt: turn.assistantMessageCreatedAt,
         mentionedAgents: hasMentionedAgents ? mentionedAgents : undefined,
         messageModel: deps.messageModel,
         selectedSkillIds,
         selectedToolIds,
         skillSet: init.prep.operationSkillSet,
+        threadId: appContext?.threadId,
         toolManifestMap: init.discovery.toolManifestMap,
         topicId: turn.topicId,
       });
+      for (const { sourceKey, error } of failed) {
+        log(
+          'execAgent: message injection source %s failed to persist (fail-open): %O',
+          sourceKey,
+          error,
+        );
+      }
     } catch (error) {
       // The row is an optimization for later turns; never fail this turn's
       // answer because its context could not be persisted.

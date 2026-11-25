@@ -1,9 +1,9 @@
-import { PLUGIN_SCHEMA_SEPARATOR } from '../const/plugin';
-import { truncateSurrogateSafe } from '../utils/truncateSurrogateSafe';
 import debug from 'debug';
 
 import { BaseProcessor } from '../base/BaseProcessor';
+import { PLUGIN_SCHEMA_SEPARATOR } from '../const/plugin';
 import type { PipelineContext, ProcessorOptions } from '../types';
+import { truncateSurrogateSafe } from '../utils/truncateSurrogateSafe';
 
 declare module '../types' {
   interface PipelineContextMetadataOverrides {
@@ -384,6 +384,10 @@ export class PlaceholderVariablesProcessor extends BaseProcessor {
    * arrive as `role: 'user'`, and they are no less a record for it.
    */
   private shouldHydrate(message: any): boolean {
+    // Append-only v2 rows are stored context, not user prose or tool output.
+    // Substituting a `{{...}}` inside one would change its bytes on every turn.
+    if (message?.isInjection === true) return false;
+
     if (message?.role !== 'tool' && !message?.foldedToolResult) return true;
 
     const { apiName, identifier } = resolveToolIdentity(message);

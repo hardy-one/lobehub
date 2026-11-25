@@ -1,12 +1,12 @@
 // @vitest-environment node
 import { MessageGroupType } from '@lobechat/types';
-import { inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 // Real prune helper used by AiAgentService.execAgent in server-runtime regenerate.
 import { pruneRegeneratedBranch } from '../../../../../../apps/server/src/services/aiAgent/pruneRegeneratedBranch';
 import { getTestDB } from '../../../core/getTestDB';
-import { messageGroups, messages, topics, users } from '../../../schemas';
+import { messageGroups, messages, threads, topics, users } from '../../../schemas';
 import type { LobeChatDatabase } from '../../../type';
 import { MessageModel } from '../../message';
 
@@ -175,5 +175,168 @@ describe('server-runtime regenerate branch prune (real DB)', () => {
 
     // Prior-turn group kept; the anchor's own old branch (a1, u2, a2) dropped.
     expect(pruned.map((m) => m.id)).toEqual(['grp-prior', 'u1']);
+  });
+
+  it('keeps anchor injections but removes the old answer and descendant injections', async () => {
+    await seedConversation();
+    const anchorMention = await messageModel.appendInjectionRow(
+      topicId,
+      'mention_delegation',
+      'anchor mention context',
+      'user',
+      { anchorMessageId: 'u1', createdAt: new Date('2024-01-01T10:02:01Z') },
+    );
+    const anchorTool = await messageModel.appendInjectionRow(
+      topicId,
+      'selected_tool',
+      'anchor tool context',
+      'user',
+      { anchorMessageId: 'u1', createdAt: new Date('2024-01-01T10:02:02Z') },
+    );
+    const answerTouch = await messageModel.appendInjectionRow(
+      topicId,
+      'agent_doc_message',
+      'old answer document touch',
+      'user',
+      { createdAt: new Date('2024-01-01T10:03:01Z'), threadId: null },
+    );
+    await serverDB.update(messages).set({ parentId: 'a1' }).where(eq(messages.id, answerTouch.id));
+    const followUpSkill = await messageModel.appendInjectionRow(
+      topicId,
+      'selected_skill',
+      'old follow-up skill context',
+      'user',
+      { anchorMessageId: 'u2', createdAt: new Date('2024-01-01T10:04:01Z') },
+    );
+    const legacy = await messageModel.appendInjectionRow(
+      topicId,
+      'mention_delegation',
+      'legacy unanchored context',
+      'user',
+      { createdAt: new Date('2024-01-01T10:03:02Z') },
+    );
+
+    const history = await messageModel.queryForModelInput({ topicId });
+    const tree = await messageModel.queryTopicMessageTree({ topicId });
+    const pruned = pruneRegeneratedBranch(history, tree, 'u1');
+
+    expect(pruned.map((message) => message.id)).toEqual([
+      'prior-u',
+      'prior-a',
+      'u1',
+      anchorMention.id,
+      anchorTool.id,
+      legacy.id,
+    ]);
+    expect(pruned.map((message) => message.id)).not.toContain(answerTouch.id);
+    expect(pruned.map((message) => message.id)).not.toContain(followUpSkill.id);
+  });
+
+  it('keeps anchor injections while pruning a compacted old branch', async () => {
+    await seedConversation();
+    const anchorTouch = await messageModel.appendInjectionRow(
+      topicId,
+      'agent_doc_message',
+      'anchor document touch',
+      'user',
+      { anchorMessageId: 'u1', createdAt: new Date('2024-01-01T10:02:01Z') },
+    );
+    const answerTouch = await messageModel.appendInjectionRow(
+      topicId,
+      'agent_doc_message',
+      'compacted old answer document touch',
+      'user',
+      { createdAt: new Date('2024-01-01T10:03:01Z'), threadId: null },
+    );
+    await serverDB.update(messages).set({ parentId: 'a1' }).where(eq(messages.id, answerTouch.id));
+    await serverDB.insert(messageGroups).values({
+      content: 'summary of old branch',
+      createdAt: new Date('2024-01-01T10:06:00Z'),
+      id: 'grp-old-branch',
+      topicId,
+      type: MessageGroupType.Compression,
+      userId,
+    });
+    await serverDB
+      .update(messages)
+      .set({ messageGroupId: 'grp-old-branch' })
+      .where(inArray(messages.id, ['a1', 'u2', 'a2']));
+
+    const history = await messageModel.queryForModelInput({ topicId });
+    const tree = await messageModel.queryTopicMessageTree({ topicId });
+    const pruned = pruneRegeneratedBranch(history, tree, 'u1');
+
+    expect(pruned.map((message) => message.id)).toEqual([
+      'prior-u',
+      'prior-a',
+      'u1',
+      anchorTouch.id,
+    ]);
+  });
+
+  it('keeps thread anchor injections and prunes only the old thread descendants', async () => {
+    await serverDB.insert(threads).values({
+      id: 'regen-thread',
+      topicId,
+      type: 'continuation',
+      userId,
+    });
+    const threadUser = await messageModel.create({
+      content: 'thread question',
+      createdAt: new Date('2024-01-01T10:02:00Z'),
+      role: 'user',
+      threadId: 'regen-thread',
+      topicId,
+    });
+    expect(threadUser.role).toBe('user');
+    const anchorTouch = await messageModel.appendInjectionRow(
+      topicId,
+      'agent_doc_message',
+      'thread anchor touch',
+      'user',
+      {
+        anchorMessageId: threadUser.id,
+        createdAt: new Date('2024-01-01T10:02:01Z'),
+      },
+    );
+    const oldAnswer = await messageModel.create({
+      content: 'old thread answer',
+      createdAt: new Date('2024-01-01T10:03:00Z'),
+      id: 'thread-a1',
+      parentId: threadUser.id,
+      role: 'assistant',
+      threadId: 'regen-thread',
+      topicId,
+    });
+    const answerTouch = await messageModel.appendInjectionRow(
+      topicId,
+      'agent_doc_message',
+      'old thread answer touch',
+      'user',
+      { createdAt: new Date('2024-01-01T10:03:01Z'), threadId: 'regen-thread' },
+    );
+
+    expect(anchorTouch.threadId).toBe('regen-thread');
+    await serverDB
+      .update(messages)
+      .set({ parentId: oldAnswer.id })
+      .where(eq(messages.id, answerTouch.id));
+    expect(answerTouch.threadId).toBe('regen-thread');
+    const history = await messageModel.queryForModelInput({
+      threadId: 'regen-thread',
+      topicId,
+    });
+    const tree = await messageModel.queryTopicMessageTree({
+      threadId: 'regen-thread',
+      topicId,
+    });
+
+    expect(tree.map((row) => row.id)).toEqual(
+      expect.arrayContaining([threadUser.id, anchorTouch.id, oldAnswer.id, answerTouch.id]),
+    );
+    expect(pruneRegeneratedBranch(history, tree, threadUser.id).map((row) => row.id)).toEqual([
+      threadUser.id,
+      anchorTouch.id,
+    ]);
   });
 });

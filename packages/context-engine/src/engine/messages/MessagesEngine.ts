@@ -1,7 +1,7 @@
 import { INJECTION_SOURCE_KEYS } from '@lobechat/types';
 import debug from 'debug';
 
-import type { OpenAIChatMessage } from '@/types/index';
+import type { OpenAIChatMessage, UIChatMessage } from '@/types/index';
 
 import { ContextEngine } from '../../pipeline';
 import {
@@ -107,6 +107,75 @@ const PERSISTED_INJECTION_SOURCES: ReadonlySet<string> = new Set([
   INJECTION_SOURCE_KEYS.SELECTED_SKILL,
   INJECTION_SOURCE_KEYS.SELECTED_TOOL,
 ]);
+
+/**
+ * Batch 0-C2 — turn-scoped persistence switch.
+ *
+ * A persisted row only replaces its legacy injector when it belongs to the
+ * CURRENT turn: the newest non-injection `user` row in the timeline. An older
+ * turn's row still replays at its stored position, but must NOT silence a
+ * legacy injector this turn needs (e.g. a fresh @mention on a later turn).
+ *
+ * Ownership (frozen contract):
+ * - current turn = last message with role==='user' && !isInjection;
+ * - a row belongs to it when `isInjection && parentId === turn.id`;
+ * - legacy rows with `parentId == null` from the pre-anchor writer are accepted
+ *   when `createdAt ∈ [turn.createdAt, turn.createdAt + 64)` (left-closed,
+ *   right-open) and logged via the debug logger;
+ * - a row whose `parentId` names any OTHER message is history: replay only,
+ *   never part of current-turn `hasPersisted*`.
+ *
+ * `hasPersisted*` stays a plain boolean: ≥1 current-turn row for a source
+ * switches that source to replay. Duplicate same-turn rows (even same source)
+ * are all kept by the timeline; we do not dedupe by source here.
+ */
+const CURRENT_TURN_NULL_PARENT_WINDOW_MS = 64;
+
+const resolveCurrentTurn = (messages: UIChatMessage[]): UIChatMessage | undefined => {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role === 'user' && !message.isInjection) return message;
+  }
+  return undefined;
+};
+
+const belongsToCurrentTurn = (row: UIChatMessage, turn: UIChatMessage | undefined): boolean => {
+  if (row.isInjection !== true || !turn) return false;
+  // A real parentId anchor: exact match to the current turn. Any other
+  // parentId (an assistant or an earlier user) is history.
+  if (row.parentId) return row.parentId === turn.id;
+  // Legacy pre-anchor rows had no parentId. Only accept them inside the
+  // turn's bounded createdAt window, never outside it.
+  const createdAt = row.createdAt;
+  const turnCreatedAt = turn.createdAt;
+  return (
+    createdAt >= turnCreatedAt && createdAt < turnCreatedAt + CURRENT_TURN_NULL_PARENT_WINDOW_MS
+  );
+};
+
+const currentTurnPersistedSources = (messages: UIChatMessage[]): ReadonlySet<string> => {
+  const turn = resolveCurrentTurn(messages);
+  const sources = new Set<string>();
+  for (const message of messages) {
+    if (
+      message.sourceKey &&
+      PERSISTED_INJECTION_SOURCES.has(message.sourceKey) &&
+      belongsToCurrentTurn(message, turn)
+    ) {
+      if (!message.parentId) {
+        log(
+          'MessagesEngine: current-turn legacy injection row %s (%s) accepted via createdAt window [turn=%s, +%d)',
+          message.id,
+          message.sourceKey,
+          turn?.id,
+          CURRENT_TURN_NULL_PARENT_WINDOW_MS,
+        );
+      }
+      sources.add(message.sourceKey);
+    }
+  }
+  return sources;
+};
 
 /**
  * MessagesEngine - High-level message processing engine
@@ -248,21 +317,10 @@ export class MessagesEngine {
     const isAgentManagementEnabled = !!agentManagementContext && isAgentMode;
     const hasAgentDocuments = !!agentDocuments && agentDocuments.length > 0 && isAgentMode;
     // Append-only v2 dual-path: a registered source switches from its legacy
-    // injector to replaying persisted rows as soon as the timeline carries one.
-    // Presence is the switch, so a writer rollout needs no engine flag and both
-    // paths can never run for the same source in one request. Replayed rows
-    // keep their stored `role` (the payload target role) and their timeline
-    // position; the pipeline only transforms them, never rebuilds them.
-    const persistedInjectionSources = new Set(
-      messages
-        .filter(
-          (message) =>
-            message.isInjection === true &&
-            !!message.sourceKey &&
-            PERSISTED_INJECTION_SOURCES.has(message.sourceKey),
-        )
-        .map((message) => message.sourceKey),
-    );
+    // injector to replaying persisted rows as soon as the CURRENT turn carries
+    // one. An older turn's persisted row still replays at its stored timeline
+    // position, but must NOT silence a legacy injector this turn needs.
+    const persistedInjectionSources = currentTurnPersistedSources(messages);
     const hasPersistedAgentDocMessage = persistedInjectionSources.has(
       INJECTION_SOURCE_KEYS.AGENT_DOC_MESSAGE,
     );

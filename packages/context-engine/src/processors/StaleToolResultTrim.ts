@@ -389,7 +389,7 @@ export class StaleToolResultTrimProcessor extends BaseProcessor {
     // they are not turn triggers: counting one would move the boundary on every
     // step of a running operation.
     const userIndexes = messages.flatMap((m, i) =>
-      m.role === 'user' && m.meta?.virtualLastUser !== true ? [i] : [],
+      m.role === 'user' && m.isInjection !== true && m.meta?.virtualLastUser !== true ? [i] : [],
     );
     const turnTriggers = userIndexes.length > 0 ? userIndexes : [-1];
 

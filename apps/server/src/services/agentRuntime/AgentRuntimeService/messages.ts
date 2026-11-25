@@ -3,6 +3,7 @@ import { parse } from '@lobechat/conversation-flow';
 import { type ChatToolPayload, type UIChatMessage } from '@lobechat/types';
 
 import { hasNonPersistedMessage } from '@/server/modules/AgentRuntime/messagePersistence';
+import { pruneRegeneratedBranch } from '@/server/services/aiAgent/pruneRegeneratedBranch';
 import { FileService } from '@/server/services/file';
 import { resolveRunWorkAccessScope } from '@/server/services/workRegistration';
 
@@ -123,7 +124,11 @@ export function usesGatewayMessagePatch(agentState: AgentState): boolean {
   return agentState.host?.clientProtocol === 2;
 }
 
-export async function queryMessagesFromDB(deps: MessagesDeps, state: AgentState) {
+export async function queryMessagesFromDB(
+  deps: MessagesDeps,
+  state: AgentState,
+  options?: { skipCompressedMembers?: boolean },
+) {
   let postProcessUrl: ((path: string | null) => Promise<string>) | undefined;
   try {
     const fileService = new FileService(deps.serverDB, deps.userId);
@@ -144,8 +149,10 @@ export async function queryMessagesFromDB(deps: MessagesDeps, state: AgentState)
       // and returns no group messages — the next LLM step then gets an empty
       // context and the provider rejects it ("at least one message is required").
       groupId: state.origin?.groupId,
-      // The model sees a compression group only as its summary.
-      skipCompressedMembers: true,
+      // Runtime model hydration sees compression summaries only. The UI snapshot
+      // derives its visible members through message patches instead.
+      skipCompressedMembers: options?.skipCompressedMembers ?? true,
+      skipWorks: true,
       threadId: state.origin?.threadId,
       topicId: state.origin?.topicId,
     },
@@ -154,6 +161,17 @@ export async function queryMessagesFromDB(deps: MessagesDeps, state: AgentState)
     // of `query()`'s creator-facing agent-share exclusion.
     { allowShareVisitor: true, postProcessUrl },
   );
+  const anchorId = state.origin?.sourceMessageId;
+  if (anchorId && state.origin?.topicId) {
+    const anchor = await deps.messageModel.findById(anchorId);
+    if (anchor?.role === 'user' && !anchor.isInjection && anchor.topicId === state.origin.topicId) {
+      const tree = await deps.messageModel.queryTopicMessageTree({
+        threadId: state.origin.threadId,
+        topicId: state.origin.topicId,
+      });
+      return pruneRegeneratedBranch(messages, tree, anchorId).map(omitToolWorkRegistration);
+    }
+  }
   return messages.map(omitToolWorkRegistration);
 }
 
@@ -166,7 +184,10 @@ export async function refreshMessagesFromDB(
   deps: MessagesDeps,
   state: AgentState,
 ): Promise<AgentState['messages']> {
-  const dbMessages = await deps.queryMessagesFromDB(state);
+  const timeline = await deps.queryMessagesFromDB(state);
+  const dbMessages = timeline.map((message) =>
+    message.isInjection ? { ...message, parentId: undefined } : message,
+  );
 
   const { flatList } = parse(dbMessages, undefined, { threadId: state.origin?.threadId });
   return flatList as AgentState['messages'];
@@ -182,7 +203,10 @@ export async function resolveLastAssistantMessageFromDB(
   deps: MessagesDeps,
   state: AgentState,
 ): Promise<unknown> {
-  const dbMessages = await deps.queryMessagesFromDB(state);
+  const timeline = await deps.queryMessagesFromDB(state);
+  const dbMessages = timeline.map((message) =>
+    message.isInjection ? { ...message, parentId: undefined } : message,
+  );
   const { flatList } = parse(dbMessages, undefined, { threadId: state.origin?.threadId });
   const lastAssistant = findLastAssistantMessage(normalizeCompletionMessages(flatList));
   const lastAssistantId = typeof lastAssistant?.id === 'string' ? lastAssistant.id : undefined;
@@ -257,18 +281,9 @@ export async function queryStepEntryMessages(
     // only the message patch diffed against it does, which fills in the members
     // of a group the step changed (`publishStepMessagePatch`). A protocol-1 run
     // pushes this read as the `step_start` snapshot, so it keeps them.
-    messages = await deps.messageModel.queryForModelInput(
-      {
-        agentId: state.origin.agentId,
-        groupId: state.origin.groupId,
-        skipCompressedMembers: usesGatewayMessagePatch(state),
-        skipWorks: true,
-        threadId: state.origin.threadId,
-        topicId: state.origin.topicId,
-      },
-      { allowShareVisitor: true },
-    );
-    messages = messages.map(omitToolWorkRegistration);
+    messages = await deps.queryMessagesFromDB(state, {
+      skipCompressedMembers: usesGatewayMessagePatch(state),
+    });
   } catch (error) {
     console.error('[queryStepEntryMessages] Failed to load messages: %O', error);
     return {};
@@ -302,7 +317,12 @@ export async function queryStepEntryMessages(
         const resolved = fileService
           ? await resolveMessageFileUrls(messages, (file) => fileService!.getFullFileUrl(file.url))
           : messages;
-        const { flatList } = parse(resolved, undefined, { threadId: state.origin?.threadId });
+        const flatInput = resolved.map((message) =>
+          message.isInjection ? { ...message, parentId: undefined } : message,
+        );
+        const { flatList } = parse(flatInput, undefined, {
+          threadId: state.origin?.threadId,
+        });
         if (flatList.length > 0) state.messages = flatList as AgentState['messages'];
       } catch (error) {
         console.error('[queryStepEntryMessages] Failed to hydrate runtime messages: %O', error);

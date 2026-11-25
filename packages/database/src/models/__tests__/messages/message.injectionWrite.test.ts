@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { getTestDB } from '../../../core/getTestDB';
-import { messages, topics, users } from '../../../schemas';
+import { messages, threads, topics, users } from '../../../schemas';
 import type { LobeChatDatabase } from '../../../type';
 import { MessageModel } from '../../message';
 
@@ -12,6 +12,7 @@ const serverDB: LobeChatDatabase = await getTestDB();
 
 const userId = 'message-injection-write-user';
 const topicId = 'message-injection-write-topic';
+const threadId = 'message-injection-write-thread';
 
 const at = (minute: number) => new Date(Date.UTC(2026, 4, 1, 0, minute));
 
@@ -21,6 +22,7 @@ beforeEach(async () => {
   await serverDB.delete(users).where(eq(users.id, userId));
   await serverDB.insert(users).values({ id: userId });
   await serverDB.insert(topics).values({ id: topicId, userId });
+  await serverDB.insert(threads).values({ id: threadId, topicId, type: 'continuation', userId });
 });
 
 afterEach(async () => {
@@ -56,6 +58,8 @@ describe('MessageModel.appendInjectionRow', () => {
     expect(row).toMatchObject({
       content,
       isInjection: true,
+      parentId: null,
+      threadId: null,
       role: 'user',
       sourceKey: 'mention_delegation',
       topicId,
@@ -67,6 +71,7 @@ describe('MessageModel.appendInjectionRow', () => {
     expect(persisted).toMatchObject({
       content,
       isInjection: true,
+      threadId: null,
       role: 'user',
       sourceKey: 'mention_delegation',
     });
@@ -116,7 +121,7 @@ describe('MessageModel.appendInjectionRow', () => {
       INJECTION_SOURCE_KEYS.MENTION_DELEGATION,
       'delegation context',
       'user',
-      { createdAt: user.createdAt.getTime() + 1 },
+      { anchorMessageId: user.id, createdAt: user.createdAt.getTime() + 1 },
     );
     const assistant = await messageModel.create({
       content: 'working on it',
@@ -132,5 +137,110 @@ describe('MessageModel.appendInjectionRow', () => {
     expect(injected.map((row) => row.id)).toEqual([injection.id]);
     expect(injection.createdAt.getTime()).toBeGreaterThan(user.createdAt.getTime());
     expect(injection.createdAt.getTime()).toBeLessThan(assistant.createdAt.getTime());
+    expect(injection.parentId).toBe(user.id);
+  });
+
+  it('inherits a thread anchor and remains visible in the thread model-input timeline', async () => {
+    const user = await messageModel.create({
+      content: 'thread question',
+      createdAt: at(1).getTime(),
+      role: 'user',
+      threadId,
+      topicId,
+    });
+    const injection = await messageModel.appendInjectionRow(
+      topicId,
+      INJECTION_SOURCE_KEYS.MENTION_DELEGATION,
+      'thread delegation context',
+      'user',
+      { anchorMessageId: user.id, createdAt: at(1).getTime() + 1 },
+    );
+
+    expect(injection.threadId).toBe(threadId);
+    expect(
+      (await messageModel.queryTopicMessageTree({ threadId, topicId })).map((row) => row.id),
+    ).toContain(injection.id);
+    expect(
+      (await messageModel.queryForModelInput({ threadId, topicId })).map((row) => row.id),
+    ).toEqual([user.id, injection.id]);
+    expect(
+      (await messageModel.queryInjectionMessagesByTopicAndThread(topicId, null)).map(
+        (row) => row.id,
+      ),
+    ).not.toContain(injection.id);
+    expect(
+      (await messageModel.query({ threadId: null, topicId })).map((row) => row.id),
+    ).not.toContain(injection.id);
+  });
+
+  it('keeps an explicit no-anchor thread override without inventing an anchor', async () => {
+    const row = await messageModel.appendInjectionRow(
+      topicId,
+      INJECTION_SOURCE_KEYS.SELECTED_TOOL,
+      'explicit thread context',
+      'user',
+      { threadId },
+    );
+
+    expect(row).toMatchObject({ parentId: null, threadId });
+  });
+
+  it.each(['assistant', 'tool', 'system'] as const)(
+    'rejects a %s anchor without writing',
+    async (role) => {
+      const anchor = await messageModel.create({ content: 'not a user turn', role, topicId });
+
+      await expect(
+        messageModel.appendInjectionRow(
+          topicId,
+          INJECTION_SOURCE_KEYS.MENTION_DELEGATION,
+          'invalid context',
+          'user',
+          { anchorMessageId: anchor.id },
+        ),
+      ).rejects.toThrow('Invalid injection anchor message');
+      expect(await messageModel.queryInjectionMessagesByTopic(topicId)).toEqual([]);
+    },
+  );
+
+  it('rejects an injected anchor without writing', async () => {
+    const anchor = await messageModel.appendInjectionRow(
+      topicId,
+      INJECTION_SOURCE_KEYS.MENTION_DELEGATION,
+      'first context',
+    );
+
+    await expect(
+      messageModel.appendInjectionRow(
+        topicId,
+        INJECTION_SOURCE_KEYS.SELECTED_TOOL,
+        'nested context',
+        'user',
+        { anchorMessageId: anchor.id },
+      ),
+    ).rejects.toThrow('Invalid injection anchor message');
+    expect(
+      (await messageModel.queryInjectionMessagesByTopic(topicId)).map((row) => row.id),
+    ).toEqual([anchor.id]);
+  });
+
+  it('rejects an anchor from another topic', async () => {
+    const otherTopicId = 'message-injection-write-other-topic';
+    await serverDB.insert(topics).values({ id: otherTopicId, userId });
+    const otherUser = await messageModel.create({
+      content: 'another topic',
+      role: 'user',
+      topicId: otherTopicId,
+    });
+
+    await expect(
+      messageModel.appendInjectionRow(
+        topicId,
+        INJECTION_SOURCE_KEYS.MENTION_DELEGATION,
+        'delegation context',
+        'user',
+        { anchorMessageId: otherUser.id },
+      ),
+    ).rejects.toThrow();
   });
 });

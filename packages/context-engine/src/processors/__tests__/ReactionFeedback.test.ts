@@ -207,4 +207,52 @@ describe('ReactionFeedbackProcessor', () => {
 
     expect(context.messages[1].content).toBe('Follow up');
   });
+
+  // Append-only v2 rows arrive with role=user but are replayed context, not
+  // turns. Feedback from an assistant must skip them and reach the next real
+  // user instead, leaving the injected bytes untouched.
+  it('keeps pending feedback for the next real user when an injection row intervenes', async () => {
+    const processor = new ReactionFeedbackProcessor({ enabled: true });
+    const injection = {
+      ...createMessage('inj-1', 'user', '{{time}}\nreplayed context  '),
+      isInjection: true,
+      parentId: 'u-0',
+      sourceKey: 'agent-document-message',
+    };
+
+    const result = await processor.process(
+      createContext([
+        createMessage('1', 'assistant', 'Hello!', [{ count: 1, emoji: '👍', users: ['user1'] }]),
+        injection,
+        createMessage('3', 'user', 'Next question'),
+      ]),
+    );
+
+    expect(result.messages[1]).toEqual(injection);
+    expect(Buffer.from(String(result.messages[1].content), 'utf8')).toEqual(
+      Buffer.from(injection.content, 'utf8'),
+    );
+    expect(result.messages[2].content).toBe('[User Feedback Emoji: 👍]\n\nNext question');
+    expect(result.metadata.reactionFeedbackProcessed).toBe(1);
+  });
+
+  it('does not attach feedback anywhere when only injection rows follow', async () => {
+    const processor = new ReactionFeedbackProcessor({ enabled: true });
+    const injection = {
+      ...createMessage('inj-1', 'user', 'injected only'),
+      isInjection: true,
+      parentId: 'u-0',
+      sourceKey: 'agent-document-message',
+    };
+
+    const result = await processor.process(
+      createContext([
+        createMessage('1', 'assistant', 'Hello!', [{ count: 1, emoji: '👍', users: ['user1'] }]),
+        injection,
+      ]),
+    );
+
+    expect(result.messages[1]).toEqual(injection);
+    expect(result.metadata.reactionFeedbackProcessed).toBe(0);
+  });
 });

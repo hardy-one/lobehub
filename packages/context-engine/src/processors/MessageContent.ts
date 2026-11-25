@@ -390,7 +390,10 @@ export class MessageContentProcessor extends BaseProcessor {
         ...(message.tools && { tools: message.tools }),
         ...(message.tool_calls && { tool_calls: message.tool_calls }),
         ...(message.tool_call_id && { tool_call_id: message.tool_call_id }),
+        ...(message.isInjection !== undefined && { isInjection: message.isInjection }),
         ...(message.name && { name: message.name }),
+        ...(message.parentId !== undefined && { parentId: message.parentId }),
+        ...(message.sourceKey !== undefined && { sourceKey: message.sourceKey }),
       };
     }
 
@@ -406,7 +409,10 @@ export class MessageContentProcessor extends BaseProcessor {
       ...(message.tools && { tools: message.tools }),
       ...(message.tool_calls && { tool_calls: message.tool_calls }),
       ...(message.tool_call_id && { tool_call_id: message.tool_call_id }),
+      ...(message.isInjection !== undefined && { isInjection: message.isInjection }),
       ...(message.name && { name: message.name }),
+      ...(message.parentId !== undefined && { parentId: message.parentId }),
+      ...(message.sourceKey !== undefined && { sourceKey: message.sourceKey }),
     };
   }
 

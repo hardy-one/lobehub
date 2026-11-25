@@ -49,7 +49,7 @@ describe('ServerMessageTransport.query append-only v2 reads', () => {
       'user',
       // Written at the user turn's millisecond on purpose: the tie-break must
       // keep the conversation row first and the injected context second.
-      { createdAt: user.createdAt.getTime() },
+      { anchorMessageId: user.id, createdAt: user.createdAt.getTime() },
     );
     const answer = await messageModel.create({
       content: 'Delegated answer',

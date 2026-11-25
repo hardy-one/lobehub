@@ -391,6 +391,7 @@ export interface TurnSetupInput {
 }
 
 export interface TurnSetupResult {
+  assistantMessageCreatedAt?: number;
   assistantMessageId: string;
   canUseDevice: boolean;
   deviceAccessReason: DeviceAccessReason;
@@ -1188,6 +1189,7 @@ export const setupTurn = async (
     topicBoundDeviceId,
     topicEditingGroupId,
     topicId,
+    assistantMessageCreatedAt: assistantMessageRecord.createdAt.getTime(),
     userMessageCreatedAt: userMessageRecord?.createdAt?.getTime(),
     userMessageId: userMessageRecord?.id ?? persistedUserMessageId,
   };

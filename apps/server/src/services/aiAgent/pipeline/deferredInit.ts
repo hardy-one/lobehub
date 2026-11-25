@@ -104,6 +104,7 @@ const restoreRunContext = async (
   const userMessageRow = userMessageId
     ? await deps.messageModel.findById(userMessageId)
     : undefined;
+  const assistantMessageRow = await deps.messageModel.findById(origin.assistantMessageId);
   const userMessageMetadata = userMessageRow?.metadata ?? undefined;
   const channel = state.world?.channel;
   const deviceAccess = state.principal?.policy?.deviceAccess;
@@ -130,6 +131,7 @@ const restoreRunContext = async (
       viewedGoal: request.viewedGoal,
     } as ExecRunContext['appContext'],
     assistantMessageId: origin.assistantMessageId,
+    assistantMessageCreatedAt: assistantMessageRow?.createdAt.getTime(),
     autoSkillIds: state.world?.autoSkillIds ?? [],
     botContext: state.principal?.actor?.bot,
     botPlatformContext: channel?.botPlatform,
@@ -238,16 +240,27 @@ export const runDeferredOperationInit = async (
   // worker writes the same anchored rows once they exist.
   if (!request.resumeFromHistory && ctx.userMessageId) {
     try {
-      await captureMessageInjections({
+      const { failed } = await captureMessageInjections({
+        anchorMessageId: ctx.userMessageId,
         anchorCreatedAt: ctx.userMessageCreatedAt,
+        assistantCreatedAt: ctx.assistantMessageCreatedAt,
         mentionedAgents: request.hasMentionedAgents ? request.mentionedAgents : undefined,
         messageModel: deps.messageModel,
         selectedSkillIds: request.selectedSkillIds,
         selectedToolIds: request.selectedToolIds,
         skillSet: prep.operationSkillSet,
+        threadId: ctx.appContext?.threadId,
         toolManifestMap: discovery.toolManifestMap,
         topicId: ctx.topicId,
       });
+      for (const { sourceKey, error } of failed) {
+        log(
+          '[%s] deferred init: message injection source %s failed to persist (fail-open): %O',
+          operationId,
+          sourceKey,
+          error,
+        );
+      }
     } catch (error) {
       log('[%s] deferred init: failed to persist message injection rows: %O', operationId, error);
     }

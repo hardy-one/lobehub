@@ -1,3 +1,4 @@
+import { LOADING_FLAT } from '@lobechat/const';
 import { INJECTION_SOURCE_KEYS } from '@lobechat/types';
 import debug from 'debug';
 
@@ -20,10 +21,57 @@ export interface AgentDocumentTouchInput {
   topicId?: string;
 }
 
+interface TouchTiming {
+  anchorCreatedAt: number;
+  assistantCreatedAt?: number;
+}
+
 const changeLabel: Record<AgentDocumentTouchKind, string> = {
   created: 'created',
   deleted: 'deleted',
   edited: 'edited',
+};
+
+const findAssistantPlaceholder = async (messageModel: MessageModel, anchorId: string) => {
+  const anchor = await messageModel.findById(anchorId);
+  if (!anchor?.topicId) return undefined;
+  const candidates = await messageModel.query({
+    skipCompressedMembers: true,
+    threadId: anchor.threadId,
+    topicId: anchor.topicId,
+  });
+  return candidates
+    .filter(
+      (message) =>
+        !message.isInjection &&
+        message.role === 'assistant' &&
+        message.parentId === anchorId &&
+        message.content === LOADING_FLAT,
+    )
+    .sort(
+      (first, second) => first.createdAt - second.createdAt || first.id.localeCompare(second.id),
+    )[0];
+};
+
+const resolveTouchTiming = async (
+  messageModel: MessageModel,
+  topicId: string,
+  anchorId: string | undefined,
+  anchorCreatedAt: number,
+): Promise<TouchTiming> => {
+  const assistant = anchorId ? await findAssistantPlaceholder(messageModel, anchorId) : undefined;
+  if (!assistant) {
+    log(
+      'captureAgentDocumentTouch: assistant placeholder unavailable for anchor=%s topic=%s; using user.createdAt + offsets capped at 9ms',
+      anchorId,
+      topicId,
+    );
+    return { anchorCreatedAt, assistantCreatedAt: anchorCreatedAt + 10 };
+  }
+  return {
+    anchorCreatedAt,
+    assistantCreatedAt: assistant.createdAt,
+  };
 };
 
 /**
@@ -72,32 +120,61 @@ export const captureAgentDocumentTouch = async ({
 }: AgentDocumentTouchInput) => {
   if (!topicId) return;
 
-  let resolvedAnchor = anchorCreatedAt;
-  if (resolvedAnchor === undefined && clientMessageId) {
+  let anchorId: string | undefined;
+  let anchorThreadId: string | null | undefined;
+  let userMessageCreatedAt = anchorCreatedAt;
+  if (userMessageCreatedAt === undefined && clientMessageId) {
     const userMessage = await messageModel.findByClientId(clientMessageId);
-    resolvedAnchor = userMessage?.createdAt.getTime();
+    anchorId = userMessage?.id;
+    anchorThreadId = userMessage?.threadId;
+    userMessageCreatedAt = userMessage?.createdAt.getTime();
   }
-  if (resolvedAnchor === undefined && messageId) {
+  if (messageId) {
     const userMessage = await messageModel.findById(messageId);
-    resolvedAnchor = userMessage?.createdAt.getTime();
+    anchorId = userMessage?.id;
+    anchorThreadId = userMessage?.threadId;
+    userMessageCreatedAt = userMessage?.createdAt.getTime();
   }
 
-  if (resolvedAnchor !== undefined) {
-    const previous = await messageModel.queryInjectionMessagesByTopic(topicId);
-    const latest = previous
-      .filter((row) => row.sourceKey === INJECTION_SOURCE_KEYS.AGENT_DOC_MESSAGE)
-      .reduce((max, row) => Math.max(max, new Date(row.createdAt).getTime()), 0);
-    resolvedAnchor = Math.max(resolvedAnchor, latest + 1);
+  let timing: TouchTiming | undefined;
+  if (userMessageCreatedAt !== undefined && anchorId) {
+    const previous = await messageModel.queryInjectionMessagesByTopicAndThread(
+      topicId,
+      anchorThreadId,
+    );
+    const offsets = previous
+      .filter(
+        (row) =>
+          row.threadId === anchorThreadId &&
+          row.sourceKey === INJECTION_SOURCE_KEYS.AGENT_DOC_MESSAGE &&
+          row.createdAt >= userMessageCreatedAt,
+      )
+      .map((row) => row.createdAt - userMessageCreatedAt)
+      .sort((first, second) => first - second);
+    let nextOffset = 1;
+    for (const offset of offsets) {
+      if (offset < nextOffset) continue;
+      if (offset > nextOffset) break;
+      nextOffset += 1;
+    }
+    timing = await resolveTouchTiming(messageModel, topicId, anchorId, userMessageCreatedAt);
+    if (timing.assistantCreatedAt !== undefined) {
+      const maxCreatedAt = Math.min(timing.assistantCreatedAt, userMessageCreatedAt + 10) - 1;
+      timing.anchorCreatedAt = Math.max(
+        userMessageCreatedAt,
+        Math.min(timing.anchorCreatedAt + nextOffset, maxCreatedAt),
+      );
+    }
   }
 
-  if (resolvedAnchor === undefined) {
+  if (!timing) {
     log(
       'captureAgentDocumentTouch: no message row for messageId=%s clientMessageId=%s topic=%s; falling back to Date.now()',
       messageId,
       clientMessageId,
       topicId,
     );
-    resolvedAnchor = Date.now();
+    timing = { anchorCreatedAt: Date.now() };
   }
 
   return messageModel.appendInjectionRow(
@@ -105,7 +182,11 @@ export const captureAgentDocumentTouch = async ({
     INJECTION_SOURCE_KEYS.AGENT_DOC_MESSAGE,
     formatAgentDocumentTouch({ agentDocumentId, kind, title }),
     'user',
-    { createdAt: resolvedAnchor },
+    {
+      anchorMessageId: anchorId,
+      createdAt: timing.anchorCreatedAt,
+      threadId: anchorThreadId,
+    },
   );
 };
 

@@ -55,6 +55,7 @@ export class MessageModel {
   queryForModelInput: MessageConversationQueries['queryForModelInput'];
   queryForVisitor: MessageConversationQueries['queryForVisitor'];
   queryInjectionMessagesByTopic: MessageConversationQueries['queryInjectionMessagesByTopic'];
+  queryInjectionMessagesByTopicAndThread: MessageConversationQueries['queryInjectionMessagesByTopicAndThread'];
   queryTopicTranscript: MessageConversationQueries['queryTopicTranscript'];
   queryTopicMessageTree: MessageConversationQueries['queryTopicMessageTree'];
   queryTopicMessagesByCursor: MessageConversationQueries['queryTopicMessagesByCursor'];
@@ -178,6 +179,8 @@ export class MessageModel {
     this.queryForModelInput = conversation.queryForModelInput;
     this.queryForVisitor = conversation.queryForVisitor;
     this.queryInjectionMessagesByTopic = conversation.queryInjectionMessagesByTopic;
+    this.queryInjectionMessagesByTopicAndThread =
+      conversation.queryInjectionMessagesByTopicAndThread;
     this.queryTopicTranscript = conversation.queryTopicTranscript;
     this.queryTopicMessageTree = conversation.queryTopicMessageTree;
     this.queryTopicMessagesByCursor = conversation.queryTopicMessagesByCursor;

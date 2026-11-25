@@ -23,6 +23,10 @@ export interface TimeReminderInjectorConfig {
  * the whole history to a single reminder. Skip them.
  */
 const isInjectionCarrier = (message: Message): boolean =>
+  // Append-only v2 rows replayed from `messages.is_injection` carry no `meta.*`
+  // carrier flags — only `isInjection`/`sourceKey`. They are context, not real
+  // turns, so they must be skipped just like the synthetic carriers below.
+  message.isInjection === true ||
   message.meta?.systemInjection === true ||
   message.meta?.virtualLastUser === true ||
   // AgentManagementContextInjector splices this delegation hint as a standalone

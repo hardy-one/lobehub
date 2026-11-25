@@ -9,7 +9,7 @@ import {
   type MessagesEngineParams,
 } from '@lobechat/context-engine';
 import type { LobeChatDatabase } from '@lobechat/database';
-import { topics, users } from '@lobechat/database/schemas';
+import { messages, topics, users } from '@lobechat/database/schemas';
 import { getTestDB } from '@lobechat/database/test-utils';
 import type { RuntimeMentionedAgent, UIChatMessage } from '@lobechat/types';
 import { INJECTION_SOURCE_KEYS } from '@lobechat/types';
@@ -114,7 +114,8 @@ describe('append-only v2 message ingestion (mention / skill / tool)', () => {
       topicId,
     });
 
-    const written = await captureMessageInjections({
+    const { written } = await captureMessageInjections({
+      anchorMessageId: user.id,
       anchorCreatedAt: user.createdAt.getTime() + 1,
       mentionedAgents,
       messageModel,
@@ -135,6 +136,7 @@ describe('append-only v2 message ingestion (mention / skill / tool)', () => {
       baseTime + 2,
       baseTime + 3,
     ]);
+    expect(written.map((row) => row.parentId)).toEqual([user.id, user.id, user.id]);
 
     await messageModel.create({
       content: 'Delegated answer',
@@ -199,6 +201,156 @@ describe('append-only v2 message ingestion (mention / skill / tool)', () => {
     // Replay is a read: the persisted timeline is unchanged.
     const afterReplay = await messageModel.queryInjectionMessagesByTopic(topicId);
     expect(afterReplay.map((row) => row.id)).toEqual(written.map((row) => row.id));
+  });
+
+  it('keeps delayed injections at their persisted timestamps instead of grouping them by parentId', async () => {
+    const firstUser = await messageModel.create({
+      content: 'first turn',
+      createdAt: baseTime,
+      role: 'user',
+      topicId,
+    });
+    const secondUser = await messageModel.create({
+      content: 'second turn',
+      createdAt: baseTime + 1,
+      role: 'user',
+      topicId,
+    });
+    const firstAssistant = await messageModel.create({
+      content: 'first answer',
+      createdAt: baseTime + 10,
+      parentId: firstUser.id,
+      role: 'assistant',
+      topicId,
+    });
+    await serverDB
+      .update(messages)
+      .set({ parentId: firstAssistant.id })
+      .where(eq(messages.id, secondUser.id));
+    const secondAssistant = await messageModel.create({
+      content: 'second answer',
+      createdAt: baseTime + 11,
+      parentId: secondUser.id,
+      role: 'assistant',
+      topicId,
+    });
+    const firstInjection = await messageModel.appendInjectionRow(
+      topicId,
+      INJECTION_SOURCE_KEYS.SELECTED_TOOL,
+      'first turn tool',
+      'user',
+      { anchorMessageId: firstUser.id, createdAt: baseTime + 20 },
+    );
+    const secondInjection = await messageModel.appendInjectionRow(
+      topicId,
+      INJECTION_SOURCE_KEYS.MENTION_DELEGATION,
+      'second turn mention',
+      'user',
+      { anchorMessageId: secondUser.id, createdAt: baseTime + 21 },
+    );
+    const tiedInjection = await messageModel.appendInjectionRow(
+      topicId,
+      INJECTION_SOURCE_KEYS.SELECTED_SKILL,
+      'second turn skill',
+      'user',
+      { anchorMessageId: secondUser.id, createdAt: baseTime + 21 },
+    );
+    const secondLegacyInjection = await messageModel.appendInjectionRow(
+      topicId,
+      INJECTION_SOURCE_KEYS.SELECTED_TOOL,
+      'second turn legacy tool',
+      'user',
+      { createdAt: baseTime + 20 },
+    );
+
+    const timeline = mergeInjectionTimeline(
+      await messageModel.query({ topicId }),
+      await messageModel.queryInjectionMessagesByTopic(topicId),
+    );
+    const atTime = (createdAt: number) =>
+      timeline.filter((row) => row.createdAt === createdAt).map((row) => row.id);
+    expect(timeline.map((row) => row.id)).toEqual([
+      firstUser.id,
+      secondUser.id,
+      firstAssistant.id,
+      secondAssistant.id,
+      ...atTime(baseTime + 20),
+      ...atTime(baseTime + 21),
+    ]);
+    expect(atTime(baseTime + 20)).toEqual(
+      [firstInjection.id, secondLegacyInjection.id].sort((first, second) =>
+        first.localeCompare(second),
+      ),
+    );
+    expect(atTime(baseTime + 21)).toEqual(
+      [secondInjection.id, tiedInjection.id].sort((first, second) => first.localeCompare(second)),
+    );
+    expect(timeline.filter((row) => row.id === secondLegacyInjection.id)).toHaveLength(1);
+    expect(firstInjection.parentId).toBe(firstUser.id);
+    expect(secondInjection.parentId).toBe(secondUser.id);
+    expect(tiedInjection.parentId).toBe(secondUser.id);
+  });
+
+  it('inherits the thread of a runtime anchor and keeps thread injections out of the mainline', async () => {
+    const { threads } = await import('@lobechat/database/schemas');
+    await serverDB.insert(threads).values({
+      id: 'capture-thread',
+      topicId,
+      type: 'continuation',
+      userId,
+    });
+    const user = await messageModel.create({
+      content: 'thread question',
+      createdAt: baseTime,
+      role: 'user',
+      threadId: 'capture-thread',
+      topicId,
+    });
+    const { written } = await captureMessageInjections({
+      anchorMessageId: user.id,
+      anchorCreatedAt: baseTime + 1,
+      mentionedAgents,
+      messageModel,
+      topicId,
+    });
+
+    expect(written.map((row) => row.threadId)).toEqual(['capture-thread']);
+    expect(
+      (await messageModel.queryForModelInput({ threadId: 'capture-thread', topicId })).map(
+        (row) => row.id,
+      ),
+    ).toEqual([user.id, written[0].id]);
+    expect(
+      (await messageModel.query({ threadId: null, topicId })).map((row) => row.id),
+    ).not.toContain(written[0].id);
+  });
+
+  it('returns the original array for empty injections and preserves legacy rows', async () => {
+    const real = [
+      { content: 'legacy user', createdAt: baseTime, id: 'real-user', role: 'user' },
+      {
+        content: 'legacy answer',
+        createdAt: baseTime + 1,
+        id: 'real-assistant',
+        role: 'assistant',
+      },
+    ] as UIChatMessage[];
+    expect(mergeInjectionTimeline(real, [])).toBe(real);
+
+    const legacy = [
+      {
+        content: 'legacy injection',
+        createdAt: baseTime,
+        id: 'injection',
+        isInjection: true,
+        role: 'user',
+      },
+    ] as UIChatMessage[];
+    expect(mergeInjectionTimeline(real, legacy).map((row) => row.id)).toEqual([
+      'real-user',
+      'injection',
+      'real-assistant',
+    ]);
   });
 
   it('keeps the legacy injectors producing their blocks when no row exists', async () => {

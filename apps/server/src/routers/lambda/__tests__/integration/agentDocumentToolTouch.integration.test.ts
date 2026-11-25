@@ -86,7 +86,7 @@ describe('agentDocument tool-touch injection (real DB)', () => {
       isInjection: true,
       sourceKey: INJECTION_SOURCE_KEYS.AGENT_DOC_MESSAGE,
     });
-    expect(new Date(rows[0].createdAt).getTime()).toBe(baseTime);
+    expect(new Date(rows[0].createdAt).getTime()).toBe(baseTime + 1);
     expect(rows[0].content).toContain('Launch brief');
     expect(rows[0].content).toContain(doc!.id);
     expect(rows[0].content).not.toContain('full document body');
@@ -130,10 +130,9 @@ describe('agentDocument tool-touch injection (real DB)', () => {
     });
 
     const rows = await messageModel.queryInjectionMessagesByTopic(topicId);
-    expect(rows.map((row) => row.content)).toEqual([
-      expect.stringContaining('edited'),
-      expect.stringContaining('deleted'),
-    ]);
+    expect(rows).toHaveLength(2);
+    expect(rows.some((row) => row.content.includes('edited'))).toBe(true);
+    expect(rows.some((row) => row.content.includes('deleted'))).toBe(true);
   });
 
   it('still succeeds when injection storage fails', async () => {

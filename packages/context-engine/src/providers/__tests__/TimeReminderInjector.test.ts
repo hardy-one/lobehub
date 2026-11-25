@@ -206,4 +206,55 @@ describe('TimeReminderInjector', () => {
     }).process(makeContext(messages));
     expect(reminderTexts(bad.messages)).toEqual([]);
   });
+
+  it('keeps persisted injection rows out of real-turn cadence and byte-identical', async () => {
+    const injector = new TimeReminderInjector({ enabled: true, timezone: 'UTC' });
+    const real = [messageAt(0, BASE), messageAt(1, BASE + 35 * MIN)];
+    // This row has none of the legacy `meta.*` carrier flags — only the v2
+    // fields a DB replay carries. Its timestamp sits 1 minute before the
+    // second real turn: treating it as a turn would swallow that reminder.
+    const injectionContent = '<agent_documents_index>{{text}} 🏷️</agent_documents_index>';
+    const injection: Message = {
+      content: injectionContent,
+      createdAt: BASE + 34 * MIN,
+      id: 'inj-1',
+      isInjection: true,
+      role: 'user',
+      sourceKey: 'agent-document-message',
+    };
+
+    const withInjection = await injector.process(makeContext([real[0], injection, real[1]]));
+    const withoutInjection = await injector.process(makeContext(real));
+
+    expect(Buffer.from(String(withInjection.messages[1].content), 'utf8')).toEqual(
+      Buffer.from(injectionContent, 'utf8'),
+    );
+    expect(withInjection.messages[1]).toEqual(injection);
+    expect(String(withInjection.messages[1].content)).not.toContain('<current_time_reminder>');
+    // Same history of real turns => identical reminder count and text.
+    expect(withInjection.messages.filter((m) => !m.isInjection)).toEqual(withoutInjection.messages);
+    expect(reminderTexts(withInjection.messages)).toEqual(reminderTexts(withoutInjection.messages));
+    expect(reminderTexts(withInjection.messages)).toEqual([
+      'Thu 2026-11-19 20:00:00 +00:00 (UTC)',
+      'Thu 2026-11-19 20:35:00 +00:00 (UTC)',
+    ]);
+  });
+
+  it('does not prepend a reminder to a trailing injection row', async () => {
+    const injection: Message = {
+      content: '<mentioned_agents>delegation</mentioned_agents>',
+      createdAt: BASE,
+      isInjection: true,
+      role: 'user',
+      sourceKey: 'mention-delegation',
+    };
+
+    const result = await new TimeReminderInjector({
+      enabled: true,
+      timezone: 'UTC',
+    }).process(makeContext([messageAt(0, BASE - 40 * MIN), injection]));
+
+    expect(String(result.messages[1].content)).toBe(String(injection.content));
+    expect(reminderTexts(result.messages)).toEqual(['Thu 2026-11-19 19:20:00 +00:00 (UTC)']);
+  });
 });

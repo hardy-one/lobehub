@@ -76,7 +76,7 @@ describe('agentDocumentsRuntime document touch injection (real DB)', () => {
       isInjection: true,
       sourceKey: INJECTION_SOURCE_KEYS.AGENT_DOC_MESSAGE,
     });
-    expect(new Date(rows[0].createdAt).getTime()).toBe(baseTime);
+    expect(new Date(rows[0].createdAt).getTime()).toBe(baseTime + 1);
     expect(rows[0].content).toContain('Runtime brief');
     expect(rows[0].content).toContain('doc-runtime');
     expect(rows[0].content).not.toContain('full body stays in the tool result');

@@ -716,6 +716,36 @@ describe('StaleToolResultTrimProcessor', () => {
 
       expect(result.messages[1].content).toBe('x'.repeat(5000));
     });
+
+    // Append-only v2 rows also carry role=user. Counting one as the turn
+    // trigger moves the recency boundary into the in-flight turn and trims
+    // results that the same history without the row would keep.
+    it('ignores injection rows when locating the turn boundary', async () => {
+      const injection = {
+        content: 'injected context',
+        id: 'injection-1',
+        isInjection: true,
+        parentId: 'u1',
+        role: 'user',
+        sourceKey: 'agent-document-message',
+      };
+      const withInjection = [
+        { content: 'turn 1', id: 'u1', role: 'user' },
+        readFileResult('/a.ts', 'x'.repeat(5000), [0, 200]),
+        writeFileResult('/a.ts'),
+        ...fillers('t1-run'),
+        injection,
+      ];
+      const withoutInjection = withInjection.slice(0, -1);
+
+      const baseline = await createProcessor().process(createContext(withoutInjection));
+      const result = await createProcessor().process(createContext(withInjection));
+
+      expect(result.messages[1].content).toBe('x'.repeat(5000));
+      expect(result.messages[1].content).toBe(baseline.messages[1].content);
+      expect(result.messages.at(-1)).toEqual(injection);
+      expect(result.metadata.staleToolResultTrim).toEqual(baseline.metadata.staleToolResultTrim);
+    });
   });
 
   describe('invalidation index hygiene', () => {

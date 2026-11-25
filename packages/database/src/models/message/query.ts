@@ -353,7 +353,9 @@ export class MessageConversationQueries extends MessageScope {
     const messageItems = await this.query(params, options);
     if (!params.topicId) return messageItems;
 
-    const injectedMessages = await this.queryInjectionMessagesByTopic(params.topicId);
+    const injectedMessages = params.threadId
+      ? await this.queryInjectionMessagesByTopicAndThread(params.topicId, params.threadId)
+      : await this.queryInjectionMessagesByTopic(params.topicId);
     return mergeInjectionTimeline(messageItems, injectedMessages);
   };
 
@@ -368,17 +370,33 @@ export class MessageConversationQueries extends MessageScope {
    * Callers merge the rows into the real timeline by `(createdAt, id)`.
    */
   queryInjectionMessagesByTopic = async (topicId: string): Promise<UIChatMessage[]> => {
+    return this.queryInjectionMessagesByTopicAndThread(topicId);
+  };
+
+  queryInjectionMessagesByTopicAndThread = async (
+    topicId: string,
+    threadId?: string | null,
+  ): Promise<UIChatMessage[]> => {
     const rows = await this.db
       .select({
         content: messages.content,
         createdAt: messages.createdAt,
         id: messages.id,
+        parentId: messages.parentId,
         role: messages.role,
         sourceKey: messages.sourceKey,
+        threadId: messages.threadId,
         updatedAt: messages.updatedAt,
       })
       .from(messages)
-      .where(and(this.ownership(), eq(messages.topicId, topicId), eq(messages.isInjection, true)))
+      .where(
+        and(
+          this.ownership(),
+          eq(messages.topicId, topicId),
+          eq(messages.isInjection, true),
+          threadId === undefined ? undefined : this.matchThread(threadId),
+        ),
+      )
       .orderBy(asc(messages.createdAt), asc(messages.id));
 
     return rows.map((row) => ({
@@ -386,8 +404,10 @@ export class MessageConversationQueries extends MessageScope {
       createdAt: row.createdAt.getTime(),
       id: row.id,
       isInjection: true,
+      parentId: row.parentId ?? undefined,
       role: row.role as UIChatMessage['role'],
       sourceKey: row.sourceKey,
+      threadId: row.threadId ?? undefined,
       updatedAt: row.updatedAt.getTime(),
     }));
   };
@@ -482,10 +502,18 @@ export class MessageConversationQueries extends MessageScope {
   }: {
     threadId?: string | null;
     topicId: string;
-  }): Promise<{ id: string; messageGroupId: string | null; parentId: string | null }[]> => {
+  }): Promise<
+    {
+      id: string;
+      isInjection: boolean;
+      messageGroupId: string | null;
+      parentId: string | null;
+    }[]
+  > => {
     return this.db
       .select({
         id: messages.id,
+        isInjection: messages.isInjection,
         messageGroupId: messages.messageGroupId,
         parentId: messages.parentId,
       })

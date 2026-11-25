@@ -57,8 +57,10 @@ export class ReactionFeedbackProcessor extends BaseProcessor {
         }
       }
 
-      // Inject accumulated feedback into the next user message
-      if (message.role === 'user' && pendingEmojis.length > 0) {
+      // Inject accumulated feedback into the next real user message. A v2
+      // injection row carries `role: 'user'` but is replayed context, so it
+      // must stay byte-identical and must not consume pending feedback.
+      if (message.role === 'user' && message.isInjection !== true && pendingEmojis.length > 0) {
         const originalContent = message.content;
 
         if (typeof originalContent === 'string') {

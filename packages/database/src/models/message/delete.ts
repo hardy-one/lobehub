@@ -56,7 +56,11 @@ export class MessageDeleteMutations extends MessageScope {
       await tx
         .update(messages)
         .set({ parentId: message[0].parentId })
-        .where(and(eq(messages.parentId, id), scope));
+        .where(and(eq(messages.parentId, id), eq(messages.isInjection, false), scope));
+      await tx
+        .update(messages)
+        .set({ parentId: null })
+        .where(and(eq(messages.parentId, id), eq(messages.isInjection, true), scope));
 
       // 3. Check if the message contains tools
       const toolCallIds = (message[0].tools as ChatToolPayload[])
@@ -153,13 +157,15 @@ export class MessageDeleteMutations extends MessageScope {
 
       // 4. Query child messages whose parentId points to messages being deleted
       const children = await tx
-        .select({ id: messages.id, parentId: messages.parentId })
+        .select({ id: messages.id, isInjection: messages.isInjection, parentId: messages.parentId })
         .from(messages)
         .where(and(scope, inArray(messages.parentId, ids), not(inArray(messages.id, ids))));
 
       // 5. Update each child's parentId to the final ancestor
       for (const child of children) {
-        const newParentId = finalAncestorMap.get(child.parentId!) ?? null;
+        const newParentId = child.isInjection
+          ? null
+          : (finalAncestorMap.get(child.parentId!) ?? null);
         await tx
           .update(messages)
           .set({ parentId: newParentId })

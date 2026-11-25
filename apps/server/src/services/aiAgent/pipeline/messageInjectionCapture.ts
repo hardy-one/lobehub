@@ -32,6 +32,16 @@ export interface MessageInjectionRow {
   sourceKey: InjectionSourceKey;
 }
 
+export interface InjectionSourceFailure {
+  error: unknown;
+  sourceKey: string;
+}
+
+export interface CaptureMessageInjectionsResult {
+  failed: InjectionSourceFailure[];
+  written: Awaited<ReturnType<MessageModel['appendInjectionRow']>>[];
+}
+
 const uniqueIds = (ids?: string[]): string[] => {
   if (!ids?.length) return [];
 
@@ -139,7 +149,10 @@ export interface CaptureMessageInjectionsParams extends MessageInjectionCaptureI
    * and keeps them between the user turn and the assistant placeholder.
    */
   anchorCreatedAt?: number;
-  messageModel: Pick<MessageModel, 'appendInjectionRow'>;
+  anchorMessageId?: string;
+  assistantCreatedAt?: number;
+  messageModel: Pick<MessageModel, 'appendInjectionRow' | 'findById'>;
+  threadId?: string | null;
   topicId: string;
 }
 
@@ -147,26 +160,64 @@ export interface CaptureMessageInjectionsParams extends MessageInjectionCaptureI
  * The single message-ingestion hook for append-only v2 writes. Runs once per
  * persisted user turn and dispatches to every source the message carries, so
  * the three call sites can never drift into separate implementations.
+ *
+ * Batch 0-C2: each source is written in its own try/catch. One source failing
+ * never blocks the others (fail-open; there is currently no fail-closed source).
+ * The result reports which sources were written and which failed with their
+ * `sourceKey` + `error`, so callers can log per-source failures.
  */
 export const captureMessageInjections = async ({
+  assistantCreatedAt,
+  anchorMessageId,
   anchorCreatedAt,
+  threadId,
   messageModel,
   topicId,
   ...input
-}: CaptureMessageInjectionsParams) => {
+}: CaptureMessageInjectionsParams): Promise<CaptureMessageInjectionsResult> => {
   const rows = buildMessageInjectionRows(input);
-  const written = [];
+  const written: CaptureMessageInjectionsResult['written'] = [];
+  const failed: InjectionSourceFailure[] = [];
+  let anchorThreadId: string | null | undefined;
+  try {
+    anchorThreadId =
+      threadId ??
+      (anchorMessageId ? (await messageModel.findById(anchorMessageId))?.threadId : undefined);
+  } catch (error) {
+    // An anchor lookup is shared by every source. If it fails we still attempt
+    // each row with the explicit `threadId` (possibly undefined) — a missing
+    // thread tag is better than silently dropping all injection context.
+    log('captureMessageInjections: anchor thread lookup failed for topic %s: %O', topicId, error);
+  }
+  const maxOffset =
+    anchorCreatedAt === undefined || assistantCreatedAt === undefined
+      ? undefined
+      : Math.max(0, Math.min(rows.length - 1, assistantCreatedAt - 1 - anchorCreatedAt));
 
   for (const [index, row] of rows.entries()) {
-    written.push(
-      await messageModel.appendInjectionRow(
+    const offset = maxOffset === undefined ? index : Math.min(index, maxOffset);
+    try {
+      const inserted = await messageModel.appendInjectionRow(
         topicId,
         row.sourceKey,
         row.content,
         'user',
-        anchorCreatedAt === undefined ? {} : { createdAt: anchorCreatedAt + index },
-      ),
-    );
+        {
+          anchorMessageId,
+          ...(anchorCreatedAt === undefined ? {} : { createdAt: anchorCreatedAt + offset }),
+          threadId: anchorThreadId,
+        },
+      );
+      written.push(inserted);
+    } catch (error) {
+      failed.push({ error, sourceKey: row.sourceKey });
+      log(
+        'captureMessageInjections: failed to persist %s for topic %s: %O',
+        row.sourceKey,
+        topicId,
+        error,
+      );
+    }
   }
 
   if (written.length > 0) {
@@ -174,9 +225,17 @@ export const captureMessageInjections = async ({
       'captureMessageInjections: persisted %d row(s) for topic %s (%s)',
       written.length,
       topicId,
-      rows.map((row) => row.sourceKey).join(', '),
+      written.map((row) => row.sourceKey).join(', '),
+    );
+  }
+  if (failed.length > 0) {
+    log(
+      'captureMessageInjections: %d source(s) failed for topic %s (%s)',
+      failed.length,
+      topicId,
+      failed.map((entry) => entry.sourceKey).join(', '),
     );
   }
 
-  return written;
+  return { failed, written };
 };

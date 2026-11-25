@@ -64,6 +64,7 @@ export const databaseModelsMessageModule = () => ({
       findById: vi.fn().mockResolvedValue(undefined),
       findMessagePlugin: vi.fn().mockResolvedValue(undefined),
       query,
+      queryTopicMessageTree: vi.fn().mockResolvedValue([]),
       // Tests drive the legacy `query` mock; the model-input read is the same
       // read plus injection rows, which are empty unless a test opts in.
       queryForModelInput: query,

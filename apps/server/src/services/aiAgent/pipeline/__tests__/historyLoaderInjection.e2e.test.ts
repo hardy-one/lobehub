@@ -6,9 +6,8 @@ import {
   MessagesEngine,
   type MessagesEngineParams,
 } from '@lobechat/context-engine';
-import { parse } from '@lobechat/conversation-flow';
 import type { LobeChatDatabase } from '@lobechat/database';
-import { topics, users } from '@lobechat/database/schemas';
+import { messages, topics, users } from '@lobechat/database/schemas';
 import { getTestDB } from '@lobechat/database/test-utils';
 import type { RuntimeMentionedAgent, UIChatMessage } from '@lobechat/types';
 import { INJECTION_SOURCE_KEYS } from '@lobechat/types';
@@ -114,7 +113,8 @@ describe('history loader consumes persisted injection rows', () => {
     });
 
     // Real write path: the same hook production uses after operation prep.
-    const written = await captureMessageInjections({
+    const { written } = await captureMessageInjections({
+      anchorMessageId: user.id,
       // Production passes the persisted user row's timestamp; the merge must
       // keep the injected rows after the message they belong to.
       anchorCreatedAt: user.createdAt.getTime(),
@@ -185,10 +185,7 @@ describe('history loader consumes persisted injection rows', () => {
       answer.id,
     ]);
 
-    // The workflow into state.messages must preserve the replay markers.
-    const { flatList } = parse(history, undefined, {});
-    const replayed = flatList.filter((row) => row.isInjection);
-    expect(replayed.map((row) => row.sourceKey)).toEqual([
+    expect(history.filter((row) => row.isInjection).map((row) => row.sourceKey)).toEqual([
       INJECTION_SOURCE_KEYS.MENTION_DELEGATION,
       INJECTION_SOURCE_KEYS.SELECTED_SKILL,
       INJECTION_SOURCE_KEYS.SELECTED_TOOL,
@@ -196,7 +193,7 @@ describe('history loader consumes persisted injection rows', () => {
 
     // Operation prep appends the in-memory current prompt after history.
     const nextTimeline = [
-      ...flatList,
+      ...history,
       {
         content: nextUser.content ?? '',
         createdAt: baseTime + 100,
@@ -247,5 +244,66 @@ describe('history loader consumes persisted injection rows', () => {
     // when the topic has no injected rows.
     const history = await loadHistory([]);
     expect(JSON.stringify(history)).toBe(JSON.stringify(legacy));
+  });
+
+  it('prunes the regenerated branch through operationPrep while keeping anchor injections', async () => {
+    const prior = await messageModel.create({
+      content: 'prior question',
+      createdAt: baseTime,
+      role: 'user',
+      topicId,
+    });
+    const anchor = await messageModel.create({
+      content: 'regenerate this',
+      createdAt: baseTime + 60_000,
+      parentId: prior.id,
+      role: 'user',
+      topicId,
+    });
+    const anchorInjection = await messageModel.appendInjectionRow(
+      topicId,
+      INJECTION_SOURCE_KEYS.AGENT_DOC_MESSAGE,
+      'anchor touch',
+      'user',
+      { anchorMessageId: anchor.id, createdAt: baseTime + 60_001 },
+    );
+    const oldAnswer = await messageModel.create({
+      content: 'old answer',
+      createdAt: baseTime + 120_000,
+      parentId: anchor.id,
+      role: 'assistant',
+      topicId,
+    });
+    const answerInjection = await messageModel.appendInjectionRow(
+      topicId,
+      INJECTION_SOURCE_KEYS.AGENT_DOC_MESSAGE,
+      'old answer touch',
+      'user',
+      { createdAt: baseTime + 120_001 },
+    );
+    await serverDB
+      .update(messages)
+      .set({ parentId: oldAnswer.id })
+      .where(eq(messages.id, answerInjection.id));
+    const loader = createHistoryMessagesLoader(
+      { db: serverDB, isShareVisitorRun: false, messageModel, userId },
+      {
+        appContext: { topicId },
+        effectiveResume: true,
+        existingMessageIds: [],
+        parentMessageId: anchor.id,
+        resumeParentMessage: anchor,
+        selfMessageIds: new Set(),
+      },
+    );
+
+    const history = await loader();
+
+    expect(history.map((row) => row.id)).toEqual([prior.id, anchor.id, anchorInjection.id]);
+    expect(history.map((row) => row.id)).not.toContain(answerInjection.id);
+    console.log(
+      '[operationPrep regenerate]',
+      history.map((row) => ({ id: row.id, parentId: row.parentId, source: row.sourceKey })),
+    );
   });
 });

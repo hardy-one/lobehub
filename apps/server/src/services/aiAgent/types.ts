@@ -40,6 +40,8 @@ import type { AgentShareGate } from './shareGate';
 export interface ExecRunContext {
   agentConfig: AgentConfigWithId;
   appContext?: InternalExecAgentParams['appContext'];
+  /** Timestamp of the assistant placeholder that bounds this turn's injection rows. */
+  assistantMessageCreatedAt?: number;
   /** Persisted assistant placeholder row id (spinner anchor / error sink). */
   assistantMessageId: string;
   /**

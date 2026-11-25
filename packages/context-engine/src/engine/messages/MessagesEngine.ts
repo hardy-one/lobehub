@@ -103,6 +103,8 @@ const SKILLS_TOOL_ID = 'lobe-skills';
  */
 const PERSISTED_INJECTION_SOURCES: ReadonlySet<string> = new Set([
   INJECTION_SOURCE_KEYS.AGENT_DOC_MESSAGE,
+  INJECTION_SOURCE_KEYS.AGENT_DOC_CHANGES,
+  INJECTION_SOURCE_KEYS.CONTEXT_SELECTIONS,
   INJECTION_SOURCE_KEYS.MENTION_DELEGATION,
   INJECTION_SOURCE_KEYS.SELECTED_SKILL,
   INJECTION_SOURCE_KEYS.SELECTED_TOOL,
@@ -332,6 +334,12 @@ export class MessagesEngine {
     );
     const hasPersistedSelectedTool = persistedInjectionSources.has(
       INJECTION_SOURCE_KEYS.SELECTED_TOOL,
+    );
+    const hasPersistedAgentDocChanges = persistedInjectionSources.has(
+      INJECTION_SOURCE_KEYS.AGENT_DOC_CHANGES,
+    );
+    const hasPersistedContextSelections = persistedInjectionSources.has(
+      INJECTION_SOURCE_KEYS.CONTEXT_SELECTIONS,
     );
     const hasActiveTopicDocument = !!initialContext?.activeTopicDocument;
     // Runtime message state is authoritative, including an empty clear tombstone.
@@ -579,7 +587,7 @@ export class MessagesEngine {
       // rows, and the notes are then the only place new documents appear.
       new AgentDocumentChangesInjector({
         changes: agentDocumentChanges,
-        enabled: isAgentMode && !!agentDocumentChanges,
+        enabled: isAgentMode && !!agentDocumentChanges && !hasPersistedAgentDocChanges,
       }),
       // Active topic document → last user message, for continuing document work outside page scope
       new ActiveTopicDocumentContextInjector({
@@ -601,7 +609,7 @@ export class MessagesEngine {
       }),
       // Generic user-attached selections from chat/code/text contexts.
       new ContextSelectionsInjector({
-        enabled: true,
+        enabled: !hasPersistedContextSelections,
         mcpAppsEnabled: this.params.enableMcpAppContext,
       }),
       // Local-system file snapshots (replay send-time @file reads as real tool results)

@@ -21,7 +21,10 @@ export {
 } from './AgentManagementContextInjector';
 export { BotPlatformContextInjector } from './BotPlatformContextInjector';
 export { ConnectorOwnershipInjector } from './ConnectorOwnershipInjector';
-export { ContextSelectionsInjector } from './ContextSelectionsInjector';
+export {
+  ContextSelectionsInjector,
+  formatMessageContextSelections,
+} from './ContextSelectionsInjector';
 export { DiscordContextProvider } from './DiscordContextProvider';
 export { DocumentReferenceContextInjector } from './DocumentReferenceContextInjector';
 export { EvalContextSystemInjector } from './EvalContextSystemInjector';

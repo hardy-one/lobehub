@@ -394,6 +394,49 @@ describe('createServerContextFactProviders', () => {
       expect(bindAgentDocumentIndex).toHaveBeenCalledWith(redisIndexSet.mock.calls[0][1]);
     });
 
+    it('hands the resolved changes to the anchored persistence callback once', async () => {
+      getAgentContextDocuments.mockResolvedValue([reportRow(14_100, '2026-11-14T10:00:20.000Z')]);
+      redisIndexGet.mockResolvedValue(stored);
+      const captureAgentDocumentChanges = vi.fn();
+      const providers = createServerContextFactProviders({
+        ctx: { captureAgentDocumentChanges, serverDB: {}, userId: 'owner-1' } as never,
+        documentIndexTurn: turn,
+        state: { origin: { sourceMessageId: 'u2', topicId: 'topic-1' } } as never,
+      });
+
+      await providers.listAgentDocuments!('agent-1');
+      await providers.listAgentDocumentChanges!('agent-1');
+
+      expect(captureAgentDocumentChanges).toHaveBeenCalledTimes(1);
+      expect(captureAgentDocumentChanges).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentDocumentChanges: {
+            u2: [expect.objectContaining({ id: 'agent-doc-1', kind: 'edited' })],
+          },
+          topicId: 'topic-1',
+          userMessageId: 'u2',
+        }),
+      );
+    });
+
+    it('does not block document rendering when change persistence fails', async () => {
+      getAgentContextDocuments.mockResolvedValue([reportRow(14_100, '2026-11-14T10:00:20.000Z')]);
+      redisIndexGet.mockResolvedValue(stored);
+      const providers = createServerContextFactProviders({
+        ctx: {
+          captureAgentDocumentChanges: vi.fn().mockRejectedValue(new Error('writer down')),
+          serverDB: {},
+          userId: 'owner-1',
+        } as never,
+        documentIndexTurn: turn,
+        state: { origin: { sourceMessageId: 'u2', topicId: 'topic-1' } } as never,
+      });
+
+      await expect(providers.listAgentDocuments!('agent-1')).resolves.toEqual([
+        expect.objectContaining({ contentCharCount: 9400, id: 'agent-doc-1' }),
+      ]);
+    });
+
     it('renders later steps from the pinned snapshot without reading the stored one', async () => {
       // The database answers the narrowed read with the always-loaded documents only.
       getAgentContextDocuments.mockResolvedValue([alwaysRow]);

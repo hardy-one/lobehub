@@ -23,6 +23,18 @@ const fromLegacyPageSelections = (
     xml: selection.xml,
   }));
 
+export const formatMessageContextSelections = (
+  selections: ContextSelection[] | undefined,
+  mcpAppsEnabled = false,
+): string | undefined => {
+  if (!selections?.length) return undefined;
+
+  const formatted = formatContextSelections(
+    selections.filter((selection) => selection.source !== 'mcpApp' || mcpAppsEnabled),
+  );
+  return formatted || undefined;
+};
+
 export interface ContextSelectionsInjectorConfig {
   /** Whether generic contextSelections injection is enabled */
   enabled?: boolean;
@@ -57,21 +69,15 @@ export class ContextSelectionsInjector extends BaseEveryUserContentProvider {
     const contextSelections =
       (message.metadata?.contextSelections as ContextSelection[] | undefined) ??
       fromLegacyPageSelections(message.metadata?.pageSelections as PageSelection[] | undefined);
-
-    if (!contextSelections || contextSelections.length === 0) {
-      return null;
-    }
-
-    const formattedSelections = formatContextSelections(
-      contextSelections.filter(
-        (selection) => selection.source !== 'mcpApp' || this.config.mcpAppsEnabled,
-      ),
+    const formattedSelections = formatMessageContextSelections(
+      contextSelections,
+      this.config.mcpAppsEnabled,
     );
 
     if (!formattedSelections) return null;
 
     log(
-      `Building generic context selections for message at index ${index} with ${contextSelections.length} selections`,
+      `Building generic context selections for message at index ${index} with ${contextSelections?.length ?? 0} selections`,
     );
 
     return {

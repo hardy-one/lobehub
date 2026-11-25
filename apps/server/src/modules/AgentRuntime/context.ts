@@ -17,6 +17,7 @@ import type {
   ExecGroupMemberResult,
   GroupActionMemberBridgeParams,
 } from '@/server/services/agentRuntime/types';
+import type { captureAgentDocumentChanges } from '@/server/services/aiAgent/pipeline/agentDocumentChangesCapture';
 import { type ToolExecutionService } from '@/server/services/toolExecution';
 
 import { type IStreamEventManager } from './types';
@@ -59,6 +60,7 @@ export interface RuntimeExecutorContext {
   cancelVirtualSubAgent?: (
     params: CancelVirtualSubAgentParams,
   ) => Promise<CancelVirtualSubAgentResult>;
+  captureAgentDocumentChanges?: typeof captureAgentDocumentChanges;
   /**
    * Callback to fork a group member ("call agent member") under a
    * `lobe-group-management` tool call. Injected by AiAgentService; powers the

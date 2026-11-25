@@ -10,6 +10,7 @@ import {
 import type { UIChatMessage } from '@lobechat/types';
 import debug from 'debug';
 
+import { captureAgentDocumentChangesSafely } from '@/server/services/aiAgent/pipeline/agentDocumentChangesCapture';
 import { LocalQueueServiceImpl } from '@/server/services/queue/impls';
 
 import { hookDispatcher } from '../../hooks';
@@ -62,6 +63,7 @@ export type ExecuteStepDeps = Pick<
   | 'handleGroupMemberTimeout'
   | 'humanIntervention'
   | 'injectQueuedFollowUp'
+  | 'messageModel'
   | 'parkForClientLlm'
   | 'publishSubAgentProgress'
   | 'queryStepEntryMessages'
@@ -353,6 +355,18 @@ export async function executeStep(
         agentState,
         bindAgentDocumentIndex: (snapshot) => {
           agentDocumentIndex = snapshot;
+        },
+        captureAgentDocumentChanges: async (input) => {
+          try {
+            await captureAgentDocumentChangesSafely({
+              ...input,
+              messageModel: deps.messageModel,
+              topicId: input.topicId ?? agentState.origin?.topicId,
+              userMessageId: input.userMessageId ?? agentState.origin?.sourceMessageId,
+            });
+          } catch (error) {
+            log('Agent-document change persistence failed (fail-open): %O', error);
+          }
         },
         operationId,
         stepIndex,

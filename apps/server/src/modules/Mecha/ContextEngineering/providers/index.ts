@@ -140,6 +140,19 @@ export const createServerContextFactProviders = ({
             state,
             turn: documentIndexTurn,
           });
+          try {
+            await ctx.captureAgentDocumentChanges?.({
+              agentDocumentChanges: agentDocumentChangesByMessage(snapshot),
+              messageModel: new MessageModel(db, userId, workspaceId),
+              topicId: state.origin?.topicId ?? ctx.topicId,
+              userMessageId: state.origin?.sourceMessageId,
+            });
+          } catch (error) {
+            log(
+              'Agent-document change persistence failed, rendering snapshot documents: %O',
+              error,
+            );
+          }
           return { docs, snapshot };
         } catch (error) {
           // A snapshot only saves cache; never lose the documents over it.

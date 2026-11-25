@@ -107,6 +107,7 @@ export interface ToolDiscoveryResult {
   hasEnabledKnowledgeBases: boolean;
   implicitBuiltinSkillIds?: readonly string[];
   lobehubSkillManifests: LobeToolManifest[];
+  mcpAppsEnabled: boolean;
   /** Model facts read once for the whole operation; see {@link FrozenModelFacts}. */
   modelFacts: FrozenModelFacts;
   modelMediaCapabilities: Pick<ModelAbilities, 'audio' | 'video' | 'vision'>;

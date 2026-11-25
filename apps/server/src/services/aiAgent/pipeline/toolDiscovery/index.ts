@@ -107,6 +107,7 @@ export const discoverTools = async (
 ): Promise<ToolDiscoveryResult> => {
   /** Filled below when the run borrows connectors; returned as run context. */
   let connectorOwnershipNote: string | undefined;
+  const mcpAppsEnabled = await isMcpAppsEnabled(deps.userId);
   const {
     agentConfig,
     appContext,
@@ -404,11 +405,7 @@ export const discoverTools = async (
     );
 
     connectorManifests = [
-      ...buildConnectorManifests(
-        connectorsMcp,
-        connectorTools,
-        await isMcpAppsEnabled(deps.userId),
-      ),
+      ...buildConnectorManifests(connectorsMcp, connectorTools, mcpAppsEnabled),
       ...boundConnectorManifests,
     ];
 
@@ -923,6 +920,7 @@ export const discoverTools = async (
         : [],
     hasEnabledKnowledgeBases,
     lobehubSkillManifests,
+    mcpAppsEnabled,
     modelFacts,
     modelMediaCapabilities,
     onlineDevices,

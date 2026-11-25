@@ -1,12 +1,14 @@
 import type { LobeToolManifest, OperationSkillSet } from '@lobechat/context-engine';
 import {
   formatMentionedAgentsContext,
+  formatMessageContextSelections,
   formatSelectedSkillsContext,
   formatSelectedToolsContext,
 } from '@lobechat/context-engine';
 import {
   INJECTION_SOURCE_KEYS,
   type InjectionSourceKey,
+  type MessageMetadata,
   type RuntimeMentionedAgent,
   type RuntimeSelectedSkill,
   type RuntimeSelectedTool,
@@ -18,6 +20,8 @@ import type { MessageModel } from '@/database/models/message';
 const log = debug('lobe-server:ai-agent-service');
 
 export interface MessageInjectionCaptureInput {
+  contextSelections?: MessageMetadata['contextSelections'];
+  mcpAppsEnabled?: boolean;
   mentionedAgents?: RuntimeMentionedAgent[];
   selectedSkillIds?: string[];
   selectedToolIds?: string[];
@@ -90,6 +94,8 @@ const resolveToolName = (identifier: string, manifest?: LobeToolManifest): strin
  * Pure: the same input always yields the same rows.
  */
 export const buildMessageInjectionRows = ({
+  contextSelections,
+  mcpAppsEnabled,
   mentionedAgents,
   selectedSkillIds,
   selectedToolIds,
@@ -97,6 +103,14 @@ export const buildMessageInjectionRows = ({
   toolManifestMap,
 }: MessageInjectionCaptureInput): MessageInjectionRow[] => {
   const rows: MessageInjectionRow[] = [];
+
+  const selectionContent = formatMessageContextSelections(contextSelections, mcpAppsEnabled);
+  if (selectionContent) {
+    rows.push({
+      content: selectionContent,
+      sourceKey: INJECTION_SOURCE_KEYS.CONTEXT_SELECTIONS,
+    });
+  }
 
   if (mentionedAgents?.length) {
     rows.push({

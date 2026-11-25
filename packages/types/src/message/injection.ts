@@ -10,12 +10,16 @@
 export const INJECTION_SOURCE_KEYS = {
   /** `AgentDocumentMessageInjector` (after-first-user / context-end). */
   AGENT_DOC_MESSAGE: 'agent_doc_message',
+  /** `AgentDocumentChangesInjector`'s per-user snapshot diff. */
+  AGENT_DOC_CHANGES: 'agent_doc_changes',
   /** `AgentManagementContextInjector`'s `<mentioned_agents>` delegation hint. */
   MENTION_DELEGATION: 'mention_delegation',
   /** `SelectedSkillInjector`'s `<selected_skill_context>` block. */
   SELECTED_SKILL: 'selected_skill',
   /** `SelectedToolInjector`'s `<selected_tool_context>` block. */
   SELECTED_TOOL: 'selected_tool',
+  /** `ContextSelectionsInjector`'s message-owned selection block. */
+  CONTEXT_SELECTIONS: 'context_selections',
 } as const;
 
 export type InjectionSourceKey = (typeof INJECTION_SOURCE_KEYS)[keyof typeof INJECTION_SOURCE_KEYS];

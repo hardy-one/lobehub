@@ -1,5 +1,3 @@
-import { renderPlaceholderTemplate } from '@lobechat/context-engine';
-
 import { preferencePrompt } from '../prompts';
 import type { PreferenceMemory } from '../schemas';
 import { PreferenceMemorySchema } from '../schemas';
@@ -33,13 +31,5 @@ export class PreferenceExtractor extends BaseMemoryExtractor<PreferenceMemory> {
       topK: options.topK,
       username: options.username,
     };
-  }
-
-  buildUserPrompt(options: ExtractorTemplateProps): string {
-    if (!this.promptTemplate) {
-      throw new Error('Prompt template not loaded');
-    }
-
-    return renderPlaceholderTemplate(this.promptTemplate!, this.getTemplateProps(options));
   }
 }

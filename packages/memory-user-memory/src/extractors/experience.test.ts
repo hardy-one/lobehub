@@ -1,8 +1,6 @@
-import { renderPlaceholderTemplate } from '@lobechat/context-engine';
 import type { ModelRuntime } from '@lobechat/model-runtime';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { experiencePrompt } from '../prompts';
 import { memoryTypeValues } from '../schemas';
 import type { ExtractorTemplateProps } from '../types';
 import { ExperienceExtractor } from './experience';
@@ -59,22 +57,27 @@ describe('ExperienceExtractor', () => {
     });
   });
 
-  it('throws when building user prompt without template', () => {
+  it('builds a short user prompt without loading the system template', () => {
     const extractor = new ExperienceExtractor(extractorConfig);
 
-    expect(() => (extractor as any).buildUserPrompt(templateOptions)).toThrowError(
-      'Prompt template not loaded',
-    );
+    const result = (extractor as any).buildUserPrompt(templateOptions);
+
+    expect(result).toContain('Extract experience memories from the conversation above.');
+    expect(result).toContain('Respond in English.');
+    expect(result).toContain('Use the session date 2024-06-01');
+    expect(result).toContain('available categories work, personal');
+    expect(result).toContain('top 3 retrieved memories');
+    expect(result).toContain('Current user: User.');
+    expect(result).not.toContain('You are a focused memory extraction assistant');
   });
 
-  it('renders user prompt with provided template props', async () => {
+  it('does not repeat the system template in the user prompt', async () => {
     const extractor = new ExperienceExtractor(extractorConfig);
 
     await extractor.ensurePromptTemplate();
     const result = (extractor as any).buildUserPrompt(templateOptions);
-    const expectedProps = (extractor as any).getTemplateProps(templateOptions);
 
-    expect(result).not.toBe('');
-    expect(result).toBe(renderPlaceholderTemplate(experiencePrompt, expectedProps));
+    expect(result).not.toBe(extractor.getPrompt());
+    expect(result.length).toBeLessThan(extractor.getPrompt().length);
   });
 });

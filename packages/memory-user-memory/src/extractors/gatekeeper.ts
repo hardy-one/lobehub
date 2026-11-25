@@ -1,4 +1,3 @@
-import { renderPlaceholderTemplate } from '@lobechat/context-engine';
 import type { GenerateObjectSchema } from '@lobechat/model-runtime';
 
 import { gatekeeperPrompt } from '../prompts';
@@ -47,19 +46,11 @@ export class UserMemoryGateKeeper extends BaseMemoryExtractor<GatekeeperResult, 
 
   getTemplateProps(options: GatekeeperOptions) {
     return {
+      gateKeeperLanguage: options.gateKeeperLanguage || 'English',
       retrievedContext: options.retrievedContexts?.join('\n\n') || 'No similar memories retrieved.',
       topK: options.topK ?? 10,
     };
   }
-
-  buildUserPrompt(options: GatekeeperOptions): string {
-    if (!this.promptTemplate) {
-      throw new Error('Prompt template not loaded');
-    }
-
-    return renderPlaceholderTemplate(this.promptTemplate!, this.getTemplateProps(options));
-  }
-
   async check(options: GatekeeperOptions = {}) {
     return this.structuredCall(options);
   }

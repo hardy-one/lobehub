@@ -13,6 +13,7 @@ import {
 import { normalizeBm25MatchQuery, SAFE_BM25_QUERY_OPTIONS } from '../../../utils/bm25';
 import { inJsonStringArray } from '../../../utils/inJsonStringArray';
 import type { UserMemoryModelContext } from './context';
+import { buildContextVisibilityCte } from './contextVisibility';
 import type { GetMemoriesResult, QueryUserMemoriesParams } from './types';
 import { buildTextSearchCondition, isPGliteDatabase } from './utils';
 
@@ -186,25 +187,27 @@ export const queryMemories = async (
           : sort === 'scoreImpact'
             ? userMemoriesContexts.scoreImpact
             : userMemoriesContexts.capturedAt;
-
-      const orderByClauses = buildOrderBy(
-        scoreColumn,
-        userMemoriesContexts.updatedAt,
-        userMemoriesContexts.createdAt,
-      );
-      const joinCondition = and(
-        eq(userMemories.userId, userMemoriesContexts.userId),
-        // Use jsonb key-existence (jsonb_exists) to check membership without expanding the array
-        sql<boolean>`
-          COALESCE(${userMemoriesContexts.userMemoryIds}, '[]'::jsonb) ? (${userMemories.id})::text
-        `,
-      );
-
       const contextFilters: Array<SQL | undefined> = [
+        candidateIds ? inJsonStringArray(userMemoriesContexts.id, candidateIds) : undefined,
+        status && status.length > 0
+          ? inArray(userMemoriesContexts.currentStatus, status)
+          : undefined,
+        types && types.length > 0 ? inArray(userMemoriesContexts.type, types) : undefined,
+      ];
+      const joinedTagFilters =
+        tags && tags.length > 0
+          ? or(
+              ...tags.map(
+                (tag) =>
+                  sql<boolean>`COALESCE(${tag} = ANY(${userMemoriesContexts.tags}), false) OR COALESCE(${tag} = ANY(${userMemories.tags}), false)`,
+              ),
+            )
+          : undefined;
+
+      const parentFilters: Array<SQL | undefined> = [
         whereClause,
-        candidateIds
-          ? inJsonStringArray(userMemoriesContexts.id, candidateIds)
-          : buildTextSearchCondition({
+        !candidateIds
+          ? buildTextSearchCondition({
               bm25MatchQuery,
               groups: [
                 {
@@ -212,38 +215,29 @@ export const queryMemories = async (
                   fields: ['title', 'summary', 'details'],
                   keyColumn: userMemories.id,
                 },
-                {
-                  fallbackColumns: [
-                    userMemoriesContexts.title,
-                    userMemoriesContexts.description,
-                    userMemoriesContexts.currentStatus,
-                  ],
-                  fields: ['title', 'description', 'current_status'],
-                  keyColumn: userMemoriesContexts.id,
-                },
               ],
               normalizedQuery,
               supportsBm25,
-            }),
-        status && status.length > 0
-          ? inArray(userMemoriesContexts.currentStatus, status)
+            })
           : undefined,
-        types && types.length > 0 ? inArray(userMemoriesContexts.type, types) : undefined,
-        tags && tags.length > 0
-          ? or(
-              ...tags.map(
-                (tag) =>
-                  sql<boolean>`
-                    COALESCE(${tag} = ANY(${userMemoriesContexts.tags}), false)
-                    OR COALESCE(${tag} = ANY(${userMemories.tags}), false)
-                  `,
-              ),
-            )
+        categories && categories.length > 0
+          ? inArray(userMemories.memoryCategory, categories)
           : undefined,
       ];
-      const contextWhereClause = and(...contextFilters);
+
+      const { applyOrder, contextPage, parentExists } = buildContextVisibilityCte({
+        contextFilters: and(...contextFilters),
+        ctx,
+        layer: resolvedLayer,
+        memoryFilters: and(...parentFilters),
+        offset,
+        order,
+        pageSize: normalizedPageSize,
+        scoreColumn,
+      });
 
       const rowsQuery = ctx.db
+        .with(contextPage)
         .select({
           context: {
             accessedAt: userMemoriesContexts.accessedAt,
@@ -263,19 +257,52 @@ export const queryMemories = async (
           },
           memory: baseSelection,
         })
-        .from(userMemories)
-        .innerJoin(userMemoriesContexts, joinCondition)
-        .where(contextWhereClause)
-        .orderBy(...orderByClauses)
-        .limit(normalizedPageSize)
-        .offset(offset);
-      const totalQuery = ctx.db
-        .select({ count: sql<number>`COUNT(DISTINCT ${userMemories.id})::int` })
-        .from(userMemories)
-        .innerJoin(userMemoriesContexts, joinCondition)
-        .where(contextWhereClause);
-
-      const [rows, totalResult] = await Promise.all([rowsQuery, totalQuery]);
+        .from(contextPage)
+        .innerJoin(userMemoriesContexts, eq(userMemoriesContexts.id, contextPage.id))
+        .innerJoin(
+          userMemories,
+          sql<boolean>`COALESCE(${contextPage.userMemoryIds}, '[]'::jsonb) ? (${userMemories.id})::text`,
+        )
+        .where(and(parentExists, ctx.memoryWhere(userMemories), joinedTagFilters))
+        .orderBy(
+          applyOrder(scoreColumn),
+          applyOrder(userMemoriesContexts.updatedAt),
+          applyOrder(userMemoriesContexts.createdAt),
+          asc(userMemoriesContexts.id),
+          asc(userMemories.id),
+        );
+      const legacyRowsQuery = ctx.db
+        .select({
+          contextId: userMemoriesContexts.id,
+          memoryId: userMemories.id,
+        })
+        .from(userMemoriesContexts)
+        .innerJoin(userMemories, eq(userMemories.userId, userMemoriesContexts.userId))
+        .where(
+          and(
+            whereClause,
+            eq(userMemoriesContexts.userId, ctx.userId),
+            eq(userMemories.userId, ctx.userId),
+            status && status.length > 0
+              ? inArray(userMemoriesContexts.currentStatus, status)
+              : undefined,
+            types && types.length > 0 ? inArray(userMemoriesContexts.type, types) : undefined,
+            categories && categories.length > 0
+              ? inArray(userMemories.memoryCategory, categories)
+              : undefined,
+            tags && tags.length > 0
+              ? or(
+                  ...tags.map(
+                    (tag) =>
+                      sql<boolean>`COALESCE(${tag} = ANY(${userMemoriesContexts.tags}), false) OR COALESCE(${tag} = ANY(${userMemories.tags}), false)`,
+                  ),
+                )
+              : undefined,
+            sql<boolean>`COALESCE(${userMemoriesContexts.userMemoryIds}, '[]'::jsonb) ? (${userMemories.id})::text`,
+          ),
+        );
+      const [rows, legacyRows] = await Promise.all([rowsQuery, legacyRowsQuery]);
+      const totalFromRows = new Set(legacyRows.map((row) => row.memoryId)).size;
 
       return {
         items: rows.map((row) => {
@@ -287,7 +314,7 @@ export const queryMemories = async (
         }),
         page: normalizedPage,
         pageSize: normalizedPageSize,
-        total: Number(totalResult[0]?.count ?? 0),
+        total: totalFromRows,
       };
     }
     case LayersEnum.Activity: {

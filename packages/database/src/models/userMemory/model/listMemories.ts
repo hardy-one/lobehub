@@ -19,6 +19,7 @@ import {
 } from '../../../schemas';
 import { selectNonVectorColumns } from '../../../utils/columns';
 import type { UserMemoryModelContext } from './context';
+import { buildContextVisibilityCte } from './contextVisibility';
 
 export type ListMemoriesItem<L extends LayersEnum> = L extends LayersEnum.Context
   ? UserMemoryDetail & {
@@ -88,28 +89,33 @@ export const listMemories = async <
 
   switch (layer) {
     case LayersEnum.Context: {
-      const orderByClauses = buildOrderBy(
-        userMemoriesContexts.updatedAt,
-        userMemoriesContexts.createdAt,
-      );
-      const joinCondition = and(
-        eq(userMemories.userId, userMemoriesContexts.userId),
-        sql<boolean>`
-          COALESCE(${userMemoriesContexts.userMemoryIds}, '[]'::jsonb) ? (${userMemories.id})::text
-        `,
-      );
+      const { applyOrder, contextPage, parentExists } = buildContextVisibilityCte({
+        ctx,
+        layer,
+        offset,
+        order,
+        pageSize: normalizedPageSize,
+      });
 
       const rows = await ctx.db
+        .with(contextPage)
         .select({
           context: contextSelection,
           memory: baseSelection,
         })
-        .from(userMemories)
-        .innerJoin(userMemoriesContexts, joinCondition)
-        .where(baseWhere)
-        .orderBy(...orderByClauses)
-        .limit(normalizedPageSize)
-        .offset(offset);
+        .from(contextPage)
+        .innerJoin(userMemoriesContexts, eq(userMemoriesContexts.id, contextPage.id))
+        .innerJoin(
+          userMemories,
+          sql<boolean>`COALESCE(${contextPage.userMemoryIds}, '[]'::jsonb) ? (${userMemories.id})::text`,
+        )
+        .where(parentExists)
+        .orderBy(
+          applyOrder(userMemoriesContexts.updatedAt),
+          applyOrder(userMemoriesContexts.createdAt),
+          asc(userMemoriesContexts.id),
+          asc(userMemories.id),
+        );
 
       return rows.map((row) => ({
         context: row.context,

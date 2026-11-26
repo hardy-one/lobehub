@@ -35,6 +35,30 @@ services:
     restart: always
     networks:
       - lobe-network
+  # Self-hosted QStash-compatible queue (https://github.com/DSH244/rustash).
+  # Reachable as `rustash` from the lobe container on lobe-network; schedules
+  # registered at boot use QSTASH_CALLBACK_BASE_URL=http://network-service:3210.
+  rustash:
+    image: hardyone/rustash:latest
+    container_name: lobe-rustash
+    environment:
+      PORT: '8080'
+      DATABASE_URL: sqlite:///data/rstash.sqlite3
+      QSTASH_TOKEN: ${QSTASH_TOKEN}
+      QSTASH_CURRENT_SIGNING_KEY: ${QSTASH_CURRENT_SIGNING_KEY}
+      QSTASH_NEXT_SIGNING_KEY: ${QSTASH_NEXT_SIGNING_KEY}
+      ALLOW_PRIVATE_DESTINATIONS: 'true'
+    volumes:
+      - 'rustash-data:/data'
+    healthcheck:
+      test: ['CMD-SHELL', 'curl --fail --silent http://127.0.0.1:8080/v2/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: always
+    networks:
+      - lobe-network
 
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
@@ -159,7 +183,7 @@ services:
       - ENDPOINT=127.0.0.1:4317
 
   lobe:
-    image: lobehub/lobehub
+    image: hardyone/lobehub:latest
     container_name: lobehub
     network_mode: 'service:network-service'
     depends_on:
@@ -171,6 +195,8 @@ services:
         condition: service_started
       casdoor:
         condition: service_started
+      rustash:
+        condition: service_healthy
 
     environment:
       - 'AUTH_SSO_PROVIDERS=casdoor'
@@ -240,6 +266,8 @@ volumes:
   s3_data:
     driver: local
   grafana_data:
+    driver: local
+  rustash-data:
     driver: local
   tempo_data:
     driver: local

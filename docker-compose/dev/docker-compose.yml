@@ -118,12 +118,40 @@ services:
     networks:
       - lobe-network
 
+  # Self-hosted QStash-compatible queue (https://github.com/DSH244/rustash).
+  # Host networking lets it call APP_URL=http://localhost:3210 on the host where
+  # the dev server runs; it listens on 127.0.0.1:8080 for QSTASH_URL.
+  rustash:
+    image: hardyone/rustash:latest
+    container_name: lobe-rustash
+    network_mode: host
+    environment:
+      PORT: '8080'
+      DATABASE_URL: sqlite:///data/rstash.sqlite3
+      QSTASH_TOKEN: ${QSTASH_TOKEN}
+      QSTASH_CURRENT_SIGNING_KEY: ${QSTASH_CURRENT_SIGNING_KEY}
+      QSTASH_NEXT_SIGNING_KEY: ${QSTASH_NEXT_SIGNING_KEY}
+      ALLOW_PRIVATE_DESTINATIONS: 'true'
+    volumes:
+      - 'rustash-data:/data'
+    healthcheck:
+      test: ['CMD-SHELL', 'curl --fail --silent http://127.0.0.1:8080/v2/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: always
+    env_file:
+      - .env
+
 volumes:
   data:
     driver: local
   redis_data:
     driver: local
   rustfs-data:
+    driver: local
+  rustash-data:
     driver: local
 
 networks:

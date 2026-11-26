@@ -104,30 +104,27 @@ export async function searchContextsSemantic(
     1 - (${cosineDistance(userMemoriesContexts.descriptionVector, embedding)})
   `;
 
-  const linkedMemory = (extraConditions: SQL[] = []) => {
-    const conditions = [
-      sql`${userMemories.userId} = ${userMemoriesContexts.userId}`,
-      ctx.memoryWhere(userMemories),
-      sql`COALESCE(${userMemoriesContexts.userMemoryIds}, '[]'::jsonb) ? (${userMemories.id})::text`,
-      ...extraConditions,
-    ];
-    return sql<boolean>`EXISTS (
-      SELECT 1 FROM ${userMemories}
-      WHERE ${sql.join(conditions, sql` AND `)}
-    )`;
-  };
-
-  const contextConditions = [...baseConditions, linkedMemory()];
+  const parentConditions = [
+    sql`${userMemories.userId} = ${userMemoriesContexts.userId}`,
+    ctx.memoryWhere(userMemories),
+    sql`COALESCE(${userMemoriesContexts.userMemoryIds}, '[]'::jsonb) ? (${userMemories.id})::text`,
+  ];
   if (params.categories?.length) {
-    contextConditions.push(linkedMemory([inArray(userMemories.memoryCategory, params.categories)]));
+    parentConditions.push(inArray(userMemories.memoryCategory, params.categories));
   }
   if (params.tags?.length || params.labels?.length) {
-    contextConditions.push(
-      linkedMemory([
-        ctx.buildExactTagFilterCondition(userMemoriesContexts.tags, userMemories.tags, params)!,
-      ]),
+    parentConditions.push(
+      ctx.buildExactTagFilterCondition(userMemoriesContexts.tags, userMemories.tags, params)!,
     );
   }
+
+  const contextConditions = [
+    ...baseConditions,
+    sql<boolean>`EXISTS (
+      SELECT 1 FROM ${userMemories}
+      WHERE ${sql.join(parentConditions, sql` AND `)}
+    )`,
+  ];
 
   const contextCandidates = ctx.db.$with('semantic_context_candidates').as(
     ctx.db

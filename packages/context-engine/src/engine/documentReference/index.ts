@@ -4,4 +4,5 @@ export {
   MAX_DOCUMENT_REFERENCES,
   parseReferDocumentTags,
   resolveDocumentReferences,
+  resolveDocumentReferencesByMessage,
 } from './resolveDocumentReferences';

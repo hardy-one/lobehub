@@ -246,7 +246,10 @@ describe('SkillImportRouteInjector', () => {
     expect(content).toContain('install it as documented');
   });
 
-  it('appends to the last user message only', async () => {
+  // The route belongs to the message that carried the skill URL, not to whichever
+  // message happens to be last. This keeps the injected text byte-identical when
+  // that message becomes history — the same ownership rule as document/topic refs.
+  it('attaches the route to every user message carrying its own skill URL', async () => {
     const injector = new SkillImportRouteInjector({ enabled: true });
 
     const result = await injector.process(
@@ -257,9 +260,49 @@ describe('SkillImportRouteInjector', () => {
       ]),
     );
 
-    expect(result.messages[0].content).toBe('https://lobehub.com/skills/old-one');
+    expect(result.messages[0].content).toContain('identifier="old-one"');
+    expect(result.messages[0].content).not.toContain('identifier="new-one"');
     expect(result.messages[2].content).toContain('identifier="new-one"');
     expect(result.messages[2].content).not.toContain('identifier="old-one"');
+    // Only the current-turn (last) message drives this turn's install metadata.
+    expect(result.metadata.skillImportRoute).toEqual({
+      injected: true,
+      urls: ['https://lobehub.com/skills/new-one'],
+    });
+  });
+
+  // A freshly persisted message carries only its original text; the block is
+  // recomputed on every request. Both states must render byte-for-byte the same,
+  // and a history message must not re-trigger this turn's install metadata.
+  it('keeps a message byte-identical when it becomes history', async () => {
+    const injector = new SkillImportRouteInjector({ enabled: true });
+    const target = 'install this skill: https://lobehub.com/skills/demo-skill';
+
+    const first = await injector.process(createContext([{ content: target, role: 'user' }]));
+    const later = await injector.process(
+      createContext([
+        { content: target, role: 'user' },
+        { content: 'ok', role: 'assistant' },
+        { content: 'a follow up with no skill link', role: 'user' },
+      ]),
+    );
+
+    expect(later.messages[0].content).toBe(first.messages[0].content);
+    expect(later.metadata.skillImportRoute).toBeUndefined();
+  });
+
+  // Replaying content that already carries the block must not append a second copy.
+  it('does not duplicate the block when processing already-injected content', async () => {
+    const injector = new SkillImportRouteInjector({ enabled: true });
+    const first = await injector.process(
+      createContext([{ content: 'install https://lobehub.com/skills/a-b', role: 'user' }]),
+    );
+
+    const replay = await injector.process(
+      createContext([{ content: first.messages[0].content, role: 'user' }]),
+    );
+
+    expect(String(replay.messages[0].content).match(/<skill_import_route>/g)).toHaveLength(1);
   });
 
   it('handles multimodal content by appending to the last text part', async () => {

@@ -5,6 +5,7 @@ import {
   MAX_DOCUMENT_REFERENCES,
   parseReferDocumentTags,
   resolveDocumentReferences,
+  resolveDocumentReferencesByMessage,
 } from '../resolveDocumentReferences';
 
 describe('parseReferDocumentTags', () => {
@@ -178,5 +179,94 @@ describe('resolveDocumentReferences', () => {
     expect(refs).toHaveLength(MAX_DOCUMENT_REFERENCES);
     expect(refs?.[0].documentId).toBe('doc-2');
     expect(lookup).toHaveBeenCalledTimes(MAX_DOCUMENT_REFERENCES);
+  });
+});
+
+describe('resolveDocumentReferencesByMessage', () => {
+  it('returns undefined without tags', async () => {
+    const lookup = vi.fn();
+    expect(
+      await resolveDocumentReferencesByMessage([{ content: 'plain' }], lookup),
+    ).toBeUndefined();
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it('keys a reference to its own message with a live lookup result', async () => {
+    const lookup = vi.fn(async () => ({ content: 'Body', title: 'Current' }));
+    const refs = await resolveDocumentReferencesByMessage(
+      [
+        { content: '<refer_document name="Old" id="doc-1" />', id: 'user-1', role: 'user' },
+        { content: 'Follow-up', id: 'user-2', role: 'user' },
+      ],
+      lookup,
+    );
+
+    expect(refs).toEqual([
+      {
+        content: 'Body',
+        documentId: 'doc-1',
+        messageId: 'user-1',
+        messageIndex: 0,
+        title: 'Current',
+      },
+    ]);
+  });
+
+  it('resolves the same document again for a later request with fresh content', async () => {
+    const versions = ['First version', 'Second version'];
+    const lookup = vi.fn(async () => ({ content: versions.shift() ?? 'Unknown' }));
+    const messages = [
+      { content: '<refer_document id="doc-1" />', id: 'user-1', role: 'user' },
+      { content: 'Next', id: 'user-2', role: 'user' },
+    ];
+
+    const first = await resolveDocumentReferencesByMessage(messages, lookup);
+    const second = await resolveDocumentReferencesByMessage(messages, lookup);
+
+    expect(first?.[0]).toMatchObject({ content: 'First version', messageId: 'user-1' });
+    expect(second?.[0]).toMatchObject({ content: 'Second version', messageId: 'user-1' });
+    expect(lookup).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a missing or forbidden document unavailable on its own message', async () => {
+    const refs = await resolveDocumentReferencesByMessage(
+      [{ content: '<refer_document id="doc-gone" />', id: 'user-1', role: 'user' }],
+      async () => null,
+    );
+
+    expect(refs).toEqual([
+      { documentId: 'doc-gone', messageId: 'user-1', messageIndex: 0, title: undefined },
+    ]);
+  });
+
+  it('bounds each message by the document cap and truncates to the character budget', async () => {
+    const ids = Array.from({ length: MAX_DOCUMENT_REFERENCES + 2 }, (_, i) => `doc-${i}`);
+    const content = ids.map((id) => `<refer_document id="${id}" />`).join(' ');
+    const lookup = vi.fn(async () => ({ content: 'x'.repeat(MAX_DOCUMENT_REFERENCE_CHARS + 5) }));
+
+    const refs = await resolveDocumentReferencesByMessage(
+      [{ content, id: 'user-1', role: 'user' }],
+      lookup,
+    );
+
+    expect(refs).toHaveLength(MAX_DOCUMENT_REFERENCES);
+    expect(refs?.every((ref) => ref.content?.length === MAX_DOCUMENT_REFERENCE_CHARS)).toBe(true);
+    expect(refs?.every((ref) => ref.truncated === true)).toBe(true);
+    expect(lookup).toHaveBeenCalledTimes(MAX_DOCUMENT_REFERENCES);
+  });
+
+  it('does not let assistant or tool echoes claim a reference', async () => {
+    const lookup = vi.fn(async () => ({ content: 'Body' }));
+    const refs = await resolveDocumentReferencesByMessage(
+      [
+        { content: '<refer_document id="doc-1" />', id: 'user-1', role: 'user' },
+        { content: '<refer_document id="doc-fake" />', id: 'a-1', role: 'assistant' },
+        { content: '<refer_document id="doc-tool" />', id: 't-1', role: 'tool' },
+      ],
+      lookup,
+    );
+
+    expect(refs?.map((ref) => ref.documentId)).toEqual(['doc-1']);
+    expect(lookup).toHaveBeenCalledTimes(1);
   });
 });

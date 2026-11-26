@@ -86,4 +86,79 @@ describe('semantic context filtering before limit', () => {
     expect(new UserMemoryModel(db, userId)).toBeDefined();
     expect(LayersEnum.Context).toBeDefined();
   });
+
+  it('requires category and tag to match the same parent memory', async () => {
+    const db = await getTestDB();
+    const schema = await import('../../../schemas');
+    const model = new UserMemoryQueryModel(db, 'l369-multiparent-user');
+    const { eq } = await import('drizzle-orm');
+
+    await db.delete(schema.userMemoriesContexts);
+    await db.delete(schema.userMemories);
+    await db.delete(schema.users).where(eq(schema.users.id, 'l369-multiparent-user'));
+    await db.insert(schema.users).values({ id: 'l369-multiparent-user' });
+
+    const insertParent = async (category: string, tags: string[]) =>
+      (
+        await db
+          .insert(schema.userMemories)
+          .values({
+            details: 'details',
+            lastAccessedAt: new Date(),
+            memoryCategory: category,
+            memoryLayer: 'context',
+            memoryType: 'context',
+            summary: 'summary',
+            tags,
+            title: `${category}-${tags.join(',')}`,
+            userId: 'l369-multiparent-user',
+          })
+          .returning()
+      )[0];
+
+    const categoryParent = await insertParent('work', []);
+    const tagParent = await insertParent('personal', ['atlas']);
+    const sameParent = await insertParent('work', ['atlas']);
+
+    const split = (
+      await db
+        .insert(schema.userMemoriesContexts)
+        .values({
+          currentStatus: 'active',
+          description: 'split filters over two parents',
+          descriptionVector: embedding(1),
+          tags: [],
+          title: 'split',
+          type: 'project',
+          userId: 'l369-multiparent-user',
+          userMemoryIds: [categoryParent.id, tagParent.id],
+        })
+        .returning()
+    )[0];
+
+    const matched = (
+      await db
+        .insert(schema.userMemoriesContexts)
+        .values({
+          currentStatus: 'active',
+          description: 'both filters on one parent',
+          descriptionVector: embedding(20),
+          tags: [],
+          title: 'matched',
+          type: 'project',
+          userId: 'l369-multiparent-user',
+          userMemoryIds: [sameParent.id],
+        })
+        .returning()
+    )[0];
+
+    const rows = await searchContextsSemantic(model.context, embedding(20), 5, {
+      categories: ['work'],
+      queries: ['x'.repeat(300)],
+      tags: ['atlas'],
+    });
+
+    expect(rows.map((row) => row.id)).toEqual([matched.id]);
+    expect(rows.some((row) => row.id === split.id)).toBe(false);
+  });
 });

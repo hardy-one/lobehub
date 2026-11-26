@@ -85,25 +85,34 @@ services:
     networks:
       - eval-network
 
-  # Host networking lets local QStash call an APP_URL on localhost without a tunnel.
-  # This eval stack targets the same Linux environment used by Harbor task containers.
-  # qstash dev has no bind-address option, so host firewall isolation remains required.
-  qstash:
-    image: public.ecr.aws/upstash/qstash:2.37.18
+  # Self-hosted QStash-compatible queue (https://github.com/DSH244/rustash).
+  # Host networking lets it call APP_URL=http://localhost:3210 on the host without
+  # a tunnel; this eval stack targets the same Linux environment used by Harbor
+  # task containers. Bind to loopback only and firewall the host port.
+  rustash:
+    image: hardyone/rustash:latest
     network_mode: host
-    command:
-      [
-        'qstash',
-        'dev',
-        '-port=${EVAL_QSTASH_PORT:-8080}',
-        '-log-port=${EVAL_QSTASH_LOG_PORT:-8081}',
-      ]
+    environment:
+      PORT: ${EVAL_QSTASH_PORT:-8080}
+      DATABASE_URL: sqlite:///data/rstash.sqlite3
+      QSTASH_TOKEN: ${QSTASH_TOKEN}
+      QSTASH_CURRENT_SIGNING_KEY: ${QSTASH_CURRENT_SIGNING_KEY}
+      QSTASH_NEXT_SIGNING_KEY: ${QSTASH_NEXT_SIGNING_KEY}
+      ALLOW_PRIVATE_DESTINATIONS: 'true'
+    volumes:
+      - 'rustash-data:/data'
+    healthcheck:
+      test: ['CMD-SHELL', 'curl --fail --silent http://127.0.0.1:${EVAL_QSTASH_PORT:-8080}/v2/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
 
   # The unified image runs both gateways. Ports are intentionally swapped from
   # its defaults to preserve the existing eval contract: device=8787, agent=8788.
   gateway:
-    image: ghcr.io/lobehub/lobehub-gateway:0.5.0
+    image: hardyone/lobehub-gateway:latest
     depends_on:
       rustfs-init:
         condition: service_completed_successfully
@@ -137,6 +146,7 @@ volumes:
   postgresql-data: {}
   redis-data: {}
   rustfs-data: {}
+  rustash-data: {}
 
 networks:
   eval-network:

@@ -27,41 +27,43 @@ const DEFAULT_IMAGE_INPUT_TOKENS = 1000;
 const DEFAULT_VIDEO_INPUT_TOKENS = 1000;
 const DEFAULT_AUDIO_INPUT_TOKENS = 1000;
 
-const estimateSerializable = (value: unknown): number => {
+const estimateSerializable = (value: unknown, estimateText: (text: string) => number): number => {
   if (value == null) return 0;
   const text = typeof value === 'string' ? value : JSON.stringify(value);
-  return text ? estimateTokenCount(text) : 0;
+  return text ? estimateText(text) : 0;
 };
 
 export const estimateRequestInputTokens = (
   messages: ReadonlyArray<Record<string, any>>,
   options: EstimateRequestInputTokensOptions = {},
+  estimateText: (text: string) => number = estimateTokenCount,
 ): number => {
+  const estimate = (value: unknown) => estimateSerializable(value, estimateText);
   const imageTokens = options.imageTokenEstimate ?? DEFAULT_IMAGE_INPUT_TOKENS;
   const videoTokens = options.videoTokenEstimate ?? DEFAULT_VIDEO_INPUT_TOKENS;
   const audioTokens = options.audioTokenEstimate ?? DEFAULT_AUDIO_INPUT_TOKENS;
 
   let total = 0;
   for (const message of messages) {
-    total += estimateSerializable(message.role);
-    total += estimateSerializable(message.name);
-    total += estimateSerializable(message.tool_call_id);
-    total += estimateSerializable(message.tool_calls);
-    total += estimateSerializable(message.reasoning?.content);
+    total += estimate(message.role);
+    total += estimate(message.name);
+    total += estimate(message.tool_call_id);
+    total += estimate(message.tool_calls);
+    total += estimate(message.reasoning?.content);
 
     const { content } = message;
     if (typeof content === 'string') {
-      total += estimateSerializable(content);
+      total += estimate(content);
       continue;
     }
     if (!Array.isArray(content)) {
-      total += estimateSerializable(content);
+      total += estimate(content);
       continue;
     }
     for (const part of content) {
       switch (part?.type) {
         case 'text': {
-          total += estimateSerializable(part.text);
+          total += estimate(part.text);
           break;
         }
         case 'image_url': {
@@ -77,12 +79,12 @@ export const estimateRequestInputTokens = (
           break;
         }
         default: {
-          total += estimateSerializable(part);
+          total += estimate(part);
         }
       }
     }
   }
 
-  total += estimateSerializable(options.tools);
+  total += estimate(options.tools);
   return total;
 };

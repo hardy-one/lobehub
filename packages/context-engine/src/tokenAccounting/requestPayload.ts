@@ -14,6 +14,7 @@ import { countContextTokens } from './index';
  */
 export interface RequestPayloadMessage {
   content?: unknown;
+  name?: string;
   reasoning?: { content?: string; signature?: string } | string;
   reasoning_content?: string;
   role: string;
@@ -26,6 +27,136 @@ export interface RequestPayloadMessage {
   }>;
 }
 
+interface PreparedContentPart {
+  raw?: unknown;
+  text?: string;
+  tokens?: number;
+  type?: string;
+}
+
+interface PreparedContent {
+  parts: PreparedContentPart[];
+  text: string;
+}
+
+interface PreparedMessage {
+  accounting: UIChatMessage;
+  content: string | PreparedContent;
+  name?: string;
+  reasoningContent?: string;
+  reasoningSignature?: string;
+  role: string;
+  toolCallId?: string;
+  toolCalls?: string;
+}
+
+interface PreparedRequest {
+  messages: PreparedMessage[];
+  tools?: string;
+}
+
+const serialize = (value: unknown): string | undefined => {
+  if (value == null) return undefined;
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  return text || undefined;
+};
+
+const prepareRequest = (
+  { messages, tools }: CountRequestPayloadTokensParams,
+  imageTokens = 1000,
+  videoTokens = 1000,
+  audioTokens = 1000,
+): PreparedRequest => ({
+  messages: messages.map((message, index) => {
+    const reasoning = toReasoning(message);
+    let content: string | PreparedContent;
+    if (Array.isArray(message.content)) {
+      const parts: PreparedContentPart[] = [];
+      const textParts: string[] = [];
+      for (const part of message.content) {
+        if (
+          part &&
+          typeof part === 'object' &&
+          part.type === 'text' &&
+          typeof part.text === 'string'
+        ) {
+          parts.push({ raw: part, text: part.text, tokens: 0, type: 'text' });
+          textParts.push(part.text);
+          continue;
+        }
+        const fixed =
+          part?.type === 'image_url'
+            ? imageTokens
+            : part?.type === 'video_url'
+              ? videoTokens
+              : part?.type === 'audio_url'
+                ? audioTokens
+                : undefined;
+        parts.push({ raw: part, tokens: fixed });
+      }
+      content = { parts, text: textParts.join('\n') };
+    } else content = toText(message.content);
+
+    const accountingTools = message.tool_calls?.map((toolCall) => ({
+      apiName: toolCall.function?.name,
+      arguments: toolCall.function?.arguments,
+      id: toolCall.id,
+      thoughtSignature: toolCall.thoughtSignature,
+      type: toolCall.type,
+    }));
+    return {
+      accounting: {
+        content: '',
+        id: `request_payload_${index}`,
+        reasoning,
+        role: message.role,
+        tool_call_id: message.tool_call_id,
+        tools: accountingTools,
+      } as unknown as UIChatMessage,
+      content,
+      name: message.name,
+      reasoningContent:
+        typeof reasoning === 'string'
+          ? reasoning
+          : typeof reasoning === 'object'
+            ? reasoning?.content
+            : undefined,
+      reasoningSignature: typeof reasoning === 'object' ? reasoning?.signature : undefined,
+      role: message.role,
+      toolCallId: message.tool_call_id,
+      toolCalls: accountingTools ? serialize(message.tool_calls) : undefined,
+    };
+  }),
+  tools: serialize(tools),
+});
+
+const estimatePreparedRequest = (
+  request: PreparedRequest,
+  estimateText: (text: string) => number,
+): number => {
+  const estimate = (value: unknown) => {
+    const text = serialize(value);
+    return text ? estimateText(text) : 0;
+  };
+  let total = 0;
+  for (const message of request.messages) {
+    total += estimate(message.accounting.role);
+    total += estimate(message.name);
+    total += estimate(message.toolCallId);
+    total += estimate(message.toolCalls);
+    total += estimate(message.reasoningContent);
+    if (typeof message.content === 'string') {
+      total += estimate(message.content);
+      continue;
+    }
+    for (const part of message.content.parts) {
+      total += part.type === 'text' ? estimate(part.text) : (part.tokens ?? estimate(part.raw));
+    }
+  }
+  total += estimate(request.tools);
+  return total;
+};
+
 export interface CountRequestPayloadTokensParams {
   /** Processed messages exactly as they are sent, system messages included. */
   messages: readonly RequestPayloadMessage[];
@@ -36,8 +167,6 @@ export interface CountRequestPayloadTokensParams {
 /** The `<files_info>` block MessageContentProcessor appends to user content. */
 const FILES_INFO_OPEN = '<files_info>';
 const FILES_INFO_CLOSE = '</files_info>';
-
-const estimate = estimateTextTokens;
 
 /**
  * Text the provider tokenizes. Image, video and audio parts are skipped, as in
@@ -102,32 +231,6 @@ const toReasoning = (message: RequestPayloadMessage) => {
 };
 
 /**
- * Map a payload message onto the `UIChatMessage` fields `countContextTokens`
- * reads, so the request is counted with the same rules as the compression
- * trigger: `tool_calls` become `tools` (id + name + arguments + type +
- * thoughtSignature), tool results stay `content` with their `tool_call_id`.
- */
-const toAccountingMessage = (
-  message: RequestPayloadMessage,
-  content: string,
-  index: number,
-): UIChatMessage =>
-  ({
-    content,
-    id: `request_payload_${index}`,
-    reasoning: toReasoning(message),
-    role: message.role,
-    tool_call_id: message.tool_call_id,
-    tools: message.tool_calls?.map((toolCall) => ({
-      apiName: toolCall.function?.name,
-      arguments: toolCall.function?.arguments,
-      id: toolCall.id,
-      thoughtSignature: toolCall.thoughtSignature,
-      type: toolCall.type,
-    })),
-  }) as unknown as UIChatMessage;
-
-/**
  * Estimate every token of one final chat request — the processed messages and
  * the `tools` array — by source, reusing {@link countContextTokens}.
  *
@@ -140,19 +243,37 @@ const toAccountingMessage = (
  *
  * Counts are raw `tokenx` estimates (no drift multiplier).
  */
-export const countRequestPayloadTokens = ({
-  messages,
-  tools = [],
-}: CountRequestPayloadTokensParams): MessageContextAccounting => {
+export const countRequestPayloadTokens = (
+  { messages, tools = [] }: CountRequestPayloadTokensParams,
+  estimateText: (text: string) => number = estimateTextTokens,
+): MessageContextAccounting => {
+  return countPreparedRequestPayloadTokens(prepareRequest({ messages, tools }), estimateText);
+};
+
+const countPreparedRequestPayloadTokens = (
+  request: PreparedRequest,
+  estimateText: (text: string) => number,
+): MessageContextAccounting => {
+  const { messages } = request;
+  const tools = request.tools ? JSON.parse(request.tools) : [];
+  const estimate = (text: string | undefined) => (text ? estimateText(text) : 0);
   const systemMessages: UIChatMessage[] = [];
   const conversationMessages: UIChatMessage[] = [];
   let fileContext = 0;
   let reasoningSignature = 0;
   const media: MessageContextMediaCounts = { audio: 0, image: 0, video: 0 };
 
-  messages.forEach((message, index) => {
-    countMedia(message.content, media);
-    let content = toText(message.content);
+  messages.forEach((message) => {
+    const prepared = message.content;
+    // Media parts are counted by item, as `countContextTokens` does; the prepared
+    // form keeps the raw part around only for this.
+    if (typeof prepared !== 'string') {
+      countMedia(
+        prepared.parts.map((part) => part.raw),
+        media,
+      );
+    }
+    let content = typeof prepared === 'string' ? prepared : prepared.text;
 
     if (message.role === 'user') {
       const split = splitFileContext(content);
@@ -160,22 +281,25 @@ export const countRequestPayloadTokens = ({
       fileContext += estimate(split.fileContext);
     }
 
-    const reasoning = toReasoning(message);
-    if (reasoning && typeof reasoning === 'object') {
-      reasoningSignature += estimate(reasoning.signature);
+    if (message.reasoningSignature) {
+      reasoningSignature += estimate(message.reasoningSignature);
     }
 
-    const target = message.role === 'system' ? systemMessages : conversationMessages;
-    target.push(toAccountingMessage(message, content, index));
+    message.accounting.content = content;
+    const target = message.accounting.role === 'system' ? systemMessages : conversationMessages;
+    target.push(message.accounting);
   });
 
   const options = { driftMultiplier: 1 };
-  const system = countContextTokens({ messages: systemMessages, options }).rawTotal;
-  const conversation = countContextTokens({
-    messages: conversationMessages,
-    options,
-    tools: [...tools],
-  });
+  const system = countContextTokens({ messages: systemMessages, options }, estimateText).rawTotal;
+  const conversation = countContextTokens(
+    {
+      messages: conversationMessages,
+      options,
+      tools,
+    },
+    estimateText,
+  );
 
   const bySource = {
     ...conversation.bySource,
@@ -203,11 +327,35 @@ export const countRequestPayloadTokens = ({
  */
 export const tryCountRequestPayloadTokens = (
   params: CountRequestPayloadTokensParams,
+  estimateText: (text: string) => number = estimateTextTokens,
 ): MessageContextAccounting | undefined => {
   try {
-    return countRequestPayloadTokens(params);
+    return countRequestPayloadTokens(params, estimateText);
   } catch (error) {
     console.error('[context-engine] Failed to account request tokens:', error);
     return undefined;
+  }
+};
+
+/** Count both request views with a cache scoped to this assembled request. */
+export const countRequestTokenViews = (params: CountRequestPayloadTokensParams) => {
+  const cache = new Map<string, number>();
+  const estimateText = (text: string) => {
+    const cached = cache.get(text);
+    if (cached !== undefined) return cached;
+    const tokens = estimateTextTokens(text);
+    cache.set(text, tokens);
+    return tokens;
+  };
+
+  try {
+    const prepared = prepareRequest(params);
+    return {
+      contextAccounting: countPreparedRequestPayloadTokens(prepared, estimateText),
+      estimatedInputTokens: estimatePreparedRequest(prepared, estimateText),
+    };
+  } catch (error) {
+    console.error('[context-engine] Failed to account request tokens:', error);
+    return { contextAccounting: undefined, estimatedInputTokens: undefined };
   }
 };

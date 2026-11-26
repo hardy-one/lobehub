@@ -189,6 +189,23 @@ export const parseStructuredToolArguments = (
           }
         }
       }
+      if (!recovered && context.truncated !== true) {
+        const trimmed = value.trimStart();
+        if (trimmed.startsWith('}')) {
+          const braceIndex = value.length - trimmed.length;
+          const withoutLeadingBrace = value.slice(0, braceIndex) + value.slice(braceIndex + 1);
+          try {
+            const repaired = JSON.parse(withoutLeadingBrace);
+            if (repaired && typeof repaired === 'object' && !Array.isArray(repaired)) {
+              parsed = repaired;
+              recovered = true;
+              log('structured output: recovered by removing one leading closing brace');
+            }
+          } catch {
+            // Fall through to the original diagnostics when the repaired value is invalid.
+          }
+        }
+      }
       if (recovered) {
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
           throw new StructuredOutputError(

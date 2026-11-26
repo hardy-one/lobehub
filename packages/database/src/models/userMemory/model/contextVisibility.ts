@@ -31,6 +31,21 @@ export const buildContextVisibilityCte = ({
 }: ContextVisibilityParams) => {
   const applyOrder = order === 'asc' ? asc : desc;
 
+  const candidateContexts = ctx.db.$with('memory_candidate_contexts').as(
+    ctx.db
+      .select({
+        createdAt: userMemoriesContexts.createdAt,
+        id: userMemoriesContexts.id,
+        score: scoreColumn
+          ? sql`${scoreColumn}`.as('score_column')
+          : sql<null>`NULL`.as('score_column'),
+        updatedAt: userMemoriesContexts.updatedAt,
+        userMemoryIds: userMemoriesContexts.userMemoryIds,
+      })
+      .from(userMemoriesContexts)
+      .where(and(eq(userMemoriesContexts.userId, ctx.userId), contextFilters)),
+  );
+
   const filteredPairs = ctx.db.$with('memory_filtered_pairs').as(
     ctx.db
       .select({
@@ -43,6 +58,7 @@ export const buildContextVisibilityCte = ({
           : sql<null>`NULL`.as('score_column'),
       })
       .from(userMemoriesContexts)
+      .innerJoin(candidateContexts, eq(candidateContexts.id, userMemoriesContexts.id))
       .innerJoin(
         userMemories,
         and(
@@ -52,7 +68,6 @@ export const buildContextVisibilityCte = ({
       )
       .where(
         and(
-          eq(userMemoriesContexts.userId, ctx.userId),
           eq(userMemories.userId, ctx.userId),
           layer ? eq(userMemories.memoryLayer, layer) : undefined,
           notTrashed(userMemories.isDeleted),
@@ -91,5 +106,5 @@ export const buildContextVisibilityCte = ({
       .from(pagePairs),
   );
 
-  return { applyOrder, contextBridges, filteredPairs, pagePairs };
+  return { applyOrder, candidateContexts, contextBridges, filteredPairs, pagePairs };
 };

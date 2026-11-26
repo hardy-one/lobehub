@@ -89,16 +89,17 @@ export const listMemories = async <
 
   switch (layer) {
     case LayersEnum.Context: {
-      const { applyOrder, contextBridges, filteredPairs, pagePairs } = buildContextVisibilityCte({
-        ctx,
-        layer,
-        offset,
-        order,
-        pageSize: normalizedPageSize,
-      });
+      const { applyOrder, candidateContexts, contextBridges, filteredPairs, pagePairs } =
+        buildContextVisibilityCte({
+          ctx,
+          layer,
+          offset,
+          order,
+          pageSize: normalizedPageSize,
+        });
 
       const rows = await ctx.db
-        .with(filteredPairs, pagePairs)
+        .with(candidateContexts, filteredPairs, pagePairs)
         .select({
           context: contextSelection,
           memory: baseSelection,

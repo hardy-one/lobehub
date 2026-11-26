@@ -89,24 +89,23 @@ export const listMemories = async <
 
   switch (layer) {
     case LayersEnum.Context: {
-      const { applyOrder, candidateContexts, contextBridges, filteredPairs, pagePairs } =
-        buildContextVisibilityCte({
-          ctx,
-          layer,
-          offset,
-          order,
-          pageSize: normalizedPageSize,
-        });
+      const { applyOrder, candidateWindow, pagePairs, visiblePairs } = buildContextVisibilityCte({
+        ctx,
+        layer,
+        offset,
+        order,
+        pageSize: normalizedPageSize,
+      });
 
       const rows = await ctx.db
-        .with(candidateContexts, filteredPairs, pagePairs)
+        .with(candidateWindow, visiblePairs, pagePairs)
         .select({
           context: contextSelection,
           memory: baseSelection,
         })
         .from(pagePairs)
-        .innerJoin(userMemoriesContexts, eq(userMemoriesContexts.id, contextBridges.contextId))
-        .innerJoin(userMemories, eq(userMemories.id, contextBridges.memoryId))
+        .innerJoin(userMemoriesContexts, eq(userMemoriesContexts.id, pagePairs.contextId))
+        .innerJoin(userMemories, eq(userMemories.id, pagePairs.memoryId))
         .orderBy(
           applyOrder(userMemoriesContexts.updatedAt),
           applyOrder(userMemoriesContexts.createdAt),

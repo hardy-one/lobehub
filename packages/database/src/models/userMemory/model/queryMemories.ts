@@ -12,8 +12,6 @@ import {
 } from '../../../schemas';
 import { normalizeBm25MatchQuery, SAFE_BM25_QUERY_OPTIONS } from '../../../utils/bm25';
 import { inJsonStringArray } from '../../../utils/inJsonStringArray';
-import { visibleMemoryState } from '../../../utils/memoryVisibility';
-import { notTrashed } from '../../../utils/softDelete';
 import type { UserMemoryModelContext } from './context';
 import { buildContextVisibilityCte } from './contextVisibility';
 import type { GetMemoriesResult, QueryUserMemoriesParams } from './types';
@@ -189,7 +187,6 @@ export const queryMemories = async (
           : sort === 'scoreImpact'
             ? userMemoriesContexts.scoreImpact
             : userMemoriesContexts.capturedAt;
-
       const contextFilters: Array<SQL | undefined> = [
         candidateIds ? inJsonStringArray(userMemoriesContexts.id, candidateIds) : undefined,
         status && status.length > 0
@@ -197,11 +194,18 @@ export const queryMemories = async (
           : undefined,
         types && types.length > 0 ? inArray(userMemoriesContexts.type, types) : undefined,
       ];
-      const contextWhereClause = and(...contextFilters);
-      const memoryFilters: Array<SQL | undefined> = [
-        categories && categories.length > 0
-          ? inArray(userMemories.memoryCategory, categories)
-          : undefined,
+      const joinedTagFilters =
+        tags && tags.length > 0
+          ? or(
+              ...tags.map(
+                (tag) =>
+                  sql<boolean>`COALESCE(${tag} = ANY(${userMemoriesContexts.tags}), false) OR COALESCE(${tag} = ANY(${userMemories.tags}), false)`,
+              ),
+            )
+          : undefined;
+
+      const parentFilters: Array<SQL | undefined> = [
+        whereClause,
         !candidateIds
           ? buildTextSearchCondition({
               bm25MatchQuery,
@@ -216,33 +220,25 @@ export const queryMemories = async (
               supportsBm25,
             })
           : undefined,
+        categories && categories.length > 0
+          ? inArray(userMemories.memoryCategory, categories)
+          : undefined,
       ];
-      const joinedFilters =
-        tags && tags.length > 0
-          ? or(
-              ...tags.map((tag) =>
-                or(
-                  sql<boolean>`COALESCE(${tag} = ANY(${userMemoriesContexts.tags}), false)`,
-                  sql<boolean>`COALESCE(${tag} = ANY(${userMemories.tags}), false)`,
-                ),
-              ),
-            )
-          : undefined;
-      const { applyOrder, candidateContexts, contextBridges, filteredPairs, pagePairs } =
-        buildContextVisibilityCte({
-          ctx,
-          layer: resolvedLayer,
-          offset,
-          order,
-          pageSize: normalizedPageSize,
-          contextFilters: contextWhereClause,
-          memoryFilters: and(whereClause, ...memoryFilters),
-          joinedFilters,
-          scoreColumn,
-        });
+
+      const { applyOrder, candidateWindow, pagePairs, visiblePairs } = buildContextVisibilityCte({
+        contextFilters: and(...contextFilters),
+        ctx,
+        joinedTagFilters,
+        layer: resolvedLayer,
+        memoryFilters: and(...parentFilters),
+        offset,
+        order,
+        pageSize: normalizedPageSize,
+        scoreColumn,
+      });
 
       const rowsQuery = ctx.db
-        .with(candidateContexts, filteredPairs, pagePairs)
+        .with(candidateWindow, visiblePairs, pagePairs)
         .select({
           context: {
             accessedAt: userMemoriesContexts.accessedAt,
@@ -263,8 +259,8 @@ export const queryMemories = async (
           memory: baseSelection,
         })
         .from(pagePairs)
-        .innerJoin(userMemoriesContexts, eq(userMemoriesContexts.id, contextBridges.contextId))
-        .innerJoin(userMemories, eq(userMemories.id, contextBridges.memoryId))
+        .innerJoin(userMemoriesContexts, eq(userMemoriesContexts.id, pagePairs.contextId))
+        .innerJoin(userMemories, eq(userMemories.id, pagePairs.memoryId))
         .orderBy(
           applyOrder(scoreColumn),
           applyOrder(userMemoriesContexts.updatedAt),
@@ -273,24 +269,9 @@ export const queryMemories = async (
           asc(userMemories.id),
         );
       const totalQuery = ctx.db
-        .with(candidateContexts)
-        .select({ count: sql<number>`COUNT(DISTINCT ${userMemories.id})::int` })
-        .from(candidateContexts)
-        .innerJoin(userMemoriesContexts, eq(userMemoriesContexts.id, candidateContexts.id))
-        .innerJoin(
-          userMemories,
-          and(
-            eq(userMemories.userId, ctx.userId),
-            eq(userMemories.memoryLayer, resolvedLayer),
-            notTrashed(userMemories.isDeleted),
-            visibleMemoryState(userMemories.state),
-            whereClause,
-            ...memoryFilters,
-            sql<boolean>`COALESCE(${candidateContexts.userMemoryIds}, '[]'::jsonb) ? (${userMemories.id})::text`,
-            joinedFilters,
-          ),
-        );
-
+        .with(candidateWindow, visiblePairs)
+        .select({ count: sql<number>`COUNT(DISTINCT ${visiblePairs.memoryId})::int` })
+        .from(visiblePairs);
       const [rows, totalResult] = await Promise.all([rowsQuery, totalQuery]);
 
       return {

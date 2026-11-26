@@ -9,7 +9,7 @@ import type { UserMemoryModelContext } from './context';
 interface ContextVisibilityParams {
   contextFilters?: SQL | undefined;
   ctx: UserMemoryModelContext;
-  joinedFilters?: SQL | undefined;
+  joinedTagFilters?: SQL | undefined;
   layer?: string;
   memoryFilters?: SQL | undefined;
   offset: number;
@@ -18,9 +18,14 @@ interface ContextVisibilityParams {
   scoreColumn?: SQL | AnyColumn;
 }
 
+/**
+ * Builds a bounded pair page: a limited candidate window is expanded to visible
+ * parent pairs, then the pair page is selected with LIMIT/OFFSET. The parent
+ * lookup never runs against the full context table.
+ */
 export const buildContextVisibilityCte = ({
   ctx,
-  joinedFilters,
+  joinedTagFilters,
   layer,
   order = 'desc',
   offset,
@@ -31,7 +36,7 @@ export const buildContextVisibilityCte = ({
 }: ContextVisibilityParams) => {
   const applyOrder = order === 'asc' ? asc : desc;
 
-  const candidateContexts = ctx.db.$with('memory_candidate_contexts').as(
+  const candidateWindow = ctx.db.$with('memory_candidate_window').as(
     ctx.db
       .select({
         createdAt: userMemoriesContexts.createdAt,
@@ -43,68 +48,67 @@ export const buildContextVisibilityCte = ({
         userMemoryIds: userMemoriesContexts.userMemoryIds,
       })
       .from(userMemoriesContexts)
-      .where(and(eq(userMemoriesContexts.userId, ctx.userId), contextFilters)),
+      .where(and(eq(userMemoriesContexts.userId, ctx.userId), contextFilters))
+      .orderBy(
+        ...(scoreColumn ? [applyOrder(scoreColumn)] : []),
+        applyOrder(userMemoriesContexts.updatedAt),
+        applyOrder(userMemoriesContexts.createdAt),
+        asc(userMemoriesContexts.id),
+      )
+      .limit(
+        sql<number>`greatest(${pageSize} * (${offset}::int / ${pageSize}::int + 1), ${pageSize})`,
+      ),
   );
 
-  const filteredPairs = ctx.db.$with('memory_filtered_pairs').as(
+  const visiblePairs = ctx.db.$with('memory_visible_pairs').as(
     ctx.db
       .select({
-        contextId: sql<string>`${userMemoriesContexts.id}`.as('context_id'),
-        contextCreatedAt: userMemoriesContexts.createdAt,
-        contextUpdatedAt: userMemoriesContexts.updatedAt,
+        contextId: sql<string>`${candidateWindow.id}`.as('context_id'),
+        contextCreatedAt: candidateWindow.createdAt,
+        contextUpdatedAt: candidateWindow.updatedAt,
         memoryId: sql<string>`${userMemories.id}`.as('memory_id'),
-        score: scoreColumn
-          ? sql`${scoreColumn}`.as('score_column')
-          : sql<null>`NULL`.as('score_column'),
+        score: candidateWindow.score,
       })
-      .from(userMemoriesContexts)
-      .innerJoin(candidateContexts, eq(candidateContexts.id, userMemoriesContexts.id))
+      .from(candidateWindow)
+      .innerJoin(userMemoriesContexts, eq(userMemoriesContexts.id, candidateWindow.id))
       .innerJoin(
         userMemories,
-        and(
-          eq(userMemories.userId, userMemoriesContexts.userId),
-          sql<boolean>`COALESCE(${userMemoriesContexts.userMemoryIds}, '[]'::jsonb) ? (${userMemories.id})::text`,
-        ),
-      )
-      .where(
         and(
           eq(userMemories.userId, ctx.userId),
           layer ? eq(userMemories.memoryLayer, layer) : undefined,
           notTrashed(userMemories.isDeleted),
           visibleMemoryState(userMemories.state),
-          contextFilters,
           memoryFilters,
-          joinedFilters,
+          sql<boolean>`COALESCE(${candidateWindow.userMemoryIds}, '[]'::jsonb) ? (${userMemories.id})::text`,
         ),
-      ),
+      )
+      .where(joinedTagFilters),
   );
 
   const pagePairs = ctx.db.$with('memory_context_page').as(
     ctx.db
       .select({
-        contextId: filteredPairs.contextId,
-        memoryId: filteredPairs.memoryId,
-        score: filteredPairs.score,
+        contextId: sql<string>`${visiblePairs.contextId}`.as('context_id'),
+        memoryId: sql<string>`${visiblePairs.memoryId}`.as('memory_id'),
+        score: visiblePairs.score,
       })
-      .from(filteredPairs)
+      .from(visiblePairs)
       .orderBy(
-        applyOrder(filteredPairs.score),
-        applyOrder(filteredPairs.contextUpdatedAt),
-        applyOrder(filteredPairs.contextCreatedAt),
+        applyOrder(visiblePairs.score),
+        applyOrder(visiblePairs.contextUpdatedAt),
+        applyOrder(visiblePairs.contextCreatedAt),
+        asc(visiblePairs.contextId),
+        asc(visiblePairs.memoryId),
       )
       .limit(pageSize)
       .offset(offset),
   );
 
-  const contextBridges = ctx.db.$with('memory_context_bridges').as(
-    ctx.db
-      .select({
-        contextId: sql<string>`${pagePairs.contextId}`.as('context_id'),
-        memoryId: sql<string>`${pagePairs.memoryId}`.as('memory_id'),
-        score: pagePairs.score,
-      })
-      .from(pagePairs),
-  );
-
-  return { applyOrder, candidateContexts, contextBridges, filteredPairs, pagePairs };
+  return {
+    applyOrder,
+    candidateWindow,
+    contextBridges: pagePairs,
+    pagePairs,
+    visiblePairs,
+  };
 };

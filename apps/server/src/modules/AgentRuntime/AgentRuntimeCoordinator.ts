@@ -304,6 +304,13 @@ export class AgentRuntimeCoordinator {
   }
 
   /**
+   * Batch-read interrupt sentinels for the process-wide abort monitor.
+   */
+  async getInterruptSentinels(operationIds: string[]): Promise<Set<string>> {
+    return this.stateManager.getInterruptSentinels(operationIds);
+  }
+
+  /**
    * Record whether the client holds user messages queued behind the operation.
    */
   async setQueuedMessages(operationId: string, pending: boolean): Promise<void> {

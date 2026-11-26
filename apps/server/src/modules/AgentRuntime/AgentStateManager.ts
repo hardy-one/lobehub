@@ -447,6 +447,24 @@ export class AgentStateManager {
   }
 
   /**
+   * Batch-check interrupt sentinels with a single Redis MGET. The sentinel
+   * remains the authority; this is only a cheaper transport for the shared
+   * per-process abort monitor.
+   */
+  async getInterruptSentinels(operationIds: string[]): Promise<Set<string>> {
+    if (operationIds.length === 0) return new Set();
+    const keys = operationIds.map((operationId) => `${this.INTERRUPT_PREFIX}:${operationId}`);
+    const values = await this.redis.mget(...keys);
+    const interrupted = new Set<string>();
+    for (let index = 0; index < operationIds.length; index += 1) {
+      if (values[index] !== null && values[index] !== undefined) {
+        interrupted.add(operationIds[index]);
+      }
+    }
+    return interrupted;
+  }
+
+  /**
    * Mirror the client's queued-messages flag into a tiny key beside the state,
    * for the same reason as the interrupt sentinel: the step boundary reads it
    * without loading the state blob. Clearing deletes the key.

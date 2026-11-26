@@ -25,11 +25,11 @@ export const ASYNC_TOOL_VERIFY_MAX_DELAY_MS = 240_000;
 
 export const STEP_LOCK_TTL_SECONDS = 120;
 /**
- * How often a live step re-reads its own operation state to notice an
- * interrupt. Interrupts are persisted by a different invocation, so this poll
- * is the only way a running tool learns it should stop.
+ * One process-wide tick for all active steps. Every tick reads all live
+ * operation sentinels in a single MGET, so the cost no longer scales with the
+ * number of concurrent steps.
  */
-export const STEP_ABORT_POLL_INTERVAL_MS = 2_000;
+export const STEP_ABORT_MONITOR_INTERVAL_MS = 500;
 /**
  * Temporary compatibility cadence for interrupts written by pre-sentinel
  * workers during a rolling deployment. Remove after every worker writes the

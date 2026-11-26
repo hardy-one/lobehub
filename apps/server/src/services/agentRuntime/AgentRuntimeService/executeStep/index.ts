@@ -136,6 +136,7 @@ export async function executeStep(
     retainStepLock = false,
     stepLockOwner: providedStepLockOwner,
   } = params;
+  deps.traceRecorder.setInlineContinuation(inlineContinuation);
 
   // The message patch still owed to the client: the previous inline step's on
   // entry, this step's own once it defers one. Each exit that does not hand it
@@ -419,6 +420,7 @@ export async function executeStep(
         contextEngine: contextEnginePayload,
         currentContext,
         externalRetryCount,
+        inlineContinuation,
         presentation: stepPresentationData,
         startedAt: startAt,
         stepIndex,

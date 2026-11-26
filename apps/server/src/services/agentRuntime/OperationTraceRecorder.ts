@@ -54,6 +54,7 @@ export interface AppendStepParams {
   contextEngine?: { input?: unknown; metadata?: unknown; output?: unknown };
   currentContext?: { payload?: unknown; phase?: string; stepContext?: unknown };
   externalRetryCount: number;
+  inlineContinuation?: boolean;
   presentation: StepPresentationData;
   startedAt: number;
   stepIndex: number;
@@ -129,6 +130,10 @@ export class OperationTraceRecorder {
   /** In-flight upload, if any. Never rejects — `drainSaves` logs and continues. */
   private pendingSave: Promise<void> | undefined;
 
+  private saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+  private inlineContinuation = false;
+
   /** Set when the cached partial has steps the store has not seen yet. */
   private dirty = false;
 
@@ -143,6 +148,8 @@ export class OperationTraceRecorder {
 
   async appendStep(operationId: string, params: AppendStepParams): Promise<void> {
     if (!this.store) return;
+
+    this.setInlineContinuation(params.inlineContinuation === true);
 
     try {
       const partial = await this.loadCachedPartial(operationId);
@@ -171,8 +178,16 @@ export class OperationTraceRecorder {
   async flushPartial(): Promise<void> {
     if (!this.store) return;
 
-    if (this.dirty && this.cached) this.scheduleSave(this.cached.operationId);
-    await this.pendingSave;
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = undefined;
+    const inlineContinuation = this.inlineContinuation;
+    this.inlineContinuation = false;
+    try {
+      if (this.dirty && this.cached) this.scheduleSave(this.cached.operationId);
+      while (this.pendingSave) await this.pendingSave;
+    } finally {
+      this.inlineContinuation = inlineContinuation;
+    }
   }
 
   /**
@@ -188,6 +203,15 @@ export class OperationTraceRecorder {
     // it rather than let it land on top of theirs.
     this.saveAbort?.abort();
     this.saveAbort = undefined;
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = undefined;
+  }
+
+  /** Delay non-durable partial uploads while the same invocation runs inline. */
+  setInlineContinuation(enabled: boolean): void {
+    if (this.inlineContinuation === enabled) return;
+    this.inlineContinuation = enabled;
+    if (!enabled) void this.flushPartial();
   }
 
   private async loadCachedPartial(operationId: string): Promise<Partial<ExecutionSnapshot>> {
@@ -204,6 +228,18 @@ export class OperationTraceRecorder {
 
   private scheduleSave(operationId: string): void {
     this.dirty = true;
+    if (this.inlineContinuation) {
+      this.saveTimer ??= setTimeout(() => {
+        this.saveTimer = undefined;
+        if (!this.dirty || !this.cached) return;
+        const inlineContinuation = this.inlineContinuation;
+        this.inlineContinuation = false;
+        this.pendingSave = undefined;
+        this.scheduleSave(this.cached.operationId);
+        this.inlineContinuation = inlineContinuation;
+      }, 1000);
+      return;
+    }
     if (this.pendingSave) return;
 
     this.pendingSave = this.drainSaves(operationId).finally(() => {

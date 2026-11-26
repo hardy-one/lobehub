@@ -84,10 +84,10 @@ export async function searchContextsSemantic(
   limit: number,
   params: SearchMemoryParams,
 ) {
-  const conditions = [
+  if (limit <= 0) return [];
+
+  const baseConditions = [
     ctx.memoryWhere(userMemoriesContexts),
-    ctx.memoryWhere(userMemories),
-    params.categories?.length ? inArray(userMemories.memoryCategory, params.categories) : undefined,
     params.status?.length ? inArray(userMemoriesContexts.currentStatus, params.status) : undefined,
     params.types?.length ? inArray(userMemoriesContexts.type, params.types) : undefined,
     ctx.buildTimeRangeCondition(
@@ -98,8 +98,36 @@ export async function searchContextsSemantic(
       },
       params.timeRange,
     ),
-    ctx.buildExactTagFilterCondition(userMemoriesContexts.tags, userMemories.tags, params),
   ].filter((condition): condition is SQL => Boolean(condition));
+
+  const similarity = sql<number>`
+    1 - (${cosineDistance(userMemoriesContexts.descriptionVector, embedding)})
+  `;
+
+  const linkedMemory = (extraConditions: SQL[] = []) => {
+    const conditions = [
+      sql`${userMemories.userId} = ${userMemoriesContexts.userId}`,
+      ctx.memoryWhere(userMemories),
+      sql`COALESCE(${userMemoriesContexts.userMemoryIds}, '[]'::jsonb) ? (${userMemories.id})::text`,
+      ...extraConditions,
+    ];
+    return sql<boolean>`EXISTS (
+      SELECT 1 FROM ${userMemories}
+      WHERE ${sql.join(conditions, sql` AND `)}
+    )`;
+  };
+
+  const contextConditions = [...baseConditions, linkedMemory()];
+  if (params.categories?.length) {
+    contextConditions.push(linkedMemory([inArray(userMemories.memoryCategory, params.categories)]));
+  }
+  if (params.tags?.length || params.labels?.length) {
+    contextConditions.push(
+      linkedMemory([
+        ctx.buildExactTagFilterCondition(userMemoriesContexts.tags, userMemories.tags, params)!,
+      ]),
+    );
+  }
 
   const contextCandidates = ctx.db.$with('semantic_context_candidates').as(
     ctx.db
@@ -121,8 +149,7 @@ export async function searchContextsSemantic(
         dedupeRank: sql<number>`
           row_number() over (
             partition by ${userMemoriesContexts.id}
-            order by
-              1 - (${cosineDistance(userMemoriesContexts.descriptionVector, embedding)}) desc,
+            order by ${cosineDistance(userMemoriesContexts.descriptionVector, embedding)} asc,
               ${userMemoriesContexts.createdAt} desc
           )
         `.as('dedupe_rank'),
@@ -130,9 +157,7 @@ export async function searchContextsSemantic(
         metadata: userMemoriesContexts.metadata,
         scoreImpact: userMemoriesContexts.scoreImpact,
         scoreUrgency: userMemoriesContexts.scoreUrgency,
-        similarity: sql<number>`
-          1 - (${cosineDistance(userMemoriesContexts.descriptionVector, embedding)})
-        `.as('similarity'),
+        similarity: similarity.as('similarity'),
         tags: userMemoriesContexts.tags,
         title: userMemoriesContexts.title,
         type: userMemoriesContexts.type,
@@ -141,16 +166,9 @@ export async function searchContextsSemantic(
         userMemoryIds: userMemoriesContexts.userMemoryIds,
       })
       .from(userMemoriesContexts)
-      .innerJoin(
-        userMemories,
-        and(
-          eq(userMemories.userId, userMemoriesContexts.userId),
-          sql<boolean>`
-            COALESCE(${userMemoriesContexts.userMemoryIds}, '[]'::jsonb) ? (${userMemories.id})::text
-          `,
-        ),
-      )
-      .where(and(...conditions)),
+      .where(and(...contextConditions))
+      .orderBy(desc(similarity), desc(userMemoriesContexts.createdAt))
+      .limit(limit),
   );
 
   const rowsQuery = ctx.db

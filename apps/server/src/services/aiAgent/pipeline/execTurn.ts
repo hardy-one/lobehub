@@ -566,6 +566,7 @@ export const execAgentTurn = async (
     topicEditingGroupId: turn.topicEditingGroupId,
     topicId,
     trigger,
+    userMessageEditorData: turn.userMessageId ? userMessage?.editorData : undefined,
     userMessageId: turn.userMessageId,
     // Exactly what the user row was persisted with, so every stage reads the
     // message the way a later turn reads it back from history.

@@ -100,9 +100,8 @@ const restoreRunContext = async (
   // turn's source message is then that row.
   const userMessageId = request.resumeFromHistory ? undefined : origin.sourceMessageId;
   // The row's metadata as persisted — what a later turn reads back from history.
-  const userMessageMetadata = userMessageId
-    ? ((await deps.messageModel.findById(userMessageId))?.metadata ?? undefined)
-    : undefined;
+  const userMessage = userMessageId ? await deps.messageModel.findById(userMessageId) : undefined;
+  const userMessageMetadata = userMessage?.metadata ?? undefined;
   const channel = state.world?.channel;
   const deviceAccess = state.principal?.policy?.deviceAccess;
 
@@ -151,6 +150,7 @@ const restoreRunContext = async (
     shareGate: undefined,
     topicId: origin.topicId,
     trigger: origin.trigger,
+    userMessageEditorData: userMessage?.editorData ?? undefined,
     userMessageId,
     userMessageMetadata,
   };

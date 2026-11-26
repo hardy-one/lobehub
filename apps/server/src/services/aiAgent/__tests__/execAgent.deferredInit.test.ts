@@ -342,6 +342,30 @@ describe('AiAgentService.runDeferredInit - parity with the send path', () => {
     expect(run.deferred.state.messages).toEqual(throughRedis(run.created.initialMessages));
   });
 
+  it('keeps the authored editor data on the in-memory turn through deferred initialization', async () => {
+    const editorData = {
+      root: {
+        children: [
+          {
+            actionCategory: 'skill',
+            actionLabel: 'Example',
+            actionType: 'example',
+            type: 'action-tag',
+          },
+        ],
+        type: 'root',
+      },
+    };
+    const run = await sendThenDefer({
+      agentId: 'agent-1',
+      prompt: 'Use this skill',
+      userMessage: { editorData },
+    });
+
+    expect(run.created.initialMessages.at(-1)).toMatchObject({ editorData });
+    expect(run.deferred.state.messages?.at(-1)).toMatchObject({ editorData });
+  });
+
   // A regenerate has no user row of its own and prunes the branch it replaces.
   it('rebuilds a regenerate, which has no user row, and prunes the same branch', async () => {
     rows.set('u1', { content: 'the question', id: 'u1', role: 'user', topicId: 'topic-1' });

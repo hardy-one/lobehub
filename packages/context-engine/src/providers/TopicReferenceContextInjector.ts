@@ -1,7 +1,7 @@
 import debug from 'debug';
 
-import { BaseLastUserContentProvider } from '../base/BaseLastUserContentProvider';
-import type { PipelineContext, ProcessorOptions } from '../types';
+import { BaseEveryUserContentProvider } from '../base/BaseEveryUserContentProvider';
+import type { Message, ProcessorOptions } from '../types';
 
 declare module '../types' {
   interface PipelineContextMetadataOverrides {
@@ -16,6 +16,10 @@ const log = debug('context-engine:provider:TopicReferenceContextInjector');
  * Topic reference item
  */
 export interface TopicReferenceItem {
+  /** Message id that carried the tag, preferred over the index for stable ownership. */
+  messageId?: string;
+  /** Index of the user message that carried the tag, fallback when no id exists. */
+  messageIndex?: number;
   /** Recent messages as fallback when no summary available */
   recentMessages?: Array<{ content: string; role: string }>;
   /** The topic's history summary (undefined if no summary available) */
@@ -88,11 +92,13 @@ function formatTopicReferences(items: TopicReferenceItem[]): string | null {
  * Topic Reference Context Injector
  *
  * When user messages contain <refer_topic> tags referencing other topics,
- * this injector appends the referenced topics' context to the last user message.
+ * appends the referenced topics' context to the message that carried each tag
+ * (not whichever message happens to be last), so the block stays byte-identical
+ * when the message becomes history.
  * - Topics with summaries: summary is inlined directly
  * - Topics without summaries: a hint is added prompting the agent to read them via `lh topic view`
  */
-export class TopicReferenceContextInjector extends BaseLastUserContentProvider {
+export class TopicReferenceContextInjector extends BaseEveryUserContentProvider {
   readonly name = 'TopicReferenceContextInjector';
 
   constructor(
@@ -102,51 +108,42 @@ export class TopicReferenceContextInjector extends BaseLastUserContentProvider {
     super(options);
   }
 
-  protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
-    log('doProcess called');
-    log('config.enabled:', this.config.enabled);
-
-    const clonedContext = this.cloneContext(context);
-
+  protected buildContentForMessage(
+    message: Message,
+    index: number,
+  ): { content: string; contextType: string } | null {
     if (
       !this.config.enabled ||
-      !this.config.topicReferences ||
-      this.config.topicReferences.length === 0
+      !this.config.topicReferences?.length ||
+      message.meta?.systemInjection ||
+      message.meta?.virtualLastUser
     ) {
-      log('Topic reference not enabled or no references, skipping injection');
-      return this.markAsExecuted(clonedContext);
+      return null;
     }
 
-    const formattedContent = formatTopicReferences(this.config.topicReferences);
+    const references = this.config.topicReferences.filter(
+      (item) =>
+        (item.messageId && item.messageId === message.id) ||
+        (!item.messageId && item.messageIndex === index),
+    );
+    if (references.length === 0) return null;
 
-    if (!formattedContent) {
-      log('No topic reference content to inject');
-      return this.markAsExecuted(clonedContext);
-    }
+    const content = message.content;
+    const text =
+      typeof content === 'string'
+        ? content
+        : Array.isArray(content)
+          ? content
+              .filter((part: any) => part?.type === 'text')
+              .map((part: any) => part.text ?? '')
+              .join('\n')
+          : '';
+    if (text.includes('<topic_reference_context>')) return null;
 
-    log('Formatted content length:', formattedContent.length);
+    const formattedContent = formatTopicReferences(references);
+    if (!formattedContent) return null;
 
-    const lastUserIndex = this.findLastUserMessageIndex(clonedContext.messages);
-
-    log('Last user message index:', lastUserIndex);
-
-    if (lastUserIndex === -1) {
-      log('No user messages found, skipping injection');
-      return this.markAsExecuted(clonedContext);
-    }
-
-    const hasExistingWrapper = this.hasExistingSystemContext(clonedContext);
-    const contentToAppend = hasExistingWrapper
-      ? this.createContextBlock(formattedContent, 'topic_reference_context')
-      : this.wrapWithSystemContext(formattedContent, 'topic_reference_context');
-
-    this.appendToLastUserMessage(clonedContext, contentToAppend);
-
-    clonedContext.metadata.topicReferenceInjected = true;
-    clonedContext.metadata.topicReferenceCount = this.config.topicReferences.length;
-
-    log('Topic reference context appended to last user message');
-
-    return this.markAsExecuted(clonedContext);
+    log('Topic reference context injected for message %s', message.id ?? index);
+    return { content: formattedContent, contextType: 'topic_reference_context' };
   }
 }

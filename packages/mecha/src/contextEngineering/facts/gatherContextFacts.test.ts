@@ -188,28 +188,37 @@ describe('gatherContextFacts', () => {
 
       expect(findAgentDocument).toHaveBeenCalledWith('agt_1', 'doc-1');
       expect(facts.step.documentReferences).toEqual([
-        { content: 'Voice rules', documentId: 'doc-1', title: 'Voice' },
-        { documentId: 'doc-2', title: 'X' },
+        {
+          content: 'Voice rules',
+          documentId: 'doc-1',
+          messageId: 'm',
+          messageIndex: 0,
+          title: 'Voice',
+        },
+        { documentId: 'doc-2', messageId: 'm', messageIndex: 0, title: 'X' },
       ]);
     });
 
-    it('lists earlier-turn references without a lookup only when the documents tool can read them', async () => {
+    it('keys every referenced document to the message that carried the tag, with a live lookup', async () => {
       const findAgentDocument = vi.fn(async () => ({ content: 'Voice rules' }));
-      const messages = [message('<refer_document name="Voice" id="doc-1" />'), message('Next')];
+      const messages = [
+        { ...message('<refer_document name="Voice" id="doc-1" />'), id: 'user-old' },
+        message('Next'),
+      ];
 
-      const withTool = await gatherContextFacts(
-        request({ enabledToolIds: ['lobe-agent-documents'], messages }),
-        { findAgentDocument },
-      );
-      expect(withTool.step.documentReferences).toEqual([
-        { documentId: 'doc-1', earlierTurn: true, title: 'Voice' },
+      const facts = await gatherContextFacts(request({ messages }), { findAgentDocument });
+      expect(facts.step.documentReferences).toEqual([
+        {
+          content: 'Voice rules',
+          documentId: 'doc-1',
+          messageId: 'user-old',
+          messageIndex: 0,
+          title: 'Voice',
+        },
       ]);
-      expect(findAgentDocument).not.toHaveBeenCalled();
-
-      const withoutTool = await gatherContextFacts(request({ messages }), { findAgentDocument });
-      expect(withoutTool.step.documentReferences).toEqual([
-        { content: 'Voice rules', documentId: 'doc-1', title: 'Voice' },
-      ]);
+      // Earlier-turn references stay on their own message with fresh content;
+      // they are not demoted to id-only stubs keyed to whichever message is last.
+      expect(findAgentDocument).toHaveBeenCalledWith('agt_1', 'doc-1');
     });
 
     it('skips the lookup when no message references a document', async () => {

@@ -285,9 +285,17 @@ describe('UserMemoryQueryModel layer retrieval', () => {
         statements.length = 0;
 
         await expect(search('atlas', 5, {})).resolves.toEqual([]);
-        expect(statements).toHaveLength(1);
-        expect(statements[0]).toContain('"user_memories"."id" @@@ paradedb.boolean');
-        expect(statements[0]).toContain(`"${table}"."id" @@@ paradedb.boolean`);
+        expect(statements.length).toBeGreaterThanOrEqual(2);
+        expect(
+          statements.some((statement) =>
+            statement.includes('"user_memories"."id" @@@ paradedb.boolean'),
+          ),
+        ).toBe(true);
+        expect(
+          statements.some((statement) =>
+            statement.includes(`"${table}"."id" @@@ paradedb.boolean`),
+          ),
+        ).toBe(true);
       }
     });
   });

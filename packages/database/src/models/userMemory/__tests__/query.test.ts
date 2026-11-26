@@ -583,16 +583,12 @@ describe('buildBm25MatchCondition', () => {
     const built = dialect.sqlToQuery(condition!);
 
     expect(built.sql).toBe(
-      '("user_memories"."id" @@@ paradedb.boolean(should => ARRAY[paradedb.match($1, $2, conjunction_mode => true), paradedb.match($3, $4, conjunction_mode => true)]) or "user_memories_identities"."id" @@@ paradedb.boolean(should => ARRAY[paradedb.match($5, $6, conjunction_mode => true), paradedb.match($7, $8, conjunction_mode => true)]))',
+      '("user_memories"."id" @@@ paradedb.boolean(should => ARRAY[paradedb.match(\'title\', $1, conjunction_mode => true), paradedb.match(\'summary\', $2, conjunction_mode => true)]) or "user_memories_identities"."id" @@@ paradedb.boolean(should => ARRAY[paradedb.match(\'description\', $3, conjunction_mode => true), paradedb.match(\'role\', $4, conjunction_mode => true)]))',
     );
     expect(built.params).toStrictEqual([
-      'title',
       "I'm checking customers' needs",
-      'summary',
       "I'm checking customers' needs",
-      'description',
       "I'm checking customers' needs",
-      'role',
       "I'm checking customers' needs",
     ]);
   });

@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import {
   type AgentEvent,
   type AgentRuntimeContext,
@@ -49,48 +51,38 @@ if redis.call('get', KEYS[1]) == ARGV[1] then
 end
 return 0`;
 
+type ParsedToolSet = Record<string, any>;
+
 /**
- * Process-local cache of each operation's serialized tool set, keyed by
- * operationId.
- *
- * The tool set is the heaviest thing on an AgentState (manifest schemas + tool
- * definitions, ~300–400 KB) and is immutable for the life of the operation —
- * nothing ever reassigns `state.operationToolSet` after creation. So rather
- * than re-serialize it into the state blob at every step (and re-download it at
- * every step entry), it lives in its own Redis key written once per process,
- * and this cache lets the inline step loop — which runs many steps in one
- * process under one lock — attach it on load without a second Redis round-trip.
- *
- * Bounded + TTL'd: the value is always re-fetchable from Redis, so eviction
- * only costs a re-read. The cached string is exactly what a normal blob parse
- * would have produced, so `JSON.parse(json)` on load yields the same fresh,
- * independent object the old inline path handed each reader.
+ * Execution-local parsed tool set. There is deliberately no process-global
+ * cache and no TTL/version protocol: Redis stays the authoritative store, and
+ * a new lock owner or process always cold-reads it. The object is kept only
+ * for the lifetime of one owner's inline continuation, then frozen so steps
+ * share one parsed value rather than copying it or parsing it again.
  */
-const TOOLSET_CACHE_MAX = 64;
-const toolSetJsonCache = new Map<string, { expiresAt: number; json: string }>();
+interface ToolSetExecutionCache {
+  ownerId: string;
+  revision?: string;
+  toolSet?: ParsedToolSet;
+}
 
-const readToolSetCache = (operationId: string): string | undefined => {
-  const hit = toolSetJsonCache.get(operationId);
-  if (!hit) return undefined;
-  if (hit.expiresAt <= Date.now()) {
-    toolSetJsonCache.delete(operationId);
-    return undefined;
+const freezeToolSet = (value: unknown): ParsedToolSet => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Externalized agent tool set must be a JSON object');
   }
-  // Touch for LRU recency.
-  toolSetJsonCache.delete(operationId);
-  toolSetJsonCache.set(operationId, hit);
-  return hit.json;
+  const visit = (item: unknown): unknown => {
+    if (!item || typeof item !== 'object' || Object.isFrozen(item)) return item;
+    if (Array.isArray(item)) {
+      for (const child of item) visit(child);
+    } else {
+      for (const child of Object.values(item)) visit(child);
+    }
+    return Object.freeze(item);
+  };
+  return visit(value) as ParsedToolSet;
 };
 
-const writeToolSetCache = (operationId: string, json: string, ttlSeconds: number): void => {
-  toolSetJsonCache.delete(operationId);
-  toolSetJsonCache.set(operationId, { expiresAt: Date.now() + ttlSeconds * 1000, json });
-  while (toolSetJsonCache.size > TOOLSET_CACHE_MAX) {
-    const oldest = toolSetJsonCache.keys().next().value;
-    if (oldest === undefined) break;
-    toolSetJsonCache.delete(oldest);
-  }
-};
+const revisionOf = (json: string): string => createHash('sha256').update(json).digest('hex');
 
 /**
  * Whether a persisted blob may leave out the copies `slimStateForPersist`
@@ -213,6 +205,29 @@ export interface AgentOperationMetadata {
 }
 
 export class AgentStateManager {
+  private readonly toolSetExecutionCaches = new Map<string, ToolSetExecutionCache>();
+
+  /**
+   * Bind a parsed tool set to one lock owner's inline execution. Re-entering
+   * with the same owner keeps the parsed object; any other owner replaces it.
+   */
+  withToolSetCache(operationId: string, ownerId: string): () => void {
+    const cache = this.toolSetExecutionCaches.get(operationId);
+    if (cache && cache.ownerId === ownerId) return () => {};
+    this.toolSetExecutionCaches.set(operationId, { ownerId });
+    return () => {
+      const current = this.toolSetExecutionCaches.get(operationId);
+      if (current?.ownerId === ownerId) this.toolSetExecutionCaches.delete(operationId);
+    };
+  }
+
+  /** Discard a stale execution snapshot after a lock loss or redelivery. */
+  invalidateToolSetCache(operationId: string, ownerId?: string): void {
+    const cache = this.toolSetExecutionCaches.get(operationId);
+    if (!cache || (ownerId && cache.ownerId !== ownerId)) return;
+    this.toolSetExecutionCaches.delete(operationId);
+  }
+
   private redis: Redis;
   private readonly STATE_PREFIX = 'agent_runtime_state';
   private readonly TOOLSET_PREFIX = 'agent_runtime_toolset';
@@ -283,42 +298,56 @@ export class AgentStateManager {
   }
 
   /**
-   * Persist the operation's tool set to its own key, once per process.
+   * Persist the operation's tool set to its authoritative Redis key once per
+   * execution. Later saves only refresh that key's TTL in lockstep with the
+   * state blob; a new lock owner writes once again.
    *
-   * Write-once is guarded by the process cache: the first save in a process
-   * writes the key and seeds the cache; every later save (each step of an
-   * inline loop) finds the cache warm and skips the ~300–400 KB write
-   * entirely — the save paths only refresh the key's TTL in lockstep with the
-   * state blob. A queue redelivery lands in a fresh process and re-writes once,
-   * which is negligible beside the per-step writes it removes.
+   * The tool set is immutable for an operation. If a caller changes it after a
+   * later save, write the new value and replace the execution snapshot.
    */
   private async externalizeToolSet(operationId: string, state: AgentState): Promise<void> {
     const toolSet = (state as { operationToolSet?: unknown }).operationToolSet;
     if (!toolSet) return;
-    if (readToolSetCache(operationId)) return;
+    const cache = this.toolSetExecutionCaches.get(operationId);
+    // Inline steps carry the frozen object cached on cold load, so identity is
+    // enough to skip the write without serializing a 300–400 KB tool set. A
+    // rebuilt-but-equal object is recognized by the revision computed at the
+    // last write/read; that computation happens once per execution, not once
+    // per step.
+    if (cache?.toolSet === toolSet) return;
     const json = JSON.stringify(toolSet);
+    const revision = revisionOf(json);
+    if (cache?.revision === revision) return;
     await this.redis.setex(this.toolSetKey(operationId), this.DEFAULT_TTL, json);
-    writeToolSetCache(operationId, json, this.DEFAULT_TTL);
+    if (cache) {
+      cache.revision = revision;
+      cache.toolSet = freezeToolSet(toolSet);
+    }
   }
 
   /**
    * Re-attach the externalized tool set to a freshly loaded state. Served from
-   * the process cache after the first read, so an inline loop reads it from
-   * Redis at most once per process. A blob that still carries its tool set
-   * inline — written by pre-externalization code during a rolling deploy — is
-   * left untouched, and an operation whose key has genuinely gone degrades to
-   * the same empty-tool-set fallback the selectors already apply.
+   * the execution cache after the first read, so one owner's inline loop parses
+   * it once and sees the same value at every step. A handoff or process switch
+   * starts with no cache and cold-reads Redis. A blob that still carries its
+   * tool set inline — written by pre-externalization code during a rolling
+   * deploy — is left untouched.
    */
   private async rehydrateToolSet(operationId: string, state: AgentState): Promise<void> {
     if ((state as { operationToolSet?: unknown }).operationToolSet) return;
-    let json = readToolSetCache(operationId);
-    if (!json) {
-      json = (await this.redis.get(this.toolSetKey(operationId))) ?? undefined;
-      if (json) writeToolSetCache(operationId, json, this.DEFAULT_TTL);
+    const cache = this.toolSetExecutionCaches.get(operationId);
+    if (cache?.toolSet) {
+      (state as { operationToolSet?: unknown }).operationToolSet = cache.toolSet;
+      return;
     }
-    if (json) {
-      (state as { operationToolSet?: unknown }).operationToolSet = JSON.parse(json);
+    const json = await this.redis.get(this.toolSetKey(operationId));
+    if (!json) return;
+    const toolSet = freezeToolSet(JSON.parse(json));
+    if (cache) {
+      cache.revision = revisionOf(json);
+      cache.toolSet = toolSet;
     }
+    (state as { operationToolSet?: unknown }).operationToolSet = toolSet;
   }
 
   /**
@@ -622,7 +651,7 @@ export class AgentStateManager {
     ];
 
     try {
-      toolSetJsonCache.delete(operationId);
+      this.invalidateToolSetCache(operationId);
       await this.redis.del(...keys);
       log('Deleted operation %s', operationId);
     } catch (error) {
@@ -782,6 +811,7 @@ export class AgentStateManager {
     } catch (error) {
       console.error('Failed to clear inline resume pointer:', error);
     }
+    this.invalidateToolSetCache(operationId, ownerId);
   }
 
   private executionLockKey(operationId: string): string {
@@ -803,7 +833,9 @@ export class AgentStateManager {
         ttlSeconds.toString(),
       );
 
-      return result === 1;
+      const claimed = result === 1;
+      if (!claimed) this.invalidateToolSetCache(operationId, ownerId);
+      return claimed;
     } catch (error) {
       // Fail-open: on Redis error, allow execution to proceed
       console.error('Failed to acquire step lock:', error);
@@ -831,7 +863,9 @@ export class AgentStateManager {
         ttlSeconds.toString(),
       );
 
-      return result === 1;
+      const owned = result === 1;
+      if (!owned) this.invalidateToolSetCache(operationId, ownerId);
+      return owned;
     } catch (error) {
       console.error('Failed to refresh step lock:', error);
       return false;
@@ -847,6 +881,7 @@ export class AgentStateManager {
       }
 
       await this.redis.eval(RELEASE_OWNED_LOCK_SCRIPT, 1, key, ownerId);
+      this.invalidateToolSetCache(operationId, ownerId);
     } catch (error) {
       console.error('Failed to release step lock:', error);
     }
@@ -856,6 +891,7 @@ export class AgentStateManager {
    * Close Redis connection
    */
   async disconnect(): Promise<void> {
+    this.toolSetExecutionCaches.clear();
     await this.redis.quit();
   }
 }

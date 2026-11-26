@@ -108,6 +108,9 @@ export interface IAgentStateManager {
    */
   hasQueuedMessages: (operationId: string) => Promise<boolean>;
 
+  /** Drop an owner's parsed tool set after a handoff, lock loss, or redelivery. */
+  invalidateToolSetCache: (operationId: string, ownerId?: string) => void;
+
   /**
    * Check the interrupt sentinel written by `markInterrupted`. Cheap enough
    * to poll, unlike `loadAgentState` which pulls the whole state blob.
@@ -184,6 +187,9 @@ export interface IAgentStateManager {
     ttlSeconds?: number,
     ownerId?: string,
   ) => Promise<boolean>;
+
+  /** Bind one parsed tool set to a lock owner's inline steps; call the disposer at the end. */
+  withToolSetCache: (operationId: string, ownerId: string) => () => void;
 }
 
 /**

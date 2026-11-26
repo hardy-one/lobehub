@@ -335,6 +335,8 @@ export async function runStep(c: Context): Promise<Response> {
       touchedEnvelope = true;
     }
 
+    const disposeToolSetCache = coordinator.withToolSetCache(operationId, stepLockOwner);
+
     try {
       // Work a step defers with `after()` (budget settlement, trace flushes,
       // telemetry) normally waits for the HTTP response. One invocation now
@@ -464,6 +466,7 @@ export async function runStep(c: Context): Promise<Response> {
           }
         }),
       );
+      disposeToolSetCache();
     } finally {
       // Owner-scoped, so this is a no-op when the first step never claimed the
       // lock (a conflicting delivery, a terminal operation, a watchdog probe).

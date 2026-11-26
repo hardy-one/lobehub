@@ -19,6 +19,12 @@ export class InMemoryAgentStateManager implements IAgentStateManager {
   private interrupted: Set<string> = new Set();
   private queuedMessages: Set<string> = new Set();
 
+  invalidateToolSetCache(): void {}
+
+  withToolSetCache(): () => void {
+    return () => {};
+  }
+
   private executionLockKey(operationId: string): string {
     return `agent_runtime_operation_lock:${operationId}`;
   }

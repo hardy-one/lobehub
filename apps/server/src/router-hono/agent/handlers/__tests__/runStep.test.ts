@@ -60,7 +60,9 @@ vi.mock('@/server/modules/AgentRuntime', () => ({
     return {
       clearInlineResume: mockClearInlineResume,
       getOperationMetadata: mockGetOperationMetadata,
+      invalidateToolSetCache: vi.fn(),
       loadInlineResume: mockLoadInlineResume,
+      withToolSetCache: () => () => {},
     };
   }),
 }));

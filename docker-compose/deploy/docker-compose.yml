@@ -1,7 +1,7 @@
 name: lobehub
 services:
   lobe:
-    image: lobehub/lobehub
+    image: hardyone/lobehub:latest
     container_name: lobehub
     ports:
       - '${LOBE_PORT}:3210'
@@ -14,6 +14,8 @@ services:
         condition: service_healthy
       rustfs-init:
         condition: service_completed_successfully
+      rustash:
+        condition: service_healthy
     environment:
       - 'KEY_VAULTS_SECRET=${KEY_VAULTS_SECRET}'
       - 'AUTH_SECRET=${AUTH_SECRET}'
@@ -49,14 +51,15 @@ services:
     networks:
       - lobe-network
 
-  # Single-instance LobeHub gateway (https://github.com/lobehub/lobehub-gateway):
+  # Single-instance LobeHub gateway. Upstream: https://github.com/lobehub/lobehub-gateway
+  # Image: hardyone/lobehub-gateway (fork build, Docker Hub).
   # - 8787 agent gateway: relays Gateway Mode runs to browsers over WebSocket,
   #   so AGENT_GATEWAY_URL in .env must be reachable from the browser.
   # - 8788 device gateway: routes tool calls to devices joined with
   #   `lh connect --gateway <url>`.
   # State is kept in memory: runs in flight are lost when this container restarts.
   gateway:
-    image: ghcr.io/lobehub/lobehub-gateway:0.5.0
+    image: hardyone/lobehub-gateway:latest
     container_name: lobe-gateway
     ports:
       - '${AGENT_GATEWAY_PORT:-8787}:8787'
@@ -66,6 +69,32 @@ services:
       # Public key only: the private JWKS_KEY stays in the lobe container
       - 'JWKS_PUBLIC_KEY=${JWKS_PUBLIC_KEY:-}'
       - 'LOBE_API_BASE_URL=http://lobe:3210'
+    restart: always
+    networks:
+      - lobe-network
+
+  # Self-hosted QStash-compatible queue (https://github.com/DSH244/rustash).
+  # QSTASH_URL / QSTASH_TOKEN and the signing keys come from .env; the callback
+  # base below is the Compose-network address of the lobe service so schedules
+  # registered at boot reach it from inside this network.
+  rustash:
+    image: hardyone/rustash:latest
+    container_name: lobe-rustash
+    environment:
+      PORT: '8080'
+      DATABASE_URL: sqlite:///data/rstash.sqlite3
+      QSTASH_TOKEN: ${QSTASH_TOKEN}
+      QSTASH_CURRENT_SIGNING_KEY: ${QSTASH_CURRENT_SIGNING_KEY}
+      QSTASH_NEXT_SIGNING_KEY: ${QSTASH_NEXT_SIGNING_KEY}
+      ALLOW_PRIVATE_DESTINATIONS: 'true'
+    volumes:
+      - 'rustash-data:/data'
+    healthcheck:
+      test: ['CMD-SHELL', 'curl --fail --silent http://127.0.0.1:8080/v2/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     restart: always
     networks:
       - lobe-network
@@ -242,7 +271,7 @@ services:
   # With the bundled node, start the stack with `docker compose up -d --wait`
   # first so Elasticsearch is healthy before the backfill connects to it.
   fts-search-reindex:
-    image: lobehub/lobehub
+    image: hardyone/lobehub:latest
     profiles: [elasticsearch-reindex]
     depends_on:
       postgresql:
@@ -269,7 +298,7 @@ services:
   # restarted) when it hits failed or dead-letter work, so check its logs. It
   # also exits and is restarted until the Elasticsearch target is reachable.
   fts-search-sync:
-    image: lobehub/lobehub
+    image: hardyone/lobehub:latest
     container_name: lobe-fts-search-sync
     profiles: [elasticsearch-sync]
     depends_on:
@@ -298,6 +327,8 @@ networks:
 
 volumes:
   redis_data:
+    driver: local
+  rustash-data:
     driver: local
   rustfs-data:
     driver: local

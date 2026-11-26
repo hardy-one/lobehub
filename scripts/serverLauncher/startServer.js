@@ -197,12 +197,12 @@ const QSTASH_SCHEDULES = [
 // Schedules beyond the two above that every deployment also needs but cannot
 // afford on the free Upstash plan: each cron tick costs quota, and a
 // minute-granularity widget tick alone would starve the dispatch schedules.
-// On a self-hosted queue there is no quota, so `QSTASH_PROVIDER=hellostash`
+// On a self-hosted queue there is no quota, so `QSTASH_PROVIDER=rustash`
 // registers this full set instead — every sweep/watchdog/purge handler in the
 // server is documented as expecting a QStash Schedule pointing at it.
 // Cadences are the safety-net defaults for a personal instance: these are
 // recovery nets over event-driven fast paths, so hourly granularity is enough.
-const HELLOSTASH_EXTRA_SCHEDULES = [
+const RUSTASH_EXTRA_SCHEDULES = [
   {
     cron: '*/10 * * * *',
     id: 'lobe-task-scheduled-topic-dispatch',
@@ -240,22 +240,22 @@ const HELLOSTASH_EXTRA_SCHEDULES = [
   },
 ];
 
-// hellostash ships no web UI, so the boot log is the only place an operator can
+// rustash ships no web UI, so the boot log is the only place an operator can
 // confirm the queue is wired correctly: probe the server, then reconcile the
 // registered schedules against the expected set (missing / stale / wrong
 // destination / paused). Stale rows usually mean hand-created schedules from
 // before auto-registration; they double-fire alongside the managed set.
-const auditHellostashSchedules = async (qstashUrl, token, appUrl, expected) => {
+const auditRustashSchedules = async (qstashUrl, token, appUrl, expected) => {
   try {
     const health = await fetch(`${qstashUrl}/v2/health`);
     if (!health.ok) {
-      console.error(`❌ HelloStash: /v2/health returned ${health.status}.`);
+      console.error(`❌ Rustash: /v2/health returned ${health.status}.`);
       return;
     }
-    console.log('✅ HelloStash: server reachable.');
+    console.log('✅ Rustash: server reachable.');
   } catch (err) {
     console.error(
-      `❌ HelloStash: server unreachable — check the hellostash container and QSTASH_URL: ${err.message}`,
+      `❌ Rustash: server unreachable — check the rustash container and QSTASH_URL: ${err.message}`,
     );
     return;
   }
@@ -265,7 +265,7 @@ const auditHellostashSchedules = async (qstashUrl, token, appUrl, expected) => {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) {
-      console.error(`❌ HelloStash: listing schedules returned ${res.status}.`);
+      console.error(`❌ Rustash: listing schedules returned ${res.status}.`);
       return;
     }
     const rows = await res.json();
@@ -283,29 +283,29 @@ const auditHellostashSchedules = async (qstashUrl, token, appUrl, expected) => {
     const paused = expected.filter((schedule) => byId.get(schedule.id)?.isPaused);
 
     for (const schedule of missing) {
-      console.error(`❌ HelloStash: schedule ${schedule.id} is missing.`);
+      console.error(`❌ Rustash: schedule ${schedule.id} is missing.`);
     }
     for (const schedule of misplaced) {
       console.error(
-        `❌ HelloStash: schedule ${schedule.id} destination "${byId.get(schedule.id).destination}" does not match the callback base + ${schedule.path} — check QSTASH_CALLBACK_BASE_URL / APP_URL.`,
+        `❌ Rustash: schedule ${schedule.id} destination "${byId.get(schedule.id).destination}" does not match the callback base + ${schedule.path} — check QSTASH_CALLBACK_BASE_URL / APP_URL.`,
       );
     }
     for (const schedule of paused) {
-      console.warn(`⚠️ HelloStash: schedule ${schedule.id} is paused.`);
+      console.warn(`⚠️ Rustash: schedule ${schedule.id} is paused.`);
     }
     for (const id of stale) {
       console.warn(
-        `⚠️ HelloStash: unmanaged schedule ${id} — delete it (DELETE /v2/schedules/${id}) unless it is intentional; it may double-fire.`,
+        `⚠️ Rustash: unmanaged schedule ${id} — delete it (DELETE /v2/schedules/${id}) unless it is intentional; it may double-fire.`,
       );
     }
 
     if (missing.length === 0 && misplaced.length === 0) {
       console.log(
-        `✅ HelloStash: all ${expected.length} schedules registered against ${appUrl}${stale.length === 0 ? '.' : ` (${stale.length} unmanaged).`}`,
+        `✅ Rustash: all ${expected.length} schedules registered against ${appUrl}${stale.length === 0 ? '.' : ` (${stale.length} unmanaged).`}`,
       );
     }
   } catch (err) {
-    console.error(`❌ HelloStash: schedule audit failed: ${err.message}`);
+    console.error(`❌ Rustash: schedule audit failed: ${err.message}`);
   }
 };
 
@@ -320,7 +320,7 @@ const createQstashSchedule = async () => {
   }
 
   // The queue calls back into this deployment: hosted QStash over APP_URL, a
-  // self-hosted queue (hellostash) over QSTASH_CALLBACK_BASE_URL when it shares
+  // self-hosted queue (rustash) over QSTASH_CALLBACK_BASE_URL when it shares
   // the deployment network and the public URL would hairpin through the edge.
   const APP_URL = process.env.QSTASH_CALLBACK_BASE_URL || process.env.APP_URL;
   if (!APP_URL) {
@@ -328,11 +328,11 @@ const createQstashSchedule = async () => {
     return;
   }
 
-  // hellostash upserts by Upstash-Schedule-Id, so re-registering on every boot
+  // rustash upserts by Upstash-Schedule-Id, so re-registering on every boot
   // converges instead of piling up duplicates.
   const schedules =
-    process.env.QSTASH_PROVIDER === 'hellostash'
-      ? [...QSTASH_SCHEDULES, ...HELLOSTASH_EXTRA_SCHEDULES]
+    process.env.QSTASH_PROVIDER === 'rustash'
+      ? [...QSTASH_SCHEDULES, ...RUSTASH_EXTRA_SCHEDULES]
       : QSTASH_SCHEDULES;
 
   for (const schedule of schedules) {
@@ -361,8 +361,8 @@ const createQstashSchedule = async () => {
     }
   }
 
-  if (process.env.QSTASH_PROVIDER === 'hellostash') {
-    await auditHellostashSchedules(QSTASH_URL, QSTASH_TOKEN, APP_URL, schedules);
+  if (process.env.QSTASH_PROVIDER === 'rustash') {
+    await auditRustashSchedules(QSTASH_URL, QSTASH_TOKEN, APP_URL, schedules);
   }
 };
 

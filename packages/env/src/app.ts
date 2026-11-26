@@ -69,7 +69,7 @@ export const getAppConfig = () => {
        * Base URL the queue uses to call back into this deployment.
        *
        * Hosted QStash reaches the public APP_URL. A self-hosted queue that shares
-       * the deployment network (hellostash) sets this to an internal address so
+       * the deployment network (rustash) sets this to an internal address so
        * deliveries never leave the network. Falls back to APP_URL.
        */
       QSTASH_CALLBACK_BASE_URL: z.string().optional(),

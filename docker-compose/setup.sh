@@ -223,10 +223,10 @@ show_message() {
         tips_generating_gateway_secrets)
             case $LANGUAGE in
                 zh_CN)
-                    echo "正在生成 JWKS_KEY 与网关 Token（本机没有 Node.js 时会借助 lobehub/lobehub 镜像生成）..."
+                    echo "正在生成 JWKS_KEY 与网关 Token（本机没有 Node.js 时会借助 hardyone/lobehub 镜像生成）..."
                 ;;
                 *)
-                    echo "Generating JWKS_KEY and the gateway token (uses the lobehub/lobehub image when Node.js is not installed)..."
+                    echo "Generating JWKS_KEY and the gateway token (uses the hardyone/lobehub image when Node.js is not installed)..."
                 ;;
             esac
         ;;
@@ -762,7 +762,7 @@ generate_jwks_key_pair() {
     fi
     # Fall back to the Node.js runtime inside the LobeHub image
     if [[ "$keys" != '{"keys":'* ]] && command -v docker &> /dev/null ; then
-        keys=$(docker run --rm --entrypoint /bin/node lobehub/lobehub -e "$script" 2>/dev/null)
+        keys=$(docker run --rm --entrypoint /bin/node hardyone/lobehub:latest -e "$script" 2>/dev/null)
     fi
     if [[ "$keys" != '{"keys":'*$'\n''{"keys":'* ]]; then
         return 1

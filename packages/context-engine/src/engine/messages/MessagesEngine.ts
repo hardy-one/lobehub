@@ -84,6 +84,7 @@ import {
   UserMemoryInjector,
   WorkspaceContextInjector,
 } from '../../providers';
+import { MessageFactsInjector } from '../../providers/MessageFactsInjector';
 import { SelectedToolInjector } from '../../providers/SelectedToolInjector';
 import type { ContextProcessor } from '../../types';
 import { ToolNameResolver } from '../tools';
@@ -489,6 +490,7 @@ export class MessagesEngine {
         changes: skillChanges,
         enabled: isAgentMode && !!skillChanges,
       }),
+      new MessageFactsInjector(),
       // Active topic document → last user message, for continuing document work outside page scope
       new ActiveTopicDocumentContextInjector({
         activeTopicDocument: initialContext?.activeTopicDocument,

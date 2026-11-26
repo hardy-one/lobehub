@@ -7,4 +7,5 @@ export {
   mentionsTopic,
   parseReferTopicTags,
   resolveTopicReferences,
+  resolveTopicReferencesByMessage,
 } from './resolveTopicReferences';

@@ -19,7 +19,7 @@ export const MAX_DOCUMENT_REFERENCE_CHARS = 20_000;
 /** Most documents listed for a single request, counted separately for latest and earlier turns. */
 export const MAX_DOCUMENT_REFERENCES = 5;
 
-type ReferenceMessage = { content: string | unknown; role?: string };
+type ReferenceMessage = { content: string | unknown; id?: string; role?: string };
 
 const findLatestUserIndex = (messages: ReferenceMessage[]) => {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -27,6 +27,28 @@ const findLatestUserIndex = (messages: ReferenceMessage[]) => {
   }
   return messages.length - 1;
 };
+
+// Both resolvers below read the very same tag shape. Keeping one parser avoids
+// the per-message injection and the current-turn lookup disagreeing about what
+// a `<refer_document>` tag is.
+const TAG_PATTERN = /<refer_document\s([^>]*)>/g;
+const unescapeMarkup = (raw: string) => raw.replaceAll(/\\([<>_*[\]()#`~|])/g, '$1');
+
+const parseMessageTags = (raw: string): Array<{ documentId: string; title?: string }> => {
+  const content = unescapeMarkup(raw);
+  const tags: Array<{ documentId: string; title?: string }> = [];
+  for (const match of content.matchAll(TAG_PATTERN)) {
+    const attrs = match[1];
+    const idMatch = /\bid="([^"]+)"/.exec(attrs);
+    if (!idMatch) continue;
+    const nameMatch = /\bname="([^"]*)"/.exec(attrs);
+    tags.push({ documentId: idMatch[1], title: nameMatch?.[1] });
+  }
+  return tags;
+};
+
+const onlyUserMessages = (messages: ReferenceMessage[]) =>
+  messages.some((msg) => msg.role !== undefined);
 
 /**
  * Parse `<refer_document>` tags from message contents, ordered by last use. The
@@ -36,31 +58,21 @@ const findLatestUserIndex = (messages: ReferenceMessage[]) => {
 export function parseReferDocumentTags(messages: ReferenceMessage[]): ParsedDocumentReference[] {
   const refs = new Map<string, ParsedDocumentReference>();
   const latestUserIndex = findLatestUserIndex(messages);
-
-  const hasRoles = messages.some((msg) => msg.role !== undefined);
+  const hasRoles = onlyUserMessages(messages);
 
   messages.forEach((msg, index) => {
     // Only the user writes these tags; an assistant or tool echo must not add
     // or re-order references.
     if (hasRoles && msg.role !== 'user') return;
-    // Strip markdown escape backslashes (e.g. \< → <, \_ → _) before parsing
     const raw = typeof msg.content === 'string' ? msg.content : '';
-    const content = raw.replaceAll(/\\([<>_*[\]()#`~|])/g, '$1');
-    const tagRegex = /<refer_document\s([^>]*)>/g;
-    let tagMatch;
-    while ((tagMatch = tagRegex.exec(content)) !== null) {
-      const attrs = tagMatch[1];
-      const idMatch = /\bid="([^"]+)"/.exec(attrs);
-      if (!idMatch) continue;
-      const documentId = idMatch[1];
-      const nameMatch = /\bname="([^"]*)"/.exec(attrs);
+    for (const { documentId, title } of parseMessageTags(raw)) {
       const previous = refs.get(documentId);
       // Re-insert so Map order follows the most recent use.
       refs.delete(documentId);
       refs.set(documentId, {
         documentId,
         latest: index === latestUserIndex,
-        title: nameMatch?.[1] || previous?.title,
+        title: title || previous?.title,
       });
     }
   });
@@ -119,4 +131,61 @@ export async function resolveDocumentReferences(
   }
 
   return refs;
+}
+
+/**
+ * Resolve references to the message that actually carries each `<refer_document>`
+ * tag and attach them there, instead of to whichever message happens to be last.
+ * A message reads its own document the same way on the turn it is sent and on
+ * every later turn, so the block stays byte-identical as the conversation grows.
+ *
+ * Lookup and permission decisions remain live: a deleted, unbound or revoked
+ * document still resolves to `unavailable` from `findAgentDocument`, never to a
+ * frozen copy of its old text. The existing per-document character budget and
+ * the per-message reference cap are kept unchanged.
+ */
+export async function resolveDocumentReferencesByMessage(
+  messages: ReferenceMessage[],
+  lookupDocument: (documentId: string) => Promise<DocumentLookupResult | null | undefined>,
+): Promise<DocumentReferenceItem[] | undefined> {
+  const hasRoles = onlyUserMessages(messages);
+  const refs: DocumentReferenceItem[] = [];
+
+  for (let index = 0; index < messages.length; index++) {
+    const msg = messages[index];
+    if (hasRoles && msg.role !== 'user') continue;
+    const raw = typeof msg.content === 'string' ? msg.content : '';
+    const seen = new Set<string>();
+
+    for (const { documentId, title } of parseMessageTags(raw)) {
+      if (seen.has(documentId)) continue;
+      if (seen.size >= MAX_DOCUMENT_REFERENCES) break;
+      seen.add(documentId);
+
+      try {
+        const doc = await lookupDocument(documentId);
+        const resolvedTitle = doc?.title || title;
+        const content = typeof doc?.content === 'string' ? doc.content : undefined;
+
+        if (content === undefined) {
+          refs.push({ documentId, messageId: msg.id, messageIndex: index, title: resolvedTitle });
+          continue;
+        }
+
+        const truncated = content.length > MAX_DOCUMENT_REFERENCE_CHARS;
+        refs.push({
+          content: truncated ? content.slice(0, MAX_DOCUMENT_REFERENCE_CHARS) : content,
+          documentId,
+          messageId: msg.id,
+          messageIndex: index,
+          title: resolvedTitle,
+          ...(truncated && { truncated }),
+        });
+      } catch {
+        refs.push({ documentId, messageId: msg.id, messageIndex: index, title });
+      }
+    }
+  }
+
+  return refs.length > 0 ? refs : undefined;
 }

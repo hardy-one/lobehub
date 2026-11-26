@@ -1,7 +1,6 @@
 import { extractTodosFromMessages, normalizeTodosState } from '@lobechat/agent-runtime';
 import { AgentAccountIdentifier } from '@lobechat/builtin-tool-agent-account';
 import { AgentBuilderIdentifier } from '@lobechat/builtin-tool-agent-builder';
-import { AgentDocumentsIdentifier } from '@lobechat/builtin-tool-agent-documents';
 import { AgentManagementIdentifier } from '@lobechat/builtin-tool-agent-management';
 import {
   CloudSandboxIdentifier,
@@ -29,8 +28,8 @@ import {
   type DocumentReferenceItem,
   type GroupAgentBuilderContext,
   type PlanTodoConfig,
-  resolveDocumentReferences,
-  resolveTopicReferences,
+  resolveDocumentReferencesByMessage,
+  resolveTopicReferencesByMessage,
   type RevokedDocumentReads,
   type TopicReferenceItem,
   type WorkspaceContext,
@@ -108,8 +107,8 @@ const gatherTopicReferences = async (
   const { findTopic, listTopicMessages } = providers;
 
   return attempt('topicReferences', () =>
-    resolveTopicReferences(
-      request.messages as Array<{ content: string | unknown }>,
+    resolveTopicReferencesByMessage(
+      request.messages as Parameters<typeof resolveTopicReferencesByMessage>[0],
       async (topicId) => {
         const topic = await findTopic(topicId);
         return isTopicVisibleToRun(request, topic) ? (topic ?? null) : null;
@@ -126,8 +125,11 @@ const gatherTopicReferences = async (
 };
 
 /**
- * Resolve `<refer_document>` tags against the executing agent's documents. A
- * share visitor never reads the creator's documents through a typed tag.
+ * Resolve `<refer_document>` tags against the executing agent's documents, keyed
+ * to the message that carried each tag. A share visitor never reads the
+ * creator's documents through a typed tag. The lookup stays live on every
+ * request, so a deleted or unbound document resolves as unavailable rather than
+ * replaying a frozen copy of its old content.
  */
 const gatherDocumentReferences = async (
   request: ContextFactRequest,
@@ -141,12 +143,9 @@ const gatherDocumentReferences = async (
   if (request.shareVisitor || !agentId || !findAgentDocument) return undefined;
 
   return attempt('documentReferences', () =>
-    resolveDocumentReferences(
-      request.messages as Array<{ content: string | unknown; role?: string }>,
+    resolveDocumentReferencesByMessage(
+      request.messages as Parameters<typeof resolveDocumentReferencesByMessage>[0],
       (documentId) => findAgentDocument(agentId, documentId),
-      // Without the documents tool the agent cannot read an earlier-turn
-      // reference on demand, so keep inlining those too.
-      { inlineEarlierTurns: !request.enabledToolIds.includes(AgentDocumentsIdentifier) },
     ),
   );
 };

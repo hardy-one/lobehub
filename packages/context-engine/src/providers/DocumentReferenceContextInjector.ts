@@ -1,7 +1,5 @@
-import debug from 'debug';
-
-import { BaseLastUserContentProvider } from '../base/BaseLastUserContentProvider';
-import type { PipelineContext, ProcessorOptions } from '../types';
+import { BaseEveryUserContentProvider } from '../base/BaseEveryUserContentProvider';
+import type { Message, PipelineContext, ProcessorOptions } from '../types';
 
 declare module '../types' {
   interface PipelineContextMetadataOverrides {
@@ -9,8 +7,6 @@ declare module '../types' {
     documentReferenceInjected?: boolean;
   }
 }
-
-const log = debug('context-engine:provider:DocumentReferenceContextInjector');
 
 /** An agent document the user referenced with a `<refer_document>` tag. */
 export interface DocumentReferenceItem {
@@ -20,6 +16,10 @@ export interface DocumentReferenceItem {
   documentId: string;
   /** Referenced in an earlier turn only, so listed without content. */
   earlierTurn?: boolean;
+  /** Message id that carried the tag, preferred over the index for stable ownership. */
+  messageId?: string;
+  /** Index of the user message that carried the tag, fallback when no id exists. */
+  messageIndex?: number;
   /** Document title */
   title?: string;
   /** Whether `content` was cut short of the full document */
@@ -81,14 +81,30 @@ const formatDocumentReferences = (
   return lines.join('\n');
 };
 
+const messageText = (content: Message['content']): string => {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((part: any) => part?.type === 'text' && typeof part.text === 'string')
+      .map((part: any) => part.text as string)
+      .join('\n');
+  }
+  return '';
+};
+
 /**
  * Document Reference Context Injector
  *
  * When user messages contain `<refer_document>` tags, appends the referenced
- * agent documents' content to the last user message.
+ * agent documents' content to the message that carried each tag. Resolving the
+ * reference on every request keeps permission and deletion decisions current;
+ * attaching it to its own message keeps an earlier turn byte-identical when it
+ * becomes history.
  */
-export class DocumentReferenceContextInjector extends BaseLastUserContentProvider {
+export class DocumentReferenceContextInjector extends BaseEveryUserContentProvider {
   readonly name = 'DocumentReferenceContextInjector';
+
+  private injectedCount = 0;
 
   constructor(
     private config: DocumentReferenceContextInjectorConfig,
@@ -97,34 +113,39 @@ export class DocumentReferenceContextInjector extends BaseLastUserContentProvide
     super(options);
   }
 
-  protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
-    const clonedContext = this.cloneContext(context);
-    const references = this.config.documentReferences;
+  protected buildContentForMessage(
+    message: Message,
+    index: number,
+  ): { content: string; contextType: string } | null {
+    if (!this.config.enabled || !this.config.documentReferences?.length) return null;
+    if (message.meta?.systemInjection || message.meta?.virtualLastUser) return null;
 
-    if (!this.config.enabled || !references || references.length === 0) {
-      log('Document reference not enabled or no references, skipping injection');
-      return this.markAsExecuted(clonedContext);
-    }
+    const references = this.config.documentReferences.filter(
+      (item) =>
+        (item.messageId && item.messageId === message.id) ||
+        (!item.messageId && item.messageIndex === index),
+    );
+    if (references.length === 0) return null;
+
+    // Replaying already-processed content must not append a second block.
+    if (messageText(message.content).includes('<document_reference_context>')) return null;
 
     const formattedContent = formatDocumentReferences(references, !!this.config.canReadDocuments);
-    if (!formattedContent) return this.markAsExecuted(clonedContext);
+    if (!formattedContent) return null;
 
-    const lastUserIndex = this.findLastUserMessageIndex(clonedContext.messages);
-    if (lastUserIndex === -1) {
-      log('No user messages found, skipping injection');
-      return this.markAsExecuted(clonedContext);
+    this.injectedCount += references.length;
+    return { content: formattedContent, contextType: 'document_reference_context' };
+  }
+
+  protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
+    this.injectedCount = 0;
+    const result = await super.doProcess(context);
+
+    if (this.injectedCount > 0) {
+      result.metadata.documentReferenceInjected = true;
+      result.metadata.documentReferenceCount = this.injectedCount;
     }
 
-    const hasExistingWrapper = this.hasExistingSystemContext(clonedContext);
-    const contentToAppend = hasExistingWrapper
-      ? this.createContextBlock(formattedContent, 'document_reference_context')
-      : this.wrapWithSystemContext(formattedContent, 'document_reference_context');
-
-    this.appendToLastUserMessage(clonedContext, contentToAppend);
-
-    clonedContext.metadata.documentReferenceInjected = true;
-    clonedContext.metadata.documentReferenceCount = references.length;
-
-    return this.markAsExecuted(clonedContext);
+    return result;
   }
 }

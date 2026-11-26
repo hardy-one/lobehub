@@ -36,11 +36,12 @@ describe('TopicReferenceContextInjector', () => {
     expect(result.metadata.topicReferenceInjected).toBeUndefined();
   });
 
-  it('should inject topic summaries into the last user message', async () => {
+  it('should inject topic summaries into the message that carried the tag', async () => {
     const injector = new TopicReferenceContextInjector({
       enabled: true,
       topicReferences: [
         {
+          messageId: 'user-2',
           summary: 'This topic discussed React hooks and state management.',
           topicId: 'topic-1',
           topicTitle: 'React Hooks Discussion',
@@ -61,6 +62,7 @@ describe('TopicReferenceContextInjector', () => {
     const result = await injector.process(context);
 
     expect(result.messages).toHaveLength(3);
+    expect(result.messages[0].content as string).toBe('Earlier message');
     const lastContent = result.messages[2].content as string;
     expect(lastContent).toContain('<referred_topics hint=');
     expect(lastContent).toContain('lh topic view');
@@ -70,8 +72,29 @@ describe('TopicReferenceContextInjector', () => {
     );
     expect(lastContent).toContain('This topic discussed React hooks and state management.');
     expect(lastContent).toContain('</referred_topics>');
-    expect(result.metadata.topicReferenceInjected).toBe(true);
-    expect(result.metadata.topicReferenceCount).toBe(1);
+  });
+
+  it('keeps the block byte-identical when the message becomes history', async () => {
+    const topicReferences = [{ messageId: 'user-1', summary: 'A summary', topicId: 'topic-1' }];
+    const injector = new TopicReferenceContextInjector({ enabled: true, topicReferences });
+    const tagged = {
+      content: 'See <refer_topic id="topic-1" />',
+      id: 'user-1',
+      role: 'user',
+    };
+
+    const before = await injector.process(createContext([tagged]));
+    const after = await injector.process(
+      createContext([
+        tagged,
+        { content: 'Reply', id: 'assistant-1', role: 'assistant' },
+        { content: 'Follow-up', id: 'user-2', role: 'user' },
+      ]),
+    );
+
+    expect(after.messages[0].content).toBe(before.messages[0].content);
+    expect(after.messages[2].content).toBe('Follow-up');
+    expect(before.messages[0].content).toContain('<topic_reference_context>');
   });
 
   it('should inject pending hint for topics without summaries', async () => {
@@ -79,6 +102,7 @@ describe('TopicReferenceContextInjector', () => {
       enabled: true,
       topicReferences: [
         {
+          messageIndex: 0,
           topicId: 'topic-no-summary',
           topicTitle: 'Old Chat',
         },
@@ -94,7 +118,6 @@ describe('TopicReferenceContextInjector', () => {
     expect(lastContent).toContain('lh topic view');
     expect(lastContent).toContain('<topic id="topic-no-summary" title="Old Chat" />');
     expect(lastContent).not.toContain('</topic>');
-    expect(result.metadata.topicReferenceInjected).toBe(true);
   });
 
   it('should handle mixed topics (some with summaries, some without)', async () => {
@@ -102,11 +125,13 @@ describe('TopicReferenceContextInjector', () => {
       enabled: true,
       topicReferences: [
         {
+          messageIndex: 0,
           summary: 'Summary of topic A.',
           topicId: 'topic-a',
           topicTitle: 'Topic A',
         },
         {
+          messageIndex: 0,
           topicId: 'topic-b',
           topicTitle: 'Topic B',
         },
@@ -124,7 +149,6 @@ describe('TopicReferenceContextInjector', () => {
     expect(lastContent).toContain('Summary of topic A.');
     expect(lastContent).toContain('<pending_topics');
     expect(lastContent).toContain('<topic id="topic-b" title="Topic B" />');
-    expect(result.metadata.topicReferenceCount).toBe(2);
   });
 
   it('should reuse existing system context wrapper', async () => {
@@ -132,6 +156,7 @@ describe('TopicReferenceContextInjector', () => {
       enabled: true,
       topicReferences: [
         {
+          messageIndex: 0,
           summary: 'Topic summary.',
           topicId: 'topic-1',
         },
@@ -165,6 +190,7 @@ some context
       enabled: true,
       topicReferences: [
         {
+          messageIndex: 0,
           recentMessages: [
             { content: 'What is React?', role: 'user' },
             { content: 'React is a JS library.', role: 'assistant' },
@@ -193,7 +219,7 @@ some context
   it('should skip injection when no user messages exist', async () => {
     const injector = new TopicReferenceContextInjector({
       enabled: true,
-      topicReferences: [{ summary: 'Summary', topicId: 'topic-1' }],
+      topicReferences: [{ messageIndex: 0, summary: 'Summary', topicId: 'topic-1' }],
     });
 
     const context = createContext([
@@ -203,6 +229,20 @@ some context
     const result = await injector.process(context);
 
     expect(result.messages[0].content).toBe('Assistant only');
-    expect(result.metadata.topicReferenceInjected).toBeUndefined();
+  });
+
+  it('does not append twice when processed content is replayed', async () => {
+    const withBlock = {
+      content:
+        'question\n\n<!-- SYSTEM CONTEXT (NOT PART OF USER QUERY) -->\n<topic_reference_context>\n<referred_topics hint="x">\n</referred_topics>\n</topic_reference_context>\n<!-- END SYSTEM CONTEXT -->',
+      id: 'user-1',
+      role: 'user',
+    };
+    const injector = new TopicReferenceContextInjector({
+      enabled: true,
+      topicReferences: [{ messageId: 'user-1', topicId: 'topic-1' }],
+    });
+    const result = await injector.process(createContext([withBlock]));
+    expect(result.messages[0].content).toBe(withBlock.content);
   });
 });

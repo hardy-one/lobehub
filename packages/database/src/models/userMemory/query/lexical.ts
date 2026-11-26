@@ -20,6 +20,7 @@ import {
 import { normalizeBm25MatchQuery, SAFE_BM25_QUERY_OPTIONS } from '../../../utils/bm25';
 import { inJsonStringArray } from '../../../utils/inJsonStringArray';
 import type { UserMemoryQueryContext } from './context';
+import { collectLexicalCandidateIds } from './lexicalCandidates';
 import type { Bm25MatchFieldGroup } from './types';
 
 export const buildBm25MatchCondition = (
@@ -32,7 +33,8 @@ export const buildBm25MatchCondition = (
       if (fields.length === 0) return undefined;
 
       const matchQueries = fields.map(
-        (field) => sql`paradedb.match(${field}, ${matchQuery}, conjunction_mode => true)`,
+        (field) =>
+          sql`paradedb.match(${sql.raw(`'${field}'`)}, ${matchQuery}, conjunction_mode => true)`,
       );
 
       return sql<boolean>`${keyColumn} @@@ paradedb.boolean(should => ARRAY[${sql.join(matchQueries, sql`, `)}])`;
@@ -81,17 +83,24 @@ export async function searchActivitiesLexical(
       },
       params.timeRange,
     ),
-    normalizedQuery
-      ? candidateIds
+    normalizedQuery && !candidateIds
+      ? inJsonStringArray(
+          userMemoriesActivities.id,
+          await collectLexicalCandidateIds(ctx, userMemoriesActivities, {
+            child: buildBm25MatchCondition(normalizedQuery, [
+              {
+                fields: ['narrative', 'notes', 'feedback'],
+                keyColumn: userMemoriesActivities.id,
+              },
+            ])!,
+            parent: buildBm25MatchCondition(normalizedQuery, [
+              { fields: ['title', 'summary', 'details'], keyColumn: userMemories.id },
+            ])!,
+          }),
+        )
+      : candidateIds
         ? inJsonStringArray(userMemoriesActivities.id, candidateIds)
-        : buildBm25MatchCondition(normalizedQuery, [
-            { fields: ['title', 'summary', 'details'], keyColumn: userMemories.id },
-            {
-              fields: ['narrative', 'notes', 'feedback'],
-              keyColumn: userMemoriesActivities.id,
-            },
-          ])
-      : undefined,
+        : undefined,
     ctx.buildExactTagFilterCondition(userMemoriesActivities.tags, userMemories.tags, params),
   ].filter((condition): condition is SQL => Boolean(condition));
 
@@ -147,8 +156,24 @@ export async function searchContextsLexical(
     : undefined;
   const conditions = [
     ctx.memoryWhere(userMemoriesContexts),
-    ctx.memoryWhere(userMemories),
-    params.categories?.length ? inArray(userMemories.memoryCategory, params.categories) : undefined,
+    params.categories?.length
+      ? sql`EXISTS (
+          SELECT 1
+          FROM ${userMemories}
+          WHERE ${userMemories.id} IN (
+            SELECT ${userMemoriesContexts.userMemoryId}
+            UNION ALL
+            SELECT jsonb_array_elements_text(${userMemoriesContexts.userMemoryIds})
+          )
+            AND ${userMemories.userId} = ${userMemoriesContexts.userId}
+            AND ${userMemories.isDeleted} IS NOT TRUE
+            AND (${userMemories.state} IS NULL OR ${userMemories.state} <> ALL (ARRAY['superseded', 'rejected']))
+            AND ${userMemories.memoryCategory} IN (${sql.join(
+              params.categories.map((category) => sql`${category}`),
+              sql`, `,
+            )})
+        )`
+      : undefined,
     params.status?.length ? inArray(userMemoriesContexts.currentStatus, params.status) : undefined,
     params.types?.length ? inArray(userMemoriesContexts.type, params.types) : undefined,
     ctx.buildTimeRangeCondition(
@@ -159,100 +184,73 @@ export async function searchContextsLexical(
       },
       params.timeRange,
     ),
-    normalizedQuery
-      ? candidateIds
+    normalizedQuery && !candidateIds
+      ? inJsonStringArray(
+          userMemoriesContexts.id,
+          await collectLexicalCandidateIds(ctx, userMemoriesContexts, {
+            child: buildBm25MatchCondition(normalizedQuery, [
+              {
+                fields: ['title', 'description', 'current_status'],
+                keyColumn: userMemoriesContexts.id,
+              },
+            ])!,
+            parent: buildBm25MatchCondition(normalizedQuery, [
+              { fields: ['title', 'summary', 'details'], keyColumn: userMemories.id },
+            ])!,
+          }),
+        )
+      : candidateIds
         ? inJsonStringArray(userMemoriesContexts.id, candidateIds)
-        : buildBm25MatchCondition(normalizedQuery, [
-            { fields: ['title', 'summary', 'details'], keyColumn: userMemories.id },
-            {
-              fields: ['title', 'description', 'current_status'],
-              keyColumn: userMemoriesContexts.id,
-            },
-          ])
-      : undefined,
-    ctx.buildExactTagFilterCondition(userMemoriesContexts.tags, userMemories.tags, params),
+        : undefined,
+    ctx.buildExactTagFilterCondition(
+      userMemoriesContexts.tags,
+      sql`ARRAY(
+      SELECT tag
+      FROM ${userMemories}
+      CROSS JOIN LATERAL unnest(${userMemories.tags}) AS tag
+      WHERE ${userMemories.id} IN (
+        SELECT ${userMemoriesContexts.userMemoryId}
+        UNION ALL
+        SELECT jsonb_array_elements_text(${userMemoriesContexts.userMemoryIds})
+      )
+        AND ${userMemories.userId} = ${userMemoriesContexts.userId}
+        AND ${userMemories.isDeleted} IS NOT TRUE
+        AND (${userMemories.state} IS NULL OR ${userMemories.state} <> ALL (ARRAY['superseded', 'rejected']))
+    )`,
+      params,
+    ),
   ].filter((condition): condition is SQL => Boolean(condition));
 
-  const contextCandidates = ctx.db.$with('lexical_context_candidates').as(
-    ctx.db
-      .select({
-        firstSeenAt: userMemoriesContexts.firstSeenAt,
-        lastEvidenceAt: userMemoriesContexts.lastEvidenceAt,
-        nextSteps: userMemoriesContexts.nextSteps,
-        now: userMemoriesContexts.now,
-        openQuestions: userMemoriesContexts.openQuestions,
-        synthesizedAt: userMemoriesContexts.synthesizedAt,
-        userMemoryId: userMemoriesContexts.userMemoryId,
-        accessedAt: userMemoriesContexts.accessedAt,
-        associatedObjects: userMemoriesContexts.associatedObjects,
-        associatedSubjects: userMemoriesContexts.associatedSubjects,
-        capturedAt: userMemoriesContexts.capturedAt,
-        createdAt: userMemoriesContexts.createdAt,
-        currentStatus: userMemoriesContexts.currentStatus,
-        dedupeRank: sql<number>`
-          row_number() over (
-            partition by ${userMemoriesContexts.id}
-            order by
-              ${userMemoriesContexts.capturedAt} desc,
-              ${userMemoriesContexts.createdAt} desc
-          )
-        `.as('dedupe_rank'),
-        description: userMemoriesContexts.description,
-        id: userMemoriesContexts.id,
-        metadata: userMemoriesContexts.metadata,
-        scoreImpact: userMemoriesContexts.scoreImpact,
-        scoreUrgency: userMemoriesContexts.scoreUrgency,
-        tags: userMemoriesContexts.tags,
-        title: userMemoriesContexts.title,
-        type: userMemoriesContexts.type,
-        updatedAt: userMemoriesContexts.updatedAt,
-        userId: userMemoriesContexts.userId,
-        userMemoryIds: userMemoriesContexts.userMemoryIds,
-      })
-      .from(userMemoriesContexts)
-      .innerJoin(
-        userMemories,
-        and(
-          eq(userMemories.userId, userMemoriesContexts.userId),
-          sql<boolean>`
-            COALESCE(${userMemoriesContexts.userMemoryIds}, '[]'::jsonb) ? (${userMemories.id})::text
-          `,
-        ),
-      )
-      .where(and(...conditions)),
-  );
-
   const rowsQuery = ctx.db
-    .with(contextCandidates)
     .select({
-      accessedAt: contextCandidates.accessedAt,
-      associatedObjects: contextCandidates.associatedObjects,
-      associatedSubjects: contextCandidates.associatedSubjects,
-      capturedAt: contextCandidates.capturedAt,
-      createdAt: contextCandidates.createdAt,
-      currentStatus: contextCandidates.currentStatus,
-      description: contextCandidates.description,
-      id: contextCandidates.id,
-      metadata: contextCandidates.metadata,
-      scoreImpact: contextCandidates.scoreImpact,
-      scoreUrgency: contextCandidates.scoreUrgency,
-      tags: contextCandidates.tags,
-      title: contextCandidates.title,
-      type: contextCandidates.type,
-      updatedAt: contextCandidates.updatedAt,
-      userId: contextCandidates.userId,
-      firstSeenAt: contextCandidates.firstSeenAt,
-      lastEvidenceAt: contextCandidates.lastEvidenceAt,
-      nextSteps: contextCandidates.nextSteps,
-      now: contextCandidates.now,
-      openQuestions: contextCandidates.openQuestions,
-      synthesizedAt: contextCandidates.synthesizedAt,
-      userMemoryId: contextCandidates.userMemoryId,
-      userMemoryIds: contextCandidates.userMemoryIds,
+      accessedAt: userMemoriesContexts.accessedAt,
+      associatedObjects: userMemoriesContexts.associatedObjects,
+      associatedSubjects: userMemoriesContexts.associatedSubjects,
+      capturedAt: userMemoriesContexts.capturedAt,
+      createdAt: userMemoriesContexts.createdAt,
+      currentStatus: userMemoriesContexts.currentStatus,
+      description: userMemoriesContexts.description,
+      firstSeenAt: userMemoriesContexts.firstSeenAt,
+      id: userMemoriesContexts.id,
+      lastEvidenceAt: userMemoriesContexts.lastEvidenceAt,
+      metadata: userMemoriesContexts.metadata,
+      nextSteps: userMemoriesContexts.nextSteps,
+      now: userMemoriesContexts.now,
+      openQuestions: userMemoriesContexts.openQuestions,
+      scoreImpact: userMemoriesContexts.scoreImpact,
+      scoreUrgency: userMemoriesContexts.scoreUrgency,
+      synthesizedAt: userMemoriesContexts.synthesizedAt,
+      tags: userMemoriesContexts.tags,
+      title: userMemoriesContexts.title,
+      type: userMemoriesContexts.type,
+      updatedAt: userMemoriesContexts.updatedAt,
+      userId: userMemoriesContexts.userId,
+      userMemoryId: userMemoriesContexts.userMemoryId,
+      userMemoryIds: userMemoriesContexts.userMemoryIds,
     })
-    .from(contextCandidates)
-    .where(eq(contextCandidates.dedupeRank, 1))
-    .orderBy(desc(contextCandidates.capturedAt), desc(contextCandidates.createdAt))
+    .from(userMemoriesContexts)
+    .where(and(...conditions))
+    .orderBy(desc(userMemoriesContexts.capturedAt), desc(userMemoriesContexts.createdAt))
     .limit(limit);
 
   return rowsQuery as Promise<UserMemoryContextWithoutVectors[]>;
@@ -296,17 +294,24 @@ export async function searchExperiencesLexical(
       },
       params.timeRange,
     ),
-    normalizedQuery
-      ? candidateIds
+    normalizedQuery && !candidateIds
+      ? inJsonStringArray(
+          userMemoriesExperiences.id,
+          await collectLexicalCandidateIds(ctx, userMemoriesExperiences, {
+            child: buildBm25MatchCondition(normalizedQuery, [
+              {
+                fields: ['situation', 'key_learning', 'action', 'reasoning', 'possible_outcome'],
+                keyColumn: userMemoriesExperiences.id,
+              },
+            ])!,
+            parent: buildBm25MatchCondition(normalizedQuery, [
+              { fields: ['title', 'summary', 'details'], keyColumn: userMemories.id },
+            ])!,
+          }),
+        )
+      : candidateIds
         ? inJsonStringArray(userMemoriesExperiences.id, candidateIds)
-        : buildBm25MatchCondition(normalizedQuery, [
-            { fields: ['title', 'summary', 'details'], keyColumn: userMemories.id },
-            {
-              fields: ['situation', 'key_learning', 'action', 'reasoning', 'possible_outcome'],
-              keyColumn: userMemoriesExperiences.id,
-            },
-          ])
-      : undefined,
+        : undefined,
     ctx.buildExactTagFilterCondition(userMemoriesExperiences.tags, userMemories.tags, params),
   ].filter((condition): condition is SQL => Boolean(condition));
 
@@ -373,17 +378,24 @@ export async function searchPreferencesLexical(
       },
       params.timeRange,
     ),
-    normalizedQuery
-      ? candidateIds
+    normalizedQuery && !candidateIds
+      ? inJsonStringArray(
+          userMemoriesPreferences.id,
+          await collectLexicalCandidateIds(ctx, userMemoriesPreferences, {
+            child: buildBm25MatchCondition(normalizedQuery, [
+              {
+                fields: ['conclusion_directives', 'suggestions'],
+                keyColumn: userMemoriesPreferences.id,
+              },
+            ])!,
+            parent: buildBm25MatchCondition(normalizedQuery, [
+              { fields: ['title', 'summary', 'details'], keyColumn: userMemories.id },
+            ])!,
+          }),
+        )
+      : candidateIds
         ? inJsonStringArray(userMemoriesPreferences.id, candidateIds)
-        : buildBm25MatchCondition(normalizedQuery, [
-            { fields: ['title', 'summary', 'details'], keyColumn: userMemories.id },
-            {
-              fields: ['conclusion_directives', 'suggestions'],
-              keyColumn: userMemoriesPreferences.id,
-            },
-          ])
-      : undefined,
+        : undefined,
     ctx.buildExactTagFilterCondition(userMemoriesPreferences.tags, userMemories.tags, params),
   ].filter((condition): condition is SQL => Boolean(condition));
 
@@ -451,14 +463,21 @@ export async function searchIdentitiesLexical(
       },
       params.timeRange,
     ),
-    normalizedQuery
-      ? candidateIds
+    normalizedQuery && !candidateIds
+      ? inJsonStringArray(
+          userMemoriesIdentities.id,
+          await collectLexicalCandidateIds(ctx, userMemoriesIdentities, {
+            child: buildBm25MatchCondition(normalizedQuery, [
+              { fields: ['description', 'role'], keyColumn: userMemoriesIdentities.id },
+            ])!,
+            parent: buildBm25MatchCondition(normalizedQuery, [
+              { fields: ['title', 'summary', 'details'], keyColumn: userMemories.id },
+            ])!,
+          }),
+        )
+      : candidateIds
         ? inJsonStringArray(userMemoriesIdentities.id, candidateIds)
-        : buildBm25MatchCondition(normalizedQuery, [
-            { fields: ['title', 'summary', 'details'], keyColumn: userMemories.id },
-            { fields: ['description', 'role'], keyColumn: userMemoriesIdentities.id },
-          ])
-      : undefined,
+        : undefined,
     ctx.buildExactTagFilterCondition(userMemoriesIdentities.tags, userMemories.tags, params),
   ].filter((condition): condition is SQL => Boolean(condition));
 

@@ -239,8 +239,8 @@ export class UserMemoryQueryModel {
   }
 
   private buildExactTagFilterCondition(
-    layerTags: AnyColumn,
-    baseTags: AnyColumn,
+    layerTags: AnyColumn | SQL,
+    baseTags: AnyColumn | SQL,
     params: SearchMemoryParams,
   ) {
     return buildExactTagFilterCondition(this.context, layerTags, baseTags, params);

@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import {
   type AgentEvent,
   type AgentRuntimeContext,
@@ -60,6 +62,7 @@ type ParsedToolSet = Record<string, any>;
  */
 interface ToolSetExecutionCache {
   ownerId: string;
+  revision?: string;
   toolSet?: ParsedToolSet;
 }
 
@@ -78,6 +81,8 @@ const freezeToolSet = (value: unknown): ParsedToolSet => {
   };
   return visit(value) as ParsedToolSet;
 };
+
+const revisionOf = (json: string): string => createHash('sha256').update(json).digest('hex');
 
 /**
  * Whether a persisted blob may leave out the copies `slimStateForPersist`
@@ -304,9 +309,20 @@ export class AgentStateManager {
     const toolSet = (state as { operationToolSet?: unknown }).operationToolSet;
     if (!toolSet) return;
     const cache = this.toolSetExecutionCaches.get(operationId);
-    if (cache?.toolSet && JSON.stringify(cache.toolSet) === JSON.stringify(toolSet)) return;
-    await this.redis.setex(this.toolSetKey(operationId), this.DEFAULT_TTL, JSON.stringify(toolSet));
-    if (cache) cache.toolSet = freezeToolSet(toolSet);
+    // Inline steps carry the frozen object cached on cold load, so identity is
+    // enough to skip the write without serializing a 300–400 KB tool set. A
+    // rebuilt-but-equal object is recognized by the revision computed at the
+    // last write/read; that computation happens once per execution, not once
+    // per step.
+    if (cache?.toolSet === toolSet) return;
+    const json = JSON.stringify(toolSet);
+    const revision = revisionOf(json);
+    if (cache?.revision === revision) return;
+    await this.redis.setex(this.toolSetKey(operationId), this.DEFAULT_TTL, json);
+    if (cache) {
+      cache.revision = revision;
+      cache.toolSet = freezeToolSet(toolSet);
+    }
   }
 
   /**
@@ -327,7 +343,10 @@ export class AgentStateManager {
     const json = await this.redis.get(this.toolSetKey(operationId));
     if (!json) return;
     const toolSet = freezeToolSet(JSON.parse(json));
-    if (cache) cache.toolSet = toolSet;
+    if (cache) {
+      cache.revision = revisionOf(json);
+      cache.toolSet = toolSet;
+    }
     (state as { operationToolSet?: unknown }).operationToolSet = toolSet;
   }
 

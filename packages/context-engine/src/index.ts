@@ -48,6 +48,7 @@ export type {
 } from './tokenAccounting/requestPayload';
 export {
   countRequestPayloadTokens,
+  countRequestTokenViews,
   tryCountRequestPayloadTokens,
 } from './tokenAccounting/requestPayload';
 // Processors

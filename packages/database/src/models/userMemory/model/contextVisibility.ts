@@ -2,12 +2,14 @@ import type { AnyColumn, SQL } from 'drizzle-orm';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 
 import { userMemories, userMemoriesContexts } from '../../../schemas';
+import { visibleMemoryState } from '../../../utils/memoryVisibility';
+import { notTrashed } from '../../../utils/softDelete';
 import type { UserMemoryModelContext } from './context';
 
 interface ContextVisibilityParams {
   contextFilters?: SQL | undefined;
   ctx: UserMemoryModelContext;
-  joinedTagFilters?: string[] | undefined;
+  joinedFilters?: SQL | undefined;
   layer?: string;
   memoryFilters?: SQL | undefined;
   offset: number;
@@ -16,13 +18,9 @@ interface ContextVisibilityParams {
   scoreColumn?: SQL | AnyColumn;
 }
 
-/**
- * Paginates management Context rows before looking up visible parent memories.
- * The parent lookup is a correlated EXISTS over the paged set, so LIMIT/OFFSET
- * is applied before any context × parent join is evaluated.
- */
 export const buildContextVisibilityCte = ({
   ctx,
+  joinedFilters,
   layer,
   order = 'desc',
   offset,
@@ -33,38 +31,65 @@ export const buildContextVisibilityCte = ({
 }: ContextVisibilityParams) => {
   const applyOrder = order === 'asc' ? asc : desc;
 
-  const contextPage = ctx.db.$with('memory_context_page').as(
+  const filteredPairs = ctx.db.$with('memory_filtered_pairs').as(
     ctx.db
       .select({
-        createdAt: userMemoriesContexts.createdAt,
-        id: userMemoriesContexts.id,
+        contextId: sql<string>`${userMemoriesContexts.id}`.as('context_id'),
+        contextCreatedAt: userMemoriesContexts.createdAt,
+        contextUpdatedAt: userMemoriesContexts.updatedAt,
+        memoryId: sql<string>`${userMemories.id}`.as('memory_id'),
         score: scoreColumn
           ? sql`${scoreColumn}`.as('score_column')
           : sql<null>`NULL`.as('score_column'),
-        updatedAt: userMemoriesContexts.updatedAt,
-        userMemoryIds: userMemoriesContexts.userMemoryIds,
       })
       .from(userMemoriesContexts)
-      .where(and(eq(userMemoriesContexts.userId, ctx.userId), contextFilters))
+      .innerJoin(
+        userMemories,
+        and(
+          eq(userMemories.userId, userMemoriesContexts.userId),
+          sql<boolean>`COALESCE(${userMemoriesContexts.userMemoryIds}, '[]'::jsonb) ? (${userMemories.id})::text`,
+        ),
+      )
+      .where(
+        and(
+          eq(userMemoriesContexts.userId, ctx.userId),
+          eq(userMemories.userId, ctx.userId),
+          layer ? eq(userMemories.memoryLayer, layer) : undefined,
+          notTrashed(userMemories.isDeleted),
+          visibleMemoryState(userMemories.state),
+          contextFilters,
+          memoryFilters,
+          joinedFilters,
+        ),
+      ),
+  );
+
+  const pagePairs = ctx.db.$with('memory_context_page').as(
+    ctx.db
+      .select({
+        contextId: filteredPairs.contextId,
+        memoryId: filteredPairs.memoryId,
+        score: filteredPairs.score,
+      })
+      .from(filteredPairs)
       .orderBy(
-        ...(scoreColumn ? [applyOrder(scoreColumn)] : []),
-        applyOrder(userMemoriesContexts.updatedAt),
-        applyOrder(userMemoriesContexts.createdAt),
-        asc(userMemoriesContexts.id),
+        applyOrder(filteredPairs.score),
+        applyOrder(filteredPairs.contextUpdatedAt),
+        applyOrder(filteredPairs.contextCreatedAt),
       )
       .limit(pageSize)
       .offset(offset),
   );
 
-  const parentExists = sql<boolean>`EXISTS (
-    SELECT 1 FROM ${userMemories}
-    WHERE ${and(
-      eq(userMemories.userId, ctx.userId),
-      layer ? eq(userMemories.memoryLayer, layer) : undefined,
-      memoryFilters,
-    )}
-      AND COALESCE(${contextPage.userMemoryIds}, '[]'::jsonb) ? (${userMemories.id})::text
-  )`;
+  const contextBridges = ctx.db.$with('memory_context_bridges').as(
+    ctx.db
+      .select({
+        contextId: sql<string>`${pagePairs.contextId}`.as('context_id'),
+        memoryId: sql<string>`${pagePairs.memoryId}`.as('memory_id'),
+        score: pagePairs.score,
+      })
+      .from(pagePairs),
+  );
 
-  return { applyOrder, contextPage, parentExists };
+  return { applyOrder, contextBridges, filteredPairs, pagePairs };
 };

@@ -8,7 +8,7 @@ import type {
 } from '@lobechat/types';
 import { LayersEnum } from '@lobechat/types';
 import type { AnyColumn, SQL } from 'drizzle-orm';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
 
 import {
   userMemories,
@@ -89,7 +89,7 @@ export const listMemories = async <
 
   switch (layer) {
     case LayersEnum.Context: {
-      const { applyOrder, contextPage, parentExists } = buildContextVisibilityCte({
+      const { applyOrder, contextBridges, filteredPairs, pagePairs } = buildContextVisibilityCte({
         ctx,
         layer,
         offset,
@@ -98,18 +98,14 @@ export const listMemories = async <
       });
 
       const rows = await ctx.db
-        .with(contextPage)
+        .with(filteredPairs, pagePairs)
         .select({
           context: contextSelection,
           memory: baseSelection,
         })
-        .from(contextPage)
-        .innerJoin(userMemoriesContexts, eq(userMemoriesContexts.id, contextPage.id))
-        .innerJoin(
-          userMemories,
-          sql<boolean>`COALESCE(${contextPage.userMemoryIds}, '[]'::jsonb) ? (${userMemories.id})::text`,
-        )
-        .where(parentExists)
+        .from(pagePairs)
+        .innerJoin(userMemoriesContexts, eq(userMemoriesContexts.id, contextBridges.contextId))
+        .innerJoin(userMemories, eq(userMemories.id, contextBridges.memoryId))
         .orderBy(
           applyOrder(userMemoriesContexts.updatedAt),
           applyOrder(userMemoriesContexts.createdAt),

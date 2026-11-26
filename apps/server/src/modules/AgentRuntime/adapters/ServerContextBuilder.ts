@@ -3,7 +3,7 @@ import type {
   ContextBuildInput,
   ContextBuildOutput,
 } from '@lobechat/agent-runtime';
-import { estimateRequestInputTokens, tryCountRequestPayloadTokens } from '@lobechat/context-engine';
+import { countRequestTokenViews } from '@lobechat/context-engine';
 
 import type { RuntimeExecutorContext } from '../context';
 import { buildServerCallLlmContext } from './serverCallLlmContextBuilder';
@@ -27,12 +27,13 @@ export class ServerContextBuilder implements ContextBuilder {
       tooling,
     });
 
+    const tokenViews = countRequestTokenViews({
+      messages: result.processedMessages,
+      tools: tooling.resolved.tools,
+    });
+
     return {
-      // The attempt ships these messages and `resolved.tools` as-is.
-      contextAccounting: tryCountRequestPayloadTokens({
-        messages: result.processedMessages,
-        tools: tooling.resolved.tools,
-      }),
+      ...tokenViews,
       messages: result.processedMessages,
       getToolActivationContext: result.getToolActivationContext,
       modelParameters: {
@@ -42,9 +43,6 @@ export class ServerContextBuilder implements ContextBuilder {
       preserveThinking: result.preserveThinkingForPayload,
       replayAssistantReasoning: result.shouldReplayAssistantReasoning,
       resolvedTools: tooling.resolved,
-      estimatedInputTokens: estimateRequestInputTokens(result.processedMessages as any, {
-        tools: tooling.resolved.tools,
-      }),
     };
   }
 }

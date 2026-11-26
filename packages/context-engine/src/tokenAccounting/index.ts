@@ -27,10 +27,10 @@ const ZERO_BY_SOURCE = (): Record<TokenSourceType, number> => ({
   toolDefinition: 0,
 });
 
-const estimate = (value: unknown): number => {
+const estimateValue = (value: unknown, estimateText: (text: string) => number): number => {
   if (value == null) return 0;
   const text = typeof value === 'string' ? value : JSON.stringify(value);
-  return text ? estimateTokenCount(text) : 0;
+  return text ? estimateText(text) : 0;
 };
 
 const bumpSource = (
@@ -55,7 +55,11 @@ const bumpSource = (
  * could otherwise push a single attachment over the compression threshold; on
  * Web this undercounts by one short URL per attachment.
  */
-const countFileContext = (msg: UIChatMessage, previewFileIds?: ReadonlySet<string>): number => {
+const countFileContext = (
+  msg: UIChatMessage,
+  previewFileIds?: ReadonlySet<string>,
+  estimate = (value: unknown) => estimateValue(value, estimateTokenCount),
+): number => {
   const fileList = msg.fileList ?? [];
   const imageList = msg.imageList ?? [];
   const videoList = msg.videoList ?? [];
@@ -162,11 +166,11 @@ type AssistantTokenBlock =
  * accounting.messages;
  * // → [{ index: 0, role: 'user', bySource: { content: 1234 }, total: 1234 }, ...]
  */
-export const countContextTokens = ({
-  messages,
-  tools = [],
-  options,
-}: CountContextTokensParams): ContextTokenAccounting => {
+export const countContextTokens = (
+  { messages, tools = [], options }: CountContextTokensParams,
+  estimateText: (text: string) => number = estimateTokenCount,
+): ContextTokenAccounting => {
+  const estimate = (value: unknown) => estimateValue(value, estimateText);
   const driftMultiplier = options?.driftMultiplier ?? DEFAULT_DRIFT_MULTIPLIER;
   const previewFileIds = options?.previewFileIds;
 
@@ -320,7 +324,7 @@ export const countContextTokens = ({
         bumpSource(bySource, 'content', estimate(msg.content));
 
         if (msg.role === 'user')
-          bumpSource(bySource, 'fileContext', countFileContext(msg, previewFileIds));
+          bumpSource(bySource, 'fileContext', countFileContext(msg, previewFileIds, estimate));
 
         const reasoning = msg.reasoning;
         if (reasoning) {

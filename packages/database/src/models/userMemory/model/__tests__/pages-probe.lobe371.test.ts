@@ -4,7 +4,7 @@ import { writeFileSync } from 'node:fs';
 
 import { LayersEnum } from '@lobechat/types';
 import { inArray } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { getTestDB } from '../../../../core/getTestDB';
 import { userMemories, userMemoriesContexts, users } from '../../../../schemas';
@@ -94,5 +94,10 @@ describe('LOBE-368 multi-page characterization', () => {
     }
     writeFileSync(out, JSON.stringify(results, null, 2) + '\n');
     console.log('PAGE_RESULTS', JSON.stringify(results));
+    expect(results.map((result) => result.total)).toEqual([6, 6, 6, 6]);
+    expect(results[1].pairs).toEqual([
+      ['q-E', 'q-E1'],
+      ['q-F', 'q-F1'],
+    ]);
   });
 });

@@ -13,7 +13,7 @@ import {
 import { normalizeBm25MatchQuery, SAFE_BM25_QUERY_OPTIONS } from '../../../utils/bm25';
 import { inJsonStringArray } from '../../../utils/inJsonStringArray';
 import type { UserMemoryModelContext } from './context';
-import { buildContextVisibilityCte } from './contextVisibility';
+import { buildContextTotalQuery, buildContextVisibilityCte } from './contextVisibility';
 import type { GetMemoriesResult, QueryUserMemoriesParams } from './types';
 import { buildTextSearchCondition, isPGliteDatabase } from './utils';
 
@@ -225,16 +225,19 @@ export const queryMemories = async (
           : undefined,
       ];
 
-      const { applyOrder, candidateWindow, pagePairs, visiblePairs } = buildContextVisibilityCte({
+      const visibilityParams = {
         contextFilters: and(...contextFilters),
         ctx,
         joinedTagFilters,
         layer: resolvedLayer,
         memoryFilters: and(...parentFilters),
+        scoreColumn,
+      };
+      const { applyOrder, candidateWindow, pagePairs, visiblePairs } = buildContextVisibilityCte({
+        ...visibilityParams,
         offset,
         order,
         pageSize: normalizedPageSize,
-        scoreColumn,
       });
 
       const rowsQuery = ctx.db
@@ -268,15 +271,7 @@ export const queryMemories = async (
           asc(userMemoriesContexts.id),
           asc(userMemories.id),
         );
-      const totalQuery = ctx.db
-        .with(candidateWindow, visiblePairs)
-        .select({ count: sql<number>`COUNT(*)::int` })
-        .from(
-          ctx.db
-            .selectDistinct({ memoryId: visiblePairs.memoryId })
-            .from(visiblePairs)
-            .as('memory_total_ids'),
-        );
+      const totalQuery = buildContextTotalQuery(visibilityParams);
       const [rows, totalResult] = await Promise.all([rowsQuery, totalQuery]);
 
       return {

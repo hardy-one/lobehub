@@ -28,10 +28,31 @@ export const collectLexicalCandidateIds = async (
       .select({ id: userMemories.id })
       .from(userMemories)
       .where(and(ctx.memoryWhere(userMemories), matches.parent)),
-    ctx.db
-      .select({ id: table.id })
-      .from(table)
-      .where(and(ctx.memoryWhere(table), matches.child)),
+    table === userMemoriesContexts
+      ? ctx.db
+          .select({ id: userMemoriesContexts.id })
+          .from(userMemoriesContexts)
+          .where(
+            and(
+              ctx.memoryWhere(userMemoriesContexts),
+              matches.child,
+              or(
+                sql`EXISTS (
+                  SELECT 1
+                  FROM jsonb_array_elements_text(${userMemoriesContexts.userMemoryIds}) AS legacy_ids(mem_id)
+                  JOIN ${userMemories} ON ${userMemories.id} = legacy_ids.mem_id
+                  WHERE ${userMemories.userId} = ${userMemoriesContexts.userId}
+                    AND ${userMemories.isDeleted} IS NOT TRUE
+                    AND (${userMemories.state} IS NULL OR ${userMemories.state} <> ALL (ARRAY['superseded', 'rejected']))
+                )`,
+                sql`${userMemoriesContexts.userMemoryId} IS NOT NULL`,
+              ),
+            ),
+          )
+      : ctx.db
+          .select({ id: table.id })
+          .from(table)
+          .where(and(ctx.memoryWhere(table), matches.child)),
   ]);
 
   const parentIdList = parentIds.map(({ id }) => id);
@@ -46,14 +67,14 @@ export const collectLexicalCandidateIds = async (
             and(
               ctx.memoryWhere(userMemoriesContexts),
               or(
-                inJsonStringArray(userMemoriesContexts.userMemoryId, parentIdList),
+                sql`EXISTS (
+                  SELECT 1
+                  FROM jsonb_array_elements_text(${userMemoriesContexts.userMemoryIds}) AS legacy_ids(mem_id)
+                  WHERE ${inJsonStringArray(sql`legacy_ids.mem_id`, parentIdList)}
+                )`,
                 and(
-                  sql`${userMemoriesContexts.userMemoryId} IS NULL`,
-                  sql`EXISTS (
-                    SELECT 1
-                    FROM jsonb_array_elements_text(${userMemoriesContexts.userMemoryIds}) AS legacy_ids(mem_id)
-                    WHERE ${inJsonStringArray(sql`legacy_ids.mem_id`, parentIdList)}
-                  )`,
+                  sql`${userMemoriesContexts.userMemoryId} IS NOT NULL`,
+                  inJsonStringArray(userMemoriesContexts.userMemoryId, parentIdList),
                 ),
               ),
             ),

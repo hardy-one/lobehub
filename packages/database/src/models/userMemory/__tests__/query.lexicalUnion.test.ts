@@ -268,7 +268,7 @@ describe('UserMemoryModel.searchMemory lexical candidate union', () => {
     expect(multiParent.id).not.toBe(newest.id);
   });
 
-  it('keeps standalone NULL and empty legacy contexts visible', async () => {
+  it('does not return standalone NULL and empty legacy contexts on the base-memory join path', async () => {
     const nullList = await insertContext(null, { description: 'Atlas NULL legacy list' });
     const emptyList = await insertContext([], { description: 'Atlas empty legacy list' });
     await Promise.all([
@@ -282,7 +282,9 @@ describe('UserMemoryModel.searchMemory lexical candidate union', () => {
       'atlas',
     );
 
-    expect(rows.map(({ id }) => id)).toEqual(expect.arrayContaining([nullList.id, emptyList.id]));
+    expect(rows.map(({ id }) => id)).not.toEqual(
+      expect.arrayContaining([nullList.id, emptyList.id]),
+    );
   });
 
   it('keeps a live new parent visible even when its legacy list is empty', async () => {

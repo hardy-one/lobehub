@@ -1025,6 +1025,20 @@ describe('AgentStateManager', () => {
       expect(redisMock.get).not.toHaveBeenCalled();
     });
 
+    it('getInterruptSentinels batch-reads all keys in one MGET', async () => {
+      redisMock.mget.mockResolvedValueOnce(['1', null, '1']);
+      expect(await stateManager.getInterruptSentinels(['op-a', 'op-b', 'op-c'])).toEqual(
+        new Set(['op-a', 'op-c']),
+      );
+      expect(redisMock.mget).toHaveBeenCalledTimes(1);
+      expect(redisMock.mget).toHaveBeenCalledWith(
+        'agent_runtime_interrupt:op-a',
+        'agent_runtime_interrupt:op-b',
+        'agent_runtime_interrupt:op-c',
+      );
+      expect(redisMock.exists).not.toHaveBeenCalled();
+    });
+
     it('deleteAgentOperation removes the sentinel with the other keys', async () => {
       await stateManager.deleteAgentOperation('op-del');
 

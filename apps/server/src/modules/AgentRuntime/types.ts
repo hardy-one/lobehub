@@ -88,6 +88,13 @@ export interface IAgentStateManager {
   getExecutionHistory: (operationId: string, limit?: number) => Promise<any[]>;
 
   /**
+   * Batch-check interrupt sentinels for all live operations. One call maps to
+   * one Redis MGET, keeping the abort monitor's per-tick cost constant.
+   * Returns the operation ids whose sentinel is present.
+   */
+  getInterruptSentinels: (operationIds: string[]) => Promise<Set<string>>;
+
+  /**
    * Get operation metadata
    */
   getOperationMetadata: (operationId: string) => Promise<AgentOperationMetadata | null>;

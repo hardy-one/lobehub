@@ -154,6 +154,10 @@ export class InMemoryAgentStateManager implements IAgentStateManager {
     return this.interrupted.has(operationId);
   }
 
+  async getInterruptSentinels(operationIds: string[]): Promise<Set<string>> {
+    return new Set(operationIds.filter((operationId) => this.interrupted.has(operationId)));
+  }
+
   async setQueuedMessages(operationId: string, pending: boolean): Promise<void> {
     if (pending) this.queuedMessages.add(operationId);
     else this.queuedMessages.delete(operationId);

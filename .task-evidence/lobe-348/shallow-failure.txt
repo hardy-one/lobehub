@@ -1,0 +1,52 @@
+
+ RUN  v5.0.0 /home/hardy/Workspace/LobeHub/lobehub-perf-p0-step-clone/packages/agent-runtime
+
+ ❯ src/core/runtime.stateIsolation.test.ts (1 test | 1 failed) 10ms
+   ❯ step state isolation (1)
+     × keeps nested input state intact when the runner mutates it and throws 9ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/core/runtime.stateIsolation.test.ts > step state isolation > keeps nested input state intact when the runner mutates it and throws
+AssertionError: expected { cost: { …(5) }, …(9) } to deeply equal { cost: { …(5) }, …(9) }
+
+- Expected
++ Received
+
+@@ -17,17 +17,17 @@
+    "createdAt": "2026-11-26T09:05:57.330Z",
+    "lastModified": "2026-11-26T09:05:57.330Z",
+    "llmCalls": 0,
+    "messages": [
+      {
+-       "content": "original",
++       "content": "changed",
+        "role": "user",
+      },
+    ],
+    "metadata": {
+      "nested": {
+-       "value": "original",
++       "value": "changed",
+      },
+    },
+    "operationId": "test",
+    "status": "idle",
+    "stepCount": 0,
+
+ ❯ src/core/runtime.stateIsolation.test.ts:24:19
+     22|     const result = await new AgentRuntime(agent).step(state);
+     23|
+     24|     expect(state).toEqual(original);
+       |                   ^
+     25|     expect(result.newState.status).toBe('error');
+     26|     expect(result.newState.stepCount).toBe(original.stepCount + 1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  17:05:56
+   Duration  502ms (environment 73%, transform 19%, import 4%, tests 3%, worker 1%)
+

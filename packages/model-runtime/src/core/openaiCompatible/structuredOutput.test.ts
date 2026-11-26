@@ -117,6 +117,53 @@ describe('parseStructuredToolArguments', () => {
     expect(parseStructuredToolArguments('{"a":1}}')).toEqual({ a: 1 });
   });
 
+  it.each([
+    { args: '}{"persona":"x","tagline":"y"}', expected: { persona: 'x', tagline: 'y' } },
+    { args: '  }{"persona":"x"}', expected: { persona: 'x' } },
+  ])('recovers one leading closing brace: $args', ({ args, expected }) => {
+    const { log, restore } = createLogger();
+
+    try {
+      expect(parseStructuredToolArguments(args)).toEqual(expected);
+      expect(log.mock.calls.flat().join('\n')).toMatch(
+        /structured output: recovered by removing one leading closing brace/,
+      );
+    } finally {
+      restore();
+    }
+  });
+
+  it.each(['}{bad', '}[1,2]'])(
+    'rejects a leading brace when the repaired value is not an object: %s',
+    (args) => {
+      const structuredError = captureStructuredError(() => parseStructuredToolArguments(args));
+
+      expect(structuredError.reason).toBe('invalid JSON in tool arguments');
+      expect(structuredError.context).toMatchObject({ argumentsLength: args.length });
+    },
+  );
+
+  it('does not recover a leading brace when the provider reported truncation', () => {
+    const args = '}{"persona":"x"}';
+    const { log, restore } = createLogger();
+
+    try {
+      const structuredError = captureStructuredError(() =>
+        parseStructuredToolArguments(args, { finishReason: 'length', truncated: true }),
+      );
+
+      expect(structuredError.reason).toBe('invalid JSON in tool arguments');
+      expect(structuredError.context).toMatchObject({
+        argumentsLength: args.length,
+        finishReason: 'length',
+        truncated: true,
+      });
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+
   it('preserves the original error when the reported position cannot be recovered', () => {
     const { log, restore } = createLogger();
     vi.spyOn(JSON, 'parse').mockImplementationOnce(() => {

@@ -145,8 +145,8 @@ export function toSearchTags(params: SearchMemoryParams) {
 
 export function buildExactTagFilterCondition(
   ctx: UserMemoryQueryContext,
-  layerTags: AnyColumn,
-  baseTags: AnyColumn,
+  layerTags: AnyColumn | SQL,
+  baseTags: AnyColumn | SQL,
   params: SearchMemoryParams,
 ) {
   const tags = ctx.toSearchTags(params);

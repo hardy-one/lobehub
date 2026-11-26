@@ -412,6 +412,14 @@ export class AgentRuntimeCoordinator {
     return this.stateManager.clearInlineResume(operationId, ownerId);
   }
 
+  invalidateToolSetCache(operationId: string, ownerId?: string): void {
+    this.stateManager.invalidateToolSetCache(operationId, ownerId);
+  }
+
+  withToolSetCache(operationId: string, ownerId: string): () => void {
+    return this.stateManager.withToolSetCache(operationId, ownerId);
+  }
+
   /**
    * Atomically try to claim a step for execution (distributed lock).
    */

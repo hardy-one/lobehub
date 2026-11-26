@@ -25,6 +25,7 @@ const { redisMock, pipelineMock } = vi.hoisted(() => {
     hgetall: vi.fn(),
     hmset: vi.fn(),
     keys: vi.fn(),
+    mget: vi.fn(),
     multi: vi.fn(() => pipelineMock),
     quit: vi.fn(),
     set: vi.fn(),
@@ -51,6 +52,7 @@ describe('AgentStateManager', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    redisMock.eval.mockResolvedValue(1);
     resetSlimAgentStateCache();
     mockSlimFlag(false);
     stateManager = new AgentStateManager();
@@ -285,18 +287,27 @@ describe('AgentStateManager', () => {
   });
 
   // The tool set is immutable, the heaviest thing on the state, and re-written
-  // at every step; it lives in its own key written once per process and is
-  // re-attached on load. Distinct operationIds per test: the write-once cache
-  // is process-global and survives `clearAllMocks`.
+  // at every step; it lives in its own key and is re-attached on load. Each
+  // execution binds an owner-scoped cache via `withToolSetCache`.
   describe('operationToolSet externalization', () => {
     const toolSet = { enabledToolIds: ['foo'], manifestMap: { foo: { api: [] } }, tools: [{}] };
+    const cacheOf = (manager: AgentStateManager, op: string) =>
+      (manager as any).toolSetExecutionCaches.get(op) as
+        { ownerId: string; revision?: string; toolSet?: unknown } | undefined;
+    const cacheSnapshot = (manager: AgentStateManager, op: string) => {
+      const cache = cacheOf(manager, op);
+      return { present: !!cache, ownerId: cache?.ownerId, warm: !!cache?.toolSet };
+    };
 
+    const stateBlobFor = (op: string) =>
+      pipelineMock.setex.mock.calls.find((call) => call[0] === `agent_runtime_state:${op}`)?.[2];
     it('writes the tool set to its own key and strips it from the state blob', async () => {
-      await stateManager.saveAgentState('op-ots-strip', {
+      const state = {
         operationToolSet: toolSet,
         status: 'running',
         stepCount: 1,
-      } as any);
+      } as any;
+      await stateManager.saveAgentState('op-ots-strip', state);
 
       expect(redisMock.setex).toHaveBeenCalledWith(
         'agent_runtime_toolset:op-ots-strip',
@@ -308,14 +319,25 @@ describe('AgentStateManager', () => {
       );
       expect(JSON.parse(blob![2] as string).operationToolSet).toBeUndefined();
       expect(JSON.parse(blob![2] as string).status).toBe('running');
+      const blobText = blob![2] as string;
+      const fullSize = JSON.stringify(state).length;
+      console.log(
+        `[probe] stateBlobBytes=${Buffer.byteLength(blobText)} fullStateBytes=${Buffer.byteLength(JSON.stringify(state))} toolSetBytes=${Buffer.byteLength(JSON.stringify(toolSet))} containsToolSetField=${blobText.includes('operationToolSet')}`,
+      );
+      expect(blobText).not.toContain('operationToolSet');
+      expect(blobText.length).toBeLessThan(fullSize);
     });
 
-    it('writes the tool set once per process and only refreshes its TTL after that', async () => {
+    it('writes the tool set once per execution and only refreshes its TTL after that', async () => {
       const op = 'op-ots-once';
       const state = { operationToolSet: toolSet, status: 'running', stepCount: 1 } as any;
-
-      await stateManager.saveAgentState(op, state);
-      await stateManager.saveAgentState(op, state);
+      const dispose = stateManager.withToolSetCache(op, 'owner-once');
+      try {
+        await stateManager.saveAgentState(op, state);
+        await stateManager.saveAgentState(op, state);
+      } finally {
+        dispose();
+      }
 
       const writes = redisMock.setex.mock.calls.filter(
         (c) => c[0] === `agent_runtime_toolset:${op}`,
@@ -342,6 +364,27 @@ describe('AgentStateManager', () => {
       expect(JSON.parse(blob![2] as string).operationToolSet).toBeUndefined();
     });
 
+    it('writes again when a saved tool set changes', async () => {
+      const op = 'op-ots-change';
+      const state = {
+        operationToolSet: structuredClone(toolSet),
+        status: 'running',
+        stepCount: 1,
+      } as any;
+      const dispose = stateManager.withToolSetCache(op, 'owner-change');
+      try {
+        await stateManager.saveAgentState(op, state);
+        state.operationToolSet = structuredClone(state.operationToolSet);
+        state.operationToolSet.enabledToolIds.push('bar');
+        await stateManager.saveAgentState(op, state);
+      } finally {
+        dispose();
+      }
+      expect(
+        redisMock.setex.mock.calls.filter(([key]) => key === `agent_runtime_toolset:${op}`),
+      ).toHaveLength(2);
+    });
+
     it('re-attaches the tool set from its key when the loaded blob has none', async () => {
       const op = 'op-ots-load';
       redisMock.get.mockImplementation((key: string) =>
@@ -351,9 +394,380 @@ describe('AgentStateManager', () => {
             ? JSON.stringify(toolSet)
             : null,
       );
-
       const loaded = await stateManager.loadAgentState(op);
       expect(loaded?.operationToolSet).toEqual(toolSet);
+    });
+
+    it('keeps one write and zero per-step stringify across N inline steps', async () => {
+      const op = 'op-ots-inline-counts';
+      const stepCount = 8;
+      const serializedTools = JSON.stringify(toolSet);
+      redisMock.get.mockImplementation((key: string) =>
+        key === `agent_runtime_state:${op}`
+          ? JSON.stringify({ status: 'running', stepCount: 1 })
+          : key === `agent_runtime_toolset:${op}`
+            ? serializedTools
+            : null,
+      );
+      const stringify = vi.spyOn(JSON, 'stringify');
+      const parse = vi.spyOn(JSON, 'parse');
+      const setex = vi.spyOn(redisMock, 'setex');
+      const get = vi.spyOn(redisMock, 'get');
+      const serializedState = JSON.stringify({ status: 'running', stepCount: 1 });
+      redisMock.get.mockImplementation((key: string) => {
+        if (key === `agent_runtime_state:${op}`) return serializedState;
+        if (key === `agent_runtime_toolset:${op}`) return serializedTools;
+        return null;
+      });
+      const dispose = stateManager.withToolSetCache(op, 'owner-inline');
+      const toolSetStringifies = () =>
+        stringify.mock.calls.filter(([value]) => value === toolSet).length;
+      const toolSetWrites = () =>
+        setex.mock.calls.filter(([key]) => key === `agent_runtime_toolset:${op}`).length;
+      const toolSetReads = () =>
+        get.mock.calls.filter(([key]) => key === `agent_runtime_toolset:${op}`).length;
+      console.log(
+        `[probe:inline] op=${op} steps=${stepCount} cacheBefore=${JSON.stringify(cacheSnapshot(stateManager, op))}`,
+      );
+      try {
+        // Step 1 is the cold write: the operation was just created with a tool
+        // set but nothing in Redis yet. Subsequent inline steps load the same
+        // frozen object from the cache and save it unchanged.
+        await stateManager.saveStepResult(op, {
+          executionTime: 1,
+          newState: {
+            operationToolSet: toolSet,
+            status: 'running',
+            stepCount: 1,
+          } as any,
+          stepIndex: 1,
+        });
+        console.log(
+          `[probe:inline] step=0-cold-write stringifyToolSet=${toolSetStringifies()} parseToolSet=${parse.mock.calls.filter(([value]) => value === serializedTools).length} setexToolSet=${toolSetWrites()} cache=${JSON.stringify(cacheSnapshot(stateManager, op))}`,
+        );
+        const loaded = [];
+        for (let step = 1; step <= stepCount; step++) {
+          // Each state carries the frozen object cached on cold load, the way an
+          // inline step does. A brand-new equal object is a separate case below.
+          loaded.push(await stateManager.loadAgentState(op));
+          const state = {
+            ...loaded.at(-1)!,
+            status: 'running',
+            stepCount: step + 1,
+          } as any;
+          await stateManager.saveStepResult(op, {
+            executionTime: 1,
+            newState: state,
+            stepIndex: step + 1,
+          });
+          console.log(
+            `[probe:inline] step=${step} stringifyToolSet=${toolSetStringifies()} stringifyTotal=${stringify.mock.calls.length} parseToolSet=${parse.mock.calls.filter(([value]) => value === serializedTools).length} setexToolSet=${toolSetWrites()} cache=${JSON.stringify(cacheSnapshot(stateManager, op))}`,
+          );
+        }
+        expect(loaded.map((state) => state!.operationToolSet)).toEqual(
+          Array.from({ length: stepCount }, () => toolSet),
+        );
+        for (const state of loaded)
+          expect(state!.operationToolSet).toBe(loaded[0]!.operationToolSet);
+        expect(Object.isFrozen(loaded[0]!.operationToolSet)).toBe(true);
+        expect(Object.isFrozen((loaded[0]!.operationToolSet as any).manifestMap.foo)).toBe(true);
+        expect(toolSetWrites()).toBe(1);
+        expect(toolSetStringifies()).toBe(1);
+        // One cold read and one parse for a new owner in the same process; this
+        // is the snapshot reused by the inline steps above.
+        const cold = new AgentStateManager();
+        const coldOp = `${op}-cold`;
+        const coldDispose = cold.withToolSetCache(coldOp, 'owner-cold');
+        const readsBefore = get.mock.calls.length;
+        const parsesBefore = parse.mock.calls.length;
+        redisMock.get.mockImplementation((key: string) => {
+          if (key === `agent_runtime_state:${coldOp}`) return serializedState;
+          if (key === `agent_runtime_toolset:${coldOp}`) return serializedTools;
+          return null;
+        });
+        const coldLoaded = await cold.loadAgentState(coldOp);
+        coldDispose();
+        expect(coldLoaded?.operationToolSet).toEqual(toolSet);
+        expect(Object.isFrozen(coldLoaded?.operationToolSet)).toBe(true);
+        const coldReads = get.mock.calls
+          .slice(readsBefore)
+          .filter(([key]) => key === `agent_runtime_toolset:${coldOp}`).length;
+        const coldParses = parse.mock.calls
+          .slice(parsesBefore)
+          .filter(([value]) => value === serializedTools).length;
+        console.log(
+          `[probe:cold-load] toolSetRedisReads=${coldReads} toolSetJsonParses=${coldParses}`,
+        );
+        expect(coldReads).toBe(1);
+        expect(coldParses).toBe(1);
+        const blob = stateBlobFor(op)!;
+        expect(blob).not.toContain('operationToolSet');
+        console.log(
+          `[probe:inline] summary steps=${stepCount} toolSetRedisReads=${toolSetReads()} toolSetJsonParses=${parse.mock.calls.filter(([value]) => value === serializedTools).length} toolSetSetex=${toolSetWrites()} toolSetStringifies=${toolSetStringifies()} frozen=${Object.isFrozen(loaded[0]!.operationToolSet)} blobHasToolSet=${blob.includes('operationToolSet')}`,
+        );
+      } finally {
+        dispose();
+        stringify.mockRestore();
+        parse.mockRestore();
+        setex.mockRestore();
+        get.mockRestore();
+      }
+    });
+
+    it('cold-reads Redis again after a lock handoff and sees the latest value', async () => {
+      const op = 'op-ots-handoff';
+      const firstValue = JSON.stringify(toolSet);
+      const secondValue = JSON.stringify({ ...toolSet, enabledToolIds: ['bar'] });
+      const serializedState = JSON.stringify({ status: 'running', stepCount: 1 });
+      let currentToolSet = firstValue;
+      redisMock.get.mockImplementation((key: string) =>
+        key === `agent_runtime_state:${op}`
+          ? serializedState
+          : key === `agent_runtime_toolset:${op}`
+            ? currentToolSet
+            : null,
+      );
+      const parse = vi.spyOn(JSON, 'parse');
+      try {
+        const disposeA = stateManager.withToolSetCache(op, 'owner-a');
+        try {
+          expect((await stateManager.loadAgentState(op))!.operationToolSet).toEqual(toolSet);
+          currentToolSet = secondValue;
+        } finally {
+          disposeA();
+        }
+        const disposeB = stateManager.withToolSetCache(op, 'owner-b');
+        try {
+          const loaded = await stateManager.loadAgentState(op);
+          expect((loaded!.operationToolSet as any).enabledToolIds).toEqual(['bar']);
+        } finally {
+          disposeB();
+        }
+        const toolSetReads = redisMock.get.mock.calls.filter(
+          ([key]) => key === `agent_runtime_toolset:${op}`,
+        );
+        const parses = [firstValue, secondValue].map(
+          (value) => parse.mock.calls.filter(([arg]) => arg === value).length,
+        );
+        console.log(
+          `[probe] handoff toolSetRedisReads=${toolSetReads.length} parsesByValue=${JSON.stringify(parses)}`,
+        );
+        expect(toolSetReads).toHaveLength(2);
+        expect(parses).toEqual([1, 1]);
+      } finally {
+        parse.mockRestore();
+      }
+    });
+
+    it('drops cached state when the lock is lost or released', async () => {
+      const op = 'op-ots-lock-loss';
+      const firstValue = JSON.stringify(toolSet);
+      const secondValue = JSON.stringify({ ...toolSet, enabledToolIds: ['bar'] });
+      let currentToolSet = firstValue;
+      redisMock.get.mockImplementation((key: string) =>
+        key === `agent_runtime_state:${op}`
+          ? JSON.stringify({ status: 'running', stepCount: 1 })
+          : key === `agent_runtime_toolset:${op}`
+            ? currentToolSet
+            : null,
+      );
+
+      const disposeLock = stateManager.withToolSetCache(op, 'owner-lock');
+      try {
+        expect((await stateManager.loadAgentState(op))!.operationToolSet).toEqual(toolSet);
+        currentToolSet = secondValue;
+        redisMock.eval.mockResolvedValueOnce(0);
+        expect(await stateManager.refreshStepLock(op, 1, 120, 'owner-lock')).toBe(false);
+        expect((await stateManager.loadAgentState(op))!.operationToolSet).toEqual({
+          ...toolSet,
+          enabledToolIds: ['bar'],
+        });
+      } finally {
+        disposeLock();
+      }
+
+      const disposeRelease = stateManager.withToolSetCache(op, 'owner-release');
+      try {
+        expect((await stateManager.loadAgentState(op))!.operationToolSet).toEqual({
+          ...toolSet,
+          enabledToolIds: ['bar'],
+        });
+        currentToolSet = JSON.stringify({ ...toolSet, enabledToolIds: ['baz'] });
+      } finally {
+        disposeRelease();
+      }
+      await stateManager.releaseStepLock(op, 1, 'owner-release');
+      const disposeRelease2 = stateManager.withToolSetCache(op, 'owner-release-2');
+      try {
+        expect((await stateManager.loadAgentState(op))!.operationToolSet).toEqual({
+          ...toolSet,
+          enabledToolIds: ['baz'],
+        });
+      } finally {
+        disposeRelease2();
+      }
+    });
+
+    it('probes lock loss, acquire failure, release, delete and owner change directly', async () => {
+      const serializedState = JSON.stringify({ status: 'running', stepCount: 1 });
+      const firstValue = JSON.stringify(toolSet);
+      const secondValue = JSON.stringify({ ...toolSet, enabledToolIds: ['bar'] });
+      const thirdValue = JSON.stringify({ ...toolSet, enabledToolIds: ['baz'] });
+      const fourthValue = JSON.stringify({ ...toolSet, enabledToolIds: ['qux'] });
+      const probeManager = new AgentStateManager();
+      let currentToolSet = firstValue;
+      let deleted = false;
+      const client = {
+        ...redisMock,
+        del: vi.fn(async (...keys: string[]) => {
+          if (keys.includes(`agent_runtime_toolset:op-ots-boundaries`)) deleted = true;
+          return keys.length;
+        }),
+        get: vi.fn(async (key: string) => {
+          if (key === `agent_runtime_state:op-ots-boundaries`) return serializedState;
+          if (key === `agent_runtime_toolset:op-ots-boundaries`)
+            return deleted ? null : currentToolSet;
+          return null;
+        }),
+      } as any;
+      probeManager['redis'] = client;
+      const op = 'op-ots-boundaries';
+      const toolSetReads = () =>
+        client.get.mock.calls.filter(([key]) => key === `agent_runtime_toolset:${op}`).length;
+      const readValue = async () =>
+        (await probeManager.loadAgentState(op))!.operationToolSet as any;
+      const parseCountFor = (value: string) =>
+        parse.mock.calls.filter(([arg]) => arg === value).length;
+      const parse = vi.spyOn(JSON, 'parse');
+
+      try {
+        const disposeLock = probeManager.withToolSetCache(op, 'owner-lock');
+        console.log(
+          `[probe:boundary] lock_lost before=${JSON.stringify(cacheSnapshot(probeManager, op))}`,
+        );
+        await readValue();
+        currentToolSet = secondValue;
+        redisMock.eval.mockResolvedValueOnce(0);
+        const refreshed = await probeManager.refreshStepLock(op, 1, 120, 'owner-lock');
+        console.log(
+          `[probe:boundary] lock_lost action=refreshStepLock returned=${refreshed} after=${JSON.stringify(cacheSnapshot(probeManager, op))}`,
+        );
+        const afterLock = await readValue();
+        console.log(
+          `[probe:boundary] lock_lost redisReads=${toolSetReads()} value=${JSON.stringify(afterLock.enabledToolIds)} parses=${parseCountFor(secondValue)}`,
+        );
+        disposeLock();
+
+        const disposeAcquire = probeManager.withToolSetCache(op, 'owner-acquire');
+        console.log(
+          `[probe:boundary] acquire_failed before=${JSON.stringify(cacheSnapshot(probeManager, op))}`,
+        );
+        await readValue();
+        currentToolSet = thirdValue;
+        redisMock.eval.mockResolvedValueOnce(0);
+        const claimed = await probeManager.tryClaimStep(op, 2, 120, 'owner-acquire');
+        console.log(
+          `[probe:boundary] acquire_failed action=tryClaimStep returned=${claimed} after=${JSON.stringify(cacheSnapshot(probeManager, op))}`,
+        );
+        const afterAcquire = await readValue();
+        console.log(
+          `[probe:boundary] acquire_failed redisReads=${toolSetReads()} value=${JSON.stringify(afterAcquire.enabledToolIds)} parses=${parseCountFor(thirdValue)}`,
+        );
+        disposeAcquire();
+
+        const disposeRelease = probeManager.withToolSetCache(op, 'owner-release');
+        await readValue();
+        console.log(
+          `[probe:boundary] release_lock before=${JSON.stringify(cacheSnapshot(probeManager, op))}`,
+        );
+        const readsBeforeRelease = toolSetReads();
+        await probeManager.releaseStepLock(op, 3, 'owner-release');
+        console.log(
+          `[probe:boundary] release_lock action=releaseStepLock after=${JSON.stringify(cacheSnapshot(probeManager, op))}`,
+        );
+        const afterRelease = await readValue();
+        console.log(
+          `[probe:boundary] release_lock extraRedisReads=${toolSetReads() - readsBeforeRelease} value=${JSON.stringify(afterRelease.enabledToolIds)}`,
+        );
+        disposeRelease();
+
+        const disposeDelete = probeManager.withToolSetCache(op, 'owner-delete');
+        await readValue();
+        console.log(
+          `[probe:boundary] delete_operation before=${JSON.stringify(cacheSnapshot(probeManager, op))}`,
+        );
+        const readsBeforeDelete = toolSetReads();
+        await probeManager.deleteAgentOperation(op);
+        console.log(
+          `[probe:boundary] delete_operation action=deleteAgentOperation after=${JSON.stringify(cacheSnapshot(probeManager, op))} redisKeyDeleted=${deleted}`,
+        );
+        console.log(
+          `[probe:boundary] delete_operation extraRedisReads=${toolSetReads() - readsBeforeDelete} coldReadValue=${JSON.stringify((await probeManager.loadAgentState(op))?.operationToolSet ?? null)}`,
+        );
+        disposeDelete();
+
+        deleted = false;
+        const disposeOldOwner = probeManager.withToolSetCache(op, 'owner-old');
+        const stale = await readValue();
+        console.log(
+          `[probe:boundary] redelivery_owner_change staleValue=${JSON.stringify(stale.enabledToolIds)}`,
+        );
+        currentToolSet = fourthValue;
+        console.log(
+          `[probe:boundary] redelivery_owner_change before=${JSON.stringify(cacheSnapshot(probeManager, op))}`,
+        );
+        disposeOldOwner();
+        const disposeNewOwner = probeManager.withToolSetCache(op, 'owner-new');
+        const readsBefore = toolSetReads();
+        const afterOwner = await readValue();
+        console.log(
+          `[probe:boundary] redelivery_owner_change action=withToolSetCache(owner-new) after=${JSON.stringify(cacheSnapshot(probeManager, op))} extraRedisReads=${toolSetReads() - readsBefore} value=${JSON.stringify(afterOwner.enabledToolIds)} parses=${parseCountFor(fourthValue)}`,
+        );
+        disposeNewOwner();
+
+        expect(afterLock.enabledToolIds).toEqual(['bar']);
+        expect(afterAcquire.enabledToolIds).toEqual(['baz']);
+        expect(cacheOf(probeManager, op)).toBeUndefined();
+        expect(afterOwner.enabledToolIds).toEqual(['qux']);
+      } finally {
+        parse.mockRestore();
+      }
+    });
+
+    it('does not leak a parsed tool set between two manager instances', async () => {
+      const op = 'op-ots-isolation';
+      const firstValue = JSON.stringify(toolSet);
+      const secondValue = JSON.stringify({ ...toolSet, enabledToolIds: ['bar'] });
+      const makeManager = (value: string) => {
+        const manager = new AgentStateManager();
+        const client = {
+          ...redisMock,
+          get: vi.fn(async (key: string) =>
+            key === `agent_runtime_state:${op}`
+              ? JSON.stringify({ status: 'running', stepCount: 1 })
+              : key === `agent_runtime_toolset:${op}`
+                ? value
+                : null,
+          ),
+        } as any;
+        manager['redis'] = client;
+        return manager;
+      };
+
+      const first = makeManager(firstValue);
+      const second = makeManager(secondValue);
+      const disposeFirst = first.withToolSetCache(op, 'owner-a');
+      const disposeSecond = second.withToolSetCache(op, 'owner-b');
+      try {
+        expect((await first.loadAgentState(op))!.operationToolSet).toEqual(toolSet);
+        expect((await second.loadAgentState(op))!.operationToolSet).toEqual({
+          ...toolSet,
+          enabledToolIds: ['bar'],
+        });
+      } finally {
+        disposeSecond();
+        disposeFirst();
+      }
     });
 
     it('leaves an inline (legacy / rolling-deploy) tool set untouched', async () => {

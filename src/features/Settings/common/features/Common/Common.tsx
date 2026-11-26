@@ -150,35 +150,29 @@ const Common = memo(() => {
       },
       {
         children: (
-          <Flexbox horizontal justify={'flex-end'}>
-            <Select
-              showSearch
-              style={{ width: '50%' }}
-              optionRender={(option) => {
-                const data = option as unknown as TimezoneOption;
-                if (!data.offset)
-                  return (
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {data.label}
-                    </span>
-                  );
+          <Select
+            showSearch
+            style={{ marginInlineStart: 'auto', width: '50%' }}
+            optionRender={(option) => {
+              const data = option as unknown as TimezoneOption;
+              if (!data.offset)
                 return (
-                  <Flexbox horizontal gap={12} justify="space-between">
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {data.label}
-                    </span>
-                    <span style={{ color: cssVar.colorTextDescription, fontSize: 12 }}>
-                      {data.offset}
-                    </span>
-                  </Flexbox>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{data.label}</span>
                 );
-              }}
-              options={[
-                { label: t('settingCommon.timezone.autoMode'), value: TIMEZONE_AUTO },
-                ...TIMEZONE_OPTIONS,
-              ]}
-            />
-          </Flexbox>
+              return (
+                <Flexbox horizontal gap={12} justify="space-between">
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{data.label}</span>
+                  <span style={{ color: cssVar.colorTextDescription, fontSize: 12 }}>
+                    {data.offset}
+                  </span>
+                </Flexbox>
+              );
+            }}
+            options={[
+              { label: t('settingCommon.timezone.autoMode'), value: TIMEZONE_AUTO },
+              ...TIMEZONE_OPTIONS,
+            ]}
+          />
         ),
         desc: t('settingCommon.timezone.desc'),
         label: (

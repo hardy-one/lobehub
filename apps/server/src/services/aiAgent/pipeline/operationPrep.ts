@@ -466,6 +466,7 @@ export const prepareOperation = async (
     shareGate,
     topicId,
     userMessageId,
+    userMessageEditorData,
     userMessageMetadata,
   } = ctx;
   const {
@@ -632,6 +633,7 @@ export const prepareOperation = async (
   const userMessage = {
     audioList: runAttachments.audioList,
     content: ephemeralUserMessage ?? prompt,
+    ...(userMessageEditorData && { editorData: userMessageEditorData }),
     fileList: runAttachments.fileList,
     id: userMessageId,
     imageList: runAttachments.imageList,

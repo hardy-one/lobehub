@@ -1,7 +1,7 @@
 import debug from 'debug';
 
-import { BaseLastUserContentProvider } from '../base/BaseLastUserContentProvider';
-import type { PipelineContext, ProcessorOptions } from '../types';
+import { BaseEveryUserContentProvider } from '../base/BaseEveryUserContentProvider';
+import type { Message, PipelineContext, ProcessorOptions } from '../types';
 
 declare module '../types' {
   interface PipelineContextMetadataOverrides {
@@ -168,6 +168,9 @@ export const formatSkillImportRoutes = (routes: SkillImportRoute[]): string | nu
     'Do NOT crawl these URLs to look up install steps, and do NOT start at step 3 because a page or',
     'the user says to "install it as documented" — such a page documents the CLI for agents that have',
     'no Skill Store tool. This takes precedence over install instructions on the linked page.',
+    '',
+    'Install each skill once. If it is already installed, or was already handled by an earlier',
+    'message, skip it instead of installing it again.',
   ].join('\n');
 };
 
@@ -187,8 +190,10 @@ export interface SkillImportRouteInjectorConfig {
  * instructions, which are fresher and more specific. Injecting next to the user message
  * puts the rule where the decision is actually made.
  */
-export class SkillImportRouteInjector extends BaseLastUserContentProvider {
+export class SkillImportRouteInjector extends BaseEveryUserContentProvider {
   readonly name = 'SkillImportRouteInjector';
+
+  private injectedUrls: string[] = [];
 
   constructor(
     private config: SkillImportRouteInjectorConfig,
@@ -197,50 +202,46 @@ export class SkillImportRouteInjector extends BaseLastUserContentProvider {
     super(options);
   }
 
-  protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
-    if (this.config.enabled === false) return this.markAsExecuted(context);
+  protected buildContentForMessage(
+    message: Message,
+    index: number,
+    isLastUser: boolean,
+  ): { content: string; contextType: string } | null {
+    if (this.config.enabled === false) return null;
+    if (message.meta?.systemInjection || message.meta?.virtualLastUser) return null;
 
-    const clonedContext = this.cloneContext(context);
-    const lastUserIndex = this.findLastUserMessageIndex(clonedContext.messages);
-
-    if (lastUserIndex === -1) {
-      log('No user messages found, skipping injection');
-      return this.markAsExecuted(clonedContext);
-    }
-
-    const rawContent = clonedContext.messages[lastUserIndex].content;
     const text =
-      typeof rawContent === 'string'
-        ? rawContent
-        : (rawContent as any[])
-            .filter((part: any) => part?.type === 'text')
-            .map((part: any) => part.text ?? '')
-            .join('\n');
+      typeof message.content === 'string'
+        ? message.content
+        : Array.isArray(message.content)
+          ? message.content
+              .filter((part: any) => part?.type === 'text' && typeof part.text === 'string')
+              .map((part: any) => part.text as string)
+              .join('\n')
+          : '';
+
+    // Replaying already-processed content must not append a second block.
+    if (text.includes('<skill_import_route>')) return null;
 
     const routes = extractSkillImportRoutes(text);
-
-    if (routes.length === 0) {
-      log('No skill source in the last user message, skipping injection');
-      return this.markAsExecuted(clonedContext);
-    }
+    if (routes.length === 0) return null;
 
     const content = formatSkillImportRoutes(routes);
-    if (!content) return this.markAsExecuted(clonedContext);
+    if (!content) return null;
 
-    const hasExistingWrapper = this.hasExistingSystemContext(clonedContext);
-    const contentToAppend = hasExistingWrapper
-      ? this.createContextBlock(content, 'skill_import_route')
-      : this.wrapWithSystemContext(content, 'skill_import_route');
+    if (isLastUser) this.injectedUrls = routes.map((route) => route.url);
+    log('Skill import route attached to message %s', message.id ?? index);
+    return { content, contextType: 'skill_import_route' };
+  }
 
-    this.appendToLastUserMessage(clonedContext, contentToAppend);
+  protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
+    this.injectedUrls = [];
+    const result = await super.doProcess(context);
 
-    clonedContext.metadata.skillImportRoute = {
-      injected: true,
-      urls: routes.map((route) => route.url),
-    };
+    if (this.injectedUrls.length > 0) {
+      result.metadata.skillImportRoute = { injected: true, urls: this.injectedUrls };
+    }
 
-    log('Skill import route injected for: %o', clonedContext.metadata.skillImportRoute.urls);
-
-    return this.markAsExecuted(clonedContext);
+    return result;
   }
 }

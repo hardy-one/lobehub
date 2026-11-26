@@ -270,8 +270,13 @@ export const queryMemories = async (
         );
       const totalQuery = ctx.db
         .with(candidateWindow, visiblePairs)
-        .select({ count: sql<number>`COUNT(DISTINCT ${visiblePairs.memoryId})::int` })
-        .from(visiblePairs);
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(
+          ctx.db
+            .selectDistinct({ memoryId: visiblePairs.memoryId })
+            .from(visiblePairs)
+            .as('memory_total_ids'),
+        );
       const [rows, totalResult] = await Promise.all([rowsQuery, totalQuery]);
 
       return {

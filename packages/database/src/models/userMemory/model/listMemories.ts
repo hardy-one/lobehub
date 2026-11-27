@@ -8,7 +8,7 @@ import type {
 } from '@lobechat/types';
 import { LayersEnum } from '@lobechat/types';
 import type { AnyColumn, SQL } from 'drizzle-orm';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
 
 import {
   userMemories,
@@ -19,6 +19,7 @@ import {
 } from '../../../schemas';
 import { selectNonVectorColumns } from '../../../utils/columns';
 import type { UserMemoryModelContext } from './context';
+import { buildContextVisibilityCte } from './contextVisibility';
 
 export type ListMemoriesItem<L extends LayersEnum> = L extends LayersEnum.Context
   ? UserMemoryDetail & {
@@ -88,28 +89,29 @@ export const listMemories = async <
 
   switch (layer) {
     case LayersEnum.Context: {
-      const orderByClauses = buildOrderBy(
-        userMemoriesContexts.updatedAt,
-        userMemoriesContexts.createdAt,
-      );
-      const joinCondition = and(
-        eq(userMemories.userId, userMemoriesContexts.userId),
-        sql<boolean>`
-          COALESCE(${userMemoriesContexts.userMemoryIds}, '[]'::jsonb) ? (${userMemories.id})::text
-        `,
-      );
+      const { applyOrder, candidateWindow, pagePairs, visiblePairs } = buildContextVisibilityCte({
+        ctx,
+        layer,
+        offset,
+        order,
+        pageSize: normalizedPageSize,
+      });
 
       const rows = await ctx.db
+        .with(candidateWindow, visiblePairs, pagePairs)
         .select({
           context: contextSelection,
           memory: baseSelection,
         })
-        .from(userMemories)
-        .innerJoin(userMemoriesContexts, joinCondition)
-        .where(baseWhere)
-        .orderBy(...orderByClauses)
-        .limit(normalizedPageSize)
-        .offset(offset);
+        .from(pagePairs)
+        .innerJoin(userMemoriesContexts, eq(userMemoriesContexts.id, pagePairs.contextId))
+        .innerJoin(userMemories, eq(userMemories.id, pagePairs.memoryId))
+        .orderBy(
+          applyOrder(userMemoriesContexts.updatedAt),
+          applyOrder(userMemoriesContexts.createdAt),
+          asc(userMemoriesContexts.id),
+          asc(userMemories.id),
+        );
 
       return rows.map((row) => ({
         context: row.context,

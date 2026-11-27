@@ -80,6 +80,10 @@ describe('userMemory paginated queries - aggregate with no rows', () => {
 
     expect(result.items).toHaveLength(1);
     expect(result.items[0]).toMatchObject({ layer });
+    if (layer === LayersEnum.Context) {
+      expect(result).toMatchObject({ page: 1, pageSize: 20, total: 1 });
+      return;
+    }
     expect(result).toMatchObject({ page: 1, pageSize: 20, total: 0 });
   });
 

@@ -13,6 +13,7 @@ import {
 import { normalizeBm25MatchQuery, SAFE_BM25_QUERY_OPTIONS } from '../../../utils/bm25';
 import { inJsonStringArray } from '../../../utils/inJsonStringArray';
 import type { UserMemoryModelContext } from './context';
+import { buildContextTotalQuery, buildContextVisibilityCte } from './contextVisibility';
 import type { GetMemoriesResult, QueryUserMemoriesParams } from './types';
 import { buildTextSearchCondition, isPGliteDatabase } from './utils';
 
@@ -186,25 +187,27 @@ export const queryMemories = async (
           : sort === 'scoreImpact'
             ? userMemoriesContexts.scoreImpact
             : userMemoriesContexts.capturedAt;
-
-      const orderByClauses = buildOrderBy(
-        scoreColumn,
-        userMemoriesContexts.updatedAt,
-        userMemoriesContexts.createdAt,
-      );
-      const joinCondition = and(
-        eq(userMemories.userId, userMemoriesContexts.userId),
-        // Use jsonb key-existence (jsonb_exists) to check membership without expanding the array
-        sql<boolean>`
-          COALESCE(${userMemoriesContexts.userMemoryIds}, '[]'::jsonb) ? (${userMemories.id})::text
-        `,
-      );
-
       const contextFilters: Array<SQL | undefined> = [
+        candidateIds ? inJsonStringArray(userMemoriesContexts.id, candidateIds) : undefined,
+        status && status.length > 0
+          ? inArray(userMemoriesContexts.currentStatus, status)
+          : undefined,
+        types && types.length > 0 ? inArray(userMemoriesContexts.type, types) : undefined,
+      ];
+      const joinedTagFilters =
+        tags && tags.length > 0
+          ? or(
+              ...tags.map(
+                (tag) =>
+                  sql<boolean>`COALESCE(${tag} = ANY(${userMemoriesContexts.tags}), false) OR COALESCE(${tag} = ANY(${userMemories.tags}), false)`,
+              ),
+            )
+          : undefined;
+
+      const parentFilters: Array<SQL | undefined> = [
         whereClause,
-        candidateIds
-          ? inJsonStringArray(userMemoriesContexts.id, candidateIds)
-          : buildTextSearchCondition({
+        !candidateIds
+          ? buildTextSearchCondition({
               bm25MatchQuery,
               groups: [
                 {
@@ -212,38 +215,33 @@ export const queryMemories = async (
                   fields: ['title', 'summary', 'details'],
                   keyColumn: userMemories.id,
                 },
-                {
-                  fallbackColumns: [
-                    userMemoriesContexts.title,
-                    userMemoriesContexts.description,
-                    userMemoriesContexts.currentStatus,
-                  ],
-                  fields: ['title', 'description', 'current_status'],
-                  keyColumn: userMemoriesContexts.id,
-                },
               ],
               normalizedQuery,
               supportsBm25,
-            }),
-        status && status.length > 0
-          ? inArray(userMemoriesContexts.currentStatus, status)
+            })
           : undefined,
-        types && types.length > 0 ? inArray(userMemoriesContexts.type, types) : undefined,
-        tags && tags.length > 0
-          ? or(
-              ...tags.map(
-                (tag) =>
-                  sql<boolean>`
-                    COALESCE(${tag} = ANY(${userMemoriesContexts.tags}), false)
-                    OR COALESCE(${tag} = ANY(${userMemories.tags}), false)
-                  `,
-              ),
-            )
+        categories && categories.length > 0
+          ? inArray(userMemories.memoryCategory, categories)
           : undefined,
       ];
-      const contextWhereClause = and(...contextFilters);
+
+      const visibilityParams = {
+        contextFilters: and(...contextFilters),
+        ctx,
+        joinedTagFilters,
+        layer: resolvedLayer,
+        memoryFilters: and(...parentFilters),
+        scoreColumn,
+      };
+      const { applyOrder, candidateWindow, pagePairs, visiblePairs } = buildContextVisibilityCte({
+        ...visibilityParams,
+        offset,
+        order,
+        pageSize: normalizedPageSize,
+      });
 
       const rowsQuery = ctx.db
+        .with(candidateWindow, visiblePairs, pagePairs)
         .select({
           context: {
             accessedAt: userMemoriesContexts.accessedAt,
@@ -263,18 +261,17 @@ export const queryMemories = async (
           },
           memory: baseSelection,
         })
-        .from(userMemories)
-        .innerJoin(userMemoriesContexts, joinCondition)
-        .where(contextWhereClause)
-        .orderBy(...orderByClauses)
-        .limit(normalizedPageSize)
-        .offset(offset);
-      const totalQuery = ctx.db
-        .select({ count: sql<number>`COUNT(DISTINCT ${userMemories.id})::int` })
-        .from(userMemories)
-        .innerJoin(userMemoriesContexts, joinCondition)
-        .where(contextWhereClause);
-
+        .from(pagePairs)
+        .innerJoin(userMemoriesContexts, eq(userMemoriesContexts.id, pagePairs.contextId))
+        .innerJoin(userMemories, eq(userMemories.id, pagePairs.memoryId))
+        .orderBy(
+          applyOrder(scoreColumn),
+          applyOrder(userMemoriesContexts.updatedAt),
+          applyOrder(userMemoriesContexts.createdAt),
+          asc(userMemoriesContexts.id),
+          asc(userMemories.id),
+        );
+      const totalQuery = buildContextTotalQuery(visibilityParams);
       const [rows, totalResult] = await Promise.all([rowsQuery, totalQuery]);
 
       return {

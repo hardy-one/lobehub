@@ -91,6 +91,26 @@ const readText = (content: Message['content']): string => {
   return '';
 };
 
+const hasEditorFacts = (node: unknown): boolean => {
+  if (!isRecord(node)) return false;
+  if (node.type === 'mention' && isRecord(node.metadata) && node.metadata.type === 'agent') {
+    return true;
+  }
+  if (
+    node.type === 'action-tag' &&
+    (node.actionCategory === 'skill' ||
+      node.actionCategory === 'projectSkill' ||
+      node.actionCategory === 'agentSkill' ||
+      node.actionCategory === 'tool')
+  ) {
+    return true;
+  }
+  if (Array.isArray(node.children)) {
+    for (const child of node.children) if (hasEditorFacts(child)) return true;
+  }
+  return false;
+};
+
 const attr = (tag: string, key: string): string | undefined =>
   new RegExp(`\\b${key}="([^"]*)"`).exec(tag)?.[1];
 
@@ -140,6 +160,17 @@ export class MessageFactsInjector extends BaseEveryUserContentProvider {
     // content) must not receive a second copy on reprocessing.
     const text = readText(message.content);
     if (text.includes(SYSTEM_CONTEXT_START) && text.includes('<message_facts>')) return null;
+
+    if (
+      !text.includes('<refer_topic') &&
+      !text.includes('<refer_document') &&
+      !text.includes('http') &&
+      !message.metadata?.selectedSkillIds?.length &&
+      !message.metadata?.selectedToolIds?.length &&
+      !(isRecord(message.editorData) && hasEditorFacts(message.editorData.root))
+    ) {
+      return null;
+    }
 
     const skills = new Map<string, Selection>();
     const tools = new Map<string, Selection>();

@@ -9,7 +9,6 @@ import debug from 'debug';
 import { BaseProcessor } from '../base/BaseProcessor';
 import { createMediaFileRef } from '../const/mediaRef';
 import type { PipelineContext, ProcessorOptions } from '../types';
-import { normalizeAudioDurationMs } from '../utils/audio';
 import { getModelVisibleAudioList } from '../utils/voiceMessage';
 
 declare module '../types' {

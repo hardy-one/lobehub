@@ -139,12 +139,47 @@ const withJsonErrorDiagnostics = (
   };
 };
 
+const isJsonObject = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
+
+const MAX_RECOVERY_STEPS = 4;
+
+/**
+ * Apply one conservative repair. Only the parser's own error and a leading
+ * closing brace are trusted; malformed content is never rewritten or rewritten
+ * into a different JSON value.
+ */
+const applySingleRecoveryStep = (candidate: string, error: unknown): string | undefined => {
+  if (
+    error instanceof Error &&
+    /Unexpected non-whitespace character after JSON/i.test(error.message)
+  ) {
+    const positionMatch = /at position (\d+)/i.exec(error.message);
+    const position = positionMatch ? Number(positionMatch[1]) : Number.NaN;
+    if (
+      Number.isSafeInteger(position) &&
+      position > 0 &&
+      position < candidate.length &&
+      !/\s/.test(candidate[position])
+    ) {
+      return candidate.slice(0, position);
+    }
+  }
+
+  const trimmed = candidate.trimStart();
+  if (trimmed.startsWith('}')) {
+    const braceIndex = candidate.length - trimmed.length;
+    return candidate.slice(0, braceIndex) + candidate.slice(braceIndex + 1);
+  }
+
+  return undefined;
+};
+
 export const parseStructuredToolArguments = (
   value: unknown,
   context: StructuredToolArgumentsContext = {},
 ): Record<string, unknown> => {
   let parsed = value;
-  let recovered = false;
   if (typeof value === 'string') {
     try {
       parsed = JSON.parse(value);
@@ -159,66 +194,33 @@ export const parseStructuredToolArguments = (
           withJsonErrorDiagnostics(value, error, context),
         );
 
-      if (
-        error instanceof Error &&
-        /Unexpected non-whitespace character after JSON/i.test(error.message)
-      ) {
-        const positionMatch = /at position (\d+)/i.exec(error.message);
-        const position = positionMatch ? Number(positionMatch[1]) : Number.NaN;
-        if (
-          Number.isSafeInteger(position) &&
-          position > 0 &&
-          position < value.length &&
-          !/\s/.test(value[position])
-        ) {
+      if (context.truncated !== true) {
+        let candidate = value;
+        let currentError = error;
+        let steps = 0;
+
+        while (steps < MAX_RECOVERY_STEPS) {
+          const nextCandidate = applySingleRecoveryStep(candidate, currentError);
+          if (nextCandidate === undefined || nextCandidate === candidate) break;
+
+          candidate = nextCandidate;
+          steps += 1;
+
           try {
-            parsed = JSON.parse(value.slice(0, position));
-            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-              parsed = value;
-            } else {
-              recovered = true;
+            parsed = JSON.parse(candidate);
+            if (isJsonObject(parsed)) {
+              log('structured output: recovered after %d conservative repair step(s)', steps);
+              return parsed;
             }
-            if (recovered) {
-              log(
-                'structured output: recovered by truncating %d trailing characters',
-                value.length - position,
-              );
-            }
-          } catch {
-            // Fall through to the original diagnostics when the reported prefix is invalid.
+          } catch (nextError) {
+            currentError = nextError;
           }
         }
-      }
-      if (!recovered && context.truncated !== true) {
-        const trimmed = value.trimStart();
-        if (trimmed.startsWith('}')) {
-          const braceIndex = value.length - trimmed.length;
-          const withoutLeadingBrace = value.slice(0, braceIndex) + value.slice(braceIndex + 1);
-          try {
-            const repaired = JSON.parse(withoutLeadingBrace);
-            if (repaired && typeof repaired === 'object' && !Array.isArray(repaired)) {
-              parsed = repaired;
-              recovered = true;
-              log('structured output: recovered by removing one leading closing brace');
-            }
-          } catch {
-            // Fall through to the original diagnostics when the repaired value is invalid.
-          }
-        }
-      }
-      if (recovered) {
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          throw new StructuredOutputError(
-            'JSON object required for tool arguments',
-            withArgumentsLength(value, context),
-          );
-        }
-        return parsed as Record<string, unknown>;
       }
       throw invalidJson();
     }
   }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+  if (!isJsonObject(parsed)) {
     throw new StructuredOutputError(
       'JSON object required for tool arguments',
       withArgumentsLength(value, context),

@@ -83,21 +83,17 @@ describe('parseStructuredToolArguments', () => {
     expect(parseStructuredToolArguments({ persona: 'done' })).toEqual({ persona: 'done' });
   });
 
-  it.each([
-    { args: '{"a":1}}', parserPosition: 7 },
-    { args: '{"a":1}\n  garbage', parserPosition: 10 },
-    { args: '{"a":1}\r\n\tgarbage', parserPosition: 10 },
-  ])(
+  it.each(['{"a":1}}', '{"a":1}\n  garbage', '{"a":1}\r\n\tgarbage'])(
     'recovers trailing content after a complete JSON object: $args',
-    ({ args, parserPosition }) => {
+    (args) => {
       const { log, restore } = createLogger();
 
       try {
         expect(parseStructuredToolArguments(args)).toEqual({ a: 1 });
         expect(log.mock.calls.flat().join('\n')).toMatch(
-          /structured output: recovered by truncating %d trailing characters/,
+          /structured output: recovered after %d conservative repair step\(s\)/,
         );
-        expect(log.mock.calls.flat()).toContain(args.length - parserPosition);
+        expect(log.mock.calls.flat()).toContain(1);
       } finally {
         restore();
       }
@@ -117,6 +113,67 @@ describe('parseStructuredToolArguments', () => {
     expect(parseStructuredToolArguments('{"a":1}}')).toEqual({ a: 1 });
   });
 
+  it('recovers a leading and trailing brace in the same value', () => {
+    const { log, restore } = createLogger();
+
+    try {
+      expect(parseStructuredToolArguments('}{"persona":"x","tagline":"y"}}')).toEqual({
+        persona: 'x',
+        tagline: 'y',
+      });
+      expect(log).toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+
+  it('recovers multiple trailing braces after a leading brace', () => {
+    expect(parseStructuredToolArguments('}{"persona":"x"}}')).toEqual({ persona: 'x' });
+    expect(parseStructuredToolArguments('{"persona":"x"}}}')).toEqual({ persona: 'x' });
+  });
+
+  it('recovers a leading brace after leading whitespace', () => {
+    expect(parseStructuredToolArguments('  }{"persona":"x"}}')).toEqual({ persona: 'x' });
+  });
+
+  it('does not recover either brace when the provider reported truncation', () => {
+    const args = '}{"persona":"x","tagline":"y"}}';
+    const { log, restore } = createLogger();
+
+    try {
+      const structuredError = captureStructuredError(() =>
+        parseStructuredToolArguments(args, { finishReason: 'length', truncated: true }),
+      );
+
+      expect(structuredError.reason).toBe('invalid JSON in tool arguments');
+      expect(structuredError.context).toMatchObject({
+        argumentsLength: args.length,
+        finishReason: 'length',
+        truncated: true,
+      });
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+
+  it('stops recovery when every candidate remains invalid', () => {
+    const parseSpy = vi.spyOn(JSON, 'parse');
+    let calls = 0;
+    parseSpy.mockImplementation(() => {
+      calls += 1;
+      if (calls === 1) {
+        throw new SyntaxError("Unexpected token '}'");
+      }
+      throw new SyntaxError('Unexpected non-whitespace character after JSON at position 1');
+    });
+
+    const structuredError = captureStructuredError(() => parseStructuredToolArguments('}abc'));
+
+    expect(structuredError.reason).toBe('invalid JSON in tool arguments');
+    expect(calls).toBeLessThanOrEqual(5);
+  });
+
   it.each([
     { args: '}{"persona":"x","tagline":"y"}', expected: { persona: 'x', tagline: 'y' } },
     { args: '  }{"persona":"x"}', expected: { persona: 'x' } },
@@ -126,8 +183,9 @@ describe('parseStructuredToolArguments', () => {
     try {
       expect(parseStructuredToolArguments(args)).toEqual(expected);
       expect(log.mock.calls.flat().join('\n')).toMatch(
-        /structured output: recovered by removing one leading closing brace/,
+        /structured output: recovered after %d conservative repair step\(s\)/,
       );
+      expect(log.mock.calls.flat()).toContain(1);
     } finally {
       restore();
     }
@@ -198,8 +256,9 @@ describe('parseStructuredToolArguments', () => {
     try {
       expect(parseStructuredToolArguments('{"a":1}}')).toEqual({ a: 1 });
       expect(log.mock.calls.flat().join('\n')).toMatch(
-        /structured output: recovered by truncating %d trailing characters/,
+        /structured output: recovered after %d conservative repair step\(s\)/,
       );
+      expect(log.mock.calls.flat()).toContain(1);
     } finally {
       restore();
     }

@@ -127,4 +127,140 @@ describe('MessageFactsInjector', () => {
     const result = await injector.process(context([withBlock]));
     expect(result.messages[0].content).toBe(withBlock.content);
   });
+
+  it('does not prefilter any facts-bearing message variant', async () => {
+    const injector = new MessageFactsInjector();
+    const actionTag = (actionCategory: string, actionType: string) => ({
+      actionCategory,
+      actionLabel: actionType,
+      actionType,
+      type: 'action-tag',
+    });
+    const cases = [
+      {
+        name: 'topic',
+        message: {
+          content: 'read <refer_topic id="tpc_fixture" name="Topic" />',
+          metadata: {},
+          role: 'user',
+        },
+        expected: '<topic_ref id="tpc_fixture" name="Topic" />',
+      },
+      {
+        name: 'document',
+        message: {
+          content: 'read <refer_document id="docs_fixture" name="Document" />',
+          metadata: {},
+          role: 'user',
+        },
+        expected: '<document_ref id="docs_fixture" name="Document" />',
+      },
+      {
+        name: 'skill link',
+        message: {
+          content: 'install https://lobehub.com/skills/demo-skill',
+          metadata: {},
+          role: 'user',
+        },
+        expected: '<skill_link method="importFromMarket"',
+      },
+      {
+        name: 'selected skills',
+        message: {
+          content: 'plain text',
+          metadata: { selectedSkillIds: ['selected-skill'] },
+          role: 'user',
+        },
+        expected: '<skill identifier="selected-skill"',
+      },
+      {
+        name: 'selected tools',
+        message: {
+          content: 'plain text',
+          metadata: { selectedToolIds: ['selected-tool'] },
+          role: 'user',
+        },
+        expected: '<tool identifier="selected-tool"',
+      },
+      {
+        name: 'agent mention',
+        message: {
+          content: 'plain text',
+          editorData: {
+            root: {
+              children: [
+                {
+                  children: [
+                    {
+                      label: 'Alice',
+                      metadata: { id: 'agt_fixture', type: 'agent' },
+                      type: 'mention',
+                    },
+                  ],
+                  type: 'paragraph',
+                },
+              ],
+              type: 'root',
+            },
+          },
+          metadata: {},
+          role: 'user',
+        },
+        expected: '<agent id="agt_fixture"',
+      },
+      ...['skill', 'projectSkill', 'agentSkill', 'tool'].map((actionCategory) => ({
+        name: `action tag ${actionCategory}`,
+        message: {
+          content: 'plain text',
+          editorData: {
+            root: {
+              children: [
+                {
+                  children: [actionTag(actionCategory, `${actionCategory}-fixture`)],
+                  type: 'paragraph',
+                },
+              ],
+              type: 'root',
+            },
+          },
+          metadata: {},
+          role: 'user',
+        },
+        expected:
+          actionCategory === 'tool' ? '<tool identifier="tool-fixture"' : '<skill identifier=',
+      })),
+    ];
+
+    for (const { name, message, expected } of cases) {
+      const result = await injector.process(context([message]));
+      const content = result.messages[0].content as string;
+      expect(content, name).toContain('<message_facts>');
+      expect(content, name).toContain(expected);
+    }
+  });
+
+  it('skips messages without any facts source', async () => {
+    const injector = new MessageFactsInjector();
+    const result = await injector.process(
+      context([
+        {
+          content: 'plain request',
+          editorData: {
+            root: {
+              children: [
+                { actionCategory: 'command', actionType: 'help', type: 'action-tag' },
+                { label: 'Bob', metadata: { id: 'usr_fixture', type: 'user' }, type: 'mention' },
+              ],
+              type: 'root',
+            },
+          },
+          metadata: { selectedSkillIds: [], selectedToolIds: [] },
+          role: 'user',
+        },
+      ]),
+    );
+
+    expect(result.messages[0].content).toBe('plain request');
+    expect(result.metadata).not.toHaveProperty('MessageFactsInjectorInjectedCount');
+  });
 });
